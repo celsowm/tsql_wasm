@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt;
 
 use crate::ast::{SetOpKind, Statement};
@@ -11,11 +12,15 @@ use super::mutation::MutationExecutor;
 use super::query::QueryExecutor;
 use super::result::QueryResult;
 use super::schema::SchemaExecutor;
+use super::type_mapping::data_type_spec_to_runtime;
+use super::value_ops::coerce_value_to_type;
 
 pub struct Engine {
     pub catalog: Catalog,
     pub storage: InMemoryStorage,
     clock: Box<dyn Clock>,
+    variables: HashMap<String, (DataType, Value)>,
+    last_identity: Option<i64>,
 }
 
 impl fmt::Debug for Engine {
@@ -24,6 +29,7 @@ impl fmt::Debug for Engine {
             .field("catalog", &self.catalog)
             .field("storage", &self.storage)
             .field("clock", &"dyn Clock")
+            .field("variables", &self.variables)
             .finish()
     }
 }
@@ -44,15 +50,34 @@ impl Engine {
             catalog: Catalog::new(),
             storage: InMemoryStorage::default(),
             clock,
+            variables: HashMap::new(),
+            last_identity: None,
         }
     }
 
     pub fn reset(&mut self) {
         self.catalog = Catalog::new();
         self.storage = InMemoryStorage::default();
+        self.variables.clear();
+        self.last_identity = None;
     }
 
     pub fn execute(&mut self, stmt: Statement) -> Result<Option<QueryResult>, DbError> {
+        // Set thread-local variables for the evaluator (once at top level)
+        super::evaluator::set_eval_variables(&self.variables);
+
+        let result = self.execute_inner(stmt);
+
+        // Clear after top-level execution
+        super::evaluator::clear_eval_variables();
+
+        result
+    }
+
+    fn execute_inner(&mut self, stmt: Statement) -> Result<Option<QueryResult>, DbError> {
+        // Ensure variables are available for nested calls
+        super::evaluator::set_eval_variables(&self.variables);
+
         match stmt {
             Statement::CreateTable(stmt) => {
                 SchemaExecutor {
@@ -150,6 +175,62 @@ impl Engine {
                 Ok(None)
             }
             Statement::WithCte(stmt) => self.execute_cte(stmt),
+            Statement::Declare(stmt) => {
+                let ty = data_type_spec_to_runtime(&stmt.data_type);
+                let value = if let Some(ref default_expr) = stmt.default {
+                    eval_expr_static(default_expr, self.clock.as_ref())?
+                } else {
+                    Value::Null
+                };
+                self.variables.insert(stmt.name, (ty, value));
+                Ok(None)
+            }
+            Statement::Set(stmt) => {
+                let val = eval_expr_static(&stmt.expr, self.clock.as_ref())?;
+                if let Some((ty, var)) = self.variables.get_mut(&stmt.name) {
+                    let coerced = coerce_value_to_type(val, ty)?;
+                    *var = coerced;
+                } else {
+                    return Err(DbError::Semantic(format!(
+                        "variable '{}' not declared",
+                        stmt.name
+                    )));
+                }
+                Ok(None)
+            }
+            Statement::If(stmt) => {
+                let cond = eval_expr_static(&stmt.condition, self.clock.as_ref())?;
+                let truthy = super::value_ops::truthy(&cond);
+                if truthy {
+                    self.execute_batch(&stmt.then_body)
+                } else if let Some(ref else_body) = stmt.else_body {
+                    self.execute_batch(else_body)
+                } else {
+                    Ok(None)
+                }
+            }
+            Statement::BeginEnd(stmts) => self.execute_batch(&stmts),
+            Statement::While(stmt) => {
+                let mut result = None;
+                loop {
+                    super::evaluator::set_eval_variables(&self.variables);
+                    let cond = eval_expr_static(&stmt.condition, self.clock.as_ref())?;
+                    if !super::value_ops::truthy(&cond) {
+                        break;
+                    }
+                    result = self.execute_batch(&stmt.body)?;
+                }
+                Ok(result)
+            }
+            Statement::Break => Err(DbError::Execution("BREAK outside of WHILE".into())),
+            Statement::Continue => Err(DbError::Execution("CONTINUE outside of WHILE".into())),
+            Statement::Return => Ok(None),
+            Statement::Exec(stmt) => {
+                let sql_val = eval_expr_static(&stmt.sql_expr, self.clock.as_ref())?;
+                let sql_str = sql_val.to_string_value();
+                let batch = super::super::parser::parse_batch(&sql_str)?;
+                self.execute_batch(&batch)
+            }
             Statement::SetOp(stmt) => {
                 let left_result = self.execute(*stmt.left)?;
                 let right_result = self.execute(*stmt.right)?;
@@ -165,6 +246,14 @@ impl Engine {
                 }
             }
         }
+    }
+
+    pub fn execute_batch(&mut self, stmts: &[Statement]) -> Result<Option<QueryResult>, DbError> {
+        let mut last_result = None;
+        for stmt in stmts {
+            last_result = self.execute(stmt.clone())?;
+        }
+        Ok(last_result)
     }
 
     fn execute_cte(
@@ -292,4 +381,9 @@ fn execute_set_op(
         columns: left.columns,
         rows,
     })
+}
+
+fn eval_expr_static(expr: &crate::ast::Expr, clock: &dyn Clock) -> Result<Value, DbError> {
+    let empty_row: super::model::JoinedRow = vec![];
+    super::evaluator::eval_expr(expr, &empty_row, clock)
 }

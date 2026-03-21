@@ -175,6 +175,280 @@ fn extract_paren_content(input: &str) -> Result<(String, String), DbError> {
     Err(DbError::Parse("unclosed parenthesis in CTE".into()))
 }
 
+// ─── Procedural statements ─────────────────────────────────────────────
+
+pub(crate) fn parse_declare(sql: &str) -> Result<Statement, DbError> {
+    let after_declare = sql["DECLARE".len()..].trim();
+    // DECLARE @name TYPE [= default]
+    let at_pos = after_declare
+        .find('@')
+        .ok_or_else(|| DbError::Parse("DECLARE requires @variable name".into()))?;
+    let rest = &after_declare[at_pos..];
+    let name_end = rest
+        .find(|c: char| c.is_whitespace() || c == '=')
+        .unwrap_or(rest.len());
+    let var_name = rest[..name_end].to_string();
+    let after_name = rest[name_end..].trim();
+
+    // Parse data type
+    let (data_type_spec, after_type) = parse_type_from_declare(after_name)?;
+
+    // Check for default value
+    let default = if after_type.trim_start().starts_with('=') {
+        let expr_str = after_type.trim_start()[1..].trim();
+        Some(super::parse_expr(expr_str)?)
+    } else {
+        None
+    };
+
+    Ok(Statement::Declare(crate::ast::DeclareStmt {
+        name: var_name,
+        data_type: data_type_spec,
+        default,
+    }))
+}
+
+fn parse_type_from_declare(input: &str) -> Result<(crate::ast::DataTypeSpec, &str), DbError> {
+    let trimmed = input.trim();
+    let upper = trimmed.to_uppercase();
+
+    // Check for parameterized types
+    let types: &[(&str, fn(u16) -> crate::ast::DataTypeSpec)] = &[
+        ("VARCHAR(", crate::ast::DataTypeSpec::VarChar),
+        ("NVARCHAR(", crate::ast::DataTypeSpec::NVarChar),
+        ("CHAR(", crate::ast::DataTypeSpec::Char),
+        ("NCHAR(", crate::ast::DataTypeSpec::NChar),
+    ];
+
+    for (prefix, constructor) in types {
+        if upper.starts_with(prefix) {
+            let close = upper.find(')').ok_or_else(|| {
+                DbError::Parse(format!("missing ')' for {}", prefix.trim_end_matches('(')))
+            })?;
+            let len_str = &upper[prefix.len()..close];
+            let len: u16 = len_str
+                .parse()
+                .map_err(|_| DbError::Parse("invalid type length".into()))?;
+            let rest = &trimmed[close + 1..];
+            return Ok((constructor(len), rest));
+        }
+    }
+
+    // Check for DECIMAL(p,s)
+    if upper.starts_with("DECIMAL(") || upper.starts_with("NUMERIC(") {
+        let close = upper
+            .find(')')
+            .ok_or_else(|| DbError::Parse("missing ')' for DECIMAL".into()))?;
+        let inner = &upper[8..close];
+        let parts: Vec<&str> = inner.split(',').map(|s| s.trim()).collect();
+        let p: u8 = parts[0]
+            .parse()
+            .map_err(|_| DbError::Parse("invalid precision".into()))?;
+        let s: u8 = if parts.len() > 1 {
+            parts[1]
+                .parse()
+                .map_err(|_| DbError::Parse("invalid scale".into()))?
+        } else {
+            0
+        };
+        let rest = &trimmed[close + 1..];
+        return Ok((crate::ast::DataTypeSpec::Decimal(p, s), rest));
+    }
+
+    // Simple types
+    let simple_types: &[(&str, crate::ast::DataTypeSpec)] = &[
+        ("BIT", crate::ast::DataTypeSpec::Bit),
+        ("TINYINT", crate::ast::DataTypeSpec::TinyInt),
+        ("SMALLINT", crate::ast::DataTypeSpec::SmallInt),
+        ("INT", crate::ast::DataTypeSpec::Int),
+        ("BIGINT", crate::ast::DataTypeSpec::BigInt),
+        ("DATE", crate::ast::DataTypeSpec::Date),
+        ("TIME", crate::ast::DataTypeSpec::Time),
+        ("DATETIME", crate::ast::DataTypeSpec::DateTime),
+        ("DATETIME2", crate::ast::DataTypeSpec::DateTime2),
+        (
+            "UNIQUEIDENTIFIER",
+            crate::ast::DataTypeSpec::UniqueIdentifier,
+        ),
+        ("VARCHAR", crate::ast::DataTypeSpec::VarChar(8000)),
+        ("NVARCHAR", crate::ast::DataTypeSpec::NVarChar(4000)),
+        ("DECIMAL", crate::ast::DataTypeSpec::Decimal(18, 0)),
+    ];
+
+    for (name, spec) in simple_types {
+        if upper.starts_with(name) {
+            let after = &trimmed[name.len()..];
+            let next_char = after.chars().next();
+            if next_char.is_none()
+                || next_char.unwrap().is_whitespace()
+                || next_char.unwrap() == '='
+                || next_char.unwrap() == ';'
+            {
+                return Ok((spec.clone(), after));
+            }
+        }
+    }
+
+    Err(DbError::Parse(format!(
+        "unsupported data type in DECLARE: '{}'",
+        trimmed
+    )))
+}
+
+pub(crate) fn parse_set(sql: &str) -> Result<Statement, DbError> {
+    let after_set = sql["SET".len()..].trim();
+    let eq_pos = after_set
+        .find('=')
+        .ok_or_else(|| DbError::Parse("SET requires '=' assignment".into()))?;
+    let var_name = after_set[..eq_pos].trim().to_string();
+    let expr_str = after_set[eq_pos + 1..].trim();
+    let expr = super::parse_expr(expr_str)?;
+    Ok(Statement::Set(crate::ast::SetStmt {
+        name: var_name,
+        expr,
+    }))
+}
+
+pub(crate) fn parse_if(sql: &str) -> Result<Statement, DbError> {
+    let after_if = sql["IF".len()..].trim();
+
+    // Find THEN-like boundary (we look for the first statement keyword)
+    // In T-SQL, IF condition BEGIN...END ELSE BEGIN...END or IF condition statement
+    // We look for BEGIN to find the body
+    let begin_idx = find_keyword_top_level(after_if, "BEGIN");
+    let else_idx = find_keyword_top_level(after_if, "ELSE");
+
+    let (condition_str, body_str, else_str) = if let Some(bi) = begin_idx {
+        let cond = after_if[..bi].trim();
+        let else_pos = else_idx.filter(|&ei| ei > bi);
+        let body = if let Some(ei) = else_pos {
+            &after_if[bi..ei]
+        } else {
+            &after_if[bi..]
+        };
+        let else_body = else_pos.map(|ei| &after_if[ei + "ELSE".len()..]);
+        (cond, body, else_body)
+    } else if let Some(ei) = else_idx {
+        let cond = after_if[..ei].trim();
+        // Body is everything between condition and ELSE (a single statement)
+        // For simplicity, treat as single statement
+        let body_start = cond.len();
+        let _remaining = &after_if[body_start..];
+        // Actually this is tricky. Let me just support IF ... BEGIN...END ELSE BEGIN...END
+        (
+            cond,
+            &after_if[body_start..ei],
+            Some(&after_if[ei + "ELSE".len()..]),
+        )
+    } else {
+        // Single statement: IF condition statement
+        // For now, treat the whole thing as condition and use empty body
+        // This is a simplification - ideally we'd parse the first expression as condition
+        return Err(DbError::Parse(
+            "IF requires BEGIN...END blocks (use: IF condition BEGIN ... END)".into(),
+        ));
+    };
+
+    let condition = super::parse_expr(condition_str)?;
+    let then_body = if body_str.trim().to_uppercase().starts_with("BEGIN") {
+        parse_begin_end_body(body_str)?
+    } else {
+        super::parse_batch(body_str)?
+    };
+
+    let else_body = else_str
+        .map(|s| {
+            let s = s.trim();
+            if s.to_uppercase().starts_with("BEGIN") {
+                parse_begin_end_body(s)
+            } else {
+                super::parse_batch(s)
+            }
+        })
+        .transpose()?;
+
+    Ok(Statement::If(crate::ast::IfStmt {
+        condition,
+        then_body,
+        else_body,
+    }))
+}
+
+pub(crate) fn parse_while(sql: &str) -> Result<Statement, DbError> {
+    let after_while = sql["WHILE".len()..].trim();
+    let begin_idx = find_keyword_top_level(after_while, "BEGIN")
+        .ok_or_else(|| DbError::Parse("WHILE requires BEGIN...END body".into()))?;
+    let condition_str = after_while[..begin_idx].trim();
+    let body_str = &after_while[begin_idx..];
+
+    let condition = super::parse_expr(condition_str)?;
+    let body = parse_begin_end_body(body_str)?;
+
+    Ok(Statement::While(crate::ast::WhileStmt { condition, body }))
+}
+
+pub(crate) fn parse_begin_end(sql: &str) -> Result<Statement, DbError> {
+    let body = parse_begin_end_body(sql)?;
+    Ok(Statement::BeginEnd(body))
+}
+
+fn parse_begin_end_body(sql: &str) -> Result<Vec<Statement>, DbError> {
+    let trimmed = sql.trim();
+    let upper = trimmed.to_uppercase();
+    if !upper.starts_with("BEGIN") {
+        return Err(DbError::Parse("expected BEGIN".into()));
+    }
+    let rest = trimmed["BEGIN".len()..].trim();
+    // Find matching END
+    let end_idx = find_matching_end(rest)?;
+    let body_str = rest[..end_idx].trim();
+    super::parse_batch(body_str)
+}
+
+fn find_matching_end(input: &str) -> Result<usize, DbError> {
+    let upper = input.to_uppercase();
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let chars: Vec<char> = input.chars().collect();
+    let mut i = 0;
+
+    while i < chars.len() {
+        match chars[i] {
+            '\'' => in_string = !in_string,
+            _ if in_string => {}
+            _ => {
+                if i + 5 <= chars.len() && &upper[i..i + 5] == "BEGIN" {
+                    depth += 1;
+                    i += 5;
+                    continue;
+                }
+                if i + 3 <= chars.len() && &upper[i..i + 3] == "END" {
+                    if depth == 0 {
+                        return Ok(i);
+                    }
+                    depth -= 1;
+                    i += 3;
+                    continue;
+                }
+            }
+        }
+        i += 1;
+    }
+
+    Err(DbError::Parse("missing END".into()))
+}
+
+pub(crate) fn parse_exec(sql: &str) -> Result<Statement, DbError> {
+    let upper = sql.to_uppercase();
+    let after_exec = if upper.starts_with("EXECUTE ") {
+        sql["EXECUTE".len()..].trim()
+    } else {
+        sql["EXEC".len()..].trim()
+    };
+    let expr = super::parse_expr(after_exec)?;
+    Ok(Statement::Exec(crate::ast::ExecStmt { sql_expr: expr }))
+}
+
 // ─── DML ────────────────────────────────────────────────────────────────
 
 pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {

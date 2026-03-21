@@ -18,7 +18,9 @@ pub struct FixedClock {
 
 impl FixedClock {
     pub fn new(value: impl Into<String>) -> Self {
-        Self { value: value.into() }
+        Self {
+            value: value.into(),
+        }
     }
 }
 

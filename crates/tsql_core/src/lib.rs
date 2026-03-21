@@ -9,4 +9,4 @@ pub mod types;
 pub use error::DbError;
 pub use executor::engine::Engine;
 pub use executor::result::QueryResult;
-pub use parser::parse_sql;
+pub use parser::{parse_batch, parse_sql};

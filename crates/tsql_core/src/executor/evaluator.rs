@@ -1,4 +1,6 @@
+use std::cell::RefCell;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
 use crate::ast::{BinaryOp, Expr, UnaryOp};
 use crate::error::DbError;
@@ -8,6 +10,36 @@ use super::clock::Clock;
 use super::model::JoinedRow;
 use super::type_mapping::data_type_spec_to_runtime;
 use super::value_ops::{coerce_value_to_type, compare_values, truthy};
+
+pub type Variables = HashMap<String, (DataType, Value)>;
+
+thread_local! {
+    static EVAL_VARIABLES: RefCell<Variables> = RefCell::new(HashMap::new());
+    static EVAL_DEPTH: RefCell<usize> = RefCell::new(0);
+}
+
+pub fn set_eval_variables(vars: &Variables) {
+    EVAL_VARIABLES.with(|v| {
+        *v.borrow_mut() = vars.clone();
+    });
+    EVAL_DEPTH.with(|d| {
+        *d.borrow_mut() += 1;
+    });
+}
+
+pub fn clear_eval_variables() {
+    EVAL_DEPTH.with(|d| {
+        let mut depth = d.borrow_mut();
+        if *depth > 0 {
+            *depth -= 1;
+        }
+        if *depth == 0 {
+            EVAL_VARIABLES.with(|v| {
+                v.borrow_mut().clear();
+            });
+        }
+    });
+}
 
 pub(crate) fn eval_expr_to_type_constant(
     expr: &Expr,
@@ -151,6 +183,20 @@ pub(crate) fn contains_aggregate(expr: &Expr) -> bool {
 }
 
 fn resolve_identifier(row: &JoinedRow, name: &str) -> Result<Value, DbError> {
+    // Check for variable reference
+    if name.starts_with('@') {
+        return EVAL_VARIABLES.with(|vars| {
+            let vars = vars.borrow();
+            match vars.get(name) {
+                Some((_, val)) => Ok(val.clone()),
+                None => Err(DbError::Semantic(format!(
+                    "variable '{}' not declared",
+                    name
+                ))),
+            }
+        });
+    }
+
     let mut found: Option<Value> = None;
     for binding in row {
         if let Some(idx) = binding

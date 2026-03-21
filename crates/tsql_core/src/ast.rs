@@ -30,6 +30,46 @@ pub enum Statement {
     TruncateTable(TruncateTableStmt),
     AlterTable(AlterTableStmt),
     WithCte(WithCteStmt),
+    Declare(DeclareStmt),
+    Set(SetStmt),
+    If(IfStmt),
+    BeginEnd(Vec<Statement>),
+    While(WhileStmt),
+    Break,
+    Continue,
+    Return,
+    Exec(ExecStmt),
+}
+
+#[derive(Debug, Clone)]
+pub struct DeclareStmt {
+    pub name: String,
+    pub data_type: DataTypeSpec,
+    pub default: Option<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SetStmt {
+    pub name: String,
+    pub expr: Expr,
+}
+
+#[derive(Debug, Clone)]
+pub struct IfStmt {
+    pub condition: Expr,
+    pub then_body: Vec<Statement>,
+    pub else_body: Option<Vec<Statement>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WhileStmt {
+    pub condition: Expr,
+    pub body: Vec<Statement>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExecStmt {
+    pub sql_expr: Expr,
 }
 
 #[derive(Debug, Clone)]

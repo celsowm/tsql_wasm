@@ -7,6 +7,87 @@ use crate::error::DbError;
 
 pub use expression::parse_expr;
 
+pub fn parse_batch(sql: &str) -> Result<Vec<Statement>, DbError> {
+    let trimmed = sql.trim();
+    if trimmed.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // Split by semicolons at the top level
+    let parts = split_statements(trimmed);
+    let mut statements = Vec::new();
+    for part in &parts {
+        let s = part.trim();
+        if !s.is_empty() {
+            statements.push(parse_sql(s)?);
+        }
+    }
+    Ok(statements)
+}
+
+fn split_statements(sql: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut buf = String::new();
+    let mut paren_depth = 0usize;
+    let mut block_depth = 0usize;
+    let mut in_string = false;
+    let upper = sql.to_uppercase();
+    let chars: Vec<char> = sql.chars().collect();
+    let upper_chars: Vec<char> = upper.chars().collect();
+    let mut i = 0;
+
+    while i < chars.len() {
+        let ch = chars[i];
+        match ch {
+            '\'' => {
+                in_string = !in_string;
+                buf.push(ch);
+            }
+            '(' if !in_string => {
+                paren_depth += 1;
+                buf.push(ch);
+            }
+            ')' if !in_string => {
+                paren_depth = paren_depth.saturating_sub(1);
+                buf.push(ch);
+            }
+            ';' if !in_string && paren_depth == 0 && block_depth == 0 => {
+                out.push(buf.trim().to_string());
+                buf.clear();
+            }
+            _ => {
+                if !in_string {
+                    // Check for BEGIN keyword
+                    if i + 5 <= upper_chars.len()
+                        && &upper_chars[i..i + 5] == &['B', 'E', 'G', 'I', 'N']
+                    {
+                        let prev_ok = i == 0 || !chars[i - 1].is_ascii_alphanumeric();
+                        let next_ok = i + 5 >= chars.len() || !chars[i + 5].is_ascii_alphanumeric();
+                        if prev_ok && next_ok {
+                            block_depth += 1;
+                        }
+                    }
+                    // Check for END keyword
+                    if i + 3 <= upper_chars.len() && &upper_chars[i..i + 3] == &['E', 'N', 'D'] {
+                        let prev_ok = i == 0 || !chars[i - 1].is_ascii_alphanumeric();
+                        let next_ok = i + 3 >= chars.len() || !chars[i + 3].is_ascii_alphanumeric();
+                        if prev_ok && next_ok && block_depth > 0 {
+                            block_depth -= 1;
+                        }
+                    }
+                }
+                buf.push(ch);
+            }
+        }
+        i += 1;
+    }
+
+    if !buf.trim().is_empty() {
+        out.push(buf.trim().to_string());
+    }
+    out
+}
+
 pub fn parse_sql(sql: &str) -> Result<Statement, DbError> {
     let trimmed = sql.trim().trim_end_matches(';').trim();
 
@@ -26,6 +107,35 @@ pub fn parse_sql(sql: &str) -> Result<Statement, DbError> {
     // Check for WITH CTE
     if upper.starts_with("WITH ") {
         return statements::parse_with_cte(trimmed);
+    }
+
+    // Control-of-flow and procedural statements
+    if upper.starts_with("DECLARE ") {
+        return statements::parse_declare(trimmed);
+    }
+    if upper.starts_with("SET ") {
+        return statements::parse_set(trimmed);
+    }
+    if upper.starts_with("IF ") {
+        return statements::parse_if(trimmed);
+    }
+    if upper.starts_with("WHILE ") {
+        return statements::parse_while(trimmed);
+    }
+    if upper.starts_with("BEGIN") {
+        return statements::parse_begin_end(trimmed);
+    }
+    if upper == "BREAK" {
+        return Ok(Statement::Break);
+    }
+    if upper == "CONTINUE" {
+        return Ok(Statement::Continue);
+    }
+    if upper == "RETURN" {
+        return Ok(Statement::Return);
+    }
+    if upper.starts_with("EXEC ") || upper.starts_with("EXECUTE ") {
+        return statements::parse_exec(trimmed);
     }
 
     if upper.starts_with("CREATE TABLE ") {
