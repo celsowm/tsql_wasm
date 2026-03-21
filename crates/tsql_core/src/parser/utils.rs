@@ -63,7 +63,8 @@ pub(crate) fn find_keyword_top_level(input: &str, keyword: &str) -> Option<usize
 
         if !in_string && depth == 0 && &bytes[i..i + kw.len()] == kw {
             let prev_ok = i == 0 || !(bytes[i - 1] as char).is_ascii_alphanumeric();
-            let next_ok = i + kw.len() == bytes.len() || !(bytes[i + kw.len()] as char).is_ascii_alphanumeric();
+            let next_ok = i + kw.len() == bytes.len()
+                || !(bytes[i + kw.len()] as char).is_ascii_alphanumeric();
             if prev_ok && next_ok {
                 return Some(i);
             }

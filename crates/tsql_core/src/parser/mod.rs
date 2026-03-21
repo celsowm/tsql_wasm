@@ -13,6 +13,12 @@ pub fn parse_sql(sql: &str) -> Result<Statement, DbError> {
 
     if upper.starts_with("CREATE TABLE ") {
         statements::parse_create_table(trimmed)
+    } else if upper.starts_with("CREATE SCHEMA ") {
+        statements::parse_create_schema(trimmed)
+    } else if upper.starts_with("DROP TABLE ") {
+        statements::parse_drop_table(trimmed)
+    } else if upper.starts_with("DROP SCHEMA ") {
+        statements::parse_drop_schema(trimmed)
     } else if upper.starts_with("INSERT INTO ") {
         statements::parse_insert(trimmed)
     } else if upper.starts_with("SELECT ") {

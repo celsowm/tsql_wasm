@@ -61,6 +61,30 @@ impl Engine {
                 .create_table(stmt)?;
                 Ok(None)
             }
+            Statement::DropTable(stmt) => {
+                SchemaExecutor {
+                    catalog: &mut self.catalog,
+                    storage: &mut self.storage,
+                }
+                .drop_table(stmt)?;
+                Ok(None)
+            }
+            Statement::CreateSchema(stmt) => {
+                SchemaExecutor {
+                    catalog: &mut self.catalog,
+                    storage: &mut self.storage,
+                }
+                .create_schema(stmt)?;
+                Ok(None)
+            }
+            Statement::DropSchema(stmt) => {
+                SchemaExecutor {
+                    catalog: &mut self.catalog,
+                    storage: &mut self.storage,
+                }
+                .drop_schema(stmt)?;
+                Ok(None)
+            }
             Statement::Insert(stmt) => {
                 MutationExecutor {
                     catalog: &mut self.catalog,

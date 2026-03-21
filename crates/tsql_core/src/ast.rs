@@ -19,6 +19,9 @@ pub struct TableRef {
 #[derive(Debug, Clone)]
 pub enum Statement {
     CreateTable(CreateTableStmt),
+    DropTable(DropTableStmt),
+    CreateSchema(CreateSchemaStmt),
+    DropSchema(DropSchemaStmt),
     Insert(InsertStmt),
     Select(SelectStmt),
     Update(UpdateStmt),
@@ -32,11 +35,27 @@ pub struct CreateTableStmt {
 }
 
 #[derive(Debug, Clone)]
+pub struct DropTableStmt {
+    pub name: ObjectName,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateSchemaStmt {
+    pub name: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropSchemaStmt {
+    pub name: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct ColumnSpec {
     pub name: String,
     pub data_type: DataTypeSpec,
     pub nullable: bool,
     pub primary_key: bool,
+    pub unique: bool,
     pub identity: Option<(i64, i64)>,
     pub default: Option<Expr>,
 }
@@ -51,12 +70,13 @@ pub struct InsertStmt {
 
 #[derive(Debug, Clone)]
 pub struct SelectStmt {
-    pub from: TableRef,
+    pub from: Option<TableRef>,
     pub joins: Vec<JoinClause>,
     pub projection: Vec<SelectItem>,
     pub top: Option<TopSpec>,
     pub selection: Option<Expr>,
     pub group_by: Vec<Expr>,
+    pub having: Option<Expr>,
     pub order_by: Vec<OrderByExpr>,
 }
 
@@ -109,7 +129,7 @@ pub struct DeleteStmt {
     pub selection: Option<Expr>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Identifier(String),
     QualifiedIdentifier(Vec<String>),
@@ -118,7 +138,10 @@ pub enum Expr {
     String(String),
     UnicodeString(String),
     Null,
-    FunctionCall { name: String, args: Vec<Expr> },
+    FunctionCall {
+        name: String,
+        args: Vec<Expr>,
+    },
     Binary {
         left: Box<Expr>,
         op: BinaryOp,
@@ -151,9 +174,18 @@ pub enum BinaryOp {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DataTypeSpec {
     Bit,
+    TinyInt,
+    SmallInt,
     Int,
     BigInt,
+    Decimal(u8, u8),
+    Char(u16),
     VarChar(u16),
+    NChar(u16),
     NVarChar(u16),
+    Date,
+    Time,
     DateTime,
+    DateTime2,
+    UniqueIdentifier,
 }

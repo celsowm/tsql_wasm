@@ -6,7 +6,9 @@ pub fn parse_expr(input: &str) -> Result<Expr, DbError> {
     let mut parser = ExprParser { tokens, pos: 0 };
     let expr = parser.parse_or()?;
     if parser.pos != parser.tokens.len() {
-        return Err(DbError::Parse("unexpected trailing tokens in expression".into()));
+        return Err(DbError::Parse(
+            "unexpected trailing tokens in expression".into(),
+        ));
     }
     Ok(expr)
 }
@@ -173,28 +175,64 @@ impl ExprParser {
         };
 
         if self.match_tok(|t| matches!(t, ExprToken::LParen)) {
-            let size = match self.next().cloned() {
+            let first = match self.next().cloned() {
                 Some(ExprToken::Integer(v)) => v as u16,
                 _ => return Err(DbError::Parse("expected integer type size".into())),
             };
+
+            if self.match_tok(|t| matches!(t, ExprToken::Comma)) {
+                let second = match self.next().cloned() {
+                    Some(ExprToken::Integer(v)) => v as u8,
+                    _ => return Err(DbError::Parse("expected integer scale".into())),
+                };
+                self.expect(|t| matches!(t, ExprToken::RParen), ")")?;
+                if name.eq_ignore_ascii_case("DECIMAL") || name.eq_ignore_ascii_case("NUMERIC") {
+                    return Ok(DataTypeSpec::Decimal(first as u8, second));
+                }
+                return Err(DbError::Parse(format!("unsupported data type '{}'", name)));
+            }
+
             self.expect(|t| matches!(t, ExprToken::RParen), ")")?;
             if name.eq_ignore_ascii_case("VARCHAR") {
-                return Ok(DataTypeSpec::VarChar(size));
+                return Ok(DataTypeSpec::VarChar(first));
             }
             if name.eq_ignore_ascii_case("NVARCHAR") {
-                return Ok(DataTypeSpec::NVarChar(size));
+                return Ok(DataTypeSpec::NVarChar(first));
+            }
+            if name.eq_ignore_ascii_case("CHAR") {
+                return Ok(DataTypeSpec::Char(first));
+            }
+            if name.eq_ignore_ascii_case("NCHAR") {
+                return Ok(DataTypeSpec::NChar(first));
+            }
+            if name.eq_ignore_ascii_case("DECIMAL") || name.eq_ignore_ascii_case("NUMERIC") {
+                return Ok(DataTypeSpec::Decimal(first as u8, 0));
             }
             return Err(DbError::Parse(format!("unsupported data type '{}'", name)));
         }
 
         if name.eq_ignore_ascii_case("BIT") {
             Ok(DataTypeSpec::Bit)
+        } else if name.eq_ignore_ascii_case("TINYINT") {
+            Ok(DataTypeSpec::TinyInt)
+        } else if name.eq_ignore_ascii_case("SMALLINT") {
+            Ok(DataTypeSpec::SmallInt)
         } else if name.eq_ignore_ascii_case("INT") {
             Ok(DataTypeSpec::Int)
         } else if name.eq_ignore_ascii_case("BIGINT") {
             Ok(DataTypeSpec::BigInt)
+        } else if name.eq_ignore_ascii_case("DATE") {
+            Ok(DataTypeSpec::Date)
+        } else if name.eq_ignore_ascii_case("TIME") {
+            Ok(DataTypeSpec::Time)
         } else if name.eq_ignore_ascii_case("DATETIME") {
             Ok(DataTypeSpec::DateTime)
+        } else if name.eq_ignore_ascii_case("DATETIME2") {
+            Ok(DataTypeSpec::DateTime2)
+        } else if name.eq_ignore_ascii_case("UNIQUEIDENTIFIER") {
+            Ok(DataTypeSpec::UniqueIdentifier)
+        } else if name.eq_ignore_ascii_case("DECIMAL") || name.eq_ignore_ascii_case("NUMERIC") {
+            Ok(DataTypeSpec::Decimal(18, 0))
         } else {
             Err(DbError::Parse(format!("unsupported data type '{}'", name)))
         }

@@ -7,9 +7,15 @@ use super::utils::{
     tokenize_preserving_parens,
 };
 
+// ─── DDL ────────────────────────────────────────────────────────────────
+
 pub(crate) fn parse_create_table(sql: &str) -> Result<Statement, DbError> {
-    let open = sql.find('(').ok_or_else(|| DbError::Parse("missing '('".into()))?;
-    let close = sql.rfind(')').ok_or_else(|| DbError::Parse("missing ')'".into()))?;
+    let open = sql
+        .find('(')
+        .ok_or_else(|| DbError::Parse("missing '('".into()))?;
+    let close = sql
+        .rfind(')')
+        .ok_or_else(|| DbError::Parse("missing ')'".into()))?;
 
     let head = sql[..open].trim();
     let body = sql[open + 1..close].trim();
@@ -24,6 +30,34 @@ pub(crate) fn parse_create_table(sql: &str) -> Result<Statement, DbError> {
 
     Ok(Statement::CreateTable(CreateTableStmt { name, columns }))
 }
+
+pub(crate) fn parse_drop_table(sql: &str) -> Result<Statement, DbError> {
+    let table_name = sql["DROP TABLE".len()..].trim();
+    let name = parse_object_name(table_name);
+    Ok(Statement::DropTable(DropTableStmt { name }))
+}
+
+pub(crate) fn parse_create_schema(sql: &str) -> Result<Statement, DbError> {
+    let schema_name = sql["CREATE SCHEMA".len()..].trim();
+    if schema_name.is_empty() {
+        return Err(DbError::Parse("CREATE SCHEMA missing name".into()));
+    }
+    Ok(Statement::CreateSchema(CreateSchemaStmt {
+        name: schema_name.to_string(),
+    }))
+}
+
+pub(crate) fn parse_drop_schema(sql: &str) -> Result<Statement, DbError> {
+    let schema_name = sql["DROP SCHEMA".len()..].trim();
+    if schema_name.is_empty() {
+        return Err(DbError::Parse("DROP SCHEMA missing name".into()));
+    }
+    Ok(Statement::DropSchema(DropSchemaStmt {
+        name: schema_name.to_string(),
+    }))
+}
+
+// ─── DML ────────────────────────────────────────────────────────────────
 
 pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {
     let after_into = sql["INSERT INTO".len()..].trim();
@@ -70,70 +104,6 @@ pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {
     }))
 }
 
-pub(crate) fn parse_select(sql: &str) -> Result<Statement, DbError> {
-    let after_select = sql["SELECT".len()..].trim();
-    let (top, select_rest) = parse_optional_top(after_select)?;
-
-    let from_idx = find_keyword_top_level(select_rest, "FROM")
-        .ok_or_else(|| DbError::Parse("SELECT missing FROM".into()))?;
-
-    let projection_raw = select_rest[..from_idx].trim();
-    let tail = select_rest[from_idx + "FROM".len()..].trim();
-
-    let where_idx = find_keyword_top_level(tail, "WHERE");
-    let group_idx = find_keyword_top_level(tail, "GROUP BY");
-    let order_idx = find_keyword_top_level(tail, "ORDER BY");
-
-    let source_end = [where_idx, group_idx, order_idx]
-        .into_iter()
-        .flatten()
-        .min()
-        .unwrap_or(tail.len());
-
-    let source_raw = tail[..source_end].trim();
-    let (from, joins) = parse_from_source(source_raw)?;
-
-    let selection = if let Some(widx) = where_idx {
-        let end = [group_idx, order_idx]
-            .into_iter()
-            .flatten()
-            .filter(|idx| *idx > widx)
-            .min()
-            .unwrap_or(tail.len());
-        Some(parse_expr(tail[widx + "WHERE".len()..end].trim())?)
-    } else {
-        None
-    };
-
-    let group_by = if let Some(gidx) = group_idx {
-        let end = order_idx.unwrap_or(tail.len());
-        split_csv_top_level(tail[gidx + "GROUP BY".len()..end].trim())
-            .into_iter()
-            .map(|s| parse_expr(s.trim()))
-            .collect::<Result<Vec<_>, _>>()?
-    } else {
-        vec![]
-    };
-
-    let order_by = if let Some(oidx) = order_idx {
-        parse_order_by(tail[oidx + "ORDER BY".len()..].trim())?
-    } else {
-        vec![]
-    };
-
-    let projection = parse_projection(projection_raw)?;
-
-    Ok(Statement::Select(SelectStmt {
-        from,
-        joins,
-        projection,
-        top,
-        selection,
-        group_by,
-        order_by,
-    }))
-}
-
 pub(crate) fn parse_update(sql: &str) -> Result<Statement, DbError> {
     let after_update = sql["UPDATE".len()..].trim();
     let set_idx = find_keyword_top_level(after_update, "SET")
@@ -143,12 +113,14 @@ pub(crate) fn parse_update(sql: &str) -> Result<Statement, DbError> {
     let tail = after_update[set_idx + "SET".len()..].trim();
     let where_idx = find_keyword_top_level(tail, "WHERE");
 
-    let assignments_raw = if let Some(idx) = where_idx { &tail[..idx] } else { tail };
-    let selection = if let Some(idx) = where_idx {
-        Some(parse_expr(tail[idx + "WHERE".len()..].trim())?)
+    let assignments_raw = if let Some(idx) = where_idx {
+        &tail[..idx]
     } else {
-        None
+        tail
     };
+    let selection = where_idx
+        .map(|idx| parse_expr(tail[idx + "WHERE".len()..].trim()))
+        .transpose()?;
 
     let assignments = split_csv_top_level(assignments_raw)
         .into_iter()
@@ -172,19 +144,148 @@ pub(crate) fn parse_delete(sql: &str) -> Result<Statement, DbError> {
         parse_object_name(after_delete)
     };
 
-    let selection = if let Some(idx) = where_idx {
-        Some(parse_expr(after_delete[idx + "WHERE".len()..].trim())?)
-    } else {
-        None
-    };
+    let selection = where_idx
+        .map(|idx| parse_expr(after_delete[idx + "WHERE".len()..].trim()))
+        .transpose()?;
 
     Ok(Statement::Delete(DeleteStmt { table, selection }))
 }
 
+// ─── SELECT ─────────────────────────────────────────────────────────────
+
+struct SelectClauseBounds {
+    where_idx: Option<usize>,
+    group_idx: Option<usize>,
+    having_idx: Option<usize>,
+    order_idx: Option<usize>,
+}
+
+impl SelectClauseBounds {
+    fn detect(tail: &str) -> Self {
+        Self {
+            where_idx: find_keyword_top_level(tail, "WHERE"),
+            group_idx: find_keyword_top_level(tail, "GROUP BY"),
+            having_idx: find_keyword_top_level(tail, "HAVING"),
+            order_idx: find_keyword_top_level(tail, "ORDER BY"),
+        }
+    }
+
+    fn first_boundary(&self) -> Option<usize> {
+        [
+            self.where_idx,
+            self.group_idx,
+            self.having_idx,
+            self.order_idx,
+        ]
+        .into_iter()
+        .flatten()
+        .min()
+    }
+
+    fn next_after(&self, start: usize) -> usize {
+        [self.group_idx, self.having_idx, self.order_idx]
+            .into_iter()
+            .flatten()
+            .filter(|idx| *idx > start)
+            .min()
+            .unwrap_or(0) // 0 means "end of string" — caller handles this
+    }
+}
+
+pub(crate) fn parse_select(sql: &str) -> Result<Statement, DbError> {
+    let after_select = sql["SELECT".len()..].trim();
+    let (top, select_rest) = parse_optional_top(after_select)?;
+
+    let from_idx = find_keyword_top_level(select_rest, "FROM");
+
+    if from_idx.is_none() {
+        let projection = parse_projection(select_rest.trim())?;
+        return Ok(Statement::Select(SelectStmt {
+            from: None,
+            joins: vec![],
+            projection,
+            top,
+            selection: None,
+            group_by: vec![],
+            having: None,
+            order_by: vec![],
+        }));
+    }
+
+    let from_idx = from_idx.unwrap();
+    let projection_raw = select_rest[..from_idx].trim();
+    let tail = select_rest[from_idx + "FROM".len()..].trim();
+
+    let bounds = SelectClauseBounds::detect(tail);
+    let source_end = bounds.first_boundary().unwrap_or(tail.len());
+
+    let (from, joins) = parse_from_source(tail[..source_end].trim())?;
+    let selection = parse_where_clause(tail, &bounds)?;
+    let group_by = parse_group_by_clause(tail, &bounds)?;
+    let having = parse_having_clause(tail, &bounds)?;
+    let order_by = parse_order_by_clause(tail, &bounds)?;
+    let projection = parse_projection(projection_raw)?;
+
+    Ok(Statement::Select(SelectStmt {
+        from: Some(from),
+        joins,
+        projection,
+        top,
+        selection,
+        group_by,
+        having,
+        order_by,
+    }))
+}
+
+fn parse_where_clause(tail: &str, bounds: &SelectClauseBounds) -> Result<Option<Expr>, DbError> {
+    let Some(widx) = bounds.where_idx else {
+        return Ok(None);
+    };
+    let end = bounds.next_after(widx);
+    let end = if end == 0 { tail.len() } else { end };
+    Ok(Some(parse_expr(tail[widx + "WHERE".len()..end].trim())?))
+}
+
+fn parse_group_by_clause(tail: &str, bounds: &SelectClauseBounds) -> Result<Vec<Expr>, DbError> {
+    let Some(gidx) = bounds.group_idx else {
+        return Ok(vec![]);
+    };
+    let end = bounds.next_after(gidx);
+    let end = if end == 0 { tail.len() } else { end };
+    split_csv_top_level(tail[gidx + "GROUP BY".len()..end].trim())
+        .into_iter()
+        .map(|s| parse_expr(s.trim()))
+        .collect()
+}
+
+fn parse_having_clause(tail: &str, bounds: &SelectClauseBounds) -> Result<Option<Expr>, DbError> {
+    let Some(hidx) = bounds.having_idx else {
+        return Ok(None);
+    };
+    let end = bounds.order_idx.unwrap_or(tail.len());
+    Ok(Some(parse_expr(tail[hidx + "HAVING".len()..end].trim())?))
+}
+
+fn parse_order_by_clause(
+    tail: &str,
+    bounds: &SelectClauseBounds,
+) -> Result<Vec<OrderByExpr>, DbError> {
+    let Some(oidx) = bounds.order_idx else {
+        return Ok(vec![]);
+    };
+    parse_order_by(tail[oidx + "ORDER BY".len()..].trim())
+}
+
+// ─── Column spec ────────────────────────────────────────────────────────
+
 fn parse_column_spec(input: &str) -> Result<ColumnSpec, DbError> {
     let mut tokens = tokenize_preserving_parens(input);
     if tokens.len() < 2 {
-        return Err(DbError::Parse(format!("invalid column definition '{}'", input)));
+        return Err(DbError::Parse(format!(
+            "invalid column definition '{}'",
+            input
+        )));
     }
 
     let name = tokens.remove(0);
@@ -193,15 +294,18 @@ fn parse_column_spec(input: &str) -> Result<ColumnSpec, DbError> {
 
     let mut nullable = true;
     let mut primary_key = false;
+    let mut unique = false;
     let mut identity = None;
     let mut default = None;
 
     let mut i = 0;
     while i < tokens.len() {
-        let tok = tokens[i].to_uppercase();
-        match tok.as_str() {
+        match tokens[i].to_uppercase().as_str() {
             "NOT" => {
-                if i + 1 < tokens.len() && tokens[i + 1].eq_ignore_ascii_case("NULL") {
+                if tokens
+                    .get(i + 1)
+                    .is_some_and(|t| t.eq_ignore_ascii_case("NULL"))
+                {
                     nullable = false;
                     i += 2;
                 } else {
@@ -213,24 +317,32 @@ fn parse_column_spec(input: &str) -> Result<ColumnSpec, DbError> {
                 i += 1;
             }
             "PRIMARY" => {
-                if i + 1 < tokens.len() && tokens[i + 1].eq_ignore_ascii_case("KEY") {
+                if tokens
+                    .get(i + 1)
+                    .is_some_and(|t| t.eq_ignore_ascii_case("KEY"))
+                {
                     primary_key = true;
+                    unique = true;
                     nullable = false;
                     i += 2;
                 } else {
                     return Err(DbError::Parse("expected KEY after PRIMARY".into()));
                 }
             }
+            "UNIQUE" => {
+                unique = true;
+                i += 1;
+            }
             "DEFAULT" => {
-                if i + 1 >= tokens.len() {
-                    return Err(DbError::Parse("missing expression after DEFAULT".into()));
-                }
-                default = Some(parse_expr(&tokens[i + 1])?);
+                let expr_tok = tokens
+                    .get(i + 1)
+                    .ok_or_else(|| DbError::Parse("missing expression after DEFAULT".into()))?;
+                default = Some(parse_expr(expr_tok)?);
                 i += 2;
             }
-            _ if tok.starts_with("IDENTITY(") => {
+            tok if tok.starts_with("IDENTITY(") => {
                 let inner = &tokens[i]["IDENTITY(".len()..tokens[i].len() - 1];
-                let parts = inner.split(',').map(|s| s.trim()).collect::<Vec<_>>();
+                let parts: Vec<&str> = inner.split(',').map(|s| s.trim()).collect();
                 if parts.len() != 2 {
                     return Err(DbError::Parse("IDENTITY expects 2 arguments".into()));
                 }
@@ -252,35 +364,82 @@ fn parse_column_spec(input: &str) -> Result<ColumnSpec, DbError> {
         data_type,
         nullable,
         primary_key,
+        unique,
         identity,
         default,
     })
 }
 
+// ─── Data type parsing ──────────────────────────────────────────────────
+
+fn parse_parameterized_type(prefix: &str, upper: &str) -> Result<u16, DbError> {
+    upper[prefix.len()..upper.len() - 1]
+        .parse::<u16>()
+        .map_err(|_| DbError::Parse(format!("invalid {} length", prefix.trim_end_matches('('))))
+}
+
+fn parse_decimal_params(upper: &str) -> Result<(u8, u8), DbError> {
+    let open = upper.find('(').unwrap();
+    let inner = &upper[open + 1..upper.len() - 1];
+    let parts: Vec<&str> = inner.split(',').map(|s| s.trim()).collect();
+    if parts.len() != 2 {
+        return Err(DbError::Parse(
+            "DECIMAL/NUMERIC requires precision and scale".into(),
+        ));
+    }
+    let p = parts[0]
+        .parse::<u8>()
+        .map_err(|_| DbError::Parse("invalid DECIMAL precision".into()))?;
+    let s = parts[1]
+        .parse::<u8>()
+        .map_err(|_| DbError::Parse("invalid DECIMAL scale".into()))?;
+    Ok((p, s))
+}
+
 fn parse_data_type(input: &str) -> Result<DataTypeSpec, DbError> {
     let upper = input.to_uppercase();
-    if upper == "BIT" {
-        Ok(DataTypeSpec::Bit)
-    } else if upper == "INT" {
-        Ok(DataTypeSpec::Int)
-    } else if upper == "BIGINT" {
-        Ok(DataTypeSpec::BigInt)
-    } else if upper == "DATETIME" {
-        Ok(DataTypeSpec::DateTime)
-    } else if upper.starts_with("VARCHAR(") && upper.ends_with(')') {
-        let n = upper["VARCHAR(".len()..upper.len() - 1]
-            .parse::<u16>()
-            .map_err(|_| DbError::Parse("invalid VARCHAR length".into()))?;
-        Ok(DataTypeSpec::VarChar(n))
-    } else if upper.starts_with("NVARCHAR(") && upper.ends_with(')') {
-        let n = upper["NVARCHAR(".len()..upper.len() - 1]
-            .parse::<u16>()
-            .map_err(|_| DbError::Parse("invalid NVARCHAR length".into()))?;
-        Ok(DataTypeSpec::NVarChar(n))
-    } else {
-        Err(DbError::Parse(format!("unsupported data type '{}'", input)))
+    match upper.as_str() {
+        "BIT" => Ok(DataTypeSpec::Bit),
+        "TINYINT" => Ok(DataTypeSpec::TinyInt),
+        "SMALLINT" => Ok(DataTypeSpec::SmallInt),
+        "INT" => Ok(DataTypeSpec::Int),
+        "BIGINT" => Ok(DataTypeSpec::BigInt),
+        "DATE" => Ok(DataTypeSpec::Date),
+        "TIME" => Ok(DataTypeSpec::Time),
+        "DATETIME" => Ok(DataTypeSpec::DateTime),
+        "DATETIME2" => Ok(DataTypeSpec::DateTime2),
+        "UNIQUEIDENTIFIER" => Ok(DataTypeSpec::UniqueIdentifier),
+        "DECIMAL" | "NUMERIC" => Ok(DataTypeSpec::Decimal(18, 0)),
+        _ => parse_parameterized_data_type(&upper),
     }
 }
+
+type DataTypeParser = fn(u16) -> DataTypeSpec;
+
+fn parse_parameterized_data_type(upper: &str) -> Result<DataTypeSpec, DbError> {
+    if (upper.starts_with("DECIMAL(") || upper.starts_with("NUMERIC(")) && upper.ends_with(')') {
+        let (p, s) = parse_decimal_params(upper)?;
+        return Ok(DataTypeSpec::Decimal(p, s));
+    }
+
+    let prefixes: &[(&str, DataTypeParser)] = &[
+        ("VARCHAR(", DataTypeSpec::VarChar),
+        ("NVARCHAR(", DataTypeSpec::NVarChar),
+        ("CHAR(", DataTypeSpec::Char),
+        ("NCHAR(", DataTypeSpec::NChar),
+    ];
+
+    for (prefix, constructor) in prefixes {
+        if upper.starts_with(prefix) && upper.ends_with(')') {
+            let n = parse_parameterized_type(prefix, upper)?;
+            return Ok(constructor(n));
+        }
+    }
+
+    Err(DbError::Parse(format!("unsupported data type '{}'", upper)))
+}
+
+// ─── Values ─────────────────────────────────────────────────────────────
 
 fn parse_values_groups(input: &str) -> Result<Vec<Vec<Expr>>, DbError> {
     let mut out = Vec::new();
@@ -326,6 +485,8 @@ fn parse_values_groups(input: &str) -> Result<Vec<Vec<Expr>>, DbError> {
 
     Ok(out)
 }
+
+// ─── FROM / JOIN ────────────────────────────────────────────────────────
 
 fn parse_from_source(input: &str) -> Result<(TableRef, Vec<JoinClause>), DbError> {
     let mut rest = input.trim();
@@ -395,7 +556,8 @@ fn find_next_join_top_level(input: &str) -> Option<(usize, JoinType, usize)> {
                 let p = pat.as_bytes();
                 if i + p.len() <= bytes.len() && &bytes[i..i + p.len()] == p {
                     let prev_ok = i == 0 || (bytes[i - 1] as char).is_whitespace();
-                    let next_ok = i + p.len() == bytes.len() || (bytes[i + p.len()] as char).is_whitespace();
+                    let next_ok =
+                        i + p.len() == bytes.len() || (bytes[i + p.len()] as char).is_whitespace();
                     if prev_ok && next_ok {
                         return Some((i, ty, p.len()));
                     }
@@ -407,6 +569,8 @@ fn find_next_join_top_level(input: &str) -> Option<(usize, JoinType, usize)> {
 
     None
 }
+
+// ─── Projection ─────────────────────────────────────────────────────────
 
 fn parse_projection(input: &str) -> Result<Vec<SelectItem>, DbError> {
     if input.trim() == "*" {
@@ -466,11 +630,7 @@ fn parse_order_by(input: &str) -> Result<Vec<OrderByExpr>, DbError> {
         if parts.is_empty() {
             continue;
         }
-        let desc = if parts.len() > 1 && parts[parts.len() - 1].eq_ignore_ascii_case("DESC") {
-            true
-        } else {
-            false
-        };
+        let desc = parts.len() > 1 && parts[parts.len() - 1].eq_ignore_ascii_case("DESC");
 
         let expr_text = if parts.len() > 1
             && (parts[parts.len() - 1].eq_ignore_ascii_case("DESC")
@@ -497,19 +657,15 @@ fn parse_optional_top(input: &str) -> Result<(Option<TopSpec>, &str), DbError> {
 
     let mut rest = trimmed[3..].trim_start();
     if rest.starts_with('(') {
-        let close = rest.find(')').ok_or_else(|| DbError::Parse("TOP missing ')'".into()))?;
+        let close = rest
+            .find(')')
+            .ok_or_else(|| DbError::Parse("TOP missing ')'".into()))?;
         let expr_text = &rest[1..close];
         let expr = parse_expr(expr_text.trim())?;
         rest = rest[close + 1..].trim_start();
         Ok((Some(TopSpec { value: expr }), rest))
     } else {
-        let mut end = rest.len();
-        for (idx, ch) in rest.char_indices() {
-            if ch.is_whitespace() {
-                end = idx;
-                break;
-            }
-        }
+        let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
         let expr = parse_expr(rest[..end].trim())?;
         rest = rest[end..].trim_start();
         Ok((Some(TopSpec { value: expr }), rest))

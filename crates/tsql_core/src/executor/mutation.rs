@@ -2,11 +2,12 @@ use crate::ast::{Assignment, DeleteStmt, Expr, InsertStmt, UpdateStmt};
 use crate::catalog::{Catalog, TableDef};
 use crate::error::DbError;
 use crate::storage::{InMemoryStorage, StoredRow};
-use crate::types::Value;
+use crate::types::{DataType, Value};
 
 use super::clock::Clock;
 use super::evaluator::{eval_expr_to_type_constant, eval_expr_to_type_in_context, eval_predicate};
 use super::model::single_row_context;
+use super::value_ops::compare_values;
 
 pub(crate) struct MutationExecutor<'a> {
     pub(crate) catalog: &'a mut Catalog,
@@ -28,7 +29,9 @@ impl<'a> MutationExecutor<'a> {
             .tables
             .iter()
             .position(|t| t.schema_id == schema_id && t.name.eq_ignore_ascii_case(&table_name))
-            .ok_or_else(|| DbError::Semantic(format!("table '{}.{}' not found", schema, table_name)))?;
+            .ok_or_else(|| {
+                DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
+            })?;
 
         let table_id = self.catalog.tables[table_pos].id;
 
@@ -54,6 +57,10 @@ impl<'a> MutationExecutor<'a> {
 
         for value_row in stmt.values {
             let row = self.build_insert_row(table_pos, &insert_columns, value_row)?;
+
+            let table = &self.catalog.tables[table_pos];
+            enforce_unique_on_insert(table, self.storage, table_id, &row)?;
+
             self.storage
                 .tables
                 .get_mut(&table_id)
@@ -77,7 +84,9 @@ impl<'a> MutationExecutor<'a> {
             .tables
             .iter()
             .position(|t| t.schema_id == schema_id && t.name.eq_ignore_ascii_case(&table_name))
-            .ok_or_else(|| DbError::Semantic(format!("table '{}.{}' not found", schema, table_name)))?;
+            .ok_or_else(|| {
+                DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
+            })?;
 
         let table_snapshot = self.catalog.tables[table_pos].clone();
         let table_id = table_snapshot.id;
@@ -103,6 +112,37 @@ impl<'a> MutationExecutor<'a> {
             validate_row_against_table(&table_snapshot, &row.values)?;
         }
 
+        // Re-check unique constraints after update
+        let rows = self
+            .storage
+            .tables
+            .get(&table_id)
+            .ok_or_else(|| DbError::Storage("table storage not found".to_string()))?;
+        for (col_idx, col) in table_snapshot
+            .columns
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.unique)
+        {
+            let mut seen: Vec<Value> = Vec::new();
+            for row in rows.iter().filter(|r| !r.deleted) {
+                let val = &row.values[col_idx];
+                if val.is_null() {
+                    continue;
+                }
+                if seen
+                    .iter()
+                    .any(|s| compare_values(s, val) == std::cmp::Ordering::Equal)
+                {
+                    return Err(DbError::Execution(format!(
+                        "Violation of UNIQUE KEY constraint on column '{}'. Cannot insert duplicate key.",
+                        col.name
+                    )));
+                }
+                seen.push(val.clone());
+            }
+        }
+
         Ok(())
     }
 
@@ -119,7 +159,9 @@ impl<'a> MutationExecutor<'a> {
             .tables
             .iter()
             .find(|t| t.schema_id == schema_id && t.name.eq_ignore_ascii_case(&table_name))
-            .ok_or_else(|| DbError::Semantic(format!("table '{}.{}' not found", schema, table_name)))?
+            .ok_or_else(|| {
+                DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
+            })?
             .clone();
 
         let rows = self
@@ -171,7 +213,9 @@ impl<'a> MutationExecutor<'a> {
                 .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", input_col)))?;
 
             let col = &table.columns[col_idx];
-            final_values[col_idx] = eval_expr_to_type_constant(expr, &col.data_type, self.clock)?;
+            let value = eval_expr_to_type_constant(expr, &col.data_type, self.clock)?;
+            enforce_string_length(&col.data_type, &value, &col.name)?;
+            final_values[col_idx] = value;
         }
 
         apply_missing_values(table, &mut final_values, self.clock)?;
@@ -183,6 +227,67 @@ impl<'a> MutationExecutor<'a> {
     }
 }
 
+fn enforce_string_length(
+    data_type: &DataType,
+    value: &Value,
+    col_name: &str,
+) -> Result<(), DbError> {
+    let max_len = match data_type {
+        DataType::Char { len } | DataType::NChar { len } => Some(*len as usize),
+        DataType::VarChar { max_len } | DataType::NVarChar { max_len } => Some(*max_len as usize),
+        _ => None,
+    };
+
+    if let Some(max) = max_len {
+        let s = match value {
+            Value::Char(s) | Value::VarChar(s) | Value::NChar(s) | Value::NVarChar(s) => {
+                Some(s.len())
+            }
+            _ => None,
+        };
+        if let Some(actual_len) = s {
+            if actual_len > max {
+                return Err(DbError::Execution(format!(
+                    "String or binary data would be truncated for column '{}'",
+                    col_name
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn enforce_unique_on_insert(
+    table: &TableDef,
+    storage: &InMemoryStorage,
+    table_id: u32,
+    new_row: &StoredRow,
+) -> Result<(), DbError> {
+    let rows = storage
+        .tables
+        .get(&table_id)
+        .ok_or_else(|| DbError::Storage("table storage not found".to_string()))?;
+
+    for (col_idx, col) in table.columns.iter().enumerate().filter(|(_, c)| c.unique) {
+        let new_val = &new_row.values[col_idx];
+        if new_val.is_null() {
+            continue;
+        }
+        for existing in rows.iter().filter(|r| !r.deleted) {
+            let existing_val = &existing.values[col_idx];
+            if !existing_val.is_null()
+                && compare_values(new_val, existing_val) == std::cmp::Ordering::Equal
+            {
+                return Err(DbError::Execution(format!(
+                    "Violation of UNIQUE KEY constraint on column '{}'. Cannot insert duplicate key.",
+                    col.name
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn apply_missing_values(
     table: &mut TableDef,
     final_values: &mut [Value],
@@ -191,9 +296,11 @@ fn apply_missing_values(
     for (idx, col) in table.columns.iter_mut().enumerate() {
         if matches!(final_values[idx], Value::Null) {
             if let Some(identity) = &mut col.identity {
-                final_values[idx] = match col.data_type {
-                    crate::types::DataType::Int => Value::Int(identity.next_value() as i32),
-                    crate::types::DataType::BigInt => Value::BigInt(identity.next_value()),
+                final_values[idx] = match &col.data_type {
+                    DataType::TinyInt => Value::TinyInt(identity.next_value() as u8),
+                    DataType::SmallInt => Value::SmallInt(identity.next_value() as i16),
+                    DataType::Int => Value::Int(identity.next_value() as i32),
+                    DataType::BigInt => Value::BigInt(identity.next_value()),
                     _ => {
                         return Err(DbError::Execution(format!(
                             "identity not supported for column type {:?}",
@@ -205,7 +312,8 @@ fn apply_missing_values(
             }
 
             if let Some(default_expr) = &col.default {
-                final_values[idx] = eval_expr_to_type_constant(default_expr, &col.data_type, clock)?;
+                final_values[idx] =
+                    eval_expr_to_type_constant(default_expr, &col.data_type, clock)?;
                 continue;
             }
 
@@ -233,9 +341,12 @@ fn apply_assignments(
             .columns
             .iter()
             .position(|c| c.name.eq_ignore_ascii_case(&assignment.column))
-            .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", assignment.column)))?;
+            .ok_or_else(|| {
+                DbError::Semantic(format!("column '{}' not found", assignment.column))
+            })?;
         let target = &table.columns[idx].data_type;
         let value = eval_expr_to_type_in_context(&assignment.expr, target, &joined, clock)?;
+        enforce_string_length(target, &value, &table.columns[idx].name)?;
         row.values[idx] = value;
     }
     Ok(())
