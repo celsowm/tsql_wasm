@@ -12,7 +12,9 @@ pub(crate) fn coerce_value_to_type(value: Value, ty: &DataType) -> Result<Value,
             DataType::BigInt => Ok(Value::BigInt(v as i64)),
             DataType::VarChar { .. } => Ok(Value::VarChar(v.to_string())),
             DataType::NVarChar { .. } => Ok(Value::NVarChar(v.to_string())),
-            DataType::DateTime => Err(DbError::Execution("cannot convert integer to DATETIME yet".into())),
+            DataType::DateTime => Err(DbError::Execution(
+                "cannot convert integer to DATETIME yet".into(),
+            )),
         },
         Value::BigInt(v) => match ty {
             DataType::Bit => Ok(Value::Bit(v != 0)),
@@ -20,7 +22,9 @@ pub(crate) fn coerce_value_to_type(value: Value, ty: &DataType) -> Result<Value,
             DataType::BigInt => Ok(Value::BigInt(v)),
             DataType::VarChar { .. } => Ok(Value::VarChar(v.to_string())),
             DataType::NVarChar { .. } => Ok(Value::NVarChar(v.to_string())),
-            DataType::DateTime => Err(DbError::Execution("cannot convert bigint to DATETIME yet".into())),
+            DataType::DateTime => Err(DbError::Execution(
+                "cannot convert bigint to DATETIME yet".into(),
+            )),
         },
         Value::Bit(v) => match ty {
             DataType::Bit => Ok(Value::Bit(v)),
@@ -28,7 +32,9 @@ pub(crate) fn coerce_value_to_type(value: Value, ty: &DataType) -> Result<Value,
             DataType::BigInt => Ok(Value::BigInt(if v { 1 } else { 0 })),
             DataType::VarChar { .. } => Ok(Value::VarChar((if v { 1 } else { 0 }).to_string())),
             DataType::NVarChar { .. } => Ok(Value::NVarChar((if v { 1 } else { 0 }).to_string())),
-            DataType::DateTime => Err(DbError::Execution("cannot convert bit to DATETIME yet".into())),
+            DataType::DateTime => Err(DbError::Execution(
+                "cannot convert bit to DATETIME yet".into(),
+            )),
         },
         Value::VarChar(v) => match ty {
             DataType::Bit => Ok(Value::Bit(v != "0" && !v.is_empty())),
@@ -62,7 +68,10 @@ pub(crate) fn coerce_value_to_type(value: Value, ty: &DataType) -> Result<Value,
             DataType::DateTime => Ok(Value::DateTime(v)),
             DataType::VarChar { .. } => Ok(Value::VarChar(v)),
             DataType::NVarChar { .. } => Ok(Value::NVarChar(v)),
-            _ => Err(DbError::Execution(format!("cannot convert datetime to {:?}", ty))),
+            _ => Err(DbError::Execution(format!(
+                "cannot convert datetime to {:?}",
+                ty
+            ))),
         },
     }
 }
@@ -77,6 +86,10 @@ pub(crate) fn compare_values(a: &Value, b: &Value) -> Ordering {
         (Value::BigInt(x), Value::Int(y)) => x.cmp(&(*y as i64)),
         (Value::BigInt(x), Value::BigInt(y)) => x.cmp(y),
         (Value::Bit(x), Value::Bit(y)) => x.cmp(y),
+        (Value::Bit(x), Value::Int(y)) => (*x as i32).cmp(y),
+        (Value::Int(x), Value::Bit(y)) => x.cmp(&(*y as i32)),
+        (Value::Bit(x), Value::BigInt(y)) => (*x as i64).cmp(y),
+        (Value::BigInt(x), Value::Bit(y)) => x.cmp(&(*y as i64)),
         (Value::VarChar(x), Value::VarChar(y)) => x.cmp(y),
         (Value::NVarChar(x), Value::NVarChar(y)) => x.cmp(y),
         (Value::VarChar(x), Value::NVarChar(y)) => x.cmp(y),

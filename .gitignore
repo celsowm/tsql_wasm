@@ -1,4 +1,33 @@
-node_modules/
-dist/
+# Rust
+target/
+**/*.rs.bk
+*.pdb
+
+# WASM
 pkg/
+dist/
+
+# Node
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
 *.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Debug
+debug.log

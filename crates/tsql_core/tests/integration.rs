@@ -37,7 +37,7 @@ fn test_join() {
     let mut engine = Engine::new();
     
     // Criar tabelas
-    parse_sql("CREATE TABLE orders (id INT NOT NULL PRIMARY KEY, user_id INT)").unwrap();
+    engine.execute(parse_sql("CREATE TABLE orders (id INT NOT NULL PRIMARY KEY, user_id INT)").unwrap()).unwrap();
     engine.execute(parse_sql("CREATE TABLE users (id INT NOT NULL PRIMARY KEY, name VARCHAR(100))").unwrap()).unwrap();
     
     // Inserir dados
@@ -81,9 +81,13 @@ fn test_order_by() {
     let result = engine.execute(stmt).unwrap().unwrap();
     assert_eq!(result.rows.len(), 3);
     
-    // Verificar ordem
+    // Verificar ordem - JsonValue::Number(1)
     let first_row = &result.rows[0];
-    assert_eq!(first_row[0].to_string(), "1");
+    if let tsql_core::types::JsonValue::Number(n) = &first_row[0] {
+        assert_eq!(*n, 1);
+    } else {
+        panic!("Expected Number");
+    }
 }
 
 #[test]
