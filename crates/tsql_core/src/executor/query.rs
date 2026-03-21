@@ -77,7 +77,11 @@ impl<'a> QueryExecutor<'a> {
         }
 
         let columns = expand_projection_columns(&stmt.projection, rows.first());
-        let out_rows = project_flat_rows(&stmt.projection, &rows, self.clock);
+        let mut out_rows = project_flat_rows(&stmt.projection, &rows, self.clock);
+
+        if stmt.distinct {
+            out_rows = deduplicate_projected_rows(out_rows);
+        }
 
         Ok(QueryResult {
             columns,
@@ -241,6 +245,20 @@ fn apply_join(
     join: &JoinClause,
     clock: &dyn Clock,
 ) -> Result<Vec<JoinedRow>, DbError> {
+    match join.join_type {
+        JoinType::Inner | JoinType::Left => apply_join_left(rows, right_rows, right, join, clock),
+        JoinType::Right => apply_join_right(rows, right_rows, right, join, clock),
+        JoinType::Full => apply_join_full(rows, right_rows, right, join, clock),
+    }
+}
+
+fn apply_join_left(
+    rows: Vec<JoinedRow>,
+    right_rows: Vec<JoinedRow>,
+    right: BoundTable,
+    join: &JoinClause,
+    clock: &dyn Clock,
+) -> Result<Vec<JoinedRow>, DbError> {
     let mut next_rows = Vec::new();
 
     for left_row in rows {
@@ -262,6 +280,102 @@ fn apply_join(
                 row: None,
             });
             next_rows.push(candidate);
+        }
+    }
+
+    Ok(next_rows)
+}
+
+fn apply_join_right(
+    rows: Vec<JoinedRow>,
+    right_rows: Vec<JoinedRow>,
+    _right: BoundTable,
+    join: &JoinClause,
+    clock: &dyn Clock,
+) -> Result<Vec<JoinedRow>, DbError> {
+    let mut next_rows = Vec::new();
+
+    for right_row in &right_rows {
+        let mut matched = false;
+        for left_row in &rows {
+            let mut candidate = left_row.clone();
+            candidate.extend(right_row.clone());
+            if eval_predicate(&join.on, &candidate, clock)? {
+                matched = true;
+                next_rows.push(candidate);
+            }
+        }
+
+        if !matched {
+            // Null-pad the left side
+            let left_table = rows
+                .first()
+                .and_then(|r| r.first())
+                .map(|ctx| (ctx.table.clone(), ctx.alias.clone()));
+            if let Some((table, alias)) = left_table {
+                let mut candidate = vec![ContextTable {
+                    table,
+                    alias,
+                    row: None,
+                }];
+                candidate.extend(right_row.clone());
+                next_rows.push(candidate);
+            }
+        }
+    }
+
+    Ok(next_rows)
+}
+
+fn apply_join_full(
+    rows: Vec<JoinedRow>,
+    right_rows: Vec<JoinedRow>,
+    right: BoundTable,
+    join: &JoinClause,
+    clock: &dyn Clock,
+) -> Result<Vec<JoinedRow>, DbError> {
+    let mut next_rows = Vec::new();
+    let mut matched_right: Vec<bool> = vec![false; right_rows.len()];
+
+    for left_row in &rows {
+        let mut matched = false;
+        for (ri, right_row) in right_rows.iter().enumerate() {
+            let mut candidate = left_row.clone();
+            candidate.extend(right_row.clone());
+            if eval_predicate(&join.on, &candidate, clock)? {
+                matched = true;
+                matched_right[ri] = true;
+                next_rows.push(candidate);
+            }
+        }
+
+        if !matched {
+            let mut candidate = left_row.clone();
+            candidate.push(ContextTable {
+                table: right.table.clone(),
+                alias: right.alias.clone(),
+                row: None,
+            });
+            next_rows.push(candidate);
+        }
+    }
+
+    // Add unmatched right rows with null-padded left
+    let left_table = rows
+        .first()
+        .and_then(|r| r.first())
+        .map(|ctx| (ctx.table.clone(), ctx.alias.clone()));
+    for (ri, matched) in matched_right.iter().enumerate() {
+        if !matched {
+            if let Some((table, alias)) = &left_table {
+                let mut candidate = vec![ContextTable {
+                    table: table.clone(),
+                    alias: alias.clone(),
+                    row: None,
+                }];
+                candidate.extend(right_rows[ri].clone());
+                next_rows.push(candidate);
+            }
         }
     }
 
@@ -649,4 +763,17 @@ fn resolve_projected_order_index(columns: &[String], item: &OrderByExpr) -> Opti
             .iter()
             .position(|c| c.eq_ignore_ascii_case(&expr_label(&item.expr))),
     }
+}
+
+fn deduplicate_projected_rows(rows: Vec<Vec<Value>>) -> Vec<Vec<Value>> {
+    let mut seen: Vec<String> = Vec::new();
+    let mut result = Vec::new();
+    for row in rows {
+        let key = row.iter().map(value_key).collect::<Vec<_>>().join("|");
+        if !seen.contains(&key) {
+            seen.push(key);
+            result.push(row);
+        }
+    }
+    result
 }

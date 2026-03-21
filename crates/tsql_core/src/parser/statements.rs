@@ -194,7 +194,15 @@ impl SelectClauseBounds {
 
 pub(crate) fn parse_select(sql: &str) -> Result<Statement, DbError> {
     let after_select = sql["SELECT".len()..].trim();
-    let (top, select_rest) = parse_optional_top(after_select)?;
+
+    // Check for DISTINCT
+    let (distinct, after_distinct) = if after_select.to_uppercase().starts_with("DISTINCT ") {
+        (true, after_select["DISTINCT".len()..].trim())
+    } else {
+        (false, after_select)
+    };
+
+    let (top, select_rest) = parse_optional_top(after_distinct)?;
 
     let from_idx = find_keyword_top_level(select_rest, "FROM");
 
@@ -204,6 +212,7 @@ pub(crate) fn parse_select(sql: &str) -> Result<Statement, DbError> {
             from: None,
             joins: vec![],
             projection,
+            distinct,
             top,
             selection: None,
             group_by: vec![],
@@ -230,6 +239,7 @@ pub(crate) fn parse_select(sql: &str) -> Result<Statement, DbError> {
         from: Some(from),
         joins,
         projection,
+        distinct,
         top,
         selection,
         group_by,
@@ -527,7 +537,10 @@ fn parse_from_source(input: &str) -> Result<(TableRef, Vec<JoinClause>), DbError
 
 fn find_next_join_top_level(input: &str) -> Option<(usize, JoinType, usize)> {
     let patterns = [
+        ("FULL OUTER JOIN", JoinType::Full),
+        ("FULL JOIN", JoinType::Full),
         ("LEFT JOIN", JoinType::Left),
+        ("RIGHT JOIN", JoinType::Right),
         ("INNER JOIN", JoinType::Inner),
         ("JOIN", JoinType::Inner),
     ];

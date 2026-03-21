@@ -73,6 +73,7 @@ pub struct SelectStmt {
     pub from: Option<TableRef>,
     pub joins: Vec<JoinClause>,
     pub projection: Vec<SelectItem>,
+    pub distinct: bool,
     pub top: Option<TopSpec>,
     pub selection: Option<Expr>,
     pub group_by: Vec<Expr>,
@@ -91,6 +92,8 @@ pub struct JoinClause {
 pub enum JoinType {
     Inner,
     Left,
+    Right,
+    Full,
 }
 
 #[derive(Debug, Clone)]
