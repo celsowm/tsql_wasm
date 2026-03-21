@@ -57,6 +57,41 @@ pub(crate) fn parse_drop_schema(sql: &str) -> Result<Statement, DbError> {
     }))
 }
 
+pub(crate) fn parse_truncate_table(sql: &str) -> Result<Statement, DbError> {
+    let table_name = sql["TRUNCATE TABLE".len()..].trim();
+    let name = parse_object_name(table_name);
+    Ok(Statement::TruncateTable(crate::ast::TruncateTableStmt {
+        name,
+    }))
+}
+
+pub(crate) fn parse_alter_table(sql: &str) -> Result<Statement, DbError> {
+    let after_table = sql["ALTER TABLE".len()..].trim();
+
+    if let Some(add_idx) = find_keyword_top_level(after_table, "ADD") {
+        let table_name = after_table[..add_idx].trim();
+        let col_def = after_table[add_idx + "ADD".len()..].trim();
+        let column = parse_column_spec(col_def)?;
+        return Ok(Statement::AlterTable(crate::ast::AlterTableStmt {
+            table: parse_object_name(table_name),
+            action: crate::ast::AlterTableAction::AddColumn(column),
+        }));
+    }
+
+    if let Some(drop_idx) = find_keyword_top_level(after_table, "DROP COLUMN") {
+        let table_name = after_table[..drop_idx].trim();
+        let col_name = after_table[drop_idx + "DROP COLUMN".len()..].trim();
+        return Ok(Statement::AlterTable(crate::ast::AlterTableStmt {
+            table: parse_object_name(table_name),
+            action: crate::ast::AlterTableAction::DropColumn(col_name.to_string()),
+        }));
+    }
+
+    Err(DbError::Parse(
+        "ALTER TABLE only supports ADD column and DROP COLUMN".into(),
+    ))
+}
+
 // ─── DML ────────────────────────────────────────────────────────────────
 
 pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {

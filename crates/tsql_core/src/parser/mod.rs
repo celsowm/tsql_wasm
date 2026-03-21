@@ -39,6 +39,10 @@ pub fn parse_sql(sql: &str) -> Result<Statement, DbError> {
         statements::parse_update(trimmed)
     } else if upper.starts_with("DELETE FROM ") {
         statements::parse_delete(trimmed)
+    } else if upper.starts_with("TRUNCATE TABLE ") {
+        statements::parse_truncate_table(trimmed)
+    } else if upper.starts_with("ALTER TABLE ") {
+        statements::parse_alter_table(trimmed)
     } else {
         Err(DbError::Parse("unsupported statement".into()))
     }

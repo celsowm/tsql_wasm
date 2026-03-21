@@ -27,6 +27,25 @@ pub enum Statement {
     Update(UpdateStmt),
     Delete(DeleteStmt),
     SetOp(SetOpStmt),
+    TruncateTable(TruncateTableStmt),
+    AlterTable(AlterTableStmt),
+}
+
+#[derive(Debug, Clone)]
+pub struct TruncateTableStmt {
+    pub name: ObjectName,
+}
+
+#[derive(Debug, Clone)]
+pub struct AlterTableStmt {
+    pub table: ObjectName,
+    pub action: AlterTableAction,
+}
+
+#[derive(Debug, Clone)]
+pub enum AlterTableAction {
+    AddColumn(ColumnSpec),
+    DropColumn(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

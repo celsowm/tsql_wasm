@@ -1,4 +1,7 @@
-use crate::ast::{CreateSchemaStmt, CreateTableStmt, DropSchemaStmt, DropTableStmt};
+use crate::ast::{
+    AlterTableAction, AlterTableStmt, CreateSchemaStmt, CreateTableStmt, DropSchemaStmt,
+    DropTableStmt,
+};
 use crate::catalog::{Catalog, ColumnDef, IdentityDef, TableDef};
 use crate::error::DbError;
 use crate::storage::InMemoryStorage;
@@ -75,5 +78,56 @@ impl<'a> SchemaExecutor<'a> {
             identity: spec.identity.map(|(seed, inc)| IdentityDef::new(seed, inc)),
             default: spec.default,
         })
+    }
+
+    pub(crate) fn alter_table(&mut self, stmt: AlterTableStmt) -> Result<(), DbError> {
+        let schema_name = stmt.table.schema_or_dbo().to_string();
+        let table_pos = self
+            .catalog
+            .tables
+            .iter()
+            .position(|t| {
+                t.schema_id == self.catalog.get_schema_id(&schema_name).unwrap_or(0)
+                    && t.name.eq_ignore_ascii_case(&stmt.table.name)
+            })
+            .ok_or_else(|| {
+                DbError::Semantic(format!(
+                    "table '{}.{}' not found",
+                    schema_name, stmt.table.name
+                ))
+            })?;
+
+        match stmt.action {
+            AlterTableAction::AddColumn(col_spec) => {
+                let col = self.build_column_def(col_spec)?;
+                self.catalog.tables[table_pos].columns.push(col);
+                // Add NULL values for the new column in existing rows
+                let table_id = self.catalog.tables[table_pos].id;
+                if let Some(rows) = self.storage.tables.get_mut(&table_id) {
+                    for row in rows.iter_mut() {
+                        row.values.push(crate::types::Value::Null);
+                    }
+                }
+            }
+            AlterTableAction::DropColumn(col_name) => {
+                let col_idx = self.catalog.tables[table_pos]
+                    .columns
+                    .iter()
+                    .position(|c| c.name.eq_ignore_ascii_case(&col_name))
+                    .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", col_name)))?;
+                self.catalog.tables[table_pos].columns.remove(col_idx);
+                // Remove the column values from existing rows
+                let table_id = self.catalog.tables[table_pos].id;
+                if let Some(rows) = self.storage.tables.get_mut(&table_id) {
+                    for row in rows.iter_mut() {
+                        if col_idx < row.values.len() {
+                            row.values.remove(col_idx);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 }

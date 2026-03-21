@@ -119,6 +119,35 @@ impl Engine {
                 .execute_delete(stmt)?;
                 Ok(None)
             }
+            Statement::TruncateTable(stmt) => {
+                let schema = stmt.name.schema_or_dbo().to_string();
+                let table_name = stmt.name.name.clone();
+                let schema_id = self
+                    .catalog
+                    .get_schema_id(&schema)
+                    .ok_or_else(|| DbError::Semantic(format!("schema '{}' not found", schema)))?;
+                let table = self
+                    .catalog
+                    .tables
+                    .iter()
+                    .find(|t| t.schema_id == schema_id && t.name.eq_ignore_ascii_case(&table_name))
+                    .ok_or_else(|| {
+                        DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
+                    })?
+                    .clone();
+                if let Some(rows) = self.storage.tables.get_mut(&table.id) {
+                    rows.clear();
+                }
+                Ok(None)
+            }
+            Statement::AlterTable(stmt) => {
+                SchemaExecutor {
+                    catalog: &mut self.catalog,
+                    storage: &mut self.storage,
+                }
+                .alter_table(stmt)?;
+                Ok(None)
+            }
             Statement::SetOp(stmt) => {
                 let left_result = self.execute(*stmt.left)?;
                 let right_result = self.execute(*stmt.right)?;
