@@ -1,54 +1,48 @@
 use crate::ast::{Assignment, DeleteStmt, Expr, InsertStmt, UpdateStmt};
 use crate::catalog::{Catalog, TableDef};
 use crate::error::DbError;
-use crate::storage::{InMemoryStorage, StoredRow};
+use crate::storage::{Storage, StoredRow};
 use crate::types::{DataType, Value};
 
 use super::clock::Clock;
+use super::context::{ExecutionContext, Variables};
 use super::evaluator::{eval_expr_to_type_constant, eval_expr_to_type_in_context, eval_predicate};
 use super::model::single_row_context;
 use super::value_ops::compare_values;
 
 pub(crate) struct MutationExecutor<'a> {
-    pub(crate) catalog: &'a mut Catalog,
-    pub(crate) storage: &'a mut InMemoryStorage,
+    pub(crate) catalog: &'a mut dyn Catalog,
+    pub(crate) storage: &'a mut dyn Storage,
     pub(crate) clock: &'a dyn Clock,
 }
 
 impl<'a> MutationExecutor<'a> {
     pub(crate) fn execute_insert(&mut self, stmt: InsertStmt) -> Result<(), DbError> {
+        let mut vars = Variables::new();
+        let mut ctx = ExecutionContext::new(&mut vars);
+        self.execute_insert_with_context(stmt, &mut ctx)
+    }
+
+    pub(crate) fn execute_insert_with_context(&mut self, stmt: InsertStmt, ctx: &mut ExecutionContext) -> Result<(), DbError> {
         let schema = stmt.table.schema_or_dbo().to_string();
         let table_name = stmt.table.name.clone();
-        let schema_id = self
-            .catalog
-            .get_schema_id(&schema)
-            .ok_or_else(|| DbError::Semantic(format!("schema '{}' not found", schema)))?;
+        
+        let table = self.catalog.find_table(&schema, &table_name)
+            .ok_or_else(|| DbError::Semantic(format!("table '{}.{}' not found", schema, table_name)))?
+            .clone();
 
-        let table_pos = self
-            .catalog
-            .tables
-            .iter()
-            .position(|t| t.schema_id == schema_id && t.name.eq_ignore_ascii_case(&table_name))
-            .ok_or_else(|| {
-                DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
-            })?;
-
-        let table_id = self.catalog.tables[table_pos].id;
+        let table_id = table.id;
 
         if stmt.default_values {
-            let row = self.build_insert_row(table_pos, &[], vec![])?;
-            self.storage
-                .tables
-                .get_mut(&table_id)
-                .ok_or_else(|| DbError::Storage("table storage not found".to_string()))?
-                .push(row);
+            let row = self.build_insert_row(&table, &[], vec![], ctx)?;
+            self.storage.insert_row(table_id, row)?;
             return Ok(());
         }
 
         let insert_columns = if let Some(cols) = stmt.columns.clone() {
             cols
         } else {
-            self.catalog.tables[table_pos]
+            table
                 .columns
                 .iter()
                 .map(|c| c.name.clone())
@@ -56,124 +50,95 @@ impl<'a> MutationExecutor<'a> {
         };
 
         for value_row in stmt.values {
-            let row = self.build_insert_row(table_pos, &insert_columns, value_row)?;
-
-            let table = &self.catalog.tables[table_pos];
-            enforce_unique_on_insert(table, self.storage, table_id, &row)?;
-
-            self.storage
-                .tables
-                .get_mut(&table_id)
-                .ok_or_else(|| DbError::Storage("table storage not found".to_string()))?
-                .push(row);
+            let row = self.build_insert_row(&table, &insert_columns, value_row, ctx)?;
+            enforce_unique_on_insert(&table, self.storage, table_id, &row)?;
+            self.storage.insert_row(table_id, row)?;
         }
 
         Ok(())
     }
 
     pub(crate) fn execute_update(&mut self, stmt: UpdateStmt) -> Result<(), DbError> {
+        let mut vars = Variables::new();
+        let mut ctx = ExecutionContext::new(&mut vars);
+        self.execute_update_with_context(stmt, &mut ctx)
+    }
+
+    pub(crate) fn execute_update_with_context(&mut self, stmt: UpdateStmt, ctx: &mut ExecutionContext) -> Result<(), DbError> {
         let schema = stmt.table.schema_or_dbo().to_string();
         let table_name = stmt.table.name.clone();
-        let schema_id = self
-            .catalog
-            .get_schema_id(&schema)
-            .ok_or_else(|| DbError::Semantic(format!("schema '{}' not found", schema)))?;
 
-        let table_pos = self
-            .catalog
-            .tables
-            .iter()
-            .position(|t| t.schema_id == schema_id && t.name.eq_ignore_ascii_case(&table_name))
-            .ok_or_else(|| {
-                DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
-            })?;
+        let table = self.catalog.find_table(&schema, &table_name)
+            .ok_or_else(|| DbError::Semantic(format!("table '{}.{}' not found", schema, table_name)))?
+            .clone();
 
-        let table_snapshot = self.catalog.tables[table_pos].clone();
-        let table_id = table_snapshot.id;
-        let rows = self
-            .storage
-            .tables
-            .get_mut(&table_id)
-            .ok_or_else(|| DbError::Storage("table storage not found".to_string()))?;
+        let table_id = table.id;
+        let mut rows = self.storage.get_rows(table_id)?;
 
-        for row in rows.iter_mut().filter(|r| !r.deleted) {
-            let joined = single_row_context(&table_snapshot, row.clone());
+        let mut updated_indices = Vec::new();
+        for i in 0..rows.len() {
+            if rows[i].deleted {
+                continue;
+            }
+            let joined = single_row_context(&table, rows[i].clone());
             let matches = if let Some(selection) = &stmt.selection {
-                eval_predicate(selection, &joined, self.clock)?
+                eval_predicate(
+                    selection,
+                    &joined,
+                    ctx,
+                    self.catalog,
+                    self.storage,
+                    self.clock,
+                )?
             } else {
                 true
             };
 
-            if !matches {
-                continue;
-            }
-
-            apply_assignments(&table_snapshot, row, &stmt.assignments, self.clock)?;
-            validate_row_against_table(&table_snapshot, &row.values)?;
-        }
-
-        // Re-check unique constraints after update
-        let rows = self
-            .storage
-            .tables
-            .get(&table_id)
-            .ok_or_else(|| DbError::Storage("table storage not found".to_string()))?;
-        for (col_idx, col) in table_snapshot
-            .columns
-            .iter()
-            .enumerate()
-            .filter(|(_, c)| c.unique)
-        {
-            let mut seen: Vec<Value> = Vec::new();
-            for row in rows.iter().filter(|r| !r.deleted) {
-                let val = &row.values[col_idx];
-                if val.is_null() {
-                    continue;
-                }
-                if seen
-                    .iter()
-                    .any(|s| compare_values(s, val) == std::cmp::Ordering::Equal)
-                {
-                    return Err(DbError::Execution(format!(
-                        "Violation of UNIQUE KEY constraint on column '{}'. Cannot insert duplicate key.",
-                        col.name
-                    )));
-                }
-                seen.push(val.clone());
+            if matches {
+                apply_assignments(
+                    &table,
+                    &mut rows[i],
+                    &stmt.assignments,
+                    ctx,
+                    self.catalog,
+                    self.storage,
+                    self.clock,
+                )?;
+                validate_row_against_table(&table, &rows[i].values)?;
+                updated_indices.push(i);
             }
         }
 
+        // Re-check unique constraints for updated rows
+        for &idx in &updated_indices {
+            enforce_unique_on_update(&table, self.storage, table_id, &rows[idx], idx)?;
+        }
+
+        self.storage.update_rows(table_id, rows)?;
         Ok(())
     }
 
     pub(crate) fn execute_delete(&mut self, stmt: DeleteStmt) -> Result<(), DbError> {
+        let mut vars = Variables::new();
+        let mut ctx = ExecutionContext::new(&mut vars);
+        self.execute_delete_with_context(stmt, &mut ctx)
+    }
+
+    pub(crate) fn execute_delete_with_context(&mut self, stmt: DeleteStmt, ctx: &mut ExecutionContext) -> Result<(), DbError> {
         let schema = stmt.table.schema_or_dbo().to_string();
         let table_name = stmt.table.name.clone();
-        let schema_id = self
-            .catalog
-            .get_schema_id(&schema)
-            .ok_or_else(|| DbError::Semantic(format!("schema '{}' not found", schema)))?;
 
-        let table = self
-            .catalog
-            .tables
-            .iter()
-            .find(|t| t.schema_id == schema_id && t.name.eq_ignore_ascii_case(&table_name))
-            .ok_or_else(|| {
-                DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
-            })?
+        let table = self.catalog.find_table(&schema, &table_name)
+            .ok_or_else(|| DbError::Semantic(format!("table '{}.{}' not found", schema, table_name)))?
             .clone();
 
-        let rows = self
-            .storage
-            .tables
-            .get_mut(&table.id)
-            .ok_or_else(|| DbError::Storage("table storage not found".to_string()))?;
+        let table_id = table.id;
+        let mut rows = self.storage.get_rows(table_id)?;
 
         for row in rows.iter_mut().filter(|r| !r.deleted) {
             let joined = single_row_context(&table, row.clone());
             let matches = if let Some(selection) = &stmt.selection {
-                eval_predicate(selection, &joined, self.clock)?
+                eval_predicate(selection, &joined, ctx, self.catalog, self.storage, self.clock)?
             } else {
                 true
             };
@@ -182,26 +147,22 @@ impl<'a> MutationExecutor<'a> {
             }
         }
 
+        self.storage.update_rows(table_id, rows)?;
         Ok(())
     }
 
     fn build_insert_row(
         &mut self,
-        table_pos: usize,
+        table: &TableDef,
         insert_columns: &[String],
         values: Vec<Expr>,
+        ctx: &mut ExecutionContext,
     ) -> Result<StoredRow, DbError> {
         if insert_columns.len() != values.len() {
             return Err(DbError::Execution(
                 "insert column count does not match values count".to_string(),
             ));
         }
-
-        let table = self
-            .catalog
-            .tables
-            .get_mut(table_pos)
-            .ok_or_else(|| DbError::Execution("table not found".to_string()))?;
 
         let mut final_values = vec![Value::Null; table.columns.len()];
 
@@ -213,17 +174,72 @@ impl<'a> MutationExecutor<'a> {
                 .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", input_col)))?;
 
             let col = &table.columns[col_idx];
-            let value = eval_expr_to_type_constant(expr, &col.data_type, self.clock)?;
+            let value = eval_expr_to_type_constant(
+                expr,
+                &col.data_type,
+                ctx,
+                self.catalog,
+                self.storage,
+                self.clock,
+            )?;
             enforce_string_length(&col.data_type, &value, &col.name)?;
             final_values[col_idx] = value;
         }
 
-        apply_missing_values(table, &mut final_values, self.clock)?;
+        self.apply_missing_values(table, &mut final_values, ctx)?;
 
         Ok(StoredRow {
             values: final_values,
             deleted: false,
         })
+    }
+
+    fn apply_missing_values(
+        &mut self,
+        table: &TableDef,
+        final_values: &mut [Value],
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), DbError> {
+        for (idx, col) in table.columns.iter().enumerate() {
+            if matches!(final_values[idx], Value::Null) {
+                if col.identity.is_some() {
+                    let next_val = self.catalog.next_identity_value(table.id, &col.name)?;
+                    final_values[idx] = match &col.data_type {
+                        DataType::TinyInt => Value::TinyInt(next_val as u8),
+                        DataType::SmallInt => Value::SmallInt(next_val as i16),
+                        DataType::Int => Value::Int(next_val as i32),
+                        DataType::BigInt => Value::BigInt(next_val),
+                        _ => {
+                            return Err(DbError::Execution(format!(
+                                "identity not supported for column type {:?}",
+                                col.data_type
+                            )))
+                        }
+                    };
+                    continue;
+                }
+
+                if let Some(default_expr) = &col.default {
+                    final_values[idx] = eval_expr_to_type_constant(
+                        default_expr,
+                        &col.data_type,
+                        ctx,
+                        self.catalog,
+                        self.storage,
+                        self.clock,
+                    )?;
+                    continue;
+                }
+
+                if !col.nullable {
+                    return Err(DbError::Execution(format!(
+                        "column '{}' does not allow NULL",
+                        col.name
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -259,14 +275,11 @@ fn enforce_string_length(
 
 fn enforce_unique_on_insert(
     table: &TableDef,
-    storage: &InMemoryStorage,
+    storage: &dyn Storage,
     table_id: u32,
     new_row: &StoredRow,
 ) -> Result<(), DbError> {
-    let rows = storage
-        .tables
-        .get(&table_id)
-        .ok_or_else(|| DbError::Storage("table storage not found".to_string()))?;
+    let rows = storage.get_rows(table_id)?;
 
     for (col_idx, col) in table.columns.iter().enumerate().filter(|(_, c)| c.unique) {
         let new_val = &new_row.values[col_idx];
@@ -288,38 +301,30 @@ fn enforce_unique_on_insert(
     Ok(())
 }
 
-fn apply_missing_values(
-    table: &mut TableDef,
-    final_values: &mut [Value],
-    clock: &dyn Clock,
+fn enforce_unique_on_update(
+    table: &TableDef,
+    storage: &dyn Storage,
+    table_id: u32,
+    updated_row: &StoredRow,
+    updated_idx: usize,
 ) -> Result<(), DbError> {
-    for (idx, col) in table.columns.iter_mut().enumerate() {
-        if matches!(final_values[idx], Value::Null) {
-            if let Some(identity) = &mut col.identity {
-                final_values[idx] = match &col.data_type {
-                    DataType::TinyInt => Value::TinyInt(identity.next_value() as u8),
-                    DataType::SmallInt => Value::SmallInt(identity.next_value() as i16),
-                    DataType::Int => Value::Int(identity.next_value() as i32),
-                    DataType::BigInt => Value::BigInt(identity.next_value()),
-                    _ => {
-                        return Err(DbError::Execution(format!(
-                            "identity not supported for column type {:?}",
-                            col.data_type
-                        )))
-                    }
-                };
+    let rows = storage.get_rows(table_id)?;
+
+    for (col_idx, col) in table.columns.iter().enumerate().filter(|(_, c)| c.unique) {
+        let new_val = &updated_row.values[col_idx];
+        if new_val.is_null() {
+            continue;
+        }
+        for (i, existing) in rows.iter().enumerate() {
+            if i == updated_idx || existing.deleted {
                 continue;
             }
-
-            if let Some(default_expr) = &col.default {
-                final_values[idx] =
-                    eval_expr_to_type_constant(default_expr, &col.data_type, clock)?;
-                continue;
-            }
-
-            if !col.nullable {
+            let existing_val = &existing.values[col_idx];
+            if !existing_val.is_null()
+                && compare_values(new_val, existing_val) == std::cmp::Ordering::Equal
+            {
                 return Err(DbError::Execution(format!(
-                    "column '{}' does not allow NULL",
+                    "Violation of UNIQUE KEY constraint on column '{}'. Cannot insert duplicate key.",
                     col.name
                 )));
             }
@@ -332,6 +337,9 @@ fn apply_assignments(
     table: &TableDef,
     row: &mut StoredRow,
     assignments: &[Assignment],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<(), DbError> {
     let snapshot = row.clone();
@@ -345,7 +353,15 @@ fn apply_assignments(
                 DbError::Semantic(format!("column '{}' not found", assignment.column))
             })?;
         let target = &table.columns[idx].data_type;
-        let value = eval_expr_to_type_in_context(&assignment.expr, target, &joined, clock)?;
+        let value = eval_expr_to_type_in_context(
+            &assignment.expr,
+            target,
+            &joined,
+            ctx,
+            catalog,
+            storage,
+            clock,
+        )?;
         enforce_string_length(target, &value, &table.columns[idx].name)?;
         row.values[idx] = value;
     }

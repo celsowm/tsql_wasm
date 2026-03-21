@@ -1,236 +1,171 @@
 use std::cmp::Ordering;
-use std::collections::HashMap;
-
-use crate::ast::{Expr, JoinClause, JoinType, OrderByExpr, SelectItem, SelectStmt, TableRef};
+use crate::ast::{
+    Expr, JoinClause, JoinType, OrderByExpr, SelectItem, SelectStmt, TopSpec,
+};
 use crate::catalog::Catalog;
 use crate::error::DbError;
-use crate::executor::result::QueryResult;
-use crate::storage::InMemoryStorage;
+use crate::storage::Storage;
 use crate::types::Value;
 
 use super::clock::Clock;
-use super::evaluator::{
-    clear_outer_row, contains_aggregate, eval_binary, eval_constant_expr, eval_expr,
-    eval_predicate, get_outer_row, set_outer_row, set_subquery_context,
-};
-use super::model::{BoundTable, ContextTable, Group, JoinedRow};
-use super::value_ops::{compare_values, truthy, value_key};
+use super::context::ExecutionContext;
+use super::evaluator::{eval_constant_expr, eval_expr, compare_values, value_key, eval_predicate};
+use super::model::{BoundTable, ContextTable, JoinedRow};
 
-pub(crate) struct QueryExecutor<'a> {
-    pub(crate) catalog: &'a Catalog,
-    pub(crate) storage: &'a InMemoryStorage,
-    pub(crate) clock: &'a dyn Clock,
+pub struct QueryExecutor<'a> {
+    pub catalog: &'a dyn Catalog,
+    pub storage: &'a dyn Storage,
+    pub clock: &'a dyn Clock,
+}
+
+#[derive(Debug, Clone)]
+pub struct Group {
+    pub key: Vec<Value>,
+    pub rows: Vec<JoinedRow>,
 }
 
 impl<'a> QueryExecutor<'a> {
-    pub(crate) fn execute_select(&self, stmt: SelectStmt) -> Result<QueryResult, DbError> {
-        // Set subquery context for nested subquery evaluation
-        set_subquery_context(self.catalog, self.storage);
+    pub fn execute_select(
+        &self,
+        stmt: SelectStmt,
+        ctx: &mut ExecutionContext,
+    ) -> Result<super::result::QueryResult, DbError> {
+        let mut source_rows = if let Some(from) = stmt.from {
+            let bound_table = self.bind_table(from)?;
+            let mut current_rows = self.bind_table_rows(&bound_table)?;
 
+            if !stmt.joins.is_empty() {
+                for join in &stmt.joins {
+                    let right_bound = self.bind_table(join.table.clone())?;
+                    let right_rows = self.bind_table_rows(&right_bound)?;
+                    current_rows = apply_join(
+                        current_rows,
+                        right_rows,
+                        right_bound,
+                        join,
+                        ctx,
+                        self.catalog,
+                        self.storage,
+                        self.clock,
+                    )?;
+                }
+            }
+            current_rows
+        } else {
+            vec![vec![]] // Single empty row for SELECT without FROM
+        };
 
-        if stmt.from.is_none() {
-            return self.execute_expression_select(&stmt);
+        if let Some(where_clause) = stmt.selection {
+            let mut filtered = Vec::new();
+            for row in source_rows {
+                if eval_predicate(&where_clause, &row, ctx, self.catalog, self.storage, self.clock)? {
+                    filtered.push(row);
+                }
+            }
+            source_rows = filtered;
         }
 
-        let mut rows = self.build_joined_rows(stmt.from.as_ref().unwrap(), &stmt.joins)?;
+        let result = if !stmt.group_by.is_empty() {
+            self.execute_grouped_select(stmt.projection, source_rows, stmt.group_by, stmt.having, ctx)?
+        } else {
+            self.execute_flat_select(stmt.projection, source_rows, ctx)?
+        };
 
-        if let Some(selection) = &stmt.selection {
-            eprintln!(
-                "DEBUG WHERE filter: {} rows, selection={:?}",
-                rows.len(),
-                selection
-            );
-            // Save the outer row (set by caller for correlated subqueries).
-            // During WHERE evaluation, set each row as the current outer row
-            // so that nested subqueries can reference it.
-            let saved_outer = get_outer_row();
-            rows.retain(|row| {
-                set_outer_row(row);
-                let result = eval_predicate(selection, row, self.clock).unwrap_or(false);
-                // Restore saved outer row (or clear if none was saved)
-                match &saved_outer {
-                    Some(s) => set_outer_row(s),
-                    None => clear_outer_row(),
-                }
-                result
+        let mut final_rows = result.rows;
+        if stmt.distinct {
+            final_rows = deduplicate_projected_rows(final_rows);
+        }
+
+        if !stmt.order_by.is_empty() {
+            let columns = &result.columns;
+            let order_by_refs = &stmt.order_by;
+            final_rows.sort_by(|a, b| {
+                compare_projected_rows(a, b, columns, order_by_refs)
             });
         }
 
-        let has_aggregate = stmt
-            .projection
-            .iter()
-            .any(|item| contains_aggregate(&item.expr));
-        if has_aggregate || !stmt.group_by.is_empty() {
-            self.execute_grouped_select(stmt, rows)
-        } else {
-            self.execute_flat_select(stmt, rows)
-        }
-    }
-
-    fn execute_expression_select(&self, stmt: &SelectStmt) -> Result<QueryResult, DbError> {
-        let empty_row: JoinedRow = vec![];
-        let columns = expand_projection_columns(&stmt.projection, Some(&empty_row));
-        let mut out = Vec::new();
-        for item in &stmt.projection {
-            match &item.expr {
-                Expr::Wildcard => {
-                    return Err(DbError::Execution("wildcard requires a FROM clause".into()))
-                }
-                expr => out.push(eval_expr(expr, &empty_row, self.clock)?.to_json()),
+        if let Some(top) = stmt.top {
+            let n = eval_top_n(&top, ctx, self.catalog, self.storage, self.clock)?;
+            if final_rows.len() > n {
+                final_rows.truncate(n);
             }
         }
-        Ok(QueryResult {
-            columns,
-            rows: vec![out],
+
+        // OFFSET is not yet supported in the AST
+
+        Ok(super::result::QueryResult {
+            columns: result.columns,
+            rows: final_rows,
         })
     }
 
     fn execute_flat_select(
         &self,
-        stmt: SelectStmt,
-        mut rows: Vec<JoinedRow>,
-    ) -> Result<QueryResult, DbError> {
-        if !stmt.order_by.is_empty() {
-            rows.sort_by(|a, b| compare_joined_rows(a, b, &stmt.order_by, self.clock));
-        }
-
-        if let Some(top) = &stmt.top {
-            let top_n = eval_top_n(top, self.clock)?;
-            rows.truncate(top_n);
-        }
-
-        let columns = expand_projection_columns(&stmt.projection, rows.first());
-        let mut out_rows = project_flat_rows(&stmt.projection, &rows, self.clock);
-
-        if stmt.distinct {
-            out_rows = deduplicate_projected_rows(out_rows);
-        }
-
-        Ok(QueryResult {
+        projection: Vec<SelectItem>,
+        rows: Vec<JoinedRow>,
+        ctx: &mut ExecutionContext,
+    ) -> Result<super::result::QueryResult, DbError> {
+        let columns = expand_projection_columns(&projection, rows.first());
+        let projected_rows = self.project_flat_rows(&projection, &rows, ctx);
+        Ok(super::result::QueryResult {
             columns,
-            rows: out_rows
-                .into_iter()
-                .map(|row| row.into_iter().map(|v| v.to_json()).collect())
-                .collect(),
+            rows: projected_rows,
         })
     }
 
     fn execute_grouped_select(
         &self,
-        stmt: SelectStmt,
+        projection: Vec<SelectItem>,
         rows: Vec<JoinedRow>,
-    ) -> Result<QueryResult, DbError> {
-        let groups = self.build_groups(&stmt, rows)?;
+        group_by: Vec<Expr>,
+        having: Option<Expr>,
+        ctx: &mut ExecutionContext,
+    ) -> Result<super::result::QueryResult, DbError> {
+        let groups = self.build_groups(rows, &group_by, ctx)?;
+        let mut projected_rows = Vec::new();
 
-        let mut filtered_groups = groups;
-        if let Some(having_expr) = &stmt.having {
-            filtered_groups.retain(|group| {
-                match project_group_row(&stmt.projection, group, self.clock) {
-                    Ok(row_values) => {
-                        eval_having_predicate(having_expr, &stmt.projection, &row_values)
-                    }
-                    Err(_) => false,
+        for group in groups {
+            if let Some(having_expr) = &having {
+                if !eval_predicate(having_expr, &group.rows[0], ctx, self.catalog, self.storage, self.clock)? {
+                    continue;
                 }
-            });
+            }
+            projected_rows.push(self.project_group_row(&projection, &group, ctx)?);
         }
 
-        let columns = stmt
-            .projection
-            .iter()
-            .flat_map(|item| {
-                expand_projection_labels(item, filtered_groups.first().and_then(|g| g.rows.first()))
-            })
-            .collect::<Vec<_>>();
-
-        let mut result_rows = filtered_groups
-            .iter()
-            .map(|group| project_group_row(&stmt.projection, group, self.clock))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        if stmt.group_by.is_empty() && result_rows.is_empty() {
-            result_rows.push(project_group_row(
-                &stmt.projection,
-                &Group::default(),
-                self.clock,
-            )?);
-        }
-
-        if !stmt.order_by.is_empty() {
-            result_rows.sort_by(|a, b| compare_projected_rows(a, b, &columns, &stmt.order_by));
-        }
-
-        if let Some(top) = &stmt.top {
-            let top_n = eval_top_n(top, self.clock)?;
-            result_rows.truncate(top_n);
-        }
-
-        Ok(QueryResult {
+        let columns = expand_projection_columns(&projection, None); // TODO: sample
+        Ok(super::result::QueryResult {
             columns,
-            rows: result_rows
-                .into_iter()
-                .map(|row| row.into_iter().map(|v| v.to_json()).collect())
-                .collect(),
+            rows: projected_rows,
         })
     }
 
-    fn build_groups(&self, stmt: &SelectStmt, rows: Vec<JoinedRow>) -> Result<Vec<Group>, DbError> {
-        let mut groups = Vec::new();
-
-        if stmt.group_by.is_empty() {
-            groups.push(Group { rows });
-            return Ok(groups);
-        }
-
-        let mut map: HashMap<String, usize> = HashMap::new();
+    fn build_groups(
+        &self,
+        rows: Vec<JoinedRow>,
+        group_by: &[Expr],
+        ctx: &mut ExecutionContext,
+    ) -> Result<Vec<Group>, DbError> {
+        let mut groups: Vec<Group> = Vec::new();
         for row in rows {
-            let key_values = stmt
-                .group_by
-                .iter()
-                .map(|expr| eval_expr(expr, &row, self.clock))
-                .collect::<Result<Vec<_>, _>>()?;
-            let key = key_values
-                .iter()
-                .map(value_key)
-                .collect::<Vec<_>>()
-                .join("|");
-            if let Some(idx) = map.get(&key).copied() {
-                groups[idx].rows.push(row);
+            let mut key = Vec::new();
+            for expr in group_by {
+                key.push(eval_expr(expr, &row, ctx, self.catalog, self.storage, self.clock)?);
+            }
+
+            if let Some(group) = groups.iter_mut().find(|g| g.key == key) {
+                group.rows.push(row);
             } else {
-                let idx = groups.len();
-                map.insert(key, idx);
-                groups.push(Group { rows: vec![row] });
+                groups.push(Group {
+                    key,
+                    rows: vec![row],
+                });
             }
         }
-
         Ok(groups)
     }
 
-    pub(crate) fn build_joined_rows(
-        &self,
-        from: &TableRef,
-        joins: &[JoinClause],
-    ) -> Result<Vec<JoinedRow>, DbError> {
-        let base = self.resolve_table_ref(from)?;
-        let mut rows = self.bind_table_rows(&base)?;
-
-        for join in joins {
-            let right = self.resolve_table_ref(&join.table)?;
-            let right_rows = self.bind_table_rows(&right)?;
-            rows = apply_join(rows, right_rows, right, join, self.clock)?;
-        }
-
-        // For correlated subqueries, append outer row bindings
-        let outer_row = get_outer_row();
-        if let Some(ref outer) = outer_row {
-            for row in &mut rows {
-                row.extend(outer.clone());
-            }
-        }
-
-        Ok(rows)
-    }
-
-    fn resolve_table_ref(&self, tref: &TableRef) -> Result<BoundTable, DbError> {
+    fn bind_table(&self, tref: crate::ast::TableRef) -> Result<BoundTable, DbError> {
         let schema = tref.name.schema_or_dbo();
         let table = self
             .catalog
@@ -249,9 +184,7 @@ impl<'a> QueryExecutor<'a> {
     fn bind_table_rows(&self, bound: &BoundTable) -> Result<Vec<JoinedRow>, DbError> {
         let stored_rows = self
             .storage
-            .tables
-            .get(&bound.table.id)
-            .ok_or_else(|| DbError::Storage("table storage not found".into()))?;
+            .get_rows(bound.table.id)?;
 
         Ok(stored_rows
             .iter()
@@ -265,6 +198,81 @@ impl<'a> QueryExecutor<'a> {
             })
             .collect())
     }
+
+    fn project_flat_rows(
+        &self,
+        projection: &[SelectItem],
+        rows: &[JoinedRow],
+        ctx: &mut ExecutionContext,
+    ) -> Vec<Vec<Value>> {
+        rows.iter()
+            .map(|row| {
+                let mut out = Vec::new();
+                for item in projection {
+                    match &item.expr {
+                        Expr::Wildcard => out.extend(expand_wildcard_values(row)),
+                        expr => out.push(
+                            eval_expr(expr, row, ctx, self.catalog, self.storage, self.clock)
+                                .unwrap_or(Value::Null),
+                        ),
+                    }
+                }
+                out
+            })
+            .collect()
+    }
+
+    fn project_group_row(
+        &self,
+        projection: &[SelectItem],
+        group: &Group,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Vec<Value>, DbError> {
+        let mut out = Vec::new();
+        let sample_row = &group.rows[0];
+
+        for item in projection {
+            match &item.expr {
+                Expr::FunctionCall { name, args } if is_aggregate_function(name) => {
+                    out.push(self.eval_aggregate(name, args, group, ctx));
+                }
+                expr => {
+                    // If it's a grouped column, just evaluate on sample row
+                    out.push(eval_expr(expr, sample_row, ctx, self.catalog, self.storage, self.clock)?);
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    fn eval_aggregate(&self, name: &str, args: &[Expr], group: &Group, ctx: &mut ExecutionContext) -> Value {
+        match name.to_uppercase().as_str() {
+            "COUNT" => eval_aggregate_count(args, group, ctx, self.catalog, self.storage, self.clock),
+            "SUM" => eval_aggregate_sum(args, group, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null),
+            "AVG" => eval_aggregate_avg(args, group, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null),
+            "MIN" => eval_aggregate_min(args, group, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null),
+            "MAX" => eval_aggregate_max(args, group, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null),
+            _ => Value::Null,
+        }
+    }
+
+    fn compare_joined_rows(
+        &self,
+        a: &JoinedRow,
+        b: &JoinedRow,
+        order_by: &[OrderByExpr],
+        ctx: &mut ExecutionContext,
+    ) -> Ordering {
+        for item in order_by {
+            let av = eval_expr(&item.expr, a, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null);
+            let bv = eval_expr(&item.expr, b, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null);
+            let ord = compare_values(&av, &bv);
+            if ord != Ordering::Equal {
+                return if item.desc { ord.reverse() } else { ord };
+            }
+        }
+        Ordering::Equal
+    }
 }
 
 // ─── Join ────────────────────────────────────────────────────────────────
@@ -274,12 +282,19 @@ fn apply_join(
     right_rows: Vec<JoinedRow>,
     right: BoundTable,
     join: &JoinClause,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Vec<JoinedRow>, DbError> {
     match join.join_type {
-        JoinType::Inner | JoinType::Left => apply_join_left(rows, right_rows, right, join, clock),
-        JoinType::Right => apply_join_right(rows, right_rows, right, join, clock),
-        JoinType::Full => apply_join_full(rows, right_rows, right, join, clock),
+        JoinType::Inner | JoinType::Left => {
+            apply_join_left(rows, right_rows, right, join, ctx, catalog, storage, clock)
+        }
+        JoinType::Right => {
+            apply_join_right(rows, right_rows, right, join, ctx, catalog, storage, clock)
+        }
+        JoinType::Full => apply_join_full(rows, right_rows, right, join, ctx, catalog, storage, clock),
     }
 }
 
@@ -288,6 +303,9 @@ fn apply_join_left(
     right_rows: Vec<JoinedRow>,
     right: BoundTable,
     join: &JoinClause,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Vec<JoinedRow>, DbError> {
     let mut next_rows = Vec::new();
@@ -297,7 +315,7 @@ fn apply_join_left(
         for right_row in &right_rows {
             let mut candidate = left_row.clone();
             candidate.extend(right_row.clone());
-            if eval_predicate(&join.on, &candidate, clock)? {
+            if eval_predicate(&join.on, &candidate, ctx, catalog, storage, clock)? {
                 matched = true;
                 next_rows.push(candidate);
             }
@@ -320,8 +338,11 @@ fn apply_join_left(
 fn apply_join_right(
     rows: Vec<JoinedRow>,
     right_rows: Vec<JoinedRow>,
-    _right: BoundTable,
+    _right: BoundTable, // Fixed: prepend underscore
     join: &JoinClause,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Vec<JoinedRow>, DbError> {
     let mut next_rows = Vec::new();
@@ -331,7 +352,7 @@ fn apply_join_right(
         for left_row in &rows {
             let mut candidate = left_row.clone();
             candidate.extend(right_row.clone());
-            if eval_predicate(&join.on, &candidate, clock)? {
+            if eval_predicate(&join.on, &candidate, ctx, catalog, storage, clock)? {
                 matched = true;
                 next_rows.push(candidate);
             }
@@ -363,6 +384,9 @@ fn apply_join_full(
     right_rows: Vec<JoinedRow>,
     right: BoundTable,
     join: &JoinClause,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Vec<JoinedRow>, DbError> {
     let mut next_rows = Vec::new();
@@ -373,7 +397,7 @@ fn apply_join_full(
         for (ri, right_row) in right_rows.iter().enumerate() {
             let mut candidate = left_row.clone();
             candidate.extend(right_row.clone());
-            if eval_predicate(&join.on, &candidate, clock)? {
+            if eval_predicate(&join.on, &candidate, ctx, catalog, storage, clock)? {
                 matched = true;
                 matched_right[ri] = true;
                 next_rows.push(candidate);
@@ -415,35 +439,20 @@ fn apply_join_full(
 
 // ─── TOP ─────────────────────────────────────────────────────────────────
 
-fn eval_top_n(top: &crate::ast::TopSpec, clock: &dyn Clock) -> Result<usize, DbError> {
-    match eval_constant_expr(&top.value, clock)? {
+fn eval_top_n(
+    top: &TopSpec,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<usize, DbError> {
+    match eval_constant_expr(&top.value, ctx, catalog, storage, clock)? {
         Value::Int(v) => Ok(v.max(0) as usize),
         Value::BigInt(v) => Ok(v.max(0) as usize),
         _ => Err(DbError::Execution(
             "TOP currently requires an integer expression".into(),
         )),
     }
-}
-
-// ─── Flat projection ────────────────────────────────────────────────────
-
-fn project_flat_rows(
-    projection: &[SelectItem],
-    rows: &[JoinedRow],
-    clock: &dyn Clock,
-) -> Vec<Vec<Value>> {
-    rows.iter()
-        .map(|row| {
-            let mut out = Vec::new();
-            for item in projection {
-                match &item.expr {
-                    Expr::Wildcard => out.extend(expand_wildcard_values(row)),
-                    expr => out.push(eval_expr(expr, row, clock).unwrap_or(Value::Null)),
-                }
-            }
-            out
-        })
-        .collect()
 }
 
 // ─── Projection utilities ───────────────────────────────────────────────
@@ -517,53 +526,48 @@ fn is_aggregate_function(name: &str) -> bool {
     )
 }
 
-fn lookup_aggregate_in_projection<'a>(
-    name: &str,
-    args: &[Expr],
-    projection: &'a [SelectItem],
-) -> Option<(usize, &'a SelectItem)> {
-    projection.iter().enumerate().find(|(_, item)| {
-        if let Expr::FunctionCall {
-            name: pname,
-            args: pargs,
-        } = &item.expr
-        {
-            pname.eq_ignore_ascii_case(name)
-                && pargs.len() == args.len()
-                && pargs
-                    .iter()
-                    .zip(args.iter())
-                    .all(|(a, b)| format!("{:?}", a) == format!("{:?}", b))
-        } else {
-            false
-        }
-    })
-}
-
 fn collect_group_values<'a>(
     expr: &'a Expr,
     group: &'a Group,
+    ctx: &'a mut ExecutionContext,
+    catalog: &'a dyn Catalog,
+    storage: &'a dyn Storage,
     clock: &'a dyn Clock,
-) -> impl Iterator<Item = Value> + 'a {
+) -> Vec<Value> {
     group
         .rows
         .iter()
-        .filter_map(move |row| eval_expr(expr, row, clock).ok())
+        .filter_map(move |row| eval_expr(expr, row, ctx, catalog, storage, clock).ok())
         .filter(|v| !v.is_null())
+        .collect()
 }
 
-fn eval_aggregate_count(args: &[Expr], group: &Group, clock: &dyn Clock) -> Value {
+fn eval_aggregate_count(
+    args: &[Expr],
+    group: &Group,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Value {
     let count = if args.first().is_some_and(|a| matches!(a, Expr::Wildcard)) {
         group.rows.len() as i64
     } else if let Some(expr) = args.first() {
-        collect_group_values(expr, group, clock).count() as i64
+        collect_group_values(expr, group, ctx, catalog, storage, clock).len() as i64
     } else {
         group.rows.len() as i64
     };
     Value::BigInt(count)
 }
 
-fn eval_aggregate_sum(args: &[Expr], group: &Group, clock: &dyn Clock) -> Result<Value, DbError> {
+fn eval_aggregate_sum(
+    args: &[Expr],
+    group: &Group,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
     let expr = args
         .first()
         .ok_or_else(|| DbError::Execution("SUM requires 1 argument".into()))?;
@@ -572,7 +576,7 @@ fn eval_aggregate_sum(args: &[Expr], group: &Group, clock: &dyn Clock) -> Result
     let mut has_values = false;
     let mut is_decimal = false;
 
-    for val in collect_group_values(expr, group, clock) {
+    for val in collect_group_values(expr, group, ctx, catalog, storage, clock) {
         has_values = true;
         match &val {
             Value::Decimal(raw, scale) => {
@@ -591,186 +595,61 @@ fn eval_aggregate_sum(args: &[Expr], group: &Group, clock: &dyn Clock) -> Result
     if !has_values {
         return Ok(Value::Null);
     }
+
     if is_decimal {
-        Ok(Value::VarChar(sum_f64.to_string()))
+        Ok(Value::Decimal((sum_f64 * 100.0) as i128, 2)) // Simplified
     } else {
         Ok(Value::BigInt(sum_i64))
     }
 }
 
-fn eval_aggregate_avg(args: &[Expr], group: &Group, clock: &dyn Clock) -> Result<Value, DbError> {
-    let expr = args
-        .first()
-        .ok_or_else(|| DbError::Execution("AVG requires 1 argument".into()))?;
-    let mut sum: f64 = 0.0;
-    let mut count: i64 = 0;
-
-    for val in collect_group_values(expr, group, clock) {
-        count += 1;
-        match &val {
-            Value::Decimal(raw, scale) => {
-                let divisor = 10i128.pow(*scale as u32);
-                sum += (*raw as f64) / (divisor as f64);
-            }
-            Value::TinyInt(v) => sum += *v as f64,
-            Value::SmallInt(v) => sum += *v as f64,
-            Value::Int(v) => sum += *v as f64,
-            Value::BigInt(v) => sum += *v as f64,
-            _ => return Err(DbError::Execution("AVG requires numeric argument".into())),
-        }
-    }
-
-    if count == 0 {
+fn eval_aggregate_avg(
+    args: &[Expr],
+    group: &Group,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    let values = collect_group_values(args.first().unwrap(), group, ctx, catalog, storage, clock);
+    if values.is_empty() {
         return Ok(Value::Null);
     }
-    Ok(Value::VarChar((sum / count as f64).to_string()))
-}
-
-fn eval_aggregate_min(args: &[Expr], group: &Group, clock: &dyn Clock) -> Result<Value, DbError> {
-    let expr = args
-        .first()
-        .ok_or_else(|| DbError::Execution("MIN requires 1 argument".into()))?;
-    let mut min_val: Option<Value> = None;
-
-    for val in collect_group_values(expr, group, clock) {
-        match &min_val {
-            None => min_val = Some(val),
-            Some(current) => {
-                if compare_values(&val, current) == Ordering::Less {
-                    min_val = Some(val);
-                }
-            }
+    let sum = eval_aggregate_sum(args, group, ctx, catalog, storage, clock)?;
+    match sum {
+        Value::BigInt(v) => Ok(Value::BigInt(v / values.len() as i64)),
+        Value::Decimal(v, s) => {
+             let divisor = 10i128.pow(s as u32);
+             let f = (v as f64) / (divisor as f64);
+             let avg = f / (values.len() as f64);
+             Ok(Value::Decimal((avg * 100.0) as i128, 2))
         }
+        _ => Ok(Value::Null),
     }
-
-    Ok(min_val.unwrap_or(Value::Null))
 }
 
-fn eval_aggregate_max(args: &[Expr], group: &Group, clock: &dyn Clock) -> Result<Value, DbError> {
-    let expr = args
-        .first()
-        .ok_or_else(|| DbError::Execution("MAX requires 1 argument".into()))?;
-    let mut max_val: Option<Value> = None;
-
-    for val in collect_group_values(expr, group, clock) {
-        match &max_val {
-            None => max_val = Some(val),
-            Some(current) => {
-                if compare_values(&val, current) == Ordering::Greater {
-                    max_val = Some(val);
-                }
-            }
-        }
-    }
-
-    Ok(max_val.unwrap_or(Value::Null))
-}
-
-// ─── Grouped projection ─────────────────────────────────────────────────
-
-fn project_group_row(
-    projection: &[SelectItem],
+fn eval_aggregate_min(
+    args: &[Expr],
     group: &Group,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
-) -> Result<Vec<Value>, DbError> {
-    let mut out = Vec::new();
-    let sample_row = group.rows.first();
-
-    for item in projection {
-        match &item.expr {
-            Expr::Wildcard => {
-                if let Some(row) = sample_row {
-                    out.extend(expand_wildcard_values(row));
-                }
-            }
-            Expr::FunctionCall { name, args } if name.eq_ignore_ascii_case("COUNT") => {
-                out.push(eval_aggregate_count(args, group, clock));
-            }
-            Expr::FunctionCall { name, args } if is_aggregate_function(name) => {
-                let val = match name.to_uppercase().as_str() {
-                    "SUM" => eval_aggregate_sum(args, group, clock)?,
-                    "AVG" => eval_aggregate_avg(args, group, clock)?,
-                    "MIN" => eval_aggregate_min(args, group, clock)?,
-                    "MAX" => eval_aggregate_max(args, group, clock)?,
-                    _ => Value::Null,
-                };
-                out.push(val);
-            }
-            expr => {
-                if let Some(row) = sample_row {
-                    out.push(eval_expr(expr, row, clock)?);
-                } else {
-                    out.push(Value::Null);
-                }
-            }
-        }
-    }
-
-    Ok(out)
+) -> Result<Value, DbError> {
+    let values = collect_group_values(args.first().unwrap(), group, ctx, catalog, storage, clock);
+    Ok(values.into_iter().min_by(compare_values).unwrap_or(Value::Null))
 }
 
-// ─── HAVING evaluation ──────────────────────────────────────────────────
-
-fn eval_having_predicate(
-    expr: &Expr,
-    projection: &[SelectItem],
-    projected_values: &[Value],
-) -> bool {
-    match expr {
-        Expr::FunctionCall { name, args } if is_aggregate_function(name) => {
-            lookup_aggregate_in_projection(name, args, projection)
-                .and_then(|(i, _)| projected_values.get(i))
-                .is_some_and(|val| !val.is_null() && truthy(val))
-        }
-        Expr::Binary { left, op, right } => {
-            let lv = resolve_having_value(left, projection, projected_values);
-            let rv = resolve_having_value(right, projection, projected_values);
-            matches!(eval_binary(op, lv, rv), Ok(Value::Bit(true)))
-        }
-        _ => false,
-    }
-}
-
-fn resolve_having_value(
-    expr: &Expr,
-    projection: &[SelectItem],
-    projected_values: &[Value],
-) -> Value {
-    match expr {
-        Expr::FunctionCall { name, args } if is_aggregate_function(name) => {
-            lookup_aggregate_in_projection(name, args, projection)
-                .and_then(|(i, _)| projected_values.get(i))
-                .cloned()
-                .unwrap_or(Value::Null)
-        }
-        Expr::Integer(v) => {
-            if *v >= i32::MIN as i64 && *v <= i32::MAX as i64 {
-                Value::Int(*v as i32)
-            } else {
-                Value::BigInt(*v)
-            }
-        }
-        _ => Value::Null,
-    }
-}
-
-// ─── Ordering ───────────────────────────────────────────────────────────
-
-fn compare_joined_rows(
-    a: &JoinedRow,
-    b: &JoinedRow,
-    order_by: &[OrderByExpr],
+fn eval_aggregate_max(
+    args: &[Expr],
+    group: &Group,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
-) -> Ordering {
-    for item in order_by {
-        let av = eval_expr(&item.expr, a, clock).unwrap_or(Value::Null);
-        let bv = eval_expr(&item.expr, b, clock).unwrap_or(Value::Null);
-        let ord = compare_values(&av, &bv);
-        if ord != Ordering::Equal {
-            return if item.desc { ord.reverse() } else { ord };
-        }
-    }
-    Ordering::Equal
+) -> Result<Value, DbError> {
+    let values = collect_group_values(args.first().unwrap(), group, ctx, catalog, storage, clock);
+    Ok(values.into_iter().max_by(compare_values).unwrap_or(Value::Null))
 }
 
 fn compare_projected_rows(

@@ -4,13 +4,13 @@ use crate::ast::{
 };
 use crate::catalog::{Catalog, ColumnDef, IdentityDef, TableDef};
 use crate::error::DbError;
-use crate::storage::InMemoryStorage;
+use crate::storage::Storage;
 
 use super::type_mapping::data_type_spec_to_runtime;
 
 pub(crate) struct SchemaExecutor<'a> {
-    pub(crate) catalog: &'a mut Catalog,
-    pub(crate) storage: &'a mut InMemoryStorage,
+    pub(crate) catalog: &'a mut dyn Catalog,
+    pub(crate) storage: &'a mut dyn Storage,
 }
 
 impl<'a> SchemaExecutor<'a> {
@@ -46,15 +46,15 @@ impl<'a> SchemaExecutor<'a> {
             columns,
         };
 
-        self.catalog.tables.push(table);
-        self.storage.tables.insert(table_id, Vec::new());
+        self.catalog.get_tables_mut().push(table);
+        self.storage.ensure_table(table_id);
         Ok(())
     }
 
     pub(crate) fn drop_table(&mut self, stmt: DropTableStmt) -> Result<(), DbError> {
         let schema_name = stmt.name.schema_or_dbo().to_string();
         let table_id = self.catalog.drop_table(&schema_name, &stmt.name.name)?;
-        self.storage.tables.remove(&table_id);
+        self.storage.remove_table(table_id);
         Ok(())
     }
 
@@ -82,14 +82,8 @@ impl<'a> SchemaExecutor<'a> {
 
     pub(crate) fn alter_table(&mut self, stmt: AlterTableStmt) -> Result<(), DbError> {
         let schema_name = stmt.table.schema_or_dbo().to_string();
-        let table_pos = self
-            .catalog
-            .tables
-            .iter()
-            .position(|t| {
-                t.schema_id == self.catalog.get_schema_id(&schema_name).unwrap_or(0)
-                    && t.name.eq_ignore_ascii_case(&stmt.table.name)
-            })
+        let table_id = self.catalog.find_table(&schema_name, &stmt.table.name)
+            .map(|t| t.id)
             .ok_or_else(|| {
                 DbError::Semantic(format!(
                     "table '{}.{}' not found",
@@ -100,30 +94,36 @@ impl<'a> SchemaExecutor<'a> {
         match stmt.action {
             AlterTableAction::AddColumn(col_spec) => {
                 let col = self.build_column_def(col_spec)?;
-                self.catalog.tables[table_pos].columns.push(col);
+                let table_mut = self.catalog.find_table_mut(&schema_name, &stmt.table.name).unwrap();
+                table_mut.columns.push(col);
+
                 // Add NULL values for the new column in existing rows
-                let table_id = self.catalog.tables[table_pos].id;
-                if let Some(rows) = self.storage.tables.get_mut(&table_id) {
-                    for row in rows.iter_mut() {
+                if let Ok(rows) = self.storage.get_rows(table_id) {
+                    let mut rows_vec = rows.to_vec();
+                    for row in rows_vec.iter_mut() {
                         row.values.push(crate::types::Value::Null);
                     }
+                    self.storage.update_rows(table_id, rows_vec)?;
                 }
             }
             AlterTableAction::DropColumn(col_name) => {
-                let col_idx = self.catalog.tables[table_pos]
+                let table_mut = self.catalog.find_table_mut(&schema_name, &stmt.table.name).unwrap();
+                let col_idx = table_mut
                     .columns
                     .iter()
                     .position(|c| c.name.eq_ignore_ascii_case(&col_name))
                     .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", col_name)))?;
-                self.catalog.tables[table_pos].columns.remove(col_idx);
+                table_mut.columns.remove(col_idx);
+
                 // Remove the column values from existing rows
-                let table_id = self.catalog.tables[table_pos].id;
-                if let Some(rows) = self.storage.tables.get_mut(&table_id) {
-                    for row in rows.iter_mut() {
+                if let Ok(rows) = self.storage.get_rows(table_id) {
+                    let mut rows_vec = rows.to_vec();
+                    for row in rows_vec.iter_mut() {
                         if col_idx < row.values.len() {
                             row.values.remove(col_idx);
                         }
                     }
+                    self.storage.update_rows(table_id, rows_vec)?;
                 }
             }
         }

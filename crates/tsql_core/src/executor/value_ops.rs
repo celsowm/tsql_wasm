@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use crate::error::DbError;
 use crate::types::{DataType, Value};
 
-pub(crate) fn coerce_value_to_type(value: Value, ty: &DataType) -> Result<Value, DbError> {
+pub fn coerce_value_to_type(value: Value, ty: &DataType) -> Result<Value, DbError> {
     match value {
         Value::Null => Ok(Value::Null),
         Value::Bit(v) => coerce_bit(v, ty),
@@ -300,7 +300,7 @@ fn pad_right(s: &str, len: usize) -> String {
     }
 }
 
-pub(crate) fn compare_values(a: &Value, b: &Value) -> Ordering {
+pub fn compare_values(a: &Value, b: &Value) -> Ordering {
     match (a, b) {
         (Value::Null, Value::Null) => Ordering::Equal,
         (Value::Null, _) => Ordering::Less,
@@ -428,7 +428,7 @@ fn to_comparable_decimals(a: &Value, b: &Value) -> (i128, i128) {
     normalize_decimals(ar, as_, br, bs)
 }
 
-pub(crate) fn truthy(value: &Value) -> bool {
+pub fn truthy(value: &Value) -> bool {
     match value {
         Value::Null => false,
         Value::Bit(v) => *v,
@@ -446,7 +446,7 @@ pub(crate) fn truthy(value: &Value) -> bool {
     }
 }
 
-pub(crate) fn value_key(v: &Value) -> String {
+pub fn value_key(v: &Value) -> String {
     match v {
         Value::Null => "NULL".to_string(),
         Value::Bit(v) => format!("BIT:{}", v),

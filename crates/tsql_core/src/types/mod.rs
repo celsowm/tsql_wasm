@@ -58,7 +58,7 @@ impl DataType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Value {
     Null,
     Bit(bool),
@@ -84,7 +84,7 @@ pub struct TypedValue {
     pub value: Value,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Hash)]
 #[serde(untagged)]
 pub enum JsonValue {
     Null,

@@ -1,121 +1,65 @@
-use std::cell::RefCell;
 use std::cmp::Ordering;
-use std::collections::HashMap;
 
 use crate::ast::{BinaryOp, Expr, UnaryOp};
-use crate::catalog::Catalog;
 use crate::error::DbError;
-use crate::storage::InMemoryStorage;
 use crate::types::{DataType, Value};
 
 use super::clock::Clock;
-use super::model::JoinedRow;
+use super::model::{ContextTable, JoinedRow};
+use super::context::ExecutionContext;
 use super::type_mapping::data_type_spec_to_runtime;
-use super::value_ops::{coerce_value_to_type, compare_values, truthy};
-
-pub type Variables = HashMap<String, (DataType, Value)>;
-
-thread_local! {
-    static EVAL_VARIABLES: RefCell<Variables> = RefCell::new(HashMap::new());
-    static EVAL_DEPTH: RefCell<usize> = const { RefCell::new(0) };
-    static SUBQUERY_CATALOG: RefCell<Option<*const Catalog>> = const { RefCell::new(None) };
-    static SUBQUERY_STORAGE: RefCell<Option<*const InMemoryStorage>> = const { RefCell::new(None) };
-    static SUBQUERY_OUTER_ROW: RefCell<Option<JoinedRow>> = const { RefCell::new(None) };
-}
-
-pub fn set_eval_variables(vars: &Variables) {
-    EVAL_VARIABLES.with(|v| {
-        *v.borrow_mut() = vars.clone();
-    });
-    EVAL_DEPTH.with(|d| {
-        *d.borrow_mut() += 1;
-    });
-}
-
-pub fn clear_eval_variables() {
-    EVAL_DEPTH.with(|d| {
-        let mut depth = d.borrow_mut();
-        if *depth > 0 {
-            *depth -= 1;
-        }
-        if *depth == 0 {
-            EVAL_VARIABLES.with(|v| {
-                v.borrow_mut().clear();
-            });
-        }
-    });
-}
-
-pub fn set_subquery_context(catalog: &Catalog, storage: &InMemoryStorage) {
-    SUBQUERY_CATALOG.with(|c| {
-        *c.borrow_mut() = Some(catalog as *const Catalog);
-    });
-    SUBQUERY_STORAGE.with(|s| {
-        *s.borrow_mut() = Some(storage as *const InMemoryStorage);
-    });
-}
-
-
-
-pub fn save_subquery_context() -> (Option<*const Catalog>, Option<*const InMemoryStorage>) {
-    let cat = SUBQUERY_CATALOG.with(|c| *c.borrow());
-    let stor = SUBQUERY_STORAGE.with(|s| *s.borrow());
-    (cat, stor)
-}
-
-pub fn restore_subquery_context(cat: Option<*const Catalog>, stor: Option<*const InMemoryStorage>) {
-    SUBQUERY_CATALOG.with(|c| {
-        *c.borrow_mut() = cat;
-    });
-    SUBQUERY_STORAGE.with(|s| {
-        *s.borrow_mut() = stor;
-    });
-}
-
-pub fn set_outer_row(row: &JoinedRow) {
-    SUBQUERY_OUTER_ROW.with(|r| {
-        *r.borrow_mut() = Some(row.clone());
-    });
-}
-
-pub fn clear_outer_row() {
-    SUBQUERY_OUTER_ROW.with(|r| {
-        *r.borrow_mut() = None;
-    });
-}
-
-pub fn get_outer_row() -> Option<JoinedRow> {
-    SUBQUERY_OUTER_ROW.with(|r| r.borrow().clone())
-}
+pub(crate) use super::value_ops::{coerce_value_to_type, compare_values, truthy, value_key};
+use crate::catalog::Catalog;
+use crate::storage::Storage;
 
 pub(crate) fn eval_expr_to_type_constant(
     expr: &Expr,
     ty: &DataType,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    let value = eval_constant_expr(expr, clock)?;
+    let value = eval_constant_expr(expr, ctx, catalog, storage, clock)?;
     coerce_value_to_type(value, ty)
 }
 
 pub(crate) fn eval_expr_to_type_in_context(
     expr: &Expr,
     ty: &DataType,
-    row: &JoinedRow,
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    let value = eval_expr(expr, row, clock)?;
+    let mut sub_ctx = ctx.with_outer_row(row.to_vec());
+    let value = eval_expr(expr, row, &mut sub_ctx, catalog, storage, clock)?;
     coerce_value_to_type(value, ty)
 }
 
-pub(crate) fn eval_constant_expr(expr: &Expr, clock: &dyn Clock) -> Result<Value, DbError> {
-    let ctx: JoinedRow = vec![];
-    eval_expr(expr, &ctx, clock)
+pub(crate) fn eval_constant_expr(
+    expr: &Expr,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    let row: JoinedRow = vec![];
+    eval_expr(expr, &row, ctx, catalog, storage, clock)
 }
 
-pub(crate) fn eval_expr(expr: &Expr, row: &JoinedRow, clock: &dyn Clock) -> Result<Value, DbError> {
+pub fn eval_expr(
+    expr: &Expr,
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
     match expr {
-        Expr::Identifier(name) => resolve_identifier(row, name),
-        Expr::QualifiedIdentifier(parts) => resolve_qualified_identifier(row, parts),
+        Expr::Identifier(name) => resolve_identifier(row, name, ctx),
+        Expr::QualifiedIdentifier(parts) => resolve_qualified_identifier(row, parts, ctx),
         Expr::Wildcard => Err(DbError::Execution(
             "wildcard is not a scalar expression".into(),
         )),
@@ -134,66 +78,71 @@ pub(crate) fn eval_expr(expr: &Expr, row: &JoinedRow, clock: &dyn Clock) -> Resu
         Expr::String(v) => Ok(Value::VarChar(v.clone())),
         Expr::UnicodeString(v) => Ok(Value::NVarChar(v.clone())),
         Expr::Null => Ok(Value::Null),
-        Expr::FunctionCall { name, args } => eval_function(name, args, row, clock),
+        Expr::FunctionCall { name, args } => eval_function(name, args, row, ctx, catalog, storage, clock),
         Expr::Binary { left, op, right } => {
-            let lv = eval_expr(left, row, clock)?;
-            let rv = eval_expr(right, row, clock)?;
+            let lv = eval_expr(left, row, ctx, catalog, storage, clock)?;
+            let rv = eval_expr(right, row, ctx, catalog, storage, clock)?;
             eval_binary(op, lv, rv)
         }
         Expr::Unary { op, expr: inner } => {
-            let val = eval_expr(inner, row, clock)?;
+            let val = eval_expr(inner, row, ctx, catalog, storage, clock)?;
             eval_unary(op, val)
         }
-        Expr::IsNull(inner) => Ok(Value::Bit(eval_expr(inner, row, clock)?.is_null())),
-        Expr::IsNotNull(inner) => Ok(Value::Bit(!eval_expr(inner, row, clock)?.is_null())),
+        Expr::IsNull(inner) => Ok(Value::Bit(eval_expr(inner, row, ctx, catalog, storage, clock)?.is_null())),
+        Expr::IsNotNull(inner) => Ok(Value::Bit(!eval_expr(inner, row, ctx, catalog, storage, clock)?.is_null())),
         Expr::Cast { expr, target } => {
-            let value = eval_expr(expr, row, clock)?;
+            let value = eval_expr(expr, row, ctx, catalog, storage, clock)?;
             coerce_value_to_type(value, &data_type_spec_to_runtime(target))
         }
         Expr::Convert { target, expr } => {
-            let value = eval_expr(expr, row, clock)?;
+            let value = eval_expr(expr, row, ctx, catalog, storage, clock)?;
             coerce_value_to_type(value, &data_type_spec_to_runtime(target))
         }
-        Expr::Case {
-            operand,
+        Expr::Case { operand, when_clauses, else_result } => eval_case(
+            operand.as_deref(),
             when_clauses,
-            else_result,
-        } => eval_case(operand, when_clauses, else_result, row, clock),
+            else_result.as_deref(),
+            row,
+            ctx,
+            catalog,
+            storage,
+            clock,
+        ),
         Expr::InList {
             expr: in_expr,
             list,
             negated,
-        } => eval_in_list(in_expr, list, *negated, row, clock),
+        } => eval_in_list(in_expr, list, *negated, row, ctx, catalog, storage, clock),
         Expr::Between {
             expr: between_expr,
             low,
             high,
             negated,
-        } => eval_between(between_expr, low, high, *negated, row, clock),
+        } => eval_between(between_expr, low, high, *negated, row, ctx, catalog, storage, clock),
         Expr::Like {
             expr: like_expr,
             pattern,
             negated,
-        } => eval_like(like_expr, pattern, *negated, row, clock),
-        Expr::Subquery(stmt) => {
-            
-            eval_scalar_subquery(stmt, row, clock)
-        }
-        Expr::Exists { subquery, negated } => eval_exists(subquery, *negated, row, clock),
+        } => eval_like(like_expr, pattern, *negated, row, ctx, catalog, storage, clock),
+        Expr::Subquery(stmt) => eval_scalar_subquery(stmt, row, ctx, catalog, storage, clock),
+        Expr::Exists { subquery, negated } => eval_exists(subquery, *negated, row, ctx, catalog, storage, clock),
         Expr::InSubquery {
             expr: in_expr,
             subquery,
             negated,
-        } => eval_in_subquery(in_expr, subquery, *negated, row, clock),
+        } => eval_in_subquery(in_expr, subquery, *negated, row, ctx, catalog, storage, clock),
     }
 }
 
 pub(crate) fn eval_predicate(
     expr: &Expr,
-    row: &JoinedRow,
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<bool, DbError> {
-    let value = eval_expr(expr, row, clock)?;
+    let value = eval_expr(expr, row, ctx, catalog, storage, clock)?;
     let result = match &value {
         Value::Bit(v) => *v,
         Value::Null => false,
@@ -243,19 +192,20 @@ pub(crate) fn contains_aggregate(expr: &Expr) -> bool {
     }
 }
 
-fn resolve_identifier(row: &JoinedRow, name: &str) -> Result<Value, DbError> {
+fn resolve_identifier(
+    row: &[ContextTable],
+    name: &str,
+    ctx: &ExecutionContext,
+) -> Result<Value, DbError> {
     // Check for variable reference
     if name.starts_with('@') {
-        return EVAL_VARIABLES.with(|vars| {
-            let vars = vars.borrow();
-            match vars.get(name) {
-                Some((_, val)) => Ok(val.clone()),
-                None => Err(DbError::Semantic(format!(
-                    "variable '{}' not declared",
-                    name
-                ))),
-            }
-        });
+        match ctx.variables.get(name) {
+            Some((_, val)) => return Ok(val.clone()),
+            None => return Err(DbError::Semantic(format!(
+                "variable '{}' not declared",
+                name
+            ))),
+        }
     }
 
     // First pass: find all bindings that have this column
@@ -294,7 +244,11 @@ fn resolve_identifier(row: &JoinedRow, name: &str) -> Result<Value, DbError> {
     }
 }
 
-fn resolve_qualified_identifier(row: &JoinedRow, parts: &[String]) -> Result<Value, DbError> {
+fn resolve_qualified_identifier(
+    row: &[ContextTable],
+    parts: &[String],
+    _ctx: &ExecutionContext,
+) -> Result<Value, DbError> {
     if parts.len() != 2 {
         return Err(DbError::Semantic(
             "only two-part identifiers are supported in this build".into(),
@@ -332,7 +286,10 @@ fn resolve_qualified_identifier(row: &JoinedRow, parts: &[String]) -> Result<Val
 fn eval_function(
     name: &str,
     args: &[Expr],
-    row: &JoinedRow,
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if name.eq_ignore_ascii_case("GETDATE") {
@@ -344,22 +301,22 @@ fn eval_function(
         if args.len() != 2 {
             return Err(DbError::Execution("ISNULL expects 2 arguments".into()));
         }
-        let left = eval_expr(&args[0], row, clock)?;
+        let left = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
         if !left.is_null() {
             Ok(left)
         } else {
-            eval_expr(&args[1], row, clock)
+            eval_expr(&args[1], row, ctx, catalog, storage, clock)
         }
     } else if name.eq_ignore_ascii_case("COALESCE") {
-        eval_coalesce(args, row, clock)
+        eval_coalesce(args, row, ctx, catalog, storage, clock)
     } else if name.eq_ignore_ascii_case("LEN") {
-        eval_len(args, row, clock)
+        eval_len(args, row, ctx, catalog, storage, clock)
     } else if name.eq_ignore_ascii_case("SUBSTRING") {
-        eval_substring(args, row, clock)
+        eval_substring(args, row, ctx, catalog, storage, clock)
     } else if name.eq_ignore_ascii_case("DATEADD") {
-        eval_dateadd(args, row, clock)
+        eval_dateadd(args, row, ctx, catalog, storage, clock)
     } else if name.eq_ignore_ascii_case("DATEDIFF") {
-        eval_datediff(args, row, clock)
+        eval_datediff(args, row, ctx, catalog, storage, clock)
     } else if name.eq_ignore_ascii_case("COUNT") {
         Err(DbError::Execution(
             "COUNT is only supported in grouped projection".into(),
@@ -381,27 +338,27 @@ fn eval_function(
         }
         Ok(Value::DateTime(clock.now_datetime_literal()))
     } else if name.eq_ignore_ascii_case("UPPER") {
-        eval_upper(args, row, clock)
+        eval_upper(args, row, ctx, catalog, storage, clock)
     } else if name.eq_ignore_ascii_case("LOWER") {
-        eval_lower(args, row, clock)
+        eval_lower(args, row, ctx, catalog, storage, clock)
     } else if name.eq_ignore_ascii_case("LTRIM") {
-        eval_trim(args, row, clock, true, false)
+        eval_trim(args, row, ctx, catalog, storage, clock, true, false)
     } else if name.eq_ignore_ascii_case("RTRIM") {
-        eval_trim(args, row, clock, false, true)
+        eval_trim(args, row, ctx, catalog, storage, clock, false, true)
     } else if name.eq_ignore_ascii_case("TRIM") {
-        eval_trim(args, row, clock, true, true)
+        eval_trim(args, row, ctx, catalog, storage, clock, true, true)
     } else if name.eq_ignore_ascii_case("REPLACE") {
-        eval_replace(args, row, clock)
+        eval_replace(args, row, ctx, catalog, storage, clock)
     } else if name.eq_ignore_ascii_case("ROUND") {
-        eval_round(args, row, clock)
+        eval_round(args, row, ctx, catalog, storage, clock)
     } else if name.eq_ignore_ascii_case("CEILING") {
-        eval_math_unary(args, row, clock, "CEILING", |f: f64| f.ceil())
+        eval_math_unary(args, row, ctx, catalog, storage, clock, "CEILING", |f: f64| f.ceil())
     } else if name.eq_ignore_ascii_case("FLOOR") {
-        eval_math_unary(args, row, clock, "FLOOR", |f: f64| f.floor())
+        eval_math_unary(args, row, ctx, catalog, storage, clock, "FLOOR", |f: f64| f.floor())
     } else if name.eq_ignore_ascii_case("ABS") {
-        eval_abs(args, row, clock)
+        eval_abs(args, row, ctx, catalog, storage, clock)
     } else if name.eq_ignore_ascii_case("CHARINDEX") {
-        eval_charindex(args, row, clock)
+        eval_charindex(args, row, ctx, catalog, storage, clock)
     } else if name.eq_ignore_ascii_case("NEWID") {
         if !args.is_empty() {
             return Err(DbError::Execution("NEWID expects no arguments".into()));
@@ -419,14 +376,21 @@ fn eval_function(
     }
 }
 
-fn eval_coalesce(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Value, DbError> {
+fn eval_coalesce(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
     if args.is_empty() {
         return Err(DbError::Execution(
             "COALESCE requires at least one argument".into(),
         ));
     }
     for arg in args {
-        let val = eval_expr(arg, row, clock)?;
+        let val = eval_expr(arg, row, ctx, catalog, storage, clock)?;
         if !val.is_null() {
             return Ok(val);
         }
@@ -434,11 +398,18 @@ fn eval_coalesce(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Va
     Ok(Value::Null)
 }
 
-fn eval_len(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Value, DbError> {
+fn eval_len(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
     if args.len() != 1 {
         return Err(DbError::Execution("LEN expects 1 argument".into()));
     }
-    let val = eval_expr(&args[0], row, clock)?;
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
     match val {
         Value::Null => Ok(Value::Null),
         Value::Char(s) | Value::VarChar(s) | Value::NChar(s) | Value::NVarChar(s) => {
@@ -451,13 +422,20 @@ fn eval_len(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Value, 
     }
 }
 
-fn eval_substring(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Value, DbError> {
+fn eval_substring(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
     if args.len() != 3 {
         return Err(DbError::Execution("SUBSTRING expects 3 arguments".into()));
     }
-    let val = eval_expr(&args[0], row, clock)?;
-    let start = eval_expr(&args[1], row, clock)?;
-    let length = eval_expr(&args[2], row, clock)?;
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let start = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+    let length = eval_expr(&args[2], row, ctx, catalog, storage, clock)?;
 
     let s = val.to_string_value();
     let start_i = match start {
@@ -508,14 +486,21 @@ fn extract_datepart(expr: &Expr) -> Result<String, DbError> {
     }
 }
 
-fn eval_dateadd(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Value, DbError> {
+fn eval_dateadd(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
     if args.len() != 3 {
         return Err(DbError::Execution("DATEADD expects 3 arguments".into()));
     }
 
     let part = extract_datepart(&args[0])?;
-    let number = eval_expr(&args[1], row, clock)?;
-    let date_val = eval_expr(&args[2], row, clock)?;
+    let number = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+    let date_val = eval_expr(&args[2], row, ctx, catalog, storage, clock)?;
     let num = match number {
         Value::Int(v) => v as i64,
         Value::BigInt(v) => v,
@@ -591,14 +576,21 @@ fn apply_dateadd(part: &str, num: i64, date_str: &str) -> Result<String, DbError
     ))
 }
 
-fn eval_datediff(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Value, DbError> {
+fn eval_datediff(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
     if args.len() != 3 {
         return Err(DbError::Execution("DATEDIFF expects 3 arguments".into()));
     }
 
     let part = extract_datepart(&args[0])?;
-    let start_val = eval_expr(&args[1], row, clock)?;
-    let end_val = eval_expr(&args[2], row, clock)?;
+    let start_val = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+    let end_val = eval_expr(&args[2], row, ctx, catalog, storage, clock)?;
 
     let start_str = start_val.to_string_value();
     let end_str = end_val.to_string_value();
@@ -633,11 +625,18 @@ fn eval_datediff(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Va
 
 // ─── New built-in functions ────────────────────────────────────────────
 
-fn eval_upper(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Value, DbError> {
+fn eval_upper(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
     if args.len() != 1 {
         return Err(DbError::Execution("UPPER expects 1 argument".into()));
     }
-    let val = eval_expr(&args[0], row, clock)?;
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
     match val {
         Value::Null => Ok(Value::Null),
         Value::VarChar(s) => Ok(Value::VarChar(s.to_uppercase())),
@@ -648,11 +647,18 @@ fn eval_upper(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Value
     }
 }
 
-fn eval_lower(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Value, DbError> {
+fn eval_lower(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
     if args.len() != 1 {
         return Err(DbError::Execution("LOWER expects 1 argument".into()));
     }
-    let val = eval_expr(&args[0], row, clock)?;
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
     match val {
         Value::Null => Ok(Value::Null),
         Value::VarChar(s) => Ok(Value::VarChar(s.to_lowercase())),
@@ -665,7 +671,10 @@ fn eval_lower(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Value
 
 fn eval_trim(
     args: &[Expr],
-    row: &JoinedRow,
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
     left: bool,
     right: bool,
@@ -675,7 +684,7 @@ fn eval_trim(
             "TRIM/LTRIM/RTRIM expects 1 argument".into(),
         ));
     }
-    let val = eval_expr(&args[0], row, clock)?;
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
     match val {
         Value::Null => Ok(Value::Null),
         Value::VarChar(s) => Ok(Value::VarChar(trim_str(&s, left, right))),
@@ -701,13 +710,20 @@ fn trim_str(s: &str, trim_left: bool, trim_right: bool) -> String {
     result.to_string()
 }
 
-fn eval_replace(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Value, DbError> {
+fn eval_replace(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
     if args.len() != 3 {
         return Err(DbError::Execution("REPLACE expects 3 arguments".into()));
     }
-    let val = eval_expr(&args[0], row, clock)?;
-    let from = eval_expr(&args[1], row, clock)?;
-    let to = eval_expr(&args[2], row, clock)?;
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let from = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+    let to = eval_expr(&args[2], row, ctx, catalog, storage, clock)?;
 
     if val.is_null() || from.is_null() || to.is_null() {
         return Ok(Value::Null);
@@ -719,13 +735,20 @@ fn eval_replace(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Val
     Ok(Value::VarChar(s.replace(&f, &t)))
 }
 
-fn eval_round(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Value, DbError> {
+fn eval_round(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
     if args.is_empty() || args.len() > 2 {
         return Err(DbError::Execution("ROUND expects 1 or 2 arguments".into()));
     }
-    let val = eval_expr(&args[0], row, clock)?;
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
     let precision = if args.len() == 2 {
-        eval_expr(&args[1], row, clock)?
+        eval_expr(&args[1], row, ctx, catalog, storage, clock)?
             .to_integer_i64()
             .unwrap_or(0) as i32
     } else {
@@ -759,7 +782,10 @@ fn eval_round(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Value
 
 fn eval_math_unary<F>(
     args: &[Expr],
-    row: &JoinedRow,
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
     name: &str,
     func: F,
@@ -770,7 +796,7 @@ where
     if args.len() != 1 {
         return Err(DbError::Execution(format!("{} expects 1 argument", name)));
     }
-    let val = eval_expr(&args[0], row, clock)?;
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
     if val.is_null() {
         return Ok(Value::Null);
     }
@@ -779,11 +805,18 @@ where
     Ok(Value::VarChar(result.to_string()))
 }
 
-fn eval_abs(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Value, DbError> {
+fn eval_abs(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
     if args.len() != 1 {
         return Err(DbError::Execution("ABS expects 1 argument".into()));
     }
-    let val = eval_expr(&args[0], row, clock)?;
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
     if val.is_null() {
         return Ok(Value::Null);
     }
@@ -800,14 +833,21 @@ fn eval_abs(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Value, 
     }
 }
 
-fn eval_charindex(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Value, DbError> {
+fn eval_charindex(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
     if args.len() < 2 || args.len() > 3 {
         return Err(DbError::Execution(
             "CHARINDEX expects 2 or 3 arguments".into(),
         ));
     }
-    let search = eval_expr(&args[0], row, clock)?;
-    let target = eval_expr(&args[1], row, clock)?;
+    let search = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let target = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
 
     if search.is_null() || target.is_null() {
         return Ok(Value::Null);
@@ -817,7 +857,7 @@ fn eval_charindex(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<V
     let target_str = target.to_string_value();
 
     let start_pos = if args.len() == 3 {
-        let sp = eval_expr(&args[2], row, clock)?;
+        let sp = eval_expr(&args[2], row, ctx, catalog, storage, clock)?;
         sp.to_integer_i64().unwrap_or(1) as usize
     } else {
         1
@@ -1069,33 +1109,36 @@ fn eval_unary(op: &UnaryOp, val: Value) -> Result<Value, DbError> {
 }
 
 fn eval_case(
-    operand: &Option<Box<Expr>>,
+    operand: Option<&Expr>,
     when_clauses: &[crate::ast::WhenClause],
-    else_result: &Option<Box<Expr>>,
-    row: &JoinedRow,
+    else_result: Option<&Expr>,
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    let operand_val = operand
-        .as_ref()
-        .map(|e| eval_expr(e, row, clock))
-        .transpose()?;
+    let operand_val = match operand {
+        Some(e) => Some(eval_expr(e, row, ctx, catalog, storage, clock)?),
+        None => None,
+    };
 
     for clause in when_clauses {
         let match_found = if let Some(ref op_val) = operand_val {
-            let when_val = eval_expr(&clause.condition, row, clock)?;
+            let when_val = eval_expr(&clause.condition, row, ctx, catalog, storage, clock)?;
             compare_bool(op_val.clone(), when_val, |o| o == Ordering::Equal)
         } else {
-            let cond = eval_expr(&clause.condition, row, clock)?;
+            let cond = eval_expr(&clause.condition, row, ctx, catalog, storage, clock)?;
             Value::Bit(truthy(&cond))
         };
 
         if let Value::Bit(true) = match_found {
-            return eval_expr(&clause.result, row, clock);
+            return eval_expr(&clause.result, row, ctx, catalog, storage, clock);
         }
     }
 
     match else_result {
-        Some(expr) => eval_expr(expr, row, clock),
+        Some(expr) => eval_expr(expr, row, ctx, catalog, storage, clock),
         None => Ok(Value::Null),
     }
 }
@@ -1104,16 +1147,19 @@ fn eval_in_list(
     in_expr: &Expr,
     list: &[Expr],
     negated: bool,
-    row: &JoinedRow,
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    let val = eval_expr(in_expr, row, clock)?;
+    let val = eval_expr(in_expr, row, ctx, catalog, storage, clock)?;
     if val.is_null() {
         return Ok(Value::Null);
     }
     let mut found = false;
     for item in list {
-        let item_val = eval_expr(item, row, clock)?;
+        let item_val = eval_expr(item, row, ctx, catalog, storage, clock)?;
         if item_val.is_null() {
             return Ok(Value::Null);
         }
@@ -1130,15 +1176,18 @@ fn eval_between(
     low: &Expr,
     high: &Expr,
     negated: bool,
-    row: &JoinedRow,
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    let val = eval_expr(between_expr, row, clock)?;
+    let val = eval_expr(between_expr, row, ctx, catalog, storage, clock)?;
     if val.is_null() {
         return Ok(Value::Null);
     }
-    let low_val = eval_expr(low, row, clock)?;
-    let high_val = eval_expr(high, row, clock)?;
+    let low_val = eval_expr(low, row, ctx, catalog, storage, clock)?;
+    let high_val = eval_expr(high, row, ctx, catalog, storage, clock)?;
 
     let ge_low = compare_bool(val.clone(), low_val, |o| {
         matches!(o, Ordering::Greater | Ordering::Equal)
@@ -1155,11 +1204,14 @@ fn eval_like(
     like_expr: &Expr,
     pattern: &Expr,
     negated: bool,
-    row: &JoinedRow,
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    let val = eval_expr(like_expr, row, clock)?;
-    let pat = eval_expr(pattern, row, clock)?;
+    let val = eval_expr(like_expr, row, ctx, catalog, storage, clock)?;
+    let pat = eval_expr(pattern, row, ctx, catalog, storage, clock)?;
 
     if val.is_null() || pat.is_null() {
         return Ok(Value::Null);
@@ -1292,56 +1344,32 @@ where
 
 // ─── Subquery execution ──────────────────────────────────────────────────
 
-fn with_subquery_context<F, R>(f: F) -> Result<R, DbError>
-where
-    F: FnOnce(&Catalog, &InMemoryStorage) -> Result<R, DbError>,
-{
-    let catalog_ptr = SUBQUERY_CATALOG.with(|c| *c.borrow());
-    let storage_ptr = SUBQUERY_STORAGE.with(|s| *s.borrow());
-    match (catalog_ptr, storage_ptr) {
-        (Some(cat), Some(stor)) => {
-            let catalog = unsafe { &*cat };
-            let storage = unsafe { &*stor };
-            f(catalog, storage)
-        }
-        _ => Err(DbError::Execution(
-            "subquery execution requires catalog and storage context".into(),
-        )),
-    }
-}
-
 fn execute_subquery_select(
     stmt: &crate::ast::SelectStmt,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<crate::executor::result::QueryResult, DbError> {
-    // Save the current subquery context (set by outer query)
-    let (saved_cat, saved_stor) = save_subquery_context();
+    let mut sub_ctx = ctx.subquery();
+    let qe = super::query::QueryExecutor {
+        catalog,
+        storage,
+        clock,
+    };
 
-    let result = with_subquery_context(|catalog, storage| {
-        let qe = super::query::QueryExecutor {
-            catalog,
-            storage,
-            clock,
-        };
-
-        // The outer row is already set by the caller (outer query's WHERE evaluation).
-        // execute_select will call build_joined_rows which checks get_outer_row()
-        // and extends rows with outer bindings for correlated subqueries.
-        qe.execute_select(stmt.clone())
-    });
-
-    // Restore the outer query's subquery context
-    restore_subquery_context(saved_cat, saved_stor);
-
-    result
+    qe.execute_select(stmt.clone(), &mut sub_ctx)
 }
 
 fn eval_scalar_subquery(
     stmt: &crate::ast::SelectStmt,
-    _row: &JoinedRow,
+    _row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    let query_result = execute_subquery_select(stmt, clock)?;
+    let query_result = execute_subquery_select(stmt, ctx, catalog, storage, clock)?;
 
     if query_result.rows.is_empty() {
         return Ok(Value::Null);
@@ -1352,17 +1380,20 @@ fn eval_scalar_subquery(
         return Ok(Value::Null);
     }
 
-    let val = json_value_to_value(&first_row[0]);
+    let val = first_row[0].clone();
     Ok(val)
 }
 
 fn eval_exists(
     stmt: &crate::ast::SelectStmt,
     negated: bool,
-    _row: &JoinedRow,
+    _row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    let query_result = execute_subquery_select(stmt, clock)?;
+    let query_result = execute_subquery_select(stmt, ctx, catalog, storage, clock)?;
     let exists = !query_result.rows.is_empty();
     Ok(Value::Bit(if negated { !exists } else { exists }))
 }
@@ -1371,15 +1402,18 @@ fn eval_in_subquery(
     in_expr: &Expr,
     stmt: &crate::ast::SelectStmt,
     negated: bool,
-    row: &JoinedRow,
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    let val = eval_expr(in_expr, row, clock)?;
+    let val = eval_expr(in_expr, row, ctx, catalog, storage, clock)?;
     if val.is_null() {
         return Ok(Value::Null);
     }
 
-    let query_result = execute_subquery_select(stmt, clock)?;
+    let query_result = execute_subquery_select(stmt, ctx, catalog, storage, clock)?;
 
     if query_result.rows.is_empty() {
         return Ok(Value::Bit(negated));
@@ -1392,14 +1426,14 @@ fn eval_in_subquery(
         if row_data.is_empty() {
             continue;
         }
-        let subq_val = json_value_to_value(&row_data[0]);
+        let subq_val = &row_data[0];
 
         if subq_val.is_null() {
             has_null = true;
             continue;
         }
 
-        if compare_bool(val.clone(), subq_val, |o| o == Ordering::Equal) == Value::Bit(true) {
+        if compare_bool(val.clone(), subq_val.clone(), |o| o == Ordering::Equal) == Value::Bit(true) {
             found = true;
             break;
         }
@@ -1413,17 +1447,4 @@ fn eval_in_subquery(
     Ok(Value::Bit(if negated { !found } else { found }))
 }
 
-fn json_value_to_value(jv: &crate::types::JsonValue) -> Value {
-    match jv {
-        crate::types::JsonValue::Null => Value::Null,
-        crate::types::JsonValue::Bool(b) => Value::Bit(*b),
-        crate::types::JsonValue::Number(n) => {
-            if *n >= i32::MIN as i64 && *n <= i32::MAX as i64 {
-                Value::Int(*n as i32)
-            } else {
-                Value::BigInt(*n)
-            }
-        }
-        crate::types::JsonValue::String(s) => Value::NVarChar(s.clone()),
-    }
-}
+

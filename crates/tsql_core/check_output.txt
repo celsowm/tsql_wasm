@@ -1,0 +1,672 @@
+    Checking tsql_core v0.1.0 (C:\Users\celso\Documents\projetos\tsql_wasm\crates\tsql_core)
+error[E0425]: cannot find value `operand` in this scope
+   --> crates\tsql_core\src\executor\evaluator.rs:103:13
+    |
+103 |             operand.as_deref(),
+    |             ^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `when_clauses` in this scope
+   --> crates\tsql_core\src\executor\evaluator.rs:104:13
+    |
+104 |             when_clauses,
+    |             ^^^^^^^^^^^^ not found in this scope
+
+error[E0425]: cannot find value `else_result` in this scope
+   --> crates\tsql_core\src\executor\evaluator.rs:105:13
+    |
+105 |             else_result.as_deref(),
+    |             ^^^^^^^^^^^ not found in this scope
+
+warning: unused imports: `DataType` and `Value`
+ --> crates\tsql_core\src\executor\engine.rs:5:20
+  |
+5 | use crate::types::{DataType, Value};
+  |                    ^^^^^^^^  ^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `SetOpKind`
+ --> crates\tsql_core\src\executor\query.rs:3:70
+  |
+3 |     Expr, JoinClause, JoinType, OrderByExpr, SelectItem, SelectStmt, SetOpKind, TopSpec,
+  |                                                                      ^^^^^^^^^
+
+warning: unused import: `JsonValue`
+ --> crates\tsql_core\src\executor\result.rs:3:20
+  |
+3 | use crate::types::{JsonValue, Value};
+  |                    ^^^^^^^^^
+
+error[E0277]: the trait bound `types::Value: std::cmp::Eq` is not satisfied
+  --> crates\tsql_core\src\executor\engine.rs:99:84
+   |
+99 |             let left_set: std::collections::HashSet<_> = left.rows.iter().cloned().collect();
+   |                                                                                    ^^^^^^^ the trait `std::cmp::Eq` is not implemented for `types::Value`
+   |
+help: the trait `FromIterator<T>` is implemented for `HashSet<T, S>`
+  --> /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\std\src\collections\hash\set.rs:1060:1
+   = note: required for `Vec<types::Value>` to implement `std::cmp::Eq`
+   = note: required for `HashSet<Vec<types::Value>>` to implement `FromIterator<Vec<types::Value>>`
+note: required by a bound in `collect`
+  --> /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\iter\traits\iterator.rs:2015:5
+help: consider annotating `types::Value` with `#[derive(Eq)]`
+  --> crates\tsql_core\src\types\mod.rs:62:1
+   |
+62 + #[derive(Eq)]
+63 | pub enum Value {
+   |
+
+error[E0277]: the trait bound `types::Value: Hash` is not satisfied
+  --> crates\tsql_core\src\executor\engine.rs:99:84
+   |
+99 |             let left_set: std::collections::HashSet<_> = left.rows.iter().cloned().collect();
+   |                                                                                    ^^^^^^^ the trait `Hash` is not implemented for `types::Value`
+   |
+help: the trait `FromIterator<T>` is implemented for `HashSet<T, S>`
+  --> /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\std\src\collections\hash\set.rs:1060:1
+   = note: required for `Vec<types::Value>` to implement `Hash`
+   = note: required for `HashSet<Vec<types::Value>>` to implement `FromIterator<Vec<types::Value>>`
+note: required by a bound in `collect`
+  --> /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\iter\traits\iterator.rs:2015:5
+help: consider annotating `types::Value` with `#[derive(Hash)]`
+  --> crates\tsql_core\src\types\mod.rs:62:1
+   |
+62 + #[derive(Hash)]
+63 | pub enum Value {
+   |
+
+error[E0599]: the method `contains` exists for struct `HashSet<Vec<types::Value>>`, but its trait bounds were not satisfied
+   --> crates\tsql_core\src\executor\engine.rs:103:38
+    |
+103 |                 .filter(|r| left_set.contains(r))
+    |                                      ^^^^^^^^ method cannot be called on `HashSet<Vec<types::Value>>` due to unsatisfied trait bounds
+    |
+   ::: crates\tsql_core\src\types\mod.rs:62:1
+    |
+ 62 | pub enum Value {
+    | -------------- doesn't satisfy `types::Value: Hash` or `types::Value: std::cmp::Eq`
+    |
+    = note: the following trait bounds were not satisfied:
+            `types::Value: std::cmp::Eq`
+            which is required by `Vec<types::Value>: std::cmp::Eq`
+            `types::Value: Hash`
+            which is required by `Vec<types::Value>: Hash`
+help: consider annotating `types::Value` with `#[derive(Eq, Hash, PartialEq)]`
+   --> crates\tsql_core\src\types\mod.rs:62:1
+    |
+ 62 + #[derive(Eq, Hash, PartialEq)]
+ 63 | pub enum Value {
+    |
+
+error[E0277]: the trait bound `types::Value: std::cmp::Eq` is not satisfied
+   --> crates\tsql_core\src\executor\engine.rs:107:86
+    |
+107 |             let right_set: std::collections::HashSet<_> = right.rows.iter().cloned().collect();
+    |                                                                                      ^^^^^^^ the trait `std::cmp::Eq` is not implemented for `types::Value`
+    |
+help: the trait `FromIterator<T>` is implemented for `HashSet<T, S>`
+   --> /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\std\src\collections\hash\set.rs:1060:1
+    = note: required for `Vec<types::Value>` to implement `std::cmp::Eq`
+    = note: required for `HashSet<Vec<types::Value>>` to implement `FromIterator<Vec<types::Value>>`
+note: required by a bound in `collect`
+   --> /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\iter\traits\iterator.rs:2015:5
+help: consider annotating `types::Value` with `#[derive(Eq)]`
+   --> crates\tsql_core\src\types\mod.rs:62:1
+    |
+ 62 + #[derive(Eq)]
+ 63 | pub enum Value {
+    |
+
+error[E0277]: the trait bound `types::Value: Hash` is not satisfied
+   --> crates\tsql_core\src\executor\engine.rs:107:86
+    |
+107 |             let right_set: std::collections::HashSet<_> = right.rows.iter().cloned().collect();
+    |                                                                                      ^^^^^^^ the trait `Hash` is not implemented for `types::Value`
+    |
+help: the trait `FromIterator<T>` is implemented for `HashSet<T, S>`
+   --> /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\std\src\collections\hash\set.rs:1060:1
+    = note: required for `Vec<types::Value>` to implement `Hash`
+    = note: required for `HashSet<Vec<types::Value>>` to implement `FromIterator<Vec<types::Value>>`
+note: required by a bound in `collect`
+   --> /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf\library\core\src\iter\traits\iterator.rs:2015:5
+help: consider annotating `types::Value` with `#[derive(Hash)]`
+   --> crates\tsql_core\src\types\mod.rs:62:1
+    |
+ 62 + #[derive(Hash)]
+ 63 | pub enum Value {
+    |
+
+error[E0599]: the method `contains` exists for struct `HashSet<Vec<types::Value>>`, but its trait bounds were not satisfied
+   --> crates\tsql_core\src\executor\engine.rs:110:40
+    |
+110 |                 .filter(|r| !right_set.contains(r))
+    |                                        ^^^^^^^^ method cannot be called on `HashSet<Vec<types::Value>>` due to unsatisfied trait bounds
+    |
+   ::: crates\tsql_core\src\types\mod.rs:62:1
+    |
+ 62 | pub enum Value {
+    | -------------- doesn't satisfy `types::Value: Hash` or `types::Value: std::cmp::Eq`
+    |
+    = note: the following trait bounds were not satisfied:
+            `types::Value: std::cmp::Eq`
+            which is required by `Vec<types::Value>: std::cmp::Eq`
+            `types::Value: Hash`
+            which is required by `Vec<types::Value>: Hash`
+help: consider annotating `types::Value` with `#[derive(Eq, Hash, PartialEq)]`
+   --> crates\tsql_core\src\types\mod.rs:62:1
+    |
+ 62 + #[derive(Eq, Hash, PartialEq)]
+ 63 | pub enum Value {
+    |
+
+error[E0027]: pattern does not mention fields `operand`, `when_clauses`, `else_result`
+   --> crates\tsql_core\src\executor\evaluator.rs:101:9
+    |
+101 | /         Expr::Case {
+102 | |         } => eval_case(
+    | |_________^ missing fields `operand`, `when_clauses`, `else_result`
+    |
+help: include the missing fields in the pattern
+    |
+101 -         Expr::Case {
+102 -         } => eval_case(
+101 +         Expr::Case { operand, when_clauses, else_result } => eval_case(
+    |
+help: if you don't care about these missing fields, you can explicitly ignore them
+    |
+101 -         Expr::Case {
+102 -         } => eval_case(
+101 +         Expr::Case { operand: _, when_clauses: _, else_result: _ } => eval_case(
+    |
+help: or always ignore missing fields here
+    |
+101 -         Expr::Case {
+102 -         } => eval_case(
+101 +         Expr::Case { .. } => eval_case(
+    |
+
+error[E0308]: mismatched types
+   --> crates\tsql_core\src\executor\evaluator.rs:312:29
+    |
+312 |         eval_coalesce(args, row, ctx, catalog, storage, clock)
+    |         -------------       ^^^ expected `&Vec<ContextTable>`, found `&[ContextTable]`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected reference `&Vec<ContextTable>`
+               found reference `&[ContextTable]`
+note: function defined here
+   --> crates\tsql_core\src\executor\evaluator.rs:380:4
+    |
+380 | fn eval_coalesce(
+    |    ^^^^^^^^^^^^^
+381 |     args: &[Expr],
+382 |     row: &JoinedRow,
+    |     ---------------
+
+error[E0308]: mismatched types
+   --> crates\tsql_core\src\executor\evaluator.rs:314:24
+    |
+314 |         eval_len(args, row, ctx, catalog, storage, clock)
+    |         --------       ^^^ expected `&Vec<ContextTable>`, found `&[ContextTable]`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected reference `&Vec<ContextTable>`
+               found reference `&[ContextTable]`
+note: function defined here
+   --> crates\tsql_core\src\executor\evaluator.rs:402:4
+    |
+402 | fn eval_len(
+    |    ^^^^^^^^
+403 |     args: &[Expr],
+404 |     row: &JoinedRow,
+    |     ---------------
+
+error[E0308]: mismatched types
+   --> crates\tsql_core\src\executor\evaluator.rs:316:30
+    |
+316 |         eval_substring(args, row, ctx, catalog, storage, clock)
+    |         --------------       ^^^ expected `&Vec<ContextTable>`, found `&[ContextTable]`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected reference `&Vec<ContextTable>`
+               found reference `&[ContextTable]`
+note: function defined here
+   --> crates\tsql_core\src\executor\evaluator.rs:426:4
+    |
+426 | fn eval_substring(
+    |    ^^^^^^^^^^^^^^
+427 |     args: &[Expr],
+428 |     row: &JoinedRow,
+    |     ---------------
+
+error[E0308]: mismatched types
+   --> crates\tsql_core\src\executor\evaluator.rs:318:28
+    |
+318 |         eval_dateadd(args, row, ctx, catalog, storage, clock)
+    |         ------------       ^^^ expected `&Vec<ContextTable>`, found `&[ContextTable]`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected reference `&Vec<ContextTable>`
+               found reference `&[ContextTable]`
+note: function defined here
+   --> crates\tsql_core\src\executor\evaluator.rs:490:4
+    |
+490 | fn eval_dateadd(
+    |    ^^^^^^^^^^^^
+491 |     args: &[Expr],
+492 |     row: &JoinedRow,
+    |     ---------------
+
+error[E0308]: mismatched types
+   --> crates\tsql_core\src\executor\evaluator.rs:320:29
+    |
+320 |         eval_datediff(args, row, ctx, catalog, storage, clock)
+    |         -------------       ^^^ expected `&Vec<ContextTable>`, found `&[ContextTable]`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected reference `&Vec<ContextTable>`
+               found reference `&[ContextTable]`
+note: function defined here
+   --> crates\tsql_core\src\executor\evaluator.rs:580:4
+    |
+580 | fn eval_datediff(
+    |    ^^^^^^^^^^^^^
+581 |     args: &[Expr],
+582 |     row: &JoinedRow,
+    |     ---------------
+
+error[E0308]: mismatched types
+   --> crates\tsql_core\src\executor\evaluator.rs:342:26
+    |
+342 |         eval_upper(args, row, ctx, catalog, storage, clock)
+    |         ----------       ^^^ expected `&Vec<ContextTable>`, found `&[ContextTable]`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected reference `&Vec<ContextTable>`
+               found reference `&[ContextTable]`
+note: function defined here
+   --> crates\tsql_core\src\executor\evaluator.rs:629:4
+    |
+629 | fn eval_upper(
+    |    ^^^^^^^^^^
+630 |     args: &[Expr],
+631 |     row: &JoinedRow,
+    |     ---------------
+
+error[E0308]: mismatched types
+   --> crates\tsql_core\src\executor\evaluator.rs:344:26
+    |
+344 |         eval_lower(args, row, ctx, catalog, storage, clock)
+    |         ----------       ^^^ expected `&Vec<ContextTable>`, found `&[ContextTable]`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected reference `&Vec<ContextTable>`
+               found reference `&[ContextTable]`
+note: function defined here
+   --> crates\tsql_core\src\executor\evaluator.rs:651:4
+    |
+651 | fn eval_lower(
+    |    ^^^^^^^^^^
+652 |     args: &[Expr],
+653 |     row: &JoinedRow,
+    |     ---------------
+
+error[E0308]: mismatched types
+   --> crates\tsql_core\src\executor\evaluator.rs:346:25
+    |
+346 |         eval_trim(args, row, ctx, catalog, storage, clock, true, false)
+    |         ---------       ^^^ expected `&Vec<ContextTable>`, found `&[ContextTable]`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected reference `&Vec<ContextTable>`
+               found reference `&[ContextTable]`
+note: function defined here
+   --> crates\tsql_core\src\executor\evaluator.rs:673:4
+    |
+673 | fn eval_trim(
+    |    ^^^^^^^^^
+674 |     args: &[Expr],
+675 |     row: &JoinedRow,
+    |     ---------------
+
+error[E0308]: mismatched types
+   --> crates\tsql_core\src\executor\evaluator.rs:348:25
+    |
+348 |         eval_trim(args, row, ctx, catalog, storage, clock, false, true)
+    |         ---------       ^^^ expected `&Vec<ContextTable>`, found `&[ContextTable]`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected reference `&Vec<ContextTable>`
+               found reference `&[ContextTable]`
+note: function defined here
+   --> crates\tsql_core\src\executor\evaluator.rs:673:4
+    |
+673 | fn eval_trim(
+    |    ^^^^^^^^^
+674 |     args: &[Expr],
+675 |     row: &JoinedRow,
+    |     ---------------
+
+error[E0308]: mismatched types
+   --> crates\tsql_core\src\executor\evaluator.rs:350:25
+    |
+350 |         eval_trim(args, row, ctx, catalog, storage, clock, true, true)
+    |         ---------       ^^^ expected `&Vec<ContextTable>`, found `&[ContextTable]`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected reference `&Vec<ContextTable>`
+               found reference `&[ContextTable]`
+note: function defined here
+   --> crates\tsql_core\src\executor\evaluator.rs:673:4
+    |
+673 | fn eval_trim(
+    |    ^^^^^^^^^
+674 |     args: &[Expr],
+675 |     row: &JoinedRow,
+    |     ---------------
+
+error[E0308]: mismatched types
+   --> crates\tsql_core\src\executor\evaluator.rs:352:28
+    |
+352 |         eval_replace(args, row, ctx, catalog, storage, clock)
+    |         ------------       ^^^ expected `&Vec<ContextTable>`, found `&[ContextTable]`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected reference `&Vec<ContextTable>`
+               found reference `&[ContextTable]`
+note: function defined here
+   --> crates\tsql_core\src\executor\evaluator.rs:714:4
+    |
+714 | fn eval_replace(
+    |    ^^^^^^^^^^^^
+715 |     args: &[Expr],
+716 |     row: &JoinedRow,
+    |     ---------------
+
+error[E0308]: mismatched types
+   --> crates\tsql_core\src\executor\evaluator.rs:354:26
+    |
+354 |         eval_round(args, row, ctx, catalog, storage, clock)
+    |         ----------       ^^^ expected `&Vec<ContextTable>`, found `&[ContextTable]`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected reference `&Vec<ContextTable>`
+               found reference `&[ContextTable]`
+note: function defined here
+   --> crates\tsql_core\src\executor\evaluator.rs:739:4
+    |
+739 | fn eval_round(
+    |    ^^^^^^^^^^
+740 |     args: &[Expr],
+741 |     row: &JoinedRow,
+    |     ---------------
+
+error[E0308]: mismatched types
+   --> crates\tsql_core\src\executor\evaluator.rs:356:31
+    |
+356 |         eval_math_unary(args, row, ctx, catalog, storage, clock, "CEILING", |f: f64| f.ceil())
+    |         ---------------       ^^^ expected `&Vec<ContextTable>`, found `&[ContextTable]`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected reference `&Vec<ContextTable>`
+               found reference `&[ContextTable]`
+note: function defined here
+   --> crates\tsql_core\src\executor\evaluator.rs:784:4
+    |
+784 | fn eval_math_unary<F>(
+    |    ^^^^^^^^^^^^^^^
+785 |     args: &[Expr],
+786 |     row: &JoinedRow,
+    |     ---------------
+
+error[E0308]: mismatched types
+   --> crates\tsql_core\src\executor\evaluator.rs:358:31
+    |
+358 |         eval_math_unary(args, row, ctx, catalog, storage, clock, "FLOOR", |f: f64| f.floor())
+    |         ---------------       ^^^ expected `&Vec<ContextTable>`, found `&[ContextTable]`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected reference `&Vec<ContextTable>`
+               found reference `&[ContextTable]`
+note: function defined here
+   --> crates\tsql_core\src\executor\evaluator.rs:784:4
+    |
+784 | fn eval_math_unary<F>(
+    |    ^^^^^^^^^^^^^^^
+785 |     args: &[Expr],
+786 |     row: &JoinedRow,
+    |     ---------------
+
+error[E0308]: mismatched types
+   --> crates\tsql_core\src\executor\evaluator.rs:360:24
+    |
+360 |         eval_abs(args, row, ctx, catalog, storage, clock)
+    |         --------       ^^^ expected `&Vec<ContextTable>`, found `&[ContextTable]`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected reference `&Vec<ContextTable>`
+               found reference `&[ContextTable]`
+note: function defined here
+   --> crates\tsql_core\src\executor\evaluator.rs:809:4
+    |
+809 | fn eval_abs(
+    |    ^^^^^^^^
+810 |     args: &[Expr],
+811 |     row: &JoinedRow,
+    |     ---------------
+
+error[E0308]: mismatched types
+   --> crates\tsql_core\src\executor\evaluator.rs:362:30
+    |
+362 |         eval_charindex(args, row, ctx, catalog, storage, clock)
+    |         --------------       ^^^ expected `&Vec<ContextTable>`, found `&[ContextTable]`
+    |         |
+    |         arguments to this function are incorrect
+    |
+    = note: expected reference `&Vec<ContextTable>`
+               found reference `&[ContextTable]`
+note: function defined here
+   --> crates\tsql_core\src\executor\evaluator.rs:837:4
+    |
+837 | fn eval_charindex(
+    |    ^^^^^^^^^^^^^^
+838 |     args: &[Expr],
+839 |     row: &JoinedRow,
+    |     ---------------
+
+error[E0061]: this function takes 6 arguments but 4 arguments were supplied
+   --> crates\tsql_core\src\executor\evaluator.rs:861:18
+    |
+861 |         let sp = eval_expr(&args[2], row, ctx, clock)?;
+    |                  ^^^^^^^^^--------------------------- two arguments of type `&dyn Catalog` and `&dyn Storage` are missing
+    |
+note: function defined here
+   --> crates\tsql_core\src\executor\evaluator.rs:52:8
+    |
+ 52 | pub fn eval_expr(
+    |        ^^^^^^^^^
+...
+ 56 |     catalog: &dyn Catalog,
+    |     ---------------------
+ 57 |     storage: &dyn Storage,
+    |     ---------------------
+help: provide the arguments
+    |
+861 |         let sp = eval_expr(&args[2], row, ctx, /* &dyn Catalog */, /* &dyn Storage */, clock)?;
+    |                                                +++++++++++++++++++++++++++++++++++++++
+
+error[E0061]: this function takes 6 arguments but 4 arguments were supplied
+   --> crates\tsql_core\src\executor\mutation.rs:141:17
+    |
+141 |                 eval_predicate(selection, &joined, ctx, self.clock)?
+    |                 ^^^^^^^^^^^^^^------------------------------------- two arguments of type `&dyn Catalog` and `&dyn Storage` are missing
+    |
+note: function defined here
+   --> crates\tsql_core\src\executor\evaluator.rs:138:15
+    |
+138 | pub(crate) fn eval_predicate(
+    |               ^^^^^^^^^^^^^^
+...
+142 |     catalog: &dyn Catalog,
+    |     ---------------------
+143 |     storage: &dyn Storage,
+    |     ---------------------
+help: provide the arguments
+    |
+141 |                 eval_predicate(selection, &joined, ctx, /* &dyn Catalog */, /* &dyn Storage */, self.clock)?
+    |                                                         +++++++++++++++++++++++++++++++++++++++
+
+error[E0308]: mismatched types
+  --> crates\tsql_core\src\executor\query.rs:37:20
+   |
+37 |             if let Some(joins) = stmt.joins {
+   |                    ^^^^^^^^^^^   ---------- this expression has type `Vec<ast::JoinClause>`
+   |                    |
+   |                    expected `Vec<JoinClause>`, found `Option<_>`
+   |
+   = note: expected struct `Vec<ast::JoinClause>`
+                found enum `std::option::Option<_>`
+
+error[E0308]: mismatched types
+  --> crates\tsql_core\src\executor\query.rs:68:29
+   |
+68 |         let result = if let Some(group_by) = stmt.group_by {
+   |                             ^^^^^^^^^^^^^^   ------------- this expression has type `Vec<ast::Expr>`
+   |                             |
+   |                             expected `Vec<Expr>`, found `Option<_>`
+   |
+   = note: expected struct `Vec<ast::Expr>`
+                found enum `std::option::Option<_>`
+
+error[E0308]: mismatched types
+  --> crates\tsql_core\src\executor\query.rs:79:16
+   |
+79 |         if let Some(order_by) = stmt.order_by {
+   |                ^^^^^^^^^^^^^^   ------------- this expression has type `Vec<ast::OrderByExpr>`
+   |                |
+   |                expected `Vec<OrderByExpr>`, found `Option<_>`
+   |
+   = note: expected struct `Vec<ast::OrderByExpr>`
+                found enum `std::option::Option<_>`
+
+error[E0609]: no field `offset` on type `ast::SelectStmt`
+  --> crates\tsql_core\src\executor\query.rs:94:36
+   |
+94 |         if let Some(offset) = stmt.offset {
+   |                                    ^^^^^^ unknown field
+   |
+   = note: available fields are: `from`, `joins`, `projection`, `distinct`, `top` ... and 4 others
+
+error[E0599]: no method named `ok_or_else` found for enum `Result<T, E>` in the current scope
+   --> crates\tsql_core\src\executor\query.rs:199:14
+    |
+196 |           let stored_rows = self
+    |  ___________________________-
+197 | |             .storage
+198 | |             .get_rows(bound.table.id)
+199 | |             .ok_or_else(|| DbError::Storage("table storage not found".into()))?;
+    | |_____________-^^^^^^^^^^
+    |
+help: there is a method `or_else` with a similar name
+    |
+199 -             .ok_or_else(|| DbError::Storage("table storage not found".into()))?;
+199 +             .or_else(|| DbError::Storage("table storage not found".into()))?;
+    |
+
+error[E0282]: type annotations needed
+   --> crates\tsql_core\src\executor\query.rs:204:19
+    |
+204 |             .map(|row| {
+    |                   ^^^
+...
+208 |                     row: Some(row.clone()),
+    |                               --- type must be known at this point
+    |
+help: consider giving this closure parameter an explicit type
+    |
+204 |             .map(|row: /* Type */| {
+    |                      ++++++++++++
+
+error[E0277]: the `?` operator can only be applied to values that implement `Try`
+  --> crates\tsql_core\src\executor\schema.rs:50:9
+   |
+50 |         self.storage.ensure_table(table_id)?;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the `?` operator cannot be applied to type `()`
+   |
+   = help: the trait `Try` is not implemented for `()`
+
+error[E0277]: the `?` operator can only be applied to values that implement `Try`
+  --> crates\tsql_core\src\executor\schema.rs:57:9
+   |
+57 |         self.storage.remove_table(table_id)?;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the `?` operator cannot be applied to type `()`
+   |
+   = help: the trait `Try` is not implemented for `()`
+
+error[E0308]: mismatched types
+   --> crates\tsql_core\src\executor\schema.rs:101:24
+    |
+101 |                 if let Some(rows) = self.storage.get_rows(table_id) {
+    |                        ^^^^^^^^^^   ------------------------------- this expression has type `Result<Vec<StoredRow>, DbError>`
+    |                        |
+    |                        expected `Result<Vec<StoredRow>, DbError>`, found `Option<_>`
+    |
+    = note: expected enum `Result<Vec<StoredRow>, DbError>`
+               found enum `std::option::Option<_>`
+
+error[E0308]: mismatched types
+   --> crates\tsql_core\src\executor\schema.rs:119:24
+    |
+119 |                 if let Some(rows) = self.storage.get_rows(table_id) {
+    |                        ^^^^^^^^^^   ------------------------------- this expression has type `Result<Vec<StoredRow>, DbError>`
+    |                        |
+    |                        expected `Result<Vec<StoredRow>, DbError>`, found `Option<_>`
+    |
+    = note: expected enum `Result<Vec<StoredRow>, DbError>`
+               found enum `std::option::Option<_>`
+
+warning: unused variable: `ctx`
+   --> crates\tsql_core\src\executor\evaluator.rs:251:5
+    |
+251 |     ctx: &ExecutionContext,
+    |     ^^^ help: if this is intentional, prefix it with an underscore: `_ctx`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `stmt`
+   --> crates\tsql_core\src\executor\script.rs:157:33
+    |
+157 |              Statement::WithCte(stmt) => {
+    |                                 ^^^^ help: if this is intentional, prefix it with an underscore: `_stmt`
+
+warning: unused variable: `left`
+   --> crates\tsql_core\src\executor\script.rs:165:27
+    |
+165 |                     (Some(left), Some(right)) => {
+    |                           ^^^^ help: if this is intentional, prefix it with an underscore: `_left`
+
+warning: unused variable: `right`
+   --> crates\tsql_core\src\executor\script.rs:165:39
+    |
+165 |                     (Some(left), Some(right)) => {
+    |                                       ^^^^^ help: if this is intentional, prefix it with an underscore: `_right`
+
+Some errors have detailed explanations: E0027, E0061, E0277, E0282, E0308, E0425, E0599, E0609.
+For more information about an error, try `rustc --explain E0027`.
+warning: `tsql_core` (lib) generated 7 warnings
+error: could not compile `tsql_core` (lib) due to 38 previous errors; 7 warnings emitted

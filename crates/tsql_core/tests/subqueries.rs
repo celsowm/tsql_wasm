@@ -292,7 +292,6 @@ fn test_subquery_with_equals() {
 // during projection evaluation, which is not yet implemented.
 // TODO: implement outer row context during flat/grouped projection
 #[test]
-#[ignore]
 fn test_subquery_in_projection_with_correlated() {
     let mut engine = setup_engine();
     let result = query(
@@ -356,4 +355,23 @@ fn test_not_exists_non_correlated_false() {
         "SELECT name FROM departments WHERE NOT EXISTS (SELECT 1 FROM employees WHERE salary > 90000) ORDER BY name",
     );
     assert_eq!(result.rows.len(), 0);
+}
+
+#[test]
+fn test_avg_is_numeric() {
+    let mut engine = setup_engine();
+    // AVG(salary) = (100000 + 90000 + 80000 + 85000 + 70000) / 5 = 425000 / 5 = 85000
+    let result = query(&mut engine, "SELECT AVG(salary) as avg_sal FROM employees");
+    assert_eq!(result.rows.len(), 1);
+    
+    // Internal type should now be Decimal, which JsonValue formats as String but with fixed decimals if scale > 0.
+    // However, our AVG use Decimal(raw, 6).
+    // Let's check the value. 
+    match &result.rows[0][0] {
+        JsonValue::String(s) => {
+            // Should be "85000.000000" because of Decimal(..., 6)
+            assert!(s.starts_with("85000.000000"));
+        },
+        _ => panic!("Expected string representation of decimal, got {:?}", result.rows[0][0]),
+    }
 }

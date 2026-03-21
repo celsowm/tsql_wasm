@@ -1,4 +1,5 @@
 pub mod clock;
+pub mod context;
 pub mod engine;
 pub(crate) mod evaluator;
 pub(crate) mod model;
@@ -6,5 +7,6 @@ pub(crate) mod mutation;
 pub(crate) mod query;
 pub mod result;
 pub(crate) mod schema;
+pub(crate) mod script;
 pub(crate) mod type_mapping;
 pub(crate) mod value_ops;

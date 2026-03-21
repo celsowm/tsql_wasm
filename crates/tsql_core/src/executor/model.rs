@@ -8,13 +8,13 @@ pub(crate) struct BoundTable {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ContextTable {
-    pub(crate) table: TableDef,
-    pub(crate) alias: String,
-    pub(crate) row: Option<StoredRow>,
+pub struct ContextTable {
+    pub table: TableDef,
+    pub alias: String,
+    pub row: Option<StoredRow>,
 }
 
-pub(crate) type JoinedRow = Vec<ContextTable>;
+pub type JoinedRow = Vec<ContextTable>;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Group {

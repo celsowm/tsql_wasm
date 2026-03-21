@@ -1,0 +1,152 @@
+    Checking tsql_core v0.1.0 (C:\Users\celso\Documents\projetos\tsql_wasm\crates\tsql_core)
+warning: unused imports: `DataType` and `Value`
+ --> crates\tsql_core\src\executor\engine.rs:5:20
+  |
+5 | use crate::types::{DataType, Value};
+  |                    ^^^^^^^^  ^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `SetOpKind`
+ --> crates\tsql_core\src\executor\query.rs:3:70
+  |
+3 |     Expr, JoinClause, JoinType, OrderByExpr, SelectItem, SelectStmt, SetOpKind, TopSpec,
+  |                                                                      ^^^^^^^^^
+
+warning: unused import: `JsonValue`
+ --> crates\tsql_core\src\executor\result.rs:3:20
+  |
+3 | use crate::types::{JsonValue, Value};
+  |                    ^^^^^^^^^
+
+warning: unused variable: `ctx`
+   --> crates\tsql_core\src\executor\evaluator.rs:250:5
+    |
+250 |     ctx: &ExecutionContext,
+    |     ^^^ help: if this is intentional, prefix it with an underscore: `_ctx`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `stmt`
+   --> crates\tsql_core\src\executor\script.rs:157:33
+    |
+157 |              Statement::WithCte(stmt) => {
+    |                                 ^^^^ help: if this is intentional, prefix it with an underscore: `_stmt`
+
+warning: unused variable: `left`
+   --> crates\tsql_core\src\executor\script.rs:165:27
+    |
+165 |                     (Some(left), Some(right)) => {
+    |                           ^^^^ help: if this is intentional, prefix it with an underscore: `_left`
+
+warning: unused variable: `right`
+   --> crates\tsql_core\src\executor\script.rs:165:39
+    |
+165 |                     (Some(left), Some(right)) => {
+    |                                       ^^^^^ help: if this is intentional, prefix it with an underscore: `_right`
+
+warning: type `ContextTable` is more private than the item `ExecutionContext::outer_row`
+  --> crates\tsql_core\src\executor\context.rs:8:5
+   |
+ 8 |     pub outer_row: Option<JoinedRow>,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ field `ExecutionContext::outer_row` is reachable at visibility `pub`
+   |
+note: but type `ContextTable` is only usable at visibility `pub(crate)`
+  --> crates\tsql_core\src\executor\model.rs:11:1
+   |
+11 | pub(crate) struct ContextTable {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: `#[warn(private_interfaces)]` on by default
+
+warning: type `ContextTable` is more private than the item `ExecutionContext::<'a>::with_outer_row`
+  --> crates\tsql_core\src\executor\context.rs:29:5
+   |
+29 |     pub fn with_outer_row(&mut self, row: JoinedRow) -> ExecutionContext {
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method `ExecutionContext::<'a>::with_outer_row` is reachable at visibility `pub`
+   |
+note: but type `ContextTable` is only usable at visibility `pub(crate)`
+  --> crates\tsql_core\src\executor\model.rs:11:1
+   |
+11 | pub(crate) struct ContextTable {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `execute_set_op` is never used
+  --> crates\tsql_core\src\executor\engine.rs:79:15
+   |
+79 | pub(crate) fn execute_set_op(
+   |               ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `contains_aggregate` is never used
+   --> crates\tsql_core\src\executor\evaluator.rs:154:15
+    |
+154 | pub(crate) fn contains_aggregate(expr: &Expr) -> bool {
+    |               ^^^^^^^^^^^^^^^^^^
+
+warning: function `json_value_to_value` is never used
+    --> crates\tsql_core\src\executor\evaluator.rs:1450:4
+     |
+1450 | fn json_value_to_value(jv: &crate::types::JsonValue) -> Value {
+     |    ^^^^^^^^^^^^^^^^^^^
+
+warning: struct `Group` is never constructed
+  --> crates\tsql_core\src\executor\model.rs:20:19
+   |
+20 | pub(crate) struct Group {
+   |                   ^^^^^
+
+warning: methods `execute_insert`, `execute_update`, and `execute_delete` are never used
+   --> crates\tsql_core\src\executor\mutation.rs:20:19
+    |
+ 19 | impl<'a> MutationExecutor<'a> {
+    | ----------------------------- methods in this implementation
+ 20 |     pub(crate) fn execute_insert(&mut self, stmt: InsertStmt) -> Result<(), DbError> {
+    |                   ^^^^^^^^^^^^^^
+...
+ 61 |     pub(crate) fn execute_update(&mut self, stmt: UpdateStmt) -> Result<(), DbError> {
+    |                   ^^^^^^^^^^^^^^
+...
+121 |     pub(crate) fn execute_delete(&mut self, stmt: DeleteStmt) -> Result<(), DbError> {
+    |                   ^^^^^^^^^^^^^^
+
+warning: method `compare_joined_rows` is never used
+   --> crates\tsql_core\src\executor\query.rs:259:8
+    |
+ 27 | impl<'a> QueryExecutor<'a> {
+    | -------------------------- method in this implementation
+...
+259 |     fn compare_joined_rows(
+    |        ^^^^^^^^^^^^^^^^^^^
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+  --> crates\tsql_core\src\executor\context.rs:21:21
+   |
+21 |     pub fn subquery(&mut self) -> ExecutionContext {
+   |                     ^^^^^^^^^     ^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+   |                     |
+   |                     the lifetime is elided here
+   |
+   = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+   = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+   |
+21 |     pub fn subquery(&mut self) -> ExecutionContext<'_> {
+   |                                                   ++++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+  --> crates\tsql_core\src\executor\context.rs:29:27
+   |
+29 |     pub fn with_outer_row(&mut self, row: JoinedRow) -> ExecutionContext {
+   |                           ^^^^^^^^^                     ^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+   |                           |
+   |                           the lifetime is elided here
+   |
+   = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+   |
+29 |     pub fn with_outer_row(&mut self, row: JoinedRow) -> ExecutionContext<'_> {
+   |                                                                         ++++
+
+warning: `tsql_core` (lib) generated 17 warnings (run `cargo fix --lib -p tsql_core` to apply 9 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.02s

@@ -1,11 +1,11 @@
 use serde::Serialize;
 
-use crate::types::JsonValue;
+use crate::types::Value;
 
 #[derive(Debug, Clone)]
 pub struct QueryResult {
     pub columns: Vec<String>,
-    pub rows: Vec<Vec<JsonValue>>,
+    pub rows: Vec<Vec<Value>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -23,7 +23,7 @@ impl QueryResult {
             .map(|r| {
                 let values = r
                     .iter()
-                    .map(|v| serde_json::to_value(v).unwrap())
+                    .map(|v| serde_json::to_value(v.to_json()).unwrap())
                     .collect::<Vec<_>>();
                 serde_json::Value::Array(values)
             })
