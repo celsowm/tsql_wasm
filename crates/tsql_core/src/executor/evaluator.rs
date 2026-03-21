@@ -3,7 +3,9 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use crate::ast::{BinaryOp, Expr, UnaryOp};
+use crate::catalog::Catalog;
 use crate::error::DbError;
+use crate::storage::InMemoryStorage;
 use crate::types::{DataType, Value};
 
 use super::clock::Clock;
@@ -15,7 +17,10 @@ pub type Variables = HashMap<String, (DataType, Value)>;
 
 thread_local! {
     static EVAL_VARIABLES: RefCell<Variables> = RefCell::new(HashMap::new());
-    static EVAL_DEPTH: RefCell<usize> = RefCell::new(0);
+    static EVAL_DEPTH: RefCell<usize> = const { RefCell::new(0) };
+    static SUBQUERY_CATALOG: RefCell<Option<*const Catalog>> = const { RefCell::new(None) };
+    static SUBQUERY_STORAGE: RefCell<Option<*const InMemoryStorage>> = const { RefCell::new(None) };
+    static SUBQUERY_OUTER_ROW: RefCell<Option<JoinedRow>> = const { RefCell::new(None) };
 }
 
 pub fn set_eval_variables(vars: &Variables) {
@@ -39,6 +44,48 @@ pub fn clear_eval_variables() {
             });
         }
     });
+}
+
+pub fn set_subquery_context(catalog: &Catalog, storage: &InMemoryStorage) {
+    SUBQUERY_CATALOG.with(|c| {
+        *c.borrow_mut() = Some(catalog as *const Catalog);
+    });
+    SUBQUERY_STORAGE.with(|s| {
+        *s.borrow_mut() = Some(storage as *const InMemoryStorage);
+    });
+}
+
+
+
+pub fn save_subquery_context() -> (Option<*const Catalog>, Option<*const InMemoryStorage>) {
+    let cat = SUBQUERY_CATALOG.with(|c| *c.borrow());
+    let stor = SUBQUERY_STORAGE.with(|s| *s.borrow());
+    (cat, stor)
+}
+
+pub fn restore_subquery_context(cat: Option<*const Catalog>, stor: Option<*const InMemoryStorage>) {
+    SUBQUERY_CATALOG.with(|c| {
+        *c.borrow_mut() = cat;
+    });
+    SUBQUERY_STORAGE.with(|s| {
+        *s.borrow_mut() = stor;
+    });
+}
+
+pub fn set_outer_row(row: &JoinedRow) {
+    SUBQUERY_OUTER_ROW.with(|r| {
+        *r.borrow_mut() = Some(row.clone());
+    });
+}
+
+pub fn clear_outer_row() {
+    SUBQUERY_OUTER_ROW.with(|r| {
+        *r.borrow_mut() = None;
+    });
+}
+
+pub fn get_outer_row() -> Option<JoinedRow> {
+    SUBQUERY_OUTER_ROW.with(|r| r.borrow().clone())
 }
 
 pub(crate) fn eval_expr_to_type_constant(
@@ -128,6 +175,16 @@ pub(crate) fn eval_expr(expr: &Expr, row: &JoinedRow, clock: &dyn Clock) -> Resu
             pattern,
             negated,
         } => eval_like(like_expr, pattern, *negated, row, clock),
+        Expr::Subquery(stmt) => {
+            
+            eval_scalar_subquery(stmt, row, clock)
+        }
+        Expr::Exists { subquery, negated } => eval_exists(subquery, *negated, row, clock),
+        Expr::InSubquery {
+            expr: in_expr,
+            subquery,
+            negated,
+        } => eval_in_subquery(in_expr, subquery, *negated, row, clock),
     }
 }
 
@@ -137,11 +194,12 @@ pub(crate) fn eval_predicate(
     clock: &dyn Clock,
 ) -> Result<bool, DbError> {
     let value = eval_expr(expr, row, clock)?;
-    Ok(match value {
-        Value::Bit(v) => v,
+    let result = match &value {
+        Value::Bit(v) => *v,
         Value::Null => false,
-        other => truthy(&other),
-    })
+        other => truthy(other),
+    };
+    Ok(result)
 }
 
 pub(crate) fn contains_aggregate(expr: &Expr) -> bool {
@@ -178,6 +236,9 @@ pub(crate) fn contains_aggregate(expr: &Expr) -> bool {
         Expr::Like {
             expr: e, pattern, ..
         } => contains_aggregate(e) || contains_aggregate(pattern),
+        Expr::Subquery(_) => false,
+        Expr::Exists { .. } => false,
+        Expr::InSubquery { expr: e, .. } => contains_aggregate(e),
         _ => false,
     }
 }
@@ -197,9 +258,10 @@ fn resolve_identifier(row: &JoinedRow, name: &str) -> Result<Value, DbError> {
         });
     }
 
-    let mut found: Option<Value> = None;
-    for binding in row {
-        if let Some(idx) = binding
+    // First pass: find all bindings that have this column
+    let mut matches: Vec<(usize, Value)> = Vec::new();
+    for (binding_idx, binding) in row.iter().enumerate() {
+        if let Some(col_idx) = binding
             .table
             .columns
             .iter()
@@ -208,15 +270,28 @@ fn resolve_identifier(row: &JoinedRow, name: &str) -> Result<Value, DbError> {
             let value = binding
                 .row
                 .as_ref()
-                .map(|r| r.values[idx].clone())
+                .map(|r| r.values[col_idx].clone())
                 .unwrap_or(Value::Null);
-            if found.is_some() {
-                return Err(DbError::Semantic(format!("ambiguous column '{}'", name)));
-            }
-            found = Some(value);
+            matches.push((binding_idx, value));
         }
     }
-    found.ok_or_else(|| DbError::Semantic(format!("column '{}' not found", name)))
+
+    match matches.len() {
+        0 => Err(DbError::Semantic(format!("column '{}' not found", name))),
+        1 => Ok(matches[0].1.clone()),
+        _ => {
+            // Multiple matches: prefer the earliest binding (inner tables first,
+            // outer row appended last by build_joined_rows)
+            // If the first binding has a non-null row, use it
+            for (_, value) in &matches {
+                if !value.is_null() {
+                    return Ok(value.clone());
+                }
+            }
+            // All null: return the first
+            Ok(matches[0].1.clone())
+        }
+    }
 }
 
 fn resolve_qualified_identifier(row: &JoinedRow, parts: &[String]) -> Result<Value, DbError> {
@@ -645,7 +720,7 @@ fn eval_replace(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Val
 }
 
 fn eval_round(args: &[Expr], row: &JoinedRow, clock: &dyn Clock) -> Result<Value, DbError> {
-    if args.len() < 1 || args.len() > 2 {
+    if args.is_empty() || args.len() > 2 {
         return Err(DbError::Execution("ROUND expects 1 or 2 arguments".into()));
     }
     let val = eval_expr(&args[0], row, clock)?;
@@ -1213,4 +1288,142 @@ where
         return Value::Null;
     }
     Value::Bit(pred(compare_values(&lv, &rv)))
+}
+
+// ─── Subquery execution ──────────────────────────────────────────────────
+
+fn with_subquery_context<F, R>(f: F) -> Result<R, DbError>
+where
+    F: FnOnce(&Catalog, &InMemoryStorage) -> Result<R, DbError>,
+{
+    let catalog_ptr = SUBQUERY_CATALOG.with(|c| *c.borrow());
+    let storage_ptr = SUBQUERY_STORAGE.with(|s| *s.borrow());
+    match (catalog_ptr, storage_ptr) {
+        (Some(cat), Some(stor)) => {
+            let catalog = unsafe { &*cat };
+            let storage = unsafe { &*stor };
+            f(catalog, storage)
+        }
+        _ => Err(DbError::Execution(
+            "subquery execution requires catalog and storage context".into(),
+        )),
+    }
+}
+
+fn execute_subquery_select(
+    stmt: &crate::ast::SelectStmt,
+    clock: &dyn Clock,
+) -> Result<crate::executor::result::QueryResult, DbError> {
+    // Save the current subquery context (set by outer query)
+    let (saved_cat, saved_stor) = save_subquery_context();
+
+    let result = with_subquery_context(|catalog, storage| {
+        let qe = super::query::QueryExecutor {
+            catalog,
+            storage,
+            clock,
+        };
+
+        // The outer row is already set by the caller (outer query's WHERE evaluation).
+        // execute_select will call build_joined_rows which checks get_outer_row()
+        // and extends rows with outer bindings for correlated subqueries.
+        qe.execute_select(stmt.clone())
+    });
+
+    // Restore the outer query's subquery context
+    restore_subquery_context(saved_cat, saved_stor);
+
+    result
+}
+
+fn eval_scalar_subquery(
+    stmt: &crate::ast::SelectStmt,
+    _row: &JoinedRow,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    let query_result = execute_subquery_select(stmt, clock)?;
+
+    if query_result.rows.is_empty() {
+        return Ok(Value::Null);
+    }
+
+    let first_row = &query_result.rows[0];
+    if first_row.is_empty() {
+        return Ok(Value::Null);
+    }
+
+    let val = json_value_to_value(&first_row[0]);
+    Ok(val)
+}
+
+fn eval_exists(
+    stmt: &crate::ast::SelectStmt,
+    negated: bool,
+    _row: &JoinedRow,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    let query_result = execute_subquery_select(stmt, clock)?;
+    let exists = !query_result.rows.is_empty();
+    Ok(Value::Bit(if negated { !exists } else { exists }))
+}
+
+fn eval_in_subquery(
+    in_expr: &Expr,
+    stmt: &crate::ast::SelectStmt,
+    negated: bool,
+    row: &JoinedRow,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    let val = eval_expr(in_expr, row, clock)?;
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let query_result = execute_subquery_select(stmt, clock)?;
+
+    if query_result.rows.is_empty() {
+        return Ok(Value::Bit(negated));
+    }
+
+    let mut found = false;
+    let mut has_null = false;
+
+    for row_data in &query_result.rows {
+        if row_data.is_empty() {
+            continue;
+        }
+        let subq_val = json_value_to_value(&row_data[0]);
+
+        if subq_val.is_null() {
+            has_null = true;
+            continue;
+        }
+
+        if compare_bool(val.clone(), subq_val, |o| o == Ordering::Equal) == Value::Bit(true) {
+            found = true;
+            break;
+        }
+    }
+
+    // SQL Server NOT IN semantics: if any value is NULL and no match found, result is NULL
+    if !found && has_null && !negated {
+        return Ok(Value::Null);
+    }
+
+    Ok(Value::Bit(if negated { !found } else { found }))
+}
+
+fn json_value_to_value(jv: &crate::types::JsonValue) -> Value {
+    match jv {
+        crate::types::JsonValue::Null => Value::Null,
+        crate::types::JsonValue::Bool(b) => Value::Bit(*b),
+        crate::types::JsonValue::Number(n) => {
+            if *n >= i32::MIN as i64 && *n <= i32::MAX as i64 {
+                Value::Int(*n as i32)
+            } else {
+                Value::BigInt(*n)
+            }
+        }
+        crate::types::JsonValue::String(s) => Value::NVarChar(s.clone()),
+    }
 }

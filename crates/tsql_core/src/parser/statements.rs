@@ -1,11 +1,177 @@
 use crate::ast::*;
 use crate::error::DbError;
 
-use super::expression::parse_expr;
+use super::expression::{parse_expr, parse_expr_with_subqueries};
 use super::utils::{
     find_keyword_top_level, parse_object_name, parse_table_ref, split_csv_top_level,
     tokenize_preserving_parens,
 };
+
+use std::collections::HashMap;
+
+// ─── Subquery extraction ────────────────────────────────────────────────
+
+pub(crate) fn extract_subqueries(input: &str) -> (String, HashMap<String, SelectStmt>) {
+    let mut map = HashMap::new();
+    let mut counter = 0usize;
+    let result = input.to_string();
+    let upper = result.to_uppercase();
+    let chars: Vec<char> = result.chars().collect();
+    let upper_chars: Vec<char> = upper.chars().collect();
+
+    // First pass: handle EXISTS (SELECT ...) and NOT EXISTS (SELECT ...)
+    let mut i = 0;
+    while i < chars.len() {
+        // Check for EXISTS (
+        if i + 6 <= chars.len() && upper_chars[i..i + 6] == ['E', 'X', 'I', 'S', 'T', 'S'] {
+            let prev_ok = i == 0 || !chars[i - 1].is_ascii_alphanumeric();
+            let next_ok = i + 6 >= chars.len() || !chars[i + 6].is_ascii_alphanumeric();
+            if prev_ok && next_ok {
+                let after_exists = result[i + 6..].trim_start();
+                if after_exists.starts_with('(') {
+                    let start_in_result = result.len() - after_exists.len();
+                    if let Some((sql, _end)) = extract_paren_content_from(&chars, start_in_result) {
+                        let upper_sql = sql.to_uppercase().trim().to_string();
+                        if upper_sql.starts_with("SELECT") {
+                            let placeholder = format!("__SUBQ_{}__", counter);
+                            counter += 1;
+                            if let Ok(Statement::Select(sel)) = parse_select(&sql) {
+                                map.insert(placeholder.clone(), sel);
+                                // Rebuild with EXISTS placeholder
+                                let before: String = chars[..i].iter().collect();
+                                let after_exists_str: String =
+                                    chars[start_in_result..].iter().collect();
+                                if let Some(paren_end) = find_matching_paren(&after_exists_str) {
+                                    let new_expr = format!(
+                                        "{}EXISTS {}{}",
+                                        before,
+                                        placeholder,
+                                        &after_exists_str[paren_end + 1..]
+                                    );
+                                    return finalize_subquery_extraction(&new_expr, map, counter);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+
+    // Second pass: replace remaining (SELECT ...) patterns
+    finalize_subquery_extraction(&result, map, counter)
+}
+
+fn find_matching_paren(input: &str) -> Option<usize> {
+    let chars: Vec<char> = input.chars().collect();
+    if chars.is_empty() || chars[0] != '(' {
+        return None;
+    }
+    let mut depth = 1;
+    let mut in_string = false;
+    for i in 1..chars.len() {
+        match chars[i] {
+            '\'' => in_string = !in_string,
+            '(' if !in_string => depth += 1,
+            ')' if !in_string => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn finalize_subquery_extraction(
+    input: &str,
+    mut map: HashMap<String, SelectStmt>,
+    mut counter: usize,
+) -> (String, HashMap<String, SelectStmt>) {
+    let mut result = input.to_string();
+
+    loop {
+        let chars: Vec<char> = result.chars().collect();
+        let mut replaced = false;
+        let mut i = 0;
+
+        while i < chars.len() {
+            if chars[i] == '(' {
+                if let Some((sql, end)) = extract_paren_content_from(&chars, i) {
+                    let upper_sql = sql.to_uppercase().trim().to_string();
+                    if upper_sql.starts_with("SELECT") {
+                        let placeholder = format!("__SUBQ_{}__", counter);
+                        counter += 1;
+                        if let Ok(Statement::Select(sel)) = parse_select(&sql) {
+                            map.insert(placeholder.clone(), sel);
+                            let before: String = chars[..i].iter().collect();
+                            let after: String = chars[end..].iter().collect();
+                            result = format!("{}({}){}", before, placeholder, after);
+                            replaced = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            i += 1;
+        }
+
+        if !replaced {
+            break;
+        }
+    }
+
+    (result, map)
+}
+
+fn extract_paren_content_from(chars: &[char], start: usize) -> Option<(String, usize)> {
+    if start >= chars.len() || chars[start] != '(' {
+        return None;
+    }
+    let mut depth = 1usize;
+    let mut in_string = false;
+    let mut i = start + 1;
+
+    while i < chars.len() {
+        match chars[i] {
+            '\'' => in_string = !in_string,
+            '(' if !in_string => depth += 1,
+            ')' if !in_string => {
+                depth -= 1;
+                if depth == 0 {
+                    let inner: String = chars[start + 1..i].iter().collect();
+                    return Some((inner, i + 1));
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+pub(crate) fn apply_subquery_map(expr: &mut Expr, _map: &HashMap<String, SelectStmt>) {
+    // The subquery_map is already applied during parsing via parse_expr_with_subqueries.
+    // This function is a placeholder for any post-processing if needed.
+    match expr {
+        Expr::InList { list, .. } => {
+            for item in list.iter_mut() {
+                apply_subquery_map(item, _map);
+            }
+        }
+        Expr::Binary { left, right, .. } => {
+            apply_subquery_map(left, _map);
+            apply_subquery_map(right, _map);
+        }
+        Expr::Unary { expr: inner, .. } => {
+            apply_subquery_map(inner, _map);
+        }
+        _ => {}
+    }
+}
 
 // ─── DDL ────────────────────────────────────────────────────────────────
 
@@ -302,7 +468,9 @@ pub(crate) fn parse_set(sql: &str) -> Result<Statement, DbError> {
         .ok_or_else(|| DbError::Parse("SET requires '=' assignment".into()))?;
     let var_name = after_set[..eq_pos].trim().to_string();
     let expr_str = after_set[eq_pos + 1..].trim();
-    let expr = super::parse_expr(expr_str)?;
+    let (processed, subquery_map) = extract_subqueries(expr_str);
+    let mut expr = parse_expr_with_subqueries(&processed, &subquery_map)?;
+    apply_subquery_map(&mut expr, &subquery_map);
     Ok(Statement::Set(crate::ast::SetStmt {
         name: var_name,
         expr,
@@ -646,7 +814,17 @@ fn parse_where_clause(tail: &str, bounds: &SelectClauseBounds) -> Result<Option<
     };
     let end = bounds.next_after(widx);
     let end = if end == 0 { tail.len() } else { end };
-    Ok(Some(parse_expr(tail[widx + "WHERE".len()..end].trim())?))
+    let expr_str = tail[widx + "WHERE".len()..end].trim();
+    let (processed, subquery_map) = extract_subqueries(expr_str);
+    eprintln!(
+        "DEBUG WHERE: input='{}' processed='{}' map={:?}",
+        expr_str,
+        processed,
+        subquery_map.keys().collect::<Vec<_>>()
+    );
+    let mut expr = parse_expr_with_subqueries(&processed, &subquery_map)?;
+    apply_subquery_map(&mut expr, &subquery_map);
+    Ok(Some(expr))
 }
 
 fn parse_group_by_clause(tail: &str, bounds: &SelectClauseBounds) -> Result<Vec<Expr>, DbError> {
@@ -666,7 +844,11 @@ fn parse_having_clause(tail: &str, bounds: &SelectClauseBounds) -> Result<Option
         return Ok(None);
     };
     let end = bounds.order_idx.unwrap_or(tail.len());
-    Ok(Some(parse_expr(tail[hidx + "HAVING".len()..end].trim())?))
+    let expr_str = tail[hidx + "HAVING".len()..end].trim();
+    let (processed, subquery_map) = extract_subqueries(expr_str);
+    let mut expr = parse_expr_with_subqueries(&processed, &subquery_map)?;
+    apply_subquery_map(&mut expr, &subquery_map);
+    Ok(Some(expr))
 }
 
 fn parse_order_by_clause(
@@ -910,7 +1092,10 @@ fn parse_from_source(input: &str) -> Result<(TableRef, Vec<JoinClause>), DbError
         let next_join = find_next_join_top_level(after_on)
             .map(|(i, _, _)| i)
             .unwrap_or(after_on.len());
-        let on_expr = parse_expr(after_on[..next_join].trim())?;
+        let on_expr_str = after_on[..next_join].trim();
+        let (processed_on, on_subquery_map) = extract_subqueries(on_expr_str);
+        let mut on_expr = parse_expr_with_subqueries(&processed_on, &on_subquery_map)?;
+        apply_subquery_map(&mut on_expr, &on_subquery_map);
 
         joins.push(JoinClause {
             join_type,
@@ -1000,7 +1185,10 @@ fn parse_select_item(input: &str) -> Result<SelectItem, DbError> {
     }
 
     if let Some(idx) = find_keyword_top_level(input, "AS") {
-        let expr = parse_expr(input[..idx].trim())?;
+        let expr_raw = input[..idx].trim();
+        let (processed, subquery_map) = extract_subqueries(expr_raw);
+        let mut expr = parse_expr_with_subqueries(&processed, &subquery_map)?;
+        apply_subquery_map(&mut expr, &subquery_map);
         let alias = input[idx + "AS".len()..]
             .trim()
             .trim_matches('[')
@@ -1012,19 +1200,23 @@ fn parse_select_item(input: &str) -> Result<SelectItem, DbError> {
         });
     }
 
-    Ok(SelectItem {
-        expr: parse_expr(input)?,
-        alias: None,
-    })
+    let (processed, subquery_map) = extract_subqueries(input);
+    let mut expr = parse_expr_with_subqueries(&processed, &subquery_map)?;
+    apply_subquery_map(&mut expr, &subquery_map);
+    Ok(SelectItem { expr, alias: None })
 }
 
 fn parse_assignment(input: &str) -> Result<Assignment, DbError> {
     let eq_idx = input
         .find('=')
         .ok_or_else(|| DbError::Parse("SET assignment missing '='".into()))?;
+    let expr_raw = input[eq_idx + 1..].trim();
+    let (processed, subquery_map) = extract_subqueries(expr_raw);
+    let mut expr = parse_expr_with_subqueries(&processed, &subquery_map)?;
+    apply_subquery_map(&mut expr, &subquery_map);
     Ok(Assignment {
         column: input[..eq_idx].trim().to_string(),
-        expr: parse_expr(input[eq_idx + 1..].trim())?,
+        expr,
     })
 }
 
@@ -1046,10 +1238,10 @@ fn parse_order_by(input: &str) -> Result<Vec<OrderByExpr>, DbError> {
             parts.join(" ")
         };
 
-        out.push(OrderByExpr {
-            expr: parse_expr(expr_text.trim())?,
-            desc,
-        });
+        let (processed, subquery_map) = extract_subqueries(expr_text.trim());
+        let mut expr = parse_expr_with_subqueries(&processed, &subquery_map)?;
+        apply_subquery_map(&mut expr, &subquery_map);
+        out.push(OrderByExpr { expr, desc });
     }
     Ok(out)
 }

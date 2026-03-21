@@ -1,9 +1,34 @@
-use crate::ast::{BinaryOp, DataTypeSpec, Expr, UnaryOp, WhenClause};
+use std::collections::HashMap;
+
+use crate::ast::{BinaryOp, DataTypeSpec, Expr, SelectStmt, UnaryOp, WhenClause};
 use crate::error::DbError;
 
 pub fn parse_expr(input: &str) -> Result<Expr, DbError> {
     let tokens = tokenize_expr(input)?;
-    let mut parser = ExprParser { tokens, pos: 0 };
+    let mut parser = ExprParser {
+        tokens,
+        pos: 0,
+        subquery_map: HashMap::new(),
+    };
+    let expr = parser.parse_or()?;
+    if parser.pos != parser.tokens.len() {
+        return Err(DbError::Parse(
+            "unexpected trailing tokens in expression".into(),
+        ));
+    }
+    Ok(expr)
+}
+
+pub fn parse_expr_with_subqueries(
+    input: &str,
+    subquery_map: &HashMap<String, SelectStmt>,
+) -> Result<Expr, DbError> {
+    let tokens = tokenize_expr(input)?;
+    let mut parser = ExprParser {
+        tokens,
+        pos: 0,
+        subquery_map: subquery_map.clone(),
+    };
     let expr = parser.parse_or()?;
     if parser.pos != parser.tokens.len() {
         return Err(DbError::Parse(
@@ -48,11 +73,13 @@ enum ExprToken {
     In,
     Like,
     Between,
+    Exists,
 }
 
 struct ExprParser {
     tokens: Vec<ExprToken>,
     pos: usize,
+    subquery_map: HashMap<String, SelectStmt>,
 }
 
 impl ExprParser {
@@ -121,6 +148,28 @@ impl ExprParser {
                     }
                     self.expect(|t| matches!(t, ExprToken::RParen), ")")?;
                     break;
+                }
+            }
+            // Check for IN (SELECT ...) pattern - single subquery placeholder or actual subquery
+            if list.len() == 1 {
+                match &list[0] {
+                    Expr::Identifier(name) if name.starts_with("__SUBQ_") => {
+                        if let Some(stmt) = self.subquery_map.get(name).cloned() {
+                            return Ok(Expr::InSubquery {
+                                expr: Box::new(expr),
+                                subquery: Box::new(stmt),
+                                negated,
+                            });
+                        }
+                    }
+                    Expr::Subquery(stmt) => {
+                        return Ok(Expr::InSubquery {
+                            expr: Box::new(expr),
+                            subquery: stmt.clone(),
+                            negated,
+                        });
+                    }
+                    _ => {}
                 }
             }
             return Ok(Expr::InList {
@@ -244,6 +293,23 @@ impl ExprParser {
     }
 
     fn parse_primary(&mut self) -> Result<Expr, DbError> {
+        // EXISTS __SUBQ_n__
+        if self.match_tok(|t| matches!(t, ExprToken::Exists)) {
+            let negated = self.match_tok(|t| matches!(t, ExprToken::Not));
+            match self.next().cloned() {
+                Some(ExprToken::Identifier(name)) if name.starts_with("__SUBQ_") => {
+                    let stmt = self.subquery_map.get(&name).cloned().ok_or_else(|| {
+                        DbError::Parse(format!("unknown subquery placeholder '{}'", name))
+                    })?;
+                    return Ok(Expr::Exists {
+                        subquery: Box::new(stmt),
+                        negated,
+                    });
+                }
+                _ => return Err(DbError::Parse("expected subquery after EXISTS".into())),
+            }
+        }
+
         // Parenthesized expression or subquery
         if self.match_tok(|t| matches!(t, ExprToken::LParen)) {
             let expr = self.parse_or()?;
@@ -258,6 +324,12 @@ impl ExprParser {
 
         match self.next().cloned() {
             Some(ExprToken::Identifier(name)) => {
+                // Subquery placeholder
+                if name.starts_with("__SUBQ_") {
+                    if let Some(stmt) = self.subquery_map.get(&name).cloned() {
+                        return Ok(Expr::Subquery(Box::new(stmt)));
+                    }
+                }
                 if self.match_tok(|t| matches!(t, ExprToken::LParen)) {
                     if name.eq_ignore_ascii_case("CAST") {
                         return self.parse_cast_call();
@@ -663,6 +735,7 @@ fn push_ident_token(out: &mut Vec<ExprToken>, ident: String) {
         "IN" => out.push(ExprToken::In),
         "LIKE" => out.push(ExprToken::Like),
         "BETWEEN" => out.push(ExprToken::Between),
+        "EXISTS" => out.push(ExprToken::Exists),
         _ => out.push(ExprToken::Identifier(ident)),
     }
 }

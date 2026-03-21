@@ -10,7 +10,8 @@ use crate::types::Value;
 
 use super::clock::Clock;
 use super::evaluator::{
-    contains_aggregate, eval_binary, eval_constant_expr, eval_expr, eval_predicate,
+    clear_outer_row, contains_aggregate, eval_binary, eval_constant_expr, eval_expr,
+    eval_predicate, get_outer_row, set_outer_row, set_subquery_context,
 };
 use super::model::{BoundTable, ContextTable, Group, JoinedRow};
 use super::value_ops::{compare_values, truthy, value_key};
@@ -23,6 +24,10 @@ pub(crate) struct QueryExecutor<'a> {
 
 impl<'a> QueryExecutor<'a> {
     pub(crate) fn execute_select(&self, stmt: SelectStmt) -> Result<QueryResult, DbError> {
+        // Set subquery context for nested subquery evaluation
+        set_subquery_context(self.catalog, self.storage);
+
+
         if stmt.from.is_none() {
             return self.execute_expression_select(&stmt);
         }
@@ -30,7 +35,25 @@ impl<'a> QueryExecutor<'a> {
         let mut rows = self.build_joined_rows(stmt.from.as_ref().unwrap(), &stmt.joins)?;
 
         if let Some(selection) = &stmt.selection {
-            rows.retain(|row| eval_predicate(selection, row, self.clock).unwrap_or(false));
+            eprintln!(
+                "DEBUG WHERE filter: {} rows, selection={:?}",
+                rows.len(),
+                selection
+            );
+            // Save the outer row (set by caller for correlated subqueries).
+            // During WHERE evaluation, set each row as the current outer row
+            // so that nested subqueries can reference it.
+            let saved_outer = get_outer_row();
+            rows.retain(|row| {
+                set_outer_row(row);
+                let result = eval_predicate(selection, row, self.clock).unwrap_or(false);
+                // Restore saved outer row (or clear if none was saved)
+                match &saved_outer {
+                    Some(s) => set_outer_row(s),
+                    None => clear_outer_row(),
+                }
+                result
+            });
         }
 
         let has_aggregate = stmt
@@ -38,10 +61,10 @@ impl<'a> QueryExecutor<'a> {
             .iter()
             .any(|item| contains_aggregate(&item.expr));
         if has_aggregate || !stmt.group_by.is_empty() {
-            return self.execute_grouped_select(stmt, rows);
+            self.execute_grouped_select(stmt, rows)
+        } else {
+            self.execute_flat_select(stmt, rows)
         }
-
-        self.execute_flat_select(stmt, rows)
     }
 
     fn execute_expression_select(&self, stmt: &SelectStmt) -> Result<QueryResult, DbError> {
@@ -182,7 +205,7 @@ impl<'a> QueryExecutor<'a> {
         Ok(groups)
     }
 
-    fn build_joined_rows(
+    pub(crate) fn build_joined_rows(
         &self,
         from: &TableRef,
         joins: &[JoinClause],
@@ -194,6 +217,14 @@ impl<'a> QueryExecutor<'a> {
             let right = self.resolve_table_ref(&join.table)?;
             let right_rows = self.bind_table_rows(&right)?;
             rows = apply_join(rows, right_rows, right, join, self.clock)?;
+        }
+
+        // For correlated subqueries, append outer row bindings
+        let outer_row = get_outer_row();
+        if let Some(ref outer) = outer_row {
+            for row in &mut rows {
+                row.extend(outer.clone());
+            }
         }
 
         Ok(rows)
@@ -470,6 +501,9 @@ fn expr_label(expr: &Expr) -> String {
         Expr::Between { .. } => "BETWEEN".to_string(),
         Expr::Like { .. } => "LIKE".to_string(),
         Expr::Unary { expr: inner, .. } => expr_label(inner),
+        Expr::Subquery(_) => "subquery".to_string(),
+        Expr::Exists { .. } => "EXISTS".to_string(),
+        Expr::InSubquery { .. } => "IN".to_string(),
         _ => "expr".to_string(),
     }
 }
@@ -494,7 +528,12 @@ fn lookup_aggregate_in_projection<'a>(
             args: pargs,
         } = &item.expr
         {
-            pname.eq_ignore_ascii_case(name) && pargs == args
+            pname.eq_ignore_ascii_case(name)
+                && pargs.len() == args.len()
+                && pargs
+                    .iter()
+                    .zip(args.iter())
+                    .all(|(a, b)| format!("{:?}", a) == format!("{:?}", b))
         } else {
             false
         }

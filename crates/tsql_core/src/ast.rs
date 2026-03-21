@@ -220,7 +220,7 @@ pub struct DeleteStmt {
     pub selection: Option<Expr>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Identifier(String),
     QualifiedIdentifier(Vec<String>),
@@ -274,9 +274,19 @@ pub enum Expr {
         pattern: Box<Expr>,
         negated: bool,
     },
+    Subquery(Box<SelectStmt>),
+    Exists {
+        subquery: Box<SelectStmt>,
+        negated: bool,
+    },
+    InSubquery {
+        expr: Box<Expr>,
+        subquery: Box<SelectStmt>,
+        negated: bool,
+    },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct WhenClause {
     pub condition: Expr,
     pub result: Expr,

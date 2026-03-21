@@ -1,11 +1,18 @@
 mod expression;
-mod statements;
+pub(crate) mod statements;
 mod utils;
 
 use crate::ast::{SetOpKind, SetOpStmt, Statement};
 use crate::error::DbError;
 
 pub use expression::parse_expr;
+
+pub fn parse_expr_subquery_aware(input: &str) -> Result<crate::ast::Expr, DbError> {
+    let (processed, subquery_map) = statements::extract_subqueries(input);
+    let mut expr = expression::parse_expr_with_subqueries(&processed, &subquery_map)?;
+    statements::apply_subquery_map(&mut expr, &subquery_map);
+    Ok(expr)
+}
 
 pub fn parse_batch(sql: &str) -> Result<Vec<Statement>, DbError> {
     let trimmed = sql.trim();
@@ -59,7 +66,7 @@ fn split_statements(sql: &str) -> Vec<String> {
                 if !in_string {
                     // Check for BEGIN keyword
                     if i + 5 <= upper_chars.len()
-                        && &upper_chars[i..i + 5] == &['B', 'E', 'G', 'I', 'N']
+                        && upper_chars[i..i + 5] == ['B', 'E', 'G', 'I', 'N']
                     {
                         let prev_ok = i == 0 || !chars[i - 1].is_ascii_alphanumeric();
                         let next_ok = i + 5 >= chars.len() || !chars[i + 5].is_ascii_alphanumeric();
@@ -68,7 +75,7 @@ fn split_statements(sql: &str) -> Vec<String> {
                         }
                     }
                     // Check for END keyword
-                    if i + 3 <= upper_chars.len() && &upper_chars[i..i + 3] == &['E', 'N', 'D'] {
+                    if i + 3 <= upper_chars.len() && upper_chars[i..i + 3] == ['E', 'N', 'D'] {
                         let prev_ok = i == 0 || !chars[i - 1].is_ascii_alphanumeric();
                         let next_ok = i + 3 >= chars.len() || !chars[i + 3].is_ascii_alphanumeric();
                         if prev_ok && next_ok && block_depth > 0 {

@@ -276,8 +276,8 @@ impl Engine {
             let columns: Vec<ColumnDef> = result
                 .columns
                 .iter()
-                .enumerate()
-                .map(|(_i, name)| ColumnDef {
+                
+                .map(|name| ColumnDef {
                     id: self.catalog.alloc_column_id(),
                     name: name.clone(),
                     data_type: DataType::NVarChar { max_len: 4000 },
