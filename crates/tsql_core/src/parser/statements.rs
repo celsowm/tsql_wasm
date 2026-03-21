@@ -92,6 +92,89 @@ pub(crate) fn parse_alter_table(sql: &str) -> Result<Statement, DbError> {
     ))
 }
 
+pub(crate) fn parse_with_cte(sql: &str) -> Result<Statement, DbError> {
+    let after_with = sql["WITH".len()..].trim();
+    let mut ctes = Vec::new();
+    let mut rest = after_with.to_string();
+
+    loop {
+        // Find CTE name
+        let name_end = rest
+            .find(|c: char| c.is_whitespace() || c == '(')
+            .ok_or_else(|| DbError::Parse("expected CTE name after WITH".into()))?;
+        let cte_name = rest[..name_end].trim().to_string();
+        rest = rest[name_end..].trim().to_string();
+
+        // Expect AS
+        let upper_rest = rest.to_uppercase();
+        if !upper_rest.starts_with("AS") {
+            return Err(DbError::Parse("expected AS after CTE name".into()));
+        }
+        rest = rest[2..].trim().to_string();
+
+        // Expect (
+        if !rest.starts_with('(') {
+            return Err(DbError::Parse("expected '(' after AS".into()));
+        }
+        rest = rest[1..].trim().to_string();
+
+        // Find matching closing )
+        let (query_text, after_paren) = extract_paren_content(&rest)?;
+        let query = match parse_select(&query_text)? {
+            Statement::Select(s) => s,
+            _ => return Err(DbError::Parse("CTE query must be a SELECT".into())),
+        };
+
+        ctes.push(crate::ast::CteDef {
+            name: cte_name,
+            query,
+        });
+
+        rest = after_paren.trim().to_string();
+
+        // Check for comma (more CTEs) or end of CTEs
+        if rest.starts_with(',') {
+            rest = rest[1..].trim().to_string();
+            continue;
+        }
+        break;
+    }
+
+    // Parse the body statement
+    let body = super::parse_sql(&rest)?;
+
+    Ok(Statement::WithCte(crate::ast::WithCteStmt {
+        ctes,
+        body: Box::new(body),
+    }))
+}
+
+fn extract_paren_content(input: &str) -> Result<(String, String), DbError> {
+    let mut depth = 1usize;
+    let mut in_string = false;
+    let chars: Vec<char> = input.chars().collect();
+    let mut i = 0;
+
+    while i < chars.len() {
+        match chars[i] {
+            '\'' => in_string = !in_string,
+            '(' if !in_string => depth += 1,
+            ')' if !in_string => {
+                depth -= 1;
+                if depth == 0 {
+                    let inner: String = chars[..i].iter().collect();
+                    let rest: String = chars[i + 1..].iter().collect();
+                    return Ok((inner, rest));
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+
+    Err(DbError::Parse("unclosed parenthesis in CTE".into()))
+}
+
 // ─── DML ────────────────────────────────────────────────────────────────
 
 pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {

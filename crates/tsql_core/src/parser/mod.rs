@@ -23,6 +23,11 @@ pub fn parse_sql(sql: &str) -> Result<Statement, DbError> {
 
     let upper = trimmed.to_uppercase();
 
+    // Check for WITH CTE
+    if upper.starts_with("WITH ") {
+        return statements::parse_with_cte(trimmed);
+    }
+
     if upper.starts_with("CREATE TABLE ") {
         statements::parse_create_table(trimmed)
     } else if upper.starts_with("CREATE SCHEMA ") {

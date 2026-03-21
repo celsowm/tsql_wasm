@@ -1,9 +1,10 @@
 use std::fmt;
 
 use crate::ast::{SetOpKind, Statement};
-use crate::catalog::Catalog;
+use crate::catalog::{Catalog, ColumnDef};
 use crate::error::DbError;
 use crate::storage::InMemoryStorage;
+use crate::types::{DataType, Value};
 
 use super::clock::{Clock, SystemClock};
 use super::mutation::MutationExecutor;
@@ -148,6 +149,7 @@ impl Engine {
                 .alter_table(stmt)?;
                 Ok(None)
             }
+            Statement::WithCte(stmt) => self.execute_cte(stmt),
             Statement::SetOp(stmt) => {
                 let left_result = self.execute(*stmt.left)?;
                 let right_result = self.execute(*stmt.right)?;
@@ -163,6 +165,88 @@ impl Engine {
                 }
             }
         }
+    }
+
+    fn execute_cte(
+        &mut self,
+        stmt: crate::ast::WithCteStmt,
+    ) -> Result<Option<QueryResult>, DbError> {
+        let mut temp_table_ids: Vec<(u32, String)> = Vec::new();
+
+        for cte in &stmt.ctes {
+            // Execute the CTE query to get results
+            let result = QueryExecutor {
+                catalog: &self.catalog,
+                storage: &self.storage,
+                clock: self.clock.as_ref(),
+            }
+            .execute_select(cte.query.clone())?;
+
+            // Create a temporary table for this CTE
+            let table_id = self.catalog.alloc_table_id();
+            let columns: Vec<ColumnDef> = result
+                .columns
+                .iter()
+                .enumerate()
+                .map(|(_i, name)| ColumnDef {
+                    id: self.catalog.alloc_column_id(),
+                    name: name.clone(),
+                    data_type: DataType::NVarChar { max_len: 4000 },
+                    nullable: true,
+                    primary_key: false,
+                    unique: false,
+                    identity: None,
+                    default: None,
+                })
+                .collect();
+
+            let schema_id = self.catalog.get_schema_id("dbo").unwrap_or(0);
+
+            self.catalog.tables.push(crate::catalog::TableDef {
+                id: table_id,
+                schema_id,
+                name: cte.name.clone(),
+                columns,
+            });
+
+            // Convert result rows to stored rows
+            let stored_rows: Vec<crate::storage::StoredRow> = result
+                .rows
+                .into_iter()
+                .map(|row| crate::storage::StoredRow {
+                    values: row
+                        .into_iter()
+                        .map(|jv| match jv {
+                            crate::types::JsonValue::Null => Value::Null,
+                            crate::types::JsonValue::Bool(b) => Value::Bit(b),
+                            crate::types::JsonValue::Number(n) => {
+                                if n >= i32::MIN as i64 && n <= i32::MAX as i64 {
+                                    Value::Int(n as i32)
+                                } else {
+                                    Value::BigInt(n)
+                                }
+                            }
+                            crate::types::JsonValue::String(s) => Value::NVarChar(s),
+                        })
+                        .collect(),
+                    deleted: false,
+                })
+                .collect();
+
+            self.storage.tables.insert(table_id, stored_rows);
+            temp_table_ids.push((table_id, cte.name.clone()));
+        }
+
+        // Execute the body statement
+        let result = self.execute(*stmt.body)?;
+
+        // Clean up temporary CTE tables
+        for (table_id, _) in &temp_table_ids {
+            self.catalog.tables.retain(|t| t.id != *table_id);
+            self.storage.tables.remove(table_id);
+        }
+
+        Ok(result)
     }
 }
 

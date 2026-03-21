@@ -148,6 +148,58 @@ fn test_except() {
     assert_eq!(r.rows.len(), 2);
 }
 
+// ─── CTEs ──────────────────────────────────────────────────────────────
+
+#[test]
+fn test_cte_basic() {
+    let mut e = Engine::new();
+    exec(
+        &mut e,
+        "CREATE TABLE employees (name VARCHAR(50), salary INT)",
+    );
+    exec(&mut e, "INSERT INTO employees VALUES ('Alice', 100)");
+    exec(&mut e, "INSERT INTO employees VALUES ('Bob', 200)");
+    exec(&mut e, "INSERT INTO employees VALUES ('Charlie', 150)");
+
+    let r = query(&mut e, "WITH high_earners AS (SELECT name, salary FROM employees WHERE salary >= 150) SELECT name FROM high_earners ORDER BY name");
+    assert_eq!(r.rows.len(), 2);
+    assert_eq!(r.rows[0][0], serde_json::json!("Bob"));
+    assert_eq!(r.rows[1][0], serde_json::json!("Charlie"));
+}
+
+#[test]
+fn test_cte_with_join() {
+    let mut e = Engine::new();
+    exec(
+        &mut e,
+        "CREATE TABLE orders (id INT, customer_id INT, amount INT)",
+    );
+    exec(&mut e, "INSERT INTO orders VALUES (1, 1, 100)");
+    exec(&mut e, "INSERT INTO orders VALUES (2, 1, 200)");
+    exec(&mut e, "INSERT INTO orders VALUES (3, 2, 50)");
+    exec(&mut e, "CREATE TABLE customers (id INT, name VARCHAR(50))");
+    exec(&mut e, "INSERT INTO customers VALUES (1, 'Alice')");
+    exec(&mut e, "INSERT INTO customers VALUES (2, 'Bob')");
+
+    let r = query(&mut e, "WITH order_totals AS (SELECT customer_id, SUM(amount) AS total FROM orders GROUP BY customer_id) SELECT c.name, ot.total FROM customers c INNER JOIN order_totals ot ON c.id = ot.customer_id ORDER BY c.name");
+    assert_eq!(r.rows.len(), 2);
+    assert_eq!(r.rows[0][0], serde_json::json!("Alice"));
+}
+
+#[test]
+fn test_multiple_ctes() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE t (v INT)");
+    exec(&mut e, "INSERT INTO t VALUES (1)");
+    exec(&mut e, "INSERT INTO t VALUES (2)");
+    exec(&mut e, "INSERT INTO t VALUES (3)");
+
+    let r = query(&mut e, "WITH doubled AS (SELECT v, v * 2 AS v2 FROM t), tripled AS (SELECT v, v * 3 AS v3 FROM t) SELECT d.v, d.v2, t.v3 FROM doubled d INNER JOIN tripled t ON d.v = t.v ORDER BY d.v");
+    assert_eq!(r.rows.len(), 3);
+    assert_eq!(r.rows[0][1], serde_json::json!(2));
+    assert_eq!(r.rows[0][2], serde_json::json!(3));
+}
+
 #[test]
 fn test_distinct_multiple_columns() {
     let mut e = Engine::new();

@@ -29,6 +29,19 @@ pub enum Statement {
     SetOp(SetOpStmt),
     TruncateTable(TruncateTableStmt),
     AlterTable(AlterTableStmt),
+    WithCte(WithCteStmt),
+}
+
+#[derive(Debug, Clone)]
+pub struct WithCteStmt {
+    pub ctes: Vec<CteDef>,
+    pub body: Box<Statement>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CteDef {
+    pub name: String,
+    pub query: SelectStmt,
 }
 
 #[derive(Debug, Clone)]
