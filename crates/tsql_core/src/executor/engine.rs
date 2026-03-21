@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::ast::Statement;
+use crate::ast::{SetOpKind, Statement};
 use crate::catalog::Catalog;
 use crate::error::DbError;
 use crate::storage::InMemoryStorage;
@@ -119,6 +119,64 @@ impl Engine {
                 .execute_delete(stmt)?;
                 Ok(None)
             }
+            Statement::SetOp(stmt) => {
+                let left_result = self.execute(*stmt.left)?;
+                let right_result = self.execute(*stmt.right)?;
+
+                match (left_result, right_result) {
+                    (Some(left), Some(right)) => {
+                        let result = execute_set_op(left, right, stmt.op)?;
+                        Ok(Some(result))
+                    }
+                    _ => Err(DbError::Execution(
+                        "set operations require both sides to return results".into(),
+                    )),
+                }
+            }
         }
     }
+}
+
+fn execute_set_op(
+    left: QueryResult,
+    right: QueryResult,
+    op: SetOpKind,
+) -> Result<QueryResult, DbError> {
+    if left.columns.len() != right.columns.len() {
+        return Err(DbError::Execution(
+            "set operations require the same number of columns".into(),
+        ));
+    }
+
+    let rows = match op {
+        SetOpKind::UnionAll => {
+            let mut r = left.rows;
+            r.extend(right.rows);
+            r
+        }
+        SetOpKind::Union => {
+            let mut r = left.rows;
+            for row in right.rows {
+                if !r.iter().any(|existing| existing == &row) {
+                    r.push(row);
+                }
+            }
+            r
+        }
+        SetOpKind::Intersect => left
+            .rows
+            .into_iter()
+            .filter(|row| right.rows.iter().any(|r| r == row))
+            .collect(),
+        SetOpKind::Except => left
+            .rows
+            .into_iter()
+            .filter(|row| !right.rows.iter().any(|r| r == row))
+            .collect(),
+    };
+
+    Ok(QueryResult {
+        columns: left.columns,
+        rows,
+    })
 }

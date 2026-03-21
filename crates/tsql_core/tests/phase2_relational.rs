@@ -69,20 +69,83 @@ fn test_full_outer_join() {
 // ─── DISTINCT ──────────────────────────────────────────────────────────
 
 #[test]
-fn test_distinct_basic() {
+fn test_distinct_in_subquery() {
     let mut e = Engine::new();
-    exec(&mut e, "CREATE TABLE t (category VARCHAR(10))");
-    exec(&mut e, "INSERT INTO t VALUES ('A')");
-    exec(&mut e, "INSERT INTO t VALUES ('B')");
-    exec(&mut e, "INSERT INTO t VALUES ('A')");
-    exec(&mut e, "INSERT INTO t VALUES ('C')");
-    exec(&mut e, "INSERT INTO t VALUES ('B')");
+    exec(
+        &mut e,
+        "CREATE TABLE orders (customer VARCHAR(10), amount INT)",
+    );
+    exec(&mut e, "INSERT INTO orders VALUES ('Alice', 100)");
+    exec(&mut e, "INSERT INTO orders VALUES ('Bob', 200)");
+    exec(&mut e, "INSERT INTO orders VALUES ('Alice', 150)");
 
-    let r = query(&mut e, "SELECT DISTINCT category FROM t ORDER BY category");
+    let r = query(
+        &mut e,
+        "SELECT DISTINCT customer FROM orders ORDER BY customer",
+    );
+    assert_eq!(r.rows.len(), 2);
+    assert_eq!(r.rows[0][0], serde_json::json!("Alice"));
+    assert_eq!(r.rows[1][0], serde_json::json!("Bob"));
+}
+
+// ─── SET OPERATIONS ────────────────────────────────────────────────────
+
+#[test]
+fn test_union_all() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE a (v INT)");
+    exec(&mut e, "INSERT INTO a VALUES (1)");
+    exec(&mut e, "INSERT INTO a VALUES (2)");
+    exec(&mut e, "CREATE TABLE b (v INT)");
+    exec(&mut e, "INSERT INTO b VALUES (2)");
+    exec(&mut e, "INSERT INTO b VALUES (3)");
+
+    let r = query(&mut e, "SELECT v FROM a UNION ALL SELECT v FROM b");
+    assert_eq!(r.rows.len(), 4);
+}
+
+#[test]
+fn test_union() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE a (v INT)");
+    exec(&mut e, "INSERT INTO a VALUES (1)");
+    exec(&mut e, "INSERT INTO a VALUES (2)");
+    exec(&mut e, "CREATE TABLE b (v INT)");
+    exec(&mut e, "INSERT INTO b VALUES (2)");
+    exec(&mut e, "INSERT INTO b VALUES (3)");
+
+    let r = query(&mut e, "SELECT v FROM a UNION SELECT v FROM b");
     assert_eq!(r.rows.len(), 3);
-    assert_eq!(r.rows[0][0], serde_json::json!("A"));
-    assert_eq!(r.rows[1][0], serde_json::json!("B"));
-    assert_eq!(r.rows[2][0], serde_json::json!("C"));
+}
+
+#[test]
+fn test_intersect() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE a (v INT)");
+    exec(&mut e, "INSERT INTO a VALUES (1)");
+    exec(&mut e, "INSERT INTO a VALUES (2)");
+    exec(&mut e, "INSERT INTO a VALUES (3)");
+    exec(&mut e, "CREATE TABLE b (v INT)");
+    exec(&mut e, "INSERT INTO b VALUES (2)");
+    exec(&mut e, "INSERT INTO b VALUES (3)");
+    exec(&mut e, "INSERT INTO b VALUES (4)");
+
+    let r = query(&mut e, "SELECT v FROM a INTERSECT SELECT v FROM b");
+    assert_eq!(r.rows.len(), 2);
+}
+
+#[test]
+fn test_except() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE a (v INT)");
+    exec(&mut e, "INSERT INTO a VALUES (1)");
+    exec(&mut e, "INSERT INTO a VALUES (2)");
+    exec(&mut e, "INSERT INTO a VALUES (3)");
+    exec(&mut e, "CREATE TABLE b (v INT)");
+    exec(&mut e, "INSERT INTO b VALUES (2)");
+
+    let r = query(&mut e, "SELECT v FROM a EXCEPT SELECT v FROM b");
+    assert_eq!(r.rows.len(), 2);
 }
 
 #[test]
@@ -134,22 +197,4 @@ fn test_left_join_still_works() {
     assert_eq!(r.rows.len(), 4);
 }
 
-#[test]
-fn test_distinct_in_subquery() {
-    let mut e = Engine::new();
-    exec(
-        &mut e,
-        "CREATE TABLE orders (customer VARCHAR(10), amount INT)",
-    );
-    exec(&mut e, "INSERT INTO orders VALUES ('Alice', 100)");
-    exec(&mut e, "INSERT INTO orders VALUES ('Bob', 200)");
-    exec(&mut e, "INSERT INTO orders VALUES ('Alice', 150)");
-
-    let r = query(
-        &mut e,
-        "SELECT DISTINCT customer FROM orders ORDER BY customer",
-    );
-    assert_eq!(r.rows.len(), 2);
-    assert_eq!(r.rows[0][0], serde_json::json!("Alice"));
-    assert_eq!(r.rows[1][0], serde_json::json!("Bob"));
-}
+// ─── SET OPERATIONS ────────────────────────────────────────────────────

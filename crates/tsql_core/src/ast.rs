@@ -26,6 +26,22 @@ pub enum Statement {
     Select(SelectStmt),
     Update(UpdateStmt),
     Delete(DeleteStmt),
+    SetOp(SetOpStmt),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SetOpKind {
+    Union,
+    UnionAll,
+    Intersect,
+    Except,
+}
+
+#[derive(Debug, Clone)]
+pub struct SetOpStmt {
+    pub left: Box<Statement>,
+    pub op: SetOpKind,
+    pub right: Box<Statement>,
 }
 
 #[derive(Debug, Clone)]
