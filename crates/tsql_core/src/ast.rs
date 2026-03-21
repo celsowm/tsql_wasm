@@ -135,6 +135,7 @@ pub enum Expr {
     QualifiedIdentifier(Vec<String>),
     Wildcard,
     Integer(i64),
+    FloatLiteral(String),
     String(String),
     UnicodeString(String),
     Null,
@@ -147,6 +148,10 @@ pub enum Expr {
         op: BinaryOp,
         right: Box<Expr>,
     },
+    Unary {
+        op: UnaryOp,
+        expr: Box<Expr>,
+    },
     IsNull(Box<Expr>),
     IsNotNull(Box<Expr>),
     Cast {
@@ -157,6 +162,39 @@ pub enum Expr {
         target: DataTypeSpec,
         expr: Box<Expr>,
     },
+    Case {
+        operand: Option<Box<Expr>>,
+        when_clauses: Vec<WhenClause>,
+        else_result: Option<Box<Expr>>,
+    },
+    InList {
+        expr: Box<Expr>,
+        list: Vec<Expr>,
+        negated: bool,
+    },
+    Between {
+        expr: Box<Expr>,
+        low: Box<Expr>,
+        high: Box<Expr>,
+        negated: bool,
+    },
+    Like {
+        expr: Box<Expr>,
+        pattern: Box<Expr>,
+        negated: bool,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WhenClause {
+    pub condition: Expr,
+    pub result: Expr,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnaryOp {
+    Negate,
+    Not,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -169,6 +207,11 @@ pub enum BinaryOp {
     Lte,
     And,
     Or,
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Modulo,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

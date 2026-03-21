@@ -351,6 +351,11 @@ fn expr_label(expr: &Expr) -> String {
         Expr::Cast { .. } => "CAST".to_string(),
         Expr::Convert { .. } => "CONVERT".to_string(),
         Expr::Wildcard => "*".to_string(),
+        Expr::Case { .. } => "CASE".to_string(),
+        Expr::InList { .. } => "IN".to_string(),
+        Expr::Between { .. } => "BETWEEN".to_string(),
+        Expr::Like { .. } => "LIKE".to_string(),
+        Expr::Unary { expr: inner, .. } => expr_label(inner),
         _ => "expr".to_string(),
     }
 }
