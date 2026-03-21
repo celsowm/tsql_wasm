@@ -1,0 +1,6 @@
+[workspace]
+members = [
+  "crates/tsql_core",
+  "crates/tsql_wasm"
+]
+resolver = "2"

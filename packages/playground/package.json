@@ -1,0 +1,14 @@
+{
+  "name": "@tsql-wasm/playground",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite"
+  },
+  "dependencies": {
+    "@tsql-wasm/client": "file:../client"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10"
+  }
+}

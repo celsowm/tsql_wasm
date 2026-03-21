@@ -1,0 +1,14 @@
+{
+  "name": "@tsql-wasm/tests",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@tsql-wasm/client": "file:../client"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.3"
+  }
+}
