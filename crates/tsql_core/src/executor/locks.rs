@@ -1,0 +1,269 @@
+use std::collections::HashMap;
+
+use crate::ast::{IsolationLevel, Statement};
+use crate::error::DbError;
+
+use super::table_util::{collect_read_tables, collect_write_tables};
+
+pub type SessionId = u64;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LockMode {
+    Read,
+    Write,
+}
+
+#[derive(Debug, Clone)]
+pub struct AcquiredLock {
+    pub table: String,
+    pub mode: LockMode,
+    pub savepoint_depth: usize,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct TableLockState {
+    pub readers: HashMap<SessionId, u32>,
+    pub writer: Option<(SessionId, u32)>,
+}
+
+pub struct TxWorkspace<C, S> {
+    pub catalog: C,
+    pub storage: S,
+    pub base_table_versions: HashMap<String, u64>,
+    pub read_tables: std::collections::HashSet<String>,
+    pub write_tables: std::collections::HashSet<String>,
+    pub acquired_locks: Vec<AcquiredLock>,
+}
+
+impl<C: std::fmt::Debug, S: std::fmt::Debug> std::fmt::Debug for TxWorkspace<C, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TxWorkspace")
+            .field("base_table_versions", &self.base_table_versions)
+            .field("read_tables", &self.read_tables)
+            .field("write_tables", &self.write_tables)
+            .field("acquired_locks", &self.acquired_locks)
+            .finish()
+    }
+}
+
+impl<C: Clone, S: Clone> Clone for TxWorkspace<C, S> {
+    fn clone(&self) -> Self {
+        Self {
+            catalog: self.catalog.clone(),
+            storage: self.storage.clone(),
+            base_table_versions: self.base_table_versions.clone(),
+            read_tables: self.read_tables.clone(),
+            write_tables: self.write_tables.clone(),
+            acquired_locks: self.acquired_locks.clone(),
+        }
+    }
+}
+
+pub struct LockTable {
+    locks: HashMap<String, TableLockState>,
+}
+
+impl Default for LockTable {
+    fn default() -> Self {
+        Self {
+            locks: HashMap::new(),
+        }
+    }
+}
+
+impl LockTable {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.locks.is_empty()
+    }
+
+    pub fn clear(&mut self) {
+        self.locks.clear();
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &String> {
+        self.locks.keys()
+    }
+
+    pub fn acquire_statement_locks<C, S>(
+        &mut self,
+        session_id: SessionId,
+        tx_manager: &super::transaction::TransactionManager<C, S>,
+        workspace_slot: &mut Option<TxWorkspace<C, S>>,
+        stmt: &Statement,
+    ) -> Result<(), DbError> {
+        let read_tables = collect_read_tables(stmt);
+        let write_tables = collect_write_tables(stmt);
+        let depth = tx_manager
+            .active
+            .as_ref()
+            .map(|tx| tx.savepoints.len())
+            .unwrap_or(0);
+        let isolation_level = tx_manager
+            .active
+            .as_ref()
+            .map(|tx| tx.isolation_level)
+            .unwrap_or(IsolationLevel::ReadCommitted);
+
+        let read_lock_required = !read_tables.is_empty()
+            && write_tables.is_empty()
+            && matches!(
+                isolation_level,
+                IsolationLevel::RepeatableRead
+                    | IsolationLevel::Serializable
+                    | IsolationLevel::Snapshot
+            );
+
+        if read_lock_required {
+            for table in read_tables {
+                self.acquire_lock(session_id, workspace_slot, &table, LockMode::Read, depth)?;
+            }
+        }
+        for table in write_tables {
+            self.acquire_lock(session_id, workspace_slot, &table, LockMode::Write, depth)?;
+        }
+        Ok(())
+    }
+
+    fn acquire_lock<C, S>(
+        &mut self,
+        session_id: SessionId,
+        workspace_slot: &mut Option<TxWorkspace<C, S>>,
+        table: &str,
+        mode: LockMode,
+        savepoint_depth: usize,
+    ) -> Result<(), DbError> {
+        let normalized = table.to_uppercase();
+        let lock_state = self.locks.entry(normalized.clone()).or_default();
+
+        match mode {
+            LockMode::Read => {
+                if let Some((writer, _)) = lock_state.writer {
+                    if writer != session_id {
+                        return Err(DbError::Execution(format!(
+                            "lock conflict (no-wait): READ lock on '{}' blocked by WRITE lock from session {}",
+                            normalized, writer
+                        )));
+                    }
+                }
+                *lock_state.readers.entry(session_id).or_insert(0) += 1;
+            }
+            LockMode::Write => {
+                if let Some((writer, _)) = lock_state.writer {
+                    if writer != session_id {
+                        return Err(DbError::Execution(format!(
+                            "lock conflict (no-wait): WRITE lock on '{}' blocked by WRITE lock from session {}",
+                            normalized, writer
+                        )));
+                    }
+                }
+                if lock_state
+                    .readers
+                    .iter()
+                    .any(|(reader, count)| *reader != session_id && *count > 0)
+                {
+                    return Err(DbError::Execution(format!(
+                        "lock conflict (no-wait): WRITE lock on '{}' blocked by active READ lock",
+                        normalized
+                    )));
+                }
+                match lock_state.writer.as_mut() {
+                    Some((writer, count)) if *writer == session_id => {
+                        *count += 1;
+                    }
+                    _ => {
+                        lock_state.writer = Some((session_id, 1));
+                    }
+                }
+            }
+        }
+
+        if let Some(workspace) = workspace_slot.as_mut() {
+            workspace.acquired_locks.push(AcquiredLock {
+                table: normalized,
+                mode,
+                savepoint_depth,
+            });
+        }
+        Ok(())
+    }
+
+    pub fn release_workspace_locks<C, S>(
+        &mut self,
+        session_id: SessionId,
+        workspace_slot: &mut Option<TxWorkspace<C, S>>,
+        keep_depth_inclusive: usize,
+    ) {
+        let Some(workspace) = workspace_slot.as_mut() else {
+            return;
+        };
+
+        let mut retained = Vec::with_capacity(workspace.acquired_locks.len());
+        for lock in workspace.acquired_locks.drain(..) {
+            if lock.savepoint_depth < keep_depth_inclusive {
+                retained.push(lock);
+                continue;
+            }
+            self.release_lock_count(session_id, &lock.table, lock.mode);
+        }
+        workspace.acquired_locks = retained;
+    }
+
+    pub fn release_all_for_session(&mut self, session_id: SessionId) {
+        let tables: Vec<String> = self.locks.keys().cloned().collect();
+        for table in tables {
+            self.release_all_for_table(session_id, &table);
+        }
+    }
+
+    fn release_all_for_table(&mut self, session_id: SessionId, table: &str) {
+        let Some(lock_state) = self.locks.get_mut(table) else {
+            return;
+        };
+        lock_state.readers.remove(&session_id);
+        if lock_state
+            .writer
+            .map(|(owner, _)| owner == session_id)
+            .unwrap_or(false)
+        {
+            lock_state.writer = None;
+        }
+        if lock_state.readers.is_empty() && lock_state.writer.is_none() {
+            self.locks.remove(table);
+        }
+    }
+
+    fn release_lock_count(&mut self, session_id: SessionId, table: &str, mode: LockMode) {
+        let Some(lock_state) = self.locks.get_mut(table) else {
+            return;
+        };
+        match mode {
+            LockMode::Read => {
+                if let Some(count) = lock_state.readers.get_mut(&session_id) {
+                    if *count > 1 {
+                        *count -= 1;
+                    } else {
+                        lock_state.readers.remove(&session_id);
+                    }
+                }
+            }
+            LockMode::Write => {
+                if let Some((owner, count)) = lock_state.writer.as_mut() {
+                    if *owner == session_id {
+                        if *count > 1 {
+                            *count -= 1;
+                        } else {
+                            lock_state.writer = None;
+                        }
+                    }
+                }
+            }
+        }
+        if lock_state.readers.is_empty() && lock_state.writer.is_none() {
+            self.locks.remove(table);
+        }
+    }
+}

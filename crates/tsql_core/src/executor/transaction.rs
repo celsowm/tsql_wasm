@@ -1,15 +1,15 @@
 use std::collections::HashSet;
 
 use crate::ast::IsolationLevel;
-use crate::catalog::CatalogImpl;
+use crate::catalog::Catalog;
 use crate::error::DbError;
-use crate::storage::InMemoryStorage;
+use crate::storage::Storage;
 
 #[derive(Debug, Clone)]
-pub struct Savepoint {
+pub struct Savepoint<C, S> {
     pub name: String,
-    pub catalog_snapshot: CatalogImpl,
-    pub storage_snapshot: InMemoryStorage,
+    pub catalog_snapshot: C,
+    pub storage_snapshot: S,
     pub write_intent_len: usize,
 }
 
@@ -49,21 +49,21 @@ impl LockManager {
 }
 
 #[derive(Debug, Clone)]
-pub struct TxState {
+pub struct TxState<C, S> {
     pub isolation_level: IsolationLevel,
-    pub begin_catalog: CatalogImpl,
-    pub begin_storage: InMemoryStorage,
-    pub savepoints: Vec<Savepoint>,
+    pub begin_catalog: C,
+    pub begin_storage: S,
+    pub savepoints: Vec<Savepoint<C, S>>,
     pub lock_manager: LockManager,
     pub write_set: Vec<WriteIntent>,
     pub snapshot_ts: u64,
 }
 
-impl TxState {
+impl<C, S> TxState<C, S> {
     pub fn new(
         isolation_level: IsolationLevel,
-        begin_catalog: CatalogImpl,
-        begin_storage: InMemoryStorage,
+        begin_catalog: C,
+        begin_storage: S,
         snapshot_ts: u64,
     ) -> Self {
         Self {
@@ -78,11 +78,21 @@ impl TxState {
     }
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct TransactionManager {
-    pub active: Option<TxState>,
+#[derive(Debug, Clone)]
+pub struct TransactionManager<C, S> {
+    pub active: Option<TxState<C, S>>,
     pub session_isolation_level: IsolationLevel,
     pub commit_ts: u64,
+}
+
+impl<C, S> Default for TransactionManager<C, S> {
+    fn default() -> Self {
+        Self {
+            active: None,
+            session_isolation_level: IsolationLevel::default(),
+            commit_ts: 0,
+        }
+    }
 }
 
 impl Default for IsolationLevel {
@@ -91,11 +101,15 @@ impl Default for IsolationLevel {
     }
 }
 
-impl TransactionManager {
+impl<C, S> TransactionManager<C, S>
+where
+    C: Catalog + Clone,
+    S: Storage + Clone,
+{
     pub fn begin(
         &mut self,
-        catalog: &CatalogImpl,
-        storage: &InMemoryStorage,
+        catalog: &C,
+        storage: &S,
         explicit_name: Option<String>,
     ) -> Result<Option<String>, DbError> {
         if self.active.is_some() {
@@ -135,8 +149,8 @@ impl TransactionManager {
     pub fn rollback(
         &mut self,
         savepoint: Option<String>,
-        catalog: &mut CatalogImpl,
-        storage: &mut InMemoryStorage,
+        catalog: &mut C,
+        storage: &mut S,
     ) -> Result<(), DbError> {
         let Some(tx) = self.active.as_mut() else {
             return Err(DbError::Execution(
@@ -173,8 +187,8 @@ impl TransactionManager {
     pub fn save(
         &mut self,
         name: String,
-        catalog: &CatalogImpl,
-        storage: &InMemoryStorage,
+        catalog: &C,
+        storage: &S,
     ) -> Result<(), DbError> {
         let Some(tx) = self.active.as_mut() else {
             return Err(DbError::Execution(

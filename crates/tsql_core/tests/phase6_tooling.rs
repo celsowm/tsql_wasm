@@ -1,6 +1,6 @@
 use tsql_core::ast::{SessionOption, SessionOptionValue, Statement};
 use tsql_core::types::Value;
-use tsql_core::{parse_sql, Database, Engine, SupportStatus};
+use tsql_core::{parse_sql, Database, Engine, SupportStatus, SessionManager, StatementExecutor, SqlAnalyzer};
 
 fn exec(engine: &mut Engine, sql: &str) {
     engine.execute(parse_sql(sql).expect("parse")).expect("exec");

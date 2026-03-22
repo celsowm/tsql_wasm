@@ -1,20 +1,28 @@
 use std::collections::HashMap;
+use std::marker::PhantomData;
 
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use crate::catalog::CatalogImpl;
+use crate::catalog::Catalog;
 use crate::error::DbError;
-use crate::storage::InMemoryStorage;
+use crate::storage::Storage;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RecoveryCheckpoint {
-    pub catalog: CatalogImpl,
-    pub storage: InMemoryStorage,
+#[serde(bound(serialize = "C: Serialize, S: Serialize"))]
+#[serde(bound(deserialize = "C: DeserializeOwned, S: DeserializeOwned"))]
+pub struct RecoveryCheckpoint<C, S> {
+    pub catalog: C,
+    pub storage: S,
     pub commit_ts: u64,
     pub table_versions: HashMap<String, u64>,
 }
 
-impl RecoveryCheckpoint {
+impl<C, S> RecoveryCheckpoint<C, S>
+where
+    C: Serialize + DeserializeOwned,
+    S: Serialize + DeserializeOwned,
+{
     pub fn to_json(&self) -> Result<String, DbError> {
         serde_json::to_string(self)
             .map_err(|e| DbError::Execution(format!("failed to encode checkpoint: {}", e)))
@@ -26,31 +34,49 @@ impl RecoveryCheckpoint {
     }
 }
 
-pub trait DurabilitySink: std::fmt::Debug + Send + Sync {
-    fn persist_checkpoint(&mut self, checkpoint: &RecoveryCheckpoint) -> Result<(), DbError>;
-    fn latest_checkpoint(&self) -> Option<RecoveryCheckpoint>;
+pub trait DurabilitySink<C, S>: std::fmt::Debug + Send + Sync {
+    fn persist_checkpoint(&mut self, checkpoint: &RecoveryCheckpoint<C, S>) -> Result<(), DbError>;
+    fn latest_checkpoint(&self) -> Option<RecoveryCheckpoint<C, S>>;
 }
 
-#[derive(Debug, Default)]
-pub struct NoopDurability;
+#[derive(Debug)]
+pub struct NoopDurability<C, S> {
+    _marker: PhantomData<(C, S)>,
+}
 
-impl DurabilitySink for NoopDurability {
-    fn persist_checkpoint(&mut self, _checkpoint: &RecoveryCheckpoint) -> Result<(), DbError> {
+impl<C, S> Default for NoopDurability<C, S> {
+    fn default() -> Self {
+        Self {
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<C, S> DurabilitySink<C, S> for NoopDurability<C, S>
+where
+    C: Catalog + Serialize + DeserializeOwned,
+    S: Storage + Serialize + DeserializeOwned,
+{
+    fn persist_checkpoint(&mut self, _checkpoint: &RecoveryCheckpoint<C, S>) -> Result<(), DbError> {
         Ok(())
     }
 
-    fn latest_checkpoint(&self) -> Option<RecoveryCheckpoint> {
+    fn latest_checkpoint(&self) -> Option<RecoveryCheckpoint<C, S>> {
         None
     }
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct InMemoryDurability {
-    latest: Option<RecoveryCheckpoint>,
+pub struct InMemoryDurability<C, S> {
+    latest: Option<RecoveryCheckpoint<C, S>>,
 }
 
-impl InMemoryDurability {
-    pub fn latest_json(&self) -> Result<Option<String>, DbError> {
+impl<C, S> InMemoryDurability<C, S> {
+    pub fn latest_json(&self) -> Result<Option<String>, DbError>
+    where
+        C: Serialize + DeserializeOwned,
+        S: Serialize + DeserializeOwned,
+    {
         self.latest
             .as_ref()
             .map(|cp| cp.to_json())
@@ -58,13 +84,17 @@ impl InMemoryDurability {
     }
 }
 
-impl DurabilitySink for InMemoryDurability {
-    fn persist_checkpoint(&mut self, checkpoint: &RecoveryCheckpoint) -> Result<(), DbError> {
+impl<C, S> DurabilitySink<C, S> for InMemoryDurability<C, S>
+where
+    C: Catalog + Serialize + DeserializeOwned + Clone,
+    S: Storage + Serialize + DeserializeOwned + Clone,
+{
+    fn persist_checkpoint(&mut self, checkpoint: &RecoveryCheckpoint<C, S>) -> Result<(), DbError> {
         self.latest = Some(checkpoint.clone());
         Ok(())
     }
 
-    fn latest_checkpoint(&self) -> Option<RecoveryCheckpoint> {
+    fn latest_checkpoint(&self) -> Option<RecoveryCheckpoint<C, S>> {
         self.latest.clone()
     }
 }

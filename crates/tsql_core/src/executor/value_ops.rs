@@ -1,8 +1,58 @@
 use std::cmp::Ordering;
+use std::fmt::Debug;
 
 use crate::error::DbError;
-use crate::executor::value_helpers::to_decimal_parts;
 use crate::types::{DataType, Value};
+
+fn to_12hour(h: i32) -> (i32, &'static str) {
+    let ampm = if h >= 12 { "PM" } else { "AM" };
+    let h12 = match h {
+        0 => 12,
+        n if n > 12 => n - 12,
+        _ => h,
+    };
+    (h12, ampm)
+}
+
+fn check_int_range<T: TryFrom<i64>>(v: i64, type_name: &str) -> Result<T, DbError>
+where
+    T::Error: Debug,
+{
+    T::try_from(v).map_err(|_| {
+        DbError::Execution(format!(
+            "Arithmetic overflow error converting value {} to {}",
+            v, type_name
+        ))
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValueCategory {
+    Integer,
+    Decimal,
+    String,
+    DateTime,
+    Uuid,
+    Null,
+}
+
+fn categorize(v: &Value) -> ValueCategory {
+    match v {
+        Value::Null => ValueCategory::Null,
+        Value::Bit(_) | Value::TinyInt(_) | Value::SmallInt(_) | Value::Int(_) | Value::BigInt(_) => {
+            ValueCategory::Integer
+        }
+        Value::Decimal(_, _) => ValueCategory::Decimal,
+        Value::Char(_) | Value::VarChar(_) | Value::NChar(_) | Value::NVarChar(_) => {
+            ValueCategory::String
+        }
+        Value::Date(_) | Value::Time(_) | Value::DateTime(_) | Value::DateTime2(_) => {
+            ValueCategory::DateTime
+        }
+        Value::UniqueIdentifier(_) => ValueCategory::Uuid,
+        Value::SqlVariant(inner) => categorize(inner),
+    }
+}
 
 pub fn convert_with_style(value: Value, ty: &DataType, style: i32) -> Result<Value, DbError> {
     match value {
@@ -20,31 +70,7 @@ pub fn convert_with_style(value: Value, ty: &DataType, style: i32) -> Result<Val
 }
 
 fn convert_datetime_to_string(dt: &str, ty: &DataType, style: i32) -> Result<Value, DbError> {
-    let _is_date_like = dt.contains(' ') || dt.contains('-') || dt.contains('/');
-
-    let formatted = match style {
-        0 | 100 => "Jan  1 2026 12:00AM".to_string(),
-        1 | 101 => format_datetime_style1(dt),
-        2 | 102 => format_datetime_style2(dt),
-        3 | 103 => format_datetime_style3(dt),
-        4 | 104 => format_datetime_style4(dt),
-        5 | 105 => format_datetime_style5(dt),
-        6 | 106 => format_datetime_style6(dt),
-        7 | 107 => format_datetime_style7(dt),
-        8 | 108 => format_datetime_style8(dt),
-        9 | 109 => "Jan  1 2026 12:00:00:000AM".to_string(),
-        10 | 110 => format_datetime_style10(dt),
-        11 | 111 => format_datetime_style11(dt),
-        12 | 112 => format_datetime_style12(dt),
-        13 | 113 => "01 Jan 2026 00:00:00:000".to_string(),
-        14 | 114 => "00:00:00:000".to_string(),
-        20 | 120 => format_datetime_style20(dt),
-        21 | 121 => format_datetime_style21(dt),
-        22 | 126 => format_datetime_style126(dt),
-        130 => format_datetime_style130(dt),
-        131 => format_datetime_style131(dt),
-        _ => dt.to_string(),
-    };
+    let formatted = format_datetime(dt, style);
 
     match ty {
         DataType::Char { len } => Ok(Value::Char(pad_right(&formatted, *len as usize))),
@@ -53,6 +79,77 @@ fn convert_datetime_to_string(dt: &str, ty: &DataType, style: i32) -> Result<Val
         DataType::NVarChar { .. } => Ok(Value::NVarChar(formatted)),
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::VarChar(formatted)))),
         _ => coerce_value_to_type(Value::VarChar(formatted), ty),
+    }
+}
+
+fn format_datetime(dt: &str, style: i32) -> String {
+    let (y, mo, d, h, mi, s) = parse_dt_parts(dt);
+    match style {
+        0 | 100 => "Jan  1 2026 12:00AM".to_string(),
+        1 | 101 => {
+            let (h12, ampm) = to_12hour(h);
+            format!("{:0>2}/{}/{}{:0>2}:{:0>2}:{:0>2} {}", d, mo, y, h12, mi, s, ampm)
+        }
+        2 | 102 => format!("{}.{:0>2}.{:0>2}", y, mo, d),
+        3 | 103 => {
+            let (h12, ampm) = to_12hour(h);
+            format!("{}/{}/{} {}:{:0>2}:{:0>2} {}", d, mo, y, h12, mi, s, ampm)
+        }
+        4 | 104 => format!("{}.{:0>2}.{:0>2} {}:{:0>2}:{:0>2}", d, mo, y, h, mi, s),
+        5 | 105 => format!("{}-{:0>2}-{:0>2}", y, mo, d),
+        6 | 106 => format!("{} {} {}", d, month_abbr(mo), y),
+        7 | 107 => {
+            let (h12, ampm) = to_12hour(h);
+            format!("{} {} {}  {}:{:0>2}:{:0>2} {}", month_abbr(mo), d, y, h12, mi, s, ampm)
+        }
+        8 | 108 => format!("{}:{:0>2}:{:0>2}", h, mi, s),
+        9 | 109 => "Jan  1 2026 12:00:00:000AM".to_string(),
+        10 | 110 => {
+            let (h12, ampm) = to_12hour(h);
+            format!("{}-{:0>2}-{}-{}:{:0>2}:{:0>2} {}", mo, d, y, h12, mi, s, ampm)
+        }
+        11 | 111 => {
+            let (h12, ampm) = to_12hour(h);
+            format!("{}/{}/{} {}:{:0>2}:{:0>2} {}", mo, d, y, h12, mi, s, ampm)
+        }
+        12 | 112 => format!("{}{:0>2}{:0>2}", y, mo, d),
+        13 | 113 => "01 Jan 2026 00:00:00:000".to_string(),
+        14 | 114 => "00:00:00:000".to_string(),
+        20 | 120 => format!("{}-{:0>2}-{:0>2} {:0>2}:{:0>2}:{:0>2}", y, mo, d, h, mi, s),
+        21 | 121 => format!(
+            "{}-{:0>2}-{:0>2} {:0>2}:{:0>2}:{:0>2}.000",
+            y, mo, d, h, mi, s
+        ),
+        22 | 126 => format!(
+            "{}-{:0>2}-{:0>2}T{:0>2}:{:0>2}:{:0>2}.0000000",
+            y, mo, d, h, mi, s
+        ),
+        130 => {
+            let month_name = match mo {
+                1 => "يناير",
+                2 => "فبراير",
+                3 => "مارس",
+                4 => "أبريل",
+                5 => "مايو",
+                6 => "يونيو",
+                7 => "يوليو",
+                8 => "أغسطس",
+                9 => "سبتمبر",
+                10 => "أكتوبر",
+                11 => "نوفمبر",
+                12 => "ديسمبر",
+                _ => "???",
+            };
+            format!(
+                "{} {} {} {:0>2}:{:0>2}:{:0>2}:000AM",
+                d, month_name, y, pad2(h), pad2(mi), pad2(s)
+            )
+        }
+        131 => format!(
+            "{}/{:0>2}/{} {}:{:0>2}:{:0>2}AM",
+            d, mo, y, pad2(h), pad2(mi), pad2(s)
+        ),
+        _ => dt.to_string(),
     }
 }
 
@@ -148,179 +245,6 @@ fn pad2(n: i32) -> String {
     format!("{:0>2}", n)
 }
 
-fn format_datetime_style1(dt: &str) -> String {
-    let (y, mo, d, h, mi, s) = parse_dt_parts(dt);
-    let ampm = if h >= 12 { "PM" } else { "AM" };
-    let h12 = if h == 0 {
-        12
-    } else if h > 12 {
-        h - 12
-    } else {
-        h
-    };
-    format!(
-        "{:0>2}/{}/{}{:0>2}:{:0>2}:{:0>2} {}",
-        d, mo, y, h12, mi, s, ampm
-    )
-}
-
-fn format_datetime_style2(dt: &str) -> String {
-    let (y, mo, d, _, _, _) = parse_dt_parts(dt);
-    format!("{}.{:0>2}.{:0>2}", y, mo, d)
-}
-
-fn format_datetime_style3(dt: &str) -> String {
-    let (y, mo, d, h, mi, s) = parse_dt_parts(dt);
-    let ampm = if h >= 12 { "PM" } else { "AM" };
-    let h12 = if h == 0 {
-        12
-    } else if h > 12 {
-        h - 12
-    } else {
-        h
-    };
-    format!("{}/{}/{} {}:{:0>2}:{:0>2} {}", d, mo, y, h12, mi, s, ampm)
-}
-
-fn format_datetime_style4(dt: &str) -> String {
-    let (y, mo, d, h, mi, s) = parse_dt_parts(dt);
-    format!("{}.{:0>2}.{:0>2} {}:{:0>2}:{:0>2}", d, mo, y, h, mi, s)
-}
-
-fn format_datetime_style5(dt: &str) -> String {
-    let (y, mo, d, _, _, _) = parse_dt_parts(dt);
-    format!("{}-{:0>2}-{:0>2}", y, mo, d)
-}
-
-fn format_datetime_style6(dt: &str) -> String {
-    let (y, mo, d, _, _, _) = parse_dt_parts(dt);
-    format!("{} {} {}", d, month_abbr(mo), y)
-}
-
-fn format_datetime_style7(dt: &str) -> String {
-    let (y, mo, d, h, mi, s) = parse_dt_parts(dt);
-    let ampm = if h >= 12 { "PM" } else { "AM" };
-    let h12 = if h == 0 {
-        12
-    } else if h > 12 {
-        h - 12
-    } else {
-        h
-    };
-    format!(
-        "{} {} {}  {}:{:0>2}:{:0>2} {}",
-        month_abbr(mo),
-        d,
-        y,
-        h12,
-        mi,
-        s,
-        ampm
-    )
-}
-
-fn format_datetime_style8(dt: &str) -> String {
-    let (y, mo, d, h, mi, s) = parse_dt_parts(dt);
-    let _ = (y, mo, d);
-    format!("{}:{:0>2}:{:0>2}", h, mi, s)
-}
-
-fn format_datetime_style10(dt: &str) -> String {
-    let (y, mo, d, h, mi, s) = parse_dt_parts(dt);
-    let ampm = if h >= 12 { "PM" } else { "AM" };
-    let h12 = if h == 0 {
-        12
-    } else if h > 12 {
-        h - 12
-    } else {
-        h
-    };
-    format!(
-        "{}-{:0>2}-{}-{}:{:0>2}:{:0>2} {}",
-        mo, d, y, h12, mi, s, ampm
-    )
-}
-
-fn format_datetime_style11(dt: &str) -> String {
-    let (y, mo, d, h, mi, s) = parse_dt_parts(dt);
-    let ampm = if h >= 12 { "PM" } else { "AM" };
-    let h12 = if h == 0 {
-        12
-    } else if h > 12 {
-        h - 12
-    } else {
-        h
-    };
-    format!("{}/{}/{} {}:{:0>2}:{:0>2} {}", mo, d, y, h12, mi, s, ampm)
-}
-
-fn format_datetime_style12(dt: &str) -> String {
-    let (y, mo, d, _, _, _) = parse_dt_parts(dt);
-    format!("{}{:0>2}{:0>2}", y, mo, d)
-}
-
-fn format_datetime_style20(dt: &str) -> String {
-    let (y, mo, d, h, mi, s) = parse_dt_parts(dt);
-    format!("{}-{:0>2}-{:0>2} {:0>2}:{:0>2}:{:0>2}", y, mo, d, h, mi, s)
-}
-
-fn format_datetime_style21(dt: &str) -> String {
-    let (y, mo, d, h, mi, s) = parse_dt_parts(dt);
-    format!(
-        "{}-{:0>2}-{:0>2} {:0>2}:{:0>2}:{:0>2}.000",
-        y, mo, d, h, mi, s
-    )
-}
-
-fn format_datetime_style126(dt: &str) -> String {
-    let (y, mo, d, h, mi, s) = parse_dt_parts(dt);
-    format!(
-        "{}-{:0>2}-{:0>2}T{:0>2}:{:0>2}:{:0>2}.0000000",
-        y, mo, d, h, mi, s
-    )
-}
-
-fn format_datetime_style130(dt: &str) -> String {
-    let (y, mo, d, h, mi, s) = parse_dt_parts(dt);
-    let month_name = match mo {
-        1 => "يناير",
-        2 => "فبراير",
-        3 => "مارس",
-        4 => "أبريل",
-        5 => "مايو",
-        6 => "يونيو",
-        7 => "يوليو",
-        8 => "أغسطس",
-        9 => "سبتمبر",
-        10 => "أكتوبر",
-        11 => "نوفمبر",
-        12 => "ديسمبر",
-        _ => "???",
-    };
-    format!(
-        "{} {} {} {:0>2}:{:0>2}:{:0>2}:000AM",
-        d,
-        month_name,
-        y,
-        pad2(h),
-        pad2(mi),
-        pad2(s)
-    )
-}
-
-fn format_datetime_style131(dt: &str) -> String {
-    let (y, mo, d, h, mi, s) = parse_dt_parts(dt);
-    format!(
-        "{}/{:0>2}/{} {}:{:0>2}:{:0>2}AM",
-        d,
-        mo,
-        y,
-        pad2(h),
-        pad2(mi),
-        pad2(s)
-    )
-}
-
 pub fn coerce_value_to_type(value: Value, ty: &DataType) -> Result<Value, DbError> {
     if matches!(ty, DataType::SqlVariant) {
         return Ok(match value {
@@ -381,36 +305,9 @@ fn coerce_bit(v: bool, ty: &DataType) -> Result<Value, DbError> {
 fn coerce_int(v: i64, ty: &DataType) -> Result<Value, DbError> {
     match ty {
         DataType::Bit => Ok(Value::Bit(v != 0)),
-        DataType::TinyInt => {
-            if !(0..=255).contains(&v) {
-                Err(DbError::Execution(format!(
-                    "Arithmetic overflow error converting value {} to TINYINT",
-                    v
-                )))
-            } else {
-                Ok(Value::TinyInt(v as u8))
-            }
-        }
-        DataType::SmallInt => {
-            if v < i16::MIN as i64 || v > i16::MAX as i64 {
-                Err(DbError::Execution(format!(
-                    "Arithmetic overflow error converting value {} to SMALLINT",
-                    v
-                )))
-            } else {
-                Ok(Value::SmallInt(v as i16))
-            }
-        }
-        DataType::Int => {
-            if v < i32::MIN as i64 || v > i32::MAX as i64 {
-                Err(DbError::Execution(format!(
-                    "Arithmetic overflow error converting value {} to INT",
-                    v
-                )))
-            } else {
-                Ok(Value::Int(v as i32))
-            }
-        }
+        DataType::TinyInt => check_int_range::<u8>(v, "TINYINT").map(Value::TinyInt),
+        DataType::SmallInt => check_int_range::<i16>(v, "SMALLINT").map(Value::SmallInt),
+        DataType::Int => check_int_range::<i32>(v, "INT").map(Value::Int),
         DataType::BigInt => Ok(Value::BigInt(v)),
         DataType::Decimal { scale, .. } => {
             let raw = v as i128 * 10i128.pow(*scale as u32);
@@ -641,148 +538,73 @@ fn pad_right(s: &str, len: usize) -> String {
 }
 
 pub fn compare_values(a: &Value, b: &Value) -> Ordering {
-    if let Value::SqlVariant(inner) = a {
-        return compare_values(inner, b);
-    }
-    if let Value::SqlVariant(inner) = b {
-        return compare_values(a, inner);
-    }
+    let a = unwrap_sql_variant(a);
+    let b = unwrap_sql_variant(b);
 
-    match (a, b) {
-        (Value::Null, Value::Null) => Ordering::Equal,
-        (Value::Null, _) => Ordering::Less,
-        (_, Value::Null) => Ordering::Greater,
+    let cat_a = categorize(&a);
+    let cat_b = categorize(&b);
 
-        // Integer-to-integer comparisons
-        (Value::TinyInt(x), Value::TinyInt(y)) => x.cmp(y),
-        (Value::SmallInt(x), Value::SmallInt(y)) => x.cmp(y),
-        (Value::Int(x), Value::Int(y)) => x.cmp(y),
-        (Value::BigInt(x), Value::BigInt(y)) => x.cmp(y),
+    match (cat_a, cat_b) {
+        (ValueCategory::Null, ValueCategory::Null) => Ordering::Equal,
+        (ValueCategory::Null, _) => Ordering::Less,
+        (_, ValueCategory::Null) => Ordering::Greater,
 
-        // Cross-integer comparisons via i64
-        (a, b) if is_integer_value(a) && is_integer_value(b) => {
+        (ValueCategory::Integer, ValueCategory::Integer) => {
             let ai = a.to_integer_i64().unwrap_or(0);
             let bi = b.to_integer_i64().unwrap_or(0);
             ai.cmp(&bi)
         }
 
-        // Bit with integers (via to_integer_i64)
-        (Value::Bit(_), b) if is_integer_value(b) => {
-            let ai = a.to_integer_i64().unwrap_or(0);
-            let bi = b.to_integer_i64().unwrap_or(0);
-            ai.cmp(&bi)
-        }
-        (a, Value::Bit(_)) if is_integer_value(a) => {
-            let ai = a.to_integer_i64().unwrap_or(0);
-            let bi = b.to_integer_i64().unwrap_or(0);
-            ai.cmp(&bi)
-        }
-        (Value::Bit(x), Value::Bit(y)) => x.cmp(y),
-
-        // Decimal comparisons
-        (Value::Decimal(ar, as_), Value::Decimal(br, bs)) => {
-            let (an, bn) = normalize_decimals(*ar, *as_, *br, *bs);
-            an.cmp(&bn)
-        }
-        (Value::Decimal(_, _), b) if is_numeric_value(b) => {
-            let (a_dec, b_dec) = to_comparable_decimals(a, b);
-            a_dec.cmp(&b_dec)
-        }
-        (a, Value::Decimal(_, _)) if is_numeric_value(a) => {
-            let (a_dec, b_dec) = to_comparable_decimals(a, b);
+        (ValueCategory::Decimal, ValueCategory::Decimal) | (ValueCategory::Decimal, ValueCategory::Integer) | (ValueCategory::Integer, ValueCategory::Decimal) => {
+            let (a_dec, b_dec) = to_comparable_decimals(&a, &b);
             a_dec.cmp(&b_dec)
         }
 
-        // String comparisons
-        (Value::Char(x), Value::Char(y)) => x.cmp(y),
-        (Value::VarChar(x), Value::VarChar(y)) => x.cmp(y),
-        (Value::NChar(x), Value::NChar(y)) => x.cmp(y),
-        (Value::NVarChar(x), Value::NVarChar(y)) => x.cmp(y),
-        (a, b) if is_string_value(a) && is_string_value(b) => {
-            let astr = extract_string(a);
-            let bstr = extract_string(b);
-            astr.cmp(bstr)
+        (ValueCategory::String, ValueCategory::String) => {
+            extract_string(&a).cmp(extract_string(&b))
         }
 
-        // Mixed numeric-string comparisons: try numeric coercion first.
-        (a, b) if is_numeric_value(a) && is_string_value(b) => {
-            let b_num = parse_string_as_numeric(extract_string(b));
-            if let Some((br, bs)) = b_num {
-                let (ar, as_) = to_decimal_parts(a);
-                let (an, bn) = normalize_decimals(ar, as_, br, bs);
-                an.cmp(&bn)
-            } else {
-                a.to_string_value().cmp(&b.to_string_value())
-            }
-        }
-        (a, b) if is_string_value(a) && is_numeric_value(b) => {
-            let a_num = parse_string_as_numeric(extract_string(a));
-            if let Some((ar, as_)) = a_num {
-                let (br, bs) = to_decimal_parts(b);
-                let (an, bn) = normalize_decimals(ar, as_, br, bs);
-                an.cmp(&bn)
-            } else {
-                a.to_string_value().cmp(&b.to_string_value())
-            }
+        (ValueCategory::Integer, ValueCategory::String) | (ValueCategory::Decimal, ValueCategory::String) => {
+            compare_numeric_with_string(&a, &b)
         }
 
-        // DateTime-like comparisons
-        (Value::Date(x), Value::Date(y)) => x.cmp(y),
-        (Value::Time(x), Value::Time(y)) => x.cmp(y),
-        (Value::DateTime(x), Value::DateTime(y)) => x.cmp(y),
-        (Value::DateTime2(x), Value::DateTime2(y)) => x.cmp(y),
-        (a, b) if is_datetime_value(a) && is_datetime_value(b) => {
-            let astr = extract_string(a);
-            let bstr = extract_string(b);
-            astr.cmp(bstr)
+        (ValueCategory::String, ValueCategory::Integer) | (ValueCategory::String, ValueCategory::Decimal) => {
+            compare_numeric_with_string(&a, &b)
         }
-        (a, b) if is_datetime_value(a) && is_string_value(b) => {
-            a.to_string_value().cmp(&b.to_string_value())
+
+        (ValueCategory::DateTime, ValueCategory::DateTime) => {
+            extract_string(&a).cmp(extract_string(&b))
         }
-        (a, b) if is_string_value(a) && is_datetime_value(b) => {
+
+        (ValueCategory::DateTime, ValueCategory::String) | (ValueCategory::String, ValueCategory::DateTime) => {
             a.to_string_value().cmp(&b.to_string_value())
         }
 
-        // UUID
-        (Value::UniqueIdentifier(x), Value::UniqueIdentifier(y)) => x.cmp(y),
+        (ValueCategory::Uuid, ValueCategory::Uuid) => {
+            extract_string(&a).cmp(extract_string(&b))
+        }
 
-        // Fallback
-        _ => value_key(a).cmp(&value_key(b)),
+        _ => value_key(&a).cmp(&value_key(&b)),
     }
 }
 
-fn is_integer_value(v: &Value) -> bool {
-    if let Value::SqlVariant(inner) = v {
-        return is_integer_value(inner);
+fn unwrap_sql_variant(v: &Value) -> Value {
+    match v {
+        Value::SqlVariant(inner) => unwrap_sql_variant(inner),
+        other => other.clone(),
     }
-    matches!(
-        v,
-        Value::Bit(_) | Value::TinyInt(_) | Value::SmallInt(_) | Value::Int(_) | Value::BigInt(_)
-    )
 }
 
-fn is_numeric_value(v: &Value) -> bool {
-    is_integer_value(v) || matches!(v, Value::Decimal(_, _))
-}
-
-fn is_string_value(v: &Value) -> bool {
-    if let Value::SqlVariant(inner) = v {
-        return is_string_value(inner);
+fn compare_numeric_with_string(num: &Value, str_val: &Value) -> Ordering {
+    let num_str = extract_string(num);
+    if let Some((ar, as_)) = parse_string_as_numeric(num_str) {
+        let str_parsed = parse_string_as_numeric(extract_string(str_val));
+        if let Some((br, bs)) = str_parsed {
+            let (an, bn) = normalize_decimals(ar, as_, br, bs);
+            return an.cmp(&bn);
+        }
     }
-    matches!(
-        v,
-        Value::Char(_) | Value::VarChar(_) | Value::NChar(_) | Value::NVarChar(_)
-    )
-}
-
-fn is_datetime_value(v: &Value) -> bool {
-    if let Value::SqlVariant(inner) = v {
-        return is_datetime_value(inner);
-    }
-    matches!(
-        v,
-        Value::Date(_) | Value::Time(_) | Value::DateTime(_) | Value::DateTime2(_)
-    )
+    num.to_string_value().cmp(&str_val.to_string_value())
 }
 
 fn extract_string(v: &Value) -> &str {

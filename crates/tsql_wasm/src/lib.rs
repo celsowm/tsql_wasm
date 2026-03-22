@@ -1,6 +1,9 @@
 use wasm_bindgen::prelude::*;
 
-use tsql_core::{parse_batch, parse_sql, Database, SessionId};
+use tsql_core::{
+    parse_batch, parse_sql, Database, SessionId,
+    CheckpointManager, SessionManager, StatementExecutor, SqlAnalyzer,
+};
 
 #[wasm_bindgen]
 pub struct WasmDb {

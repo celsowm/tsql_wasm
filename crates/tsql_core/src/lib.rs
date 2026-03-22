@@ -8,7 +8,10 @@ pub mod types;
 
 pub use error::DbError;
 pub use executor::durability::{DurabilitySink, InMemoryDurability, NoopDurability, RecoveryCheckpoint};
-pub use executor::engine::{Database, Engine, SessionId};
+pub use executor::engine::{
+    CheckpointManager, Database, DatabaseInner, Engine, EngineInner, SessionId,
+    SessionManager, SqlAnalyzer, StatementExecutor,
+};
 pub use executor::result::QueryResult;
 pub use executor::tooling::{
     CompatibilityEntry, CompatibilityIssue, CompatibilityReport, ExecutionTrace, ExplainOperator,

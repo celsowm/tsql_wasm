@@ -21,6 +21,27 @@ pub fn is_aggregate_function(name: &str) -> bool {
     )
 }
 
+/// Centralized aggregate dispatch. Returns None if the function is not a recognized aggregate.
+/// This enables OCP: add new aggregates here without modifying caller code.
+pub fn dispatch_aggregate(
+    name: &str,
+    args: &[Expr],
+    group: &Group,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Option<Result<Value, DbError>> {
+    match name.to_uppercase().as_str() {
+        "COUNT" => Some(Ok(eval_aggregate_count(args, group, ctx, catalog, storage, clock))),
+        "SUM" => Some(eval_aggregate_sum(args, group, ctx, catalog, storage, clock)),
+        "AVG" => Some(eval_aggregate_avg(args, group, ctx, catalog, storage, clock)),
+        "MIN" => Some(eval_aggregate_min(args, group, ctx, catalog, storage, clock)),
+        "MAX" => Some(eval_aggregate_max(args, group, ctx, catalog, storage, clock)),
+        _ => None,
+    }
+}
+
 pub fn collect_group_values<'a>(
     expr: &'a Expr,
     group: &'a Group,
