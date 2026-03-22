@@ -5,9 +5,12 @@ use crate::types::Value;
 
 use super::clock::Clock;
 use super::context::ExecutionContext;
-use super::date_time::{apply_dateadd, parse_datetime_parts};
+use super::date_time::{apply_dateadd, day_of_week_from_date, date_to_days, parse_datetime_parts};
 use super::evaluator::eval_expr;
+use super::fuzzy;
+use super::json;
 use super::model::ContextTable;
+use super::regexp;
 use super::value_helpers::value_to_f64;
 use crate::storage::Storage;
 
@@ -45,6 +48,10 @@ pub(crate) fn eval_function(
         eval_dateadd(args, row, ctx, catalog, storage, clock)
     } else if name.eq_ignore_ascii_case("DATEDIFF") {
         eval_datediff(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("DATEPART") {
+        eval_datepart(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("DATENAME") {
+        eval_datename(args, row, ctx, catalog, storage, clock)
     } else if name.eq_ignore_ascii_case("COUNT")
         || name.eq_ignore_ascii_case("SUM")
         || name.eq_ignore_ascii_case("AVG")
@@ -104,11 +111,54 @@ pub(crate) fn eval_function(
         eval_abs(args, row, ctx, catalog, storage, clock)
     } else if name.eq_ignore_ascii_case("CHARINDEX") {
         eval_charindex(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("JSON_VALUE") {
+        eval_json_value(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("JSON_QUERY") {
+        eval_json_query(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("JSON_MODIFY") {
+        eval_json_modify(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("ISJSON") {
+        eval_isjson(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("JSON_ARRAY_LENGTH") {
+        eval_json_array_length(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("JSON_KEYS") {
+        eval_json_keys(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("REGEXP_LIKE") {
+        eval_regexp_like(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("REGEXP_REPLACE") {
+        eval_regexp_replace(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("REGEXP_SUBSTR") {
+        eval_regexp_substr(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("REGEXP_INSTR") {
+        eval_regexp_instr(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("REGEXP_COUNT") {
+        eval_regexp_count(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("CURRENT_DATE") {
+        if !args.is_empty() {
+            return Err(DbError::Execution("CURRENT_DATE expects no arguments".into()));
+        }
+        let dt = clock.now_datetime_literal();
+        let date_str = if dt.len() >= 10 { &dt[..10] } else { "1970-01-01" };
+        Ok(Value::Date(date_str.to_string()))
+    } else if name.eq_ignore_ascii_case("UNISTR") {
+        eval_unistr(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("EDIT_DISTANCE") {
+        eval_edit_distance(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("EDIT_DISTANCE_SIMILARITY") {
+        eval_edit_distance_similarity(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("JARO_WINKLER_DISTANCE") {
+        eval_jaro_winkler_distance(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("JARO_WINKLER_SIMILARITY") {
+        eval_jaro_winkler_similarity(args, row, ctx, catalog, storage, clock)
     } else if name.eq_ignore_ascii_case("NEWID") {
         if !args.is_empty() {
             return Err(DbError::Execution("NEWID expects no arguments".into()));
         }
-        Ok(Value::UniqueIdentifier(clock.now_datetime_literal()))
+        let uuid = deterministic_uuid(&mut *ctx.random_state);
+        Ok(Value::UniqueIdentifier(uuid))
+    } else if name.eq_ignore_ascii_case("RAND") {
+        let val = deterministic_rand(&mut *ctx.random_state);
+        Ok(Value::Decimal((val * 1_000_000_000.0) as i128, 9))
     } else if name.eq_ignore_ascii_case("COUNT_BIG") {
         Err(DbError::Execution(
             "COUNT_BIG is only supported in grouped projection".into(),
@@ -388,6 +438,120 @@ pub(crate) fn eval_datediff(
     };
 
     Ok(Value::Int(result))
+}
+
+pub(crate) fn eval_datepart(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution("DATEPART expects 2 arguments".into()));
+    }
+
+    let part = extract_datepart(&args[0])?;
+    let date_val = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+    let date_str = date_val.to_string_value();
+    let (y, m, d, h, mi, s) = parse_datetime_parts(&date_str)?;
+
+    let result = match part.as_str() {
+        "year" | "yy" | "yyyy" => y as i32,
+        "month" | "mm" | "m" => m,
+        "day" | "dd" | "d" => d,
+        "hour" | "hh" => h,
+        "minute" | "mi" | "n" => mi,
+        "second" | "ss" | "s" => s,
+        "weekday" | "dw" | "w" => {
+            let dow = day_of_week_from_date(y, m, d);
+            let datefirst = ctx.datefirst;
+            ((dow - datefirst + 7) % 7 + 1) as i32
+        }
+        "dayofweek" => {
+            let dow = day_of_week_from_date(y, m, d);
+            (dow + 1) as i32
+        }
+        "dayofyear" | "dy" => {
+            let days = date_to_days(y, m, d);
+            let jan1 = date_to_days(y, 1, 1);
+            ((days - jan1) + 1) as i32
+        }
+        "quarter" | "qq" | "q" => {
+            ((m - 1) / 3 + 1) as i32
+        }
+        "millisecond" | "ms" => 0i32,
+        "microsecond" | "mcs" => 0i32,
+        "nanosecond" | "ns" => 0i32,
+        _ => return Err(DbError::Execution(format!("unknown datepart '{}'", part))),
+    };
+
+    Ok(Value::Int(result))
+}
+
+pub(crate) fn eval_datename(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution("DATENAME expects 2 arguments".into()));
+    }
+
+    let part = extract_datepart(&args[0])?;
+    let date_val = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+    let date_str = date_val.to_string_value();
+    let (y, m, d, _, _, _) = parse_datetime_parts(&date_str)?;
+
+    let result = match part.as_str() {
+        "year" | "yy" | "yyyy" => format!("{}", y),
+        "month" | "mm" | "m" => {
+            let months = [
+                "", "January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December",
+            ];
+            months.get(m as usize).unwrap_or(&"").to_string()
+        }
+        "day" | "dd" | "d" => format!("{}", d),
+        "dayofweek" | "dw" | "weekday" | "w" => {
+            let dow = day_of_week_from_date(y, m, d);
+            let datefirst = ctx.datefirst;
+            let adjusted = ((dow - datefirst + 7) % 7) as usize;
+            let day_names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+            day_names[adjusted].to_string()
+        }
+        "dayofyear" | "dy" => {
+            let days = date_to_days(y, m, d);
+            let jan1 = date_to_days(y, 1, 1);
+            format!("{}", (days - jan1) + 1)
+        }
+        "quarter" | "qq" | "q" => format!("{}", ((m - 1) / 3 + 1)),
+        "hour" | "hh" => {
+            let time_part = date_str.split('T').nth(1).unwrap_or("00:00:00");
+            let hour: i32 = time_part.split(':').next().unwrap_or("0").parse().unwrap_or(0);
+            format!("{}", hour)
+        }
+        "minute" | "mi" | "n" => {
+            let time_part = date_str.split('T').nth(1).unwrap_or("00:00:00");
+            let parts: Vec<&str> = time_part.split(':').collect();
+            let minute: i32 = parts.get(1).and_then(|v| v.parse().ok()).unwrap_or(0);
+            format!("{}", minute)
+        }
+        "second" | "ss" | "s" => {
+            let time_part = date_str.split('T').nth(1).unwrap_or("00:00:00");
+            let parts: Vec<&str> = time_part.split(':').collect();
+            let second: i32 = parts.get(2).and_then(|v| v.parse().ok()).unwrap_or(0);
+            format!("{}", second)
+        }
+        "millisecond" | "ms" => "0".to_string(),
+        _ => return Err(DbError::Execution(format!("unknown datepart '{}'", part))),
+    };
+
+    Ok(Value::VarChar(result))
 }
 
 pub(crate) fn eval_upper(
@@ -777,4 +941,524 @@ pub(crate) fn eval_ident_current(
         }
     }
     Ok(Value::Null)
+}
+
+fn deterministic_uuid(state: &mut u64) -> String {
+    *state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    let bytes = state.to_be_bytes();
+    format!(
+        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        bytes[0], bytes[1], bytes[2], bytes[3],
+        bytes[4], bytes[5],
+        bytes[6], bytes[7],
+        bytes[0] ^ bytes[4], bytes[1] ^ bytes[5],
+        bytes[2] ^ bytes[6], bytes[3] ^ bytes[7],
+        bytes[4] ^ bytes[0], bytes[5] ^ bytes[1],
+        bytes[6] ^ bytes[2], bytes[7] ^ bytes[3]
+    )
+}
+
+fn deterministic_rand(state: &mut u64) -> f64 {
+    *state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    let bits = (*state >> 33) as u32;
+    bits as f64 / (1u64 << 31) as f64
+}
+
+fn eval_json_value(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution("JSON_VALUE expects 2 arguments".into()));
+    }
+    let json_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let path_val = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+
+    if json_val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let json_str = json_val.to_string_value();
+    let path = path_val.to_string_value();
+
+    json::json_value(&json_str, &path)
+}
+
+fn eval_json_query(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution("JSON_QUERY expects 2 arguments".into()));
+    }
+    let json_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let path_val = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+
+    if json_val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let json_str = json_val.to_string_value();
+    let path = path_val.to_string_value();
+
+    json::json_query(&json_str, &path)
+}
+
+fn eval_json_modify(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 3 {
+        return Err(DbError::Execution("JSON_MODIFY expects 3 arguments".into()));
+    }
+    let json_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let path_val = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+    let new_val = eval_expr(&args[2], row, ctx, catalog, storage, clock)?;
+
+    if json_val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let json_str = json_val.to_string_value();
+    let path = path_val.to_string_value();
+    let new_value_str = new_val.to_string_value();
+
+    json::json_modify(&json_str, &path, &new_value_str)
+}
+
+fn eval_isjson(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("ISJSON expects 1 argument".into()));
+    }
+    let json_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+
+    if json_val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let json_str = json_val.to_string_value();
+    json::is_json(&json_str)
+}
+
+fn eval_json_array_length(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("JSON_ARRAY_LENGTH expects 1 argument".into()));
+    }
+    let json_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+
+    if json_val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let json_str = json_val.to_string_value();
+    json::json_array_length(&json_str)
+}
+
+fn eval_json_keys(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.is_empty() || args.len() > 2 {
+        return Err(DbError::Execution("JSON_KEYS expects 1 or 2 arguments".into()));
+    }
+    let json_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+
+    if json_val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let json_str = json_val.to_string_value();
+    let path = if args.len() == 2 {
+        let path_val = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+        Some(path_val.to_string_value())
+    } else {
+        None
+    };
+
+    json::json_keys(&json_str, path.as_deref())
+}
+
+fn eval_regexp_like(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err(DbError::Execution("REGEXP_LIKE expects 2 or 3 arguments".into()));
+    }
+    let s_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let p_val = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+
+    if s_val.is_null() || p_val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let s = s_val.to_string_value();
+    let pattern = p_val.to_string_value();
+    let flags = if args.len() == 3 {
+        let f_val = eval_expr(&args[2], row, ctx, catalog, storage, clock)?;
+        Some(f_val.to_string_value())
+    } else {
+        None
+    };
+
+    regexp::regexp_like(&s, &pattern, flags.as_deref())
+}
+
+fn eval_regexp_replace(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() < 3 || args.len() > 4 {
+        return Err(DbError::Execution("REGEXP_REPLACE expects 3 or 4 arguments".into()));
+    }
+    let s_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let p_val = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+    let r_val = eval_expr(&args[2], row, ctx, catalog, storage, clock)?;
+
+    if s_val.is_null() || p_val.is_null() || r_val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let s = s_val.to_string_value();
+    let pattern = p_val.to_string_value();
+    let replacement = r_val.to_string_value();
+    let flags = if args.len() == 4 {
+        let f_val = eval_expr(&args[3], row, ctx, catalog, storage, clock)?;
+        Some(f_val.to_string_value())
+    } else {
+        None
+    };
+
+    regexp::regexp_replace(&s, &pattern, &replacement, flags.as_deref())
+}
+
+fn eval_regexp_substr(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() < 2 || args.len() > 5 {
+        return Err(DbError::Execution("REGEXP_SUBSTR expects 2 to 5 arguments".into()));
+    }
+    let s_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let p_val = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+
+    if s_val.is_null() || p_val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let s = s_val.to_string_value();
+    let pattern = p_val.to_string_value();
+    let pos = if args.len() >= 3 {
+        let pos_val = eval_expr(&args[2], row, ctx, catalog, storage, clock)?;
+        pos_val.to_string_value().parse::<usize>().unwrap_or(1)
+    } else {
+        1
+    };
+    let occurrence = if args.len() >= 4 {
+        let occ_val = eval_expr(&args[3], row, ctx, catalog, storage, clock)?;
+        occ_val.to_string_value().parse::<usize>().unwrap_or(0)
+    } else {
+        0
+    };
+    let flags = if args.len() == 5 {
+        let f_val = eval_expr(&args[4], row, ctx, catalog, storage, clock)?;
+        Some(f_val.to_string_value())
+    } else {
+        None
+    };
+
+    regexp::regexp_substr(&s, &pattern, pos, occurrence, flags.as_deref())
+}
+
+fn eval_regexp_instr(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() < 2 || args.len() > 6 {
+        return Err(DbError::Execution("REGEXP_INSTR expects 2 to 6 arguments".into()));
+    }
+    let s_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let p_val = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+
+    if s_val.is_null() || p_val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let s = s_val.to_string_value();
+    let pattern = p_val.to_string_value();
+    let pos = if args.len() >= 3 {
+        let pos_val = eval_expr(&args[2], row, ctx, catalog, storage, clock)?;
+        pos_val.to_string_value().parse::<usize>().unwrap_or(1)
+    } else {
+        1
+    };
+    let occurrence = if args.len() >= 4 {
+        let occ_val = eval_expr(&args[3], row, ctx, catalog, storage, clock)?;
+        occ_val.to_string_value().parse::<usize>().unwrap_or(0)
+    } else {
+        0
+    };
+    let return_opt = if args.len() >= 5 {
+        let ret_val = eval_expr(&args[4], row, ctx, catalog, storage, clock)?;
+        ret_val.to_string_value().parse::<usize>().unwrap_or(0)
+    } else {
+        0
+    };
+    let flags = if args.len() == 6 {
+        let f_val = eval_expr(&args[5], row, ctx, catalog, storage, clock)?;
+        Some(f_val.to_string_value())
+    } else {
+        None
+    };
+
+    regexp::regexp_instr(&s, &pattern, pos, occurrence, return_opt, flags.as_deref())
+}
+
+fn eval_regexp_count(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() < 2 || args.len() > 4 {
+        return Err(DbError::Execution("REGEXP_COUNT expects 2 to 4 arguments".into()));
+    }
+    let s_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let p_val = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+
+    if s_val.is_null() || p_val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let s = s_val.to_string_value();
+    let pattern = p_val.to_string_value();
+    let pos = if args.len() >= 3 {
+        let pos_val = eval_expr(&args[2], row, ctx, catalog, storage, clock)?;
+        pos_val.to_string_value().parse::<usize>().unwrap_or(1)
+    } else {
+        1
+    };
+    let flags = if args.len() == 4 {
+        let f_val = eval_expr(&args[3], row, ctx, catalog, storage, clock)?;
+        Some(f_val.to_string_value())
+    } else {
+        None
+    };
+
+    regexp::regexp_count(&s, &pattern, pos, flags.as_deref())
+}
+
+fn eval_unistr(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("UNISTR expects 1 argument".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let s = val.to_string_value();
+    let result = process_unicode_escapes(&s)?;
+    Ok(Value::NVarChar(result))
+}
+
+fn process_unicode_escapes(s: &str) -> Result<String, DbError> {
+    let mut result = String::new();
+    let mut chars = s.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            if let Some(&next) = chars.peek() {
+                if next == 'u' || next == 'U' {
+                    chars.next();
+                    let mut hex = String::new();
+                    while let Some(&h) = chars.peek() {
+                        if h.is_ascii_hexdigit() {
+                            hex.push(h);
+                            chars.next();
+                        } else {
+                            break;
+                        }
+                    }
+                    if !hex.is_empty() {
+                        let codepoint = u32::from_str_radix(&hex, 16)
+                            .map_err(|_| DbError::Execution(format!("Invalid Unicode escape: \\{}", hex)))?;
+                        if let Some(ch) = char::from_u32(codepoint) {
+                            result.push(ch);
+                        } else {
+                            return Err(DbError::Execution(format!("Invalid Unicode codepoint: {}", codepoint)));
+                        }
+                    } else {
+                        result.push('\\');
+                        result.push(next);
+                    }
+                } else {
+                    result.push(c);
+                    result.push(next);
+                    chars.next();
+                }
+            } else {
+                result.push(c);
+            }
+        } else {
+            result.push(c);
+        }
+    }
+
+    Ok(result)
+}
+
+fn eval_edit_distance(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution("EDIT_DISTANCE expects 2 arguments".into()));
+    }
+    let s1 = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let s2 = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+
+    if s1.is_null() || s2.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let str1 = s1.to_string_value();
+    let str2 = s2.to_string_value();
+
+    Ok(Value::Int(fuzzy::edit_distance(&str1, &str2)))
+}
+
+fn eval_edit_distance_similarity(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution("EDIT_DISTANCE_SIMILARITY expects 2 arguments".into()));
+    }
+    let s1 = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let s2 = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+
+    if s1.is_null() || s2.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let str1 = s1.to_string_value();
+    let str2 = s2.to_string_value();
+
+    let similarity = fuzzy::edit_distance_similarity(&str1, &str2);
+    Ok(Value::Decimal((similarity * 1_000_000_000.0) as i128, 9))
+}
+
+fn eval_jaro_winkler_distance(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution("JARO_WINKLER_DISTANCE expects 2 arguments".into()));
+    }
+    let s1 = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let s2 = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+
+    if s1.is_null() || s2.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let str1 = s1.to_string_value();
+    let str2 = s2.to_string_value();
+
+    let distance = fuzzy::jaro_winkler_distance(&str1, &str2);
+    Ok(Value::Decimal((distance * 1_000_000_000.0) as i128, 9))
+}
+
+fn eval_jaro_winkler_similarity(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution("JARO_WINKLER_SIMILARITY expects 2 arguments".into()));
+    }
+    let s1 = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let s2 = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+
+    if s1.is_null() || s2.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let str1 = s1.to_string_value();
+    let str2 = s2.to_string_value();
+
+    let similarity = fuzzy::jaro_winkler_similarity(&str1, &str2);
+    Ok(Value::Decimal((similarity * 1_000_000_000.0) as i128, 9))
 }

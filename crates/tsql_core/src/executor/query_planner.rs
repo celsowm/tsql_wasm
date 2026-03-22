@@ -75,7 +75,7 @@ pub fn build_physical_plan(
         return Err(DbError::Execution("planner requires FROM source".into()));
     };
 
-    let all_inner = stmt.joins.iter().all(|j| j.join_type == JoinType::Inner);
+    let all_inner = stmt.joins.iter().all(|j| j.join_type == JoinType::Inner || j.join_type == JoinType::Cross);
     let mut alias_predicates: std::collections::HashMap<String, Vec<Expr>> =
         std::collections::HashMap::new();
     let mut residual = stmt.selection.clone();
@@ -118,6 +118,7 @@ pub fn build_physical_plan(
     Ok(PhysicalPlan {
         base: base_scan,
         joins: physical_joins,
+        applies: stmt.applies.clone(),
         residual_filter: residual,
         projection: stmt.projection.clone(),
         group_by: stmt.group_by.clone(),
@@ -127,6 +128,8 @@ pub fn build_physical_plan(
         top: stmt.top.clone(),
         required_columns,
         order_satisfied_by_scan,
+        offset: stmt.offset.clone(),
+        fetch: stmt.fetch.clone(),
     })
 }
 
@@ -541,7 +544,7 @@ fn choose_scan_strategy(
             if parts.len() >= 2
                 && parts[0].eq_ignore_ascii_case(&bound.alias)
                 && parts[1].eq_ignore_ascii_case(&first_col.name)
-                && !order_by[0].desc
+                && order_by[0].asc
             {
                 return ScanStrategy::IndexScan { index_id: idx.id };
             }
@@ -571,7 +574,7 @@ fn scan_satisfies_order(
     let Some(col) = scan.bound.table.columns.iter().find(|c| c.id == *col_id) else {
         return false;
     };
-    if order_by.len() != 1 || order_by[0].desc {
+    if order_by.len() != 1 || !order_by[0].asc {
         return false;
     }
     match &order_by[0].expr {

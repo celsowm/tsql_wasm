@@ -56,6 +56,43 @@ pub enum Statement {
     DropProcedure(DropProcedureStmt),
     CreateFunction(CreateFunctionStmt),
     DropFunction(DropFunctionStmt),
+    Merge(MergeStmt),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MergeStmt {
+    pub target: TableRef,
+    pub source: MergeSource,
+    pub on_condition: Expr,
+    pub when_clauses: Vec<MergeWhenClause>,
+    pub output: Option<Vec<OutputColumn>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MergeSource {
+    Table(TableRef),
+    Subquery(SelectStmt, Option<String>),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MergeWhen {
+    Matched,
+    NotMatched,
+    NotMatchedBySource,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MergeWhenClause {
+    pub when: MergeWhen,
+    pub condition: Option<Expr>,
+    pub action: MergeAction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MergeAction {
+    Update { assignments: Vec<Assignment> },
+    Insert { columns: Vec<String>, values: Vec<Expr> },
+    Delete,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -314,12 +351,28 @@ pub struct InsertStmt {
     pub columns: Option<Vec<String>>,
     pub values: Vec<Vec<Expr>>,
     pub default_values: bool,
+    pub select_source: Option<Box<SelectStmt>>,
+    pub output: Option<Vec<OutputColumn>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutputColumn {
+    pub source: OutputSource,
+    pub column: String,
+    pub alias: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OutputSource {
+    Inserted,
+    Deleted,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelectStmt {
     pub from: Option<TableRef>,
     pub joins: Vec<JoinClause>,
+    pub applies: Vec<ApplyClause>,
     pub projection: Vec<SelectItem>,
     pub distinct: bool,
     pub top: Option<TopSpec>,
@@ -327,13 +380,15 @@ pub struct SelectStmt {
     pub group_by: Vec<Expr>,
     pub having: Option<Expr>,
     pub order_by: Vec<OrderByExpr>,
+    pub offset: Option<Expr>,
+    pub fetch: Option<Expr>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JoinClause {
     pub join_type: JoinType,
     pub table: TableRef,
-    pub on: Expr,
+    pub on: Option<Expr>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -342,6 +397,20 @@ pub enum JoinType {
     Left,
     Right,
     Full,
+    Cross,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplyClause {
+    pub apply_type: ApplyType,
+    pub subquery: SelectStmt,
+    pub alias: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ApplyType {
+    Cross,
+    Outer,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -358,7 +427,7 @@ pub struct TopSpec {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrderByExpr {
     pub expr: Expr,
-    pub desc: bool,
+    pub asc: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -366,6 +435,14 @@ pub struct UpdateStmt {
     pub table: ObjectName,
     pub assignments: Vec<Assignment>,
     pub selection: Option<Expr>,
+    pub from: Option<FromClause>,
+    pub output: Option<Vec<OutputColumn>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FromClause {
+    pub tables: Vec<TableRef>,
+    pub joins: Vec<JoinClause>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -378,6 +455,8 @@ pub struct Assignment {
 pub struct DeleteStmt {
     pub table: ObjectName,
     pub selection: Option<Expr>,
+    pub from: Option<FromClause>,
+    pub output: Option<Vec<OutputColumn>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -430,10 +509,17 @@ pub enum Expr {
         high: Box<Expr>,
         negated: bool,
     },
-    Like {
+Like {
         expr: Box<Expr>,
         pattern: Box<Expr>,
         negated: bool,
+    },
+    WindowFunction {
+        func: WindowFunc,
+        args: Vec<Expr>,
+        partition_by: Vec<Expr>,
+        order_by: Vec<OrderByExpr>,
+        frame: Option<WindowFrame>,
     },
     Subquery(Box<SelectStmt>),
     Exists {
@@ -451,6 +537,31 @@ pub enum Expr {
 pub struct WhenClause {
     pub condition: Expr,
     pub result: Expr,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WindowFunc {
+    RowNumber,
+    Rank,
+    DenseRank,
+    NTile,
+    Lag,
+    Lead,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum WindowFrame {
+    Rows(RowFrameBound),
+    Range(RowFrameBound),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RowFrameBound {
+    UnboundedPreceding,
+    Preceding(Option<i64>),
+    CurrentRow,
+    Following(Option<i64>),
+UnboundedFollowing,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

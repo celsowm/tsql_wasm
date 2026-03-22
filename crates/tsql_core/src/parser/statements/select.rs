@@ -12,6 +12,7 @@ struct SelectClauseBounds {
     group_idx: Option<usize>,
     having_idx: Option<usize>,
     order_idx: Option<usize>,
+    offset_idx: Option<usize>,
 }
 
 impl SelectClauseBounds {
@@ -21,6 +22,7 @@ impl SelectClauseBounds {
             group_idx: find_keyword_top_level(tail, "GROUP BY"),
             having_idx: find_keyword_top_level(tail, "HAVING"),
             order_idx: find_keyword_top_level(tail, "ORDER BY"),
+            offset_idx: find_keyword_top_level(tail, "OFFSET"),
         }
     }
 
@@ -30,6 +32,7 @@ impl SelectClauseBounds {
             self.group_idx,
             self.having_idx,
             self.order_idx,
+            self.offset_idx,
         ]
         .into_iter()
         .flatten()
@@ -67,6 +70,7 @@ pub(crate) fn parse_select(sql: &str) -> Result<Statement, DbError> {
         return Ok(Statement::Select(SelectStmt {
             from: None,
             joins: vec![],
+            applies: vec![],
             projection,
             distinct,
             top,
@@ -74,6 +78,8 @@ pub(crate) fn parse_select(sql: &str) -> Result<Statement, DbError> {
             group_by: vec![],
             having: None,
             order_by: vec![],
+            offset: None,
+            fetch: None,
         }));
     }
 
@@ -88,16 +94,18 @@ pub(crate) fn parse_select(sql: &str) -> Result<Statement, DbError> {
     let bounds = SelectClauseBounds::detect(tail);
     let source_end = bounds.first_boundary().unwrap_or(tail.len());
 
-    let (from, joins) = parse_from_source(tail[..source_end].trim())?;
+    let (from, joins, applies) = parse_from_source(tail[..source_end].trim())?;
     let selection = parse_where_clause(tail, &bounds)?;
     let group_by = parse_group_by_clause(tail, &bounds)?;
     let having = parse_having_clause(tail, &bounds)?;
     let order_by = parse_order_by_clause(tail, &bounds)?;
+    let (offset, fetch) = parse_offset_fetch_clause(tail, &bounds)?;
     let projection = parse_projection(projection_raw)?;
 
     Ok(Statement::Select(SelectStmt {
         from: Some(from),
         joins,
+        applies,
         projection,
         distinct,
         top,
@@ -105,6 +113,8 @@ pub(crate) fn parse_select(sql: &str) -> Result<Statement, DbError> {
         group_by,
         having,
         order_by,
+        offset,
+        fetch,
     }))
 }
 
@@ -131,7 +141,7 @@ fn try_parse_select_assign(projection_raw: &str, tail: &str) -> Result<Option<St
 
     let bounds = SelectClauseBounds::detect(tail);
     let source_end = bounds.first_boundary().unwrap_or(tail.len());
-    let (from, joins) = parse_from_source(tail[..source_end].trim())?;
+    let (from, joins, _applies) = parse_from_source(tail[..source_end].trim())?;
     let selection = parse_where_clause(tail, &bounds)?;
 
     Ok(Some(Statement::SelectAssign(SelectAssignStmt {
@@ -211,21 +221,97 @@ fn parse_order_by_clause(
     let Some(oidx) = bounds.order_idx else {
         return Ok(vec![]);
     };
-    parse_order_by(tail[oidx + "ORDER BY".len()..].trim())
+    let order_part = &tail[oidx + "ORDER BY".len()..];
+    // Stop at OFFSET if present
+    let end = bounds
+        .offset_idx
+        .map(|oi| oi - oidx - "ORDER BY".len())
+        .unwrap_or(order_part.len());
+    parse_order_by(order_part[..end].trim())
 }
 
-fn parse_from_source(input: &str) -> Result<(TableRef, Vec<JoinClause>), DbError> {
+fn parse_from_source(input: &str) -> Result<(TableRef, Vec<JoinClause>, Vec<ApplyClause>), DbError> {
     let mut rest = input.trim();
     let first_join = find_next_join_top_level(rest);
     let base = if let Some((idx, _, _)) = first_join {
         parse_table_ref(rest[..idx].trim())?
     } else {
-        return Ok((parse_table_ref(rest)?, vec![]));
+        return Ok((parse_table_ref(rest)?, vec![], vec![]));
     };
 
     let mut joins = Vec::new();
+    let mut applies = Vec::new();
     while let Some((idx, join_type, join_len)) = find_next_join_top_level(rest) {
         let after_join = rest[idx + join_len..].trim();
+
+        // CROSS APPLY / OUTER APPLY: expect a parenthesized subquery followed by alias
+        if join_type == JoinType::Cross || join_type == JoinType::Left {
+            // Check if this is an APPLY (keyword was CROSS APPLY or OUTER APPLY)
+            let upper_rest = rest[idx..].to_uppercase();
+            let is_apply = upper_rest.starts_with("CROSS APPLY") || upper_rest.starts_with("OUTER APPLY");
+            if is_apply {
+                let apply_type = if upper_rest.starts_with("CROSS APPLY") {
+                    ApplyType::Cross
+                } else {
+                    ApplyType::Outer
+                };
+                // after_join starts after "CROSS APPLY" or "OUTER APPLY"
+                let trimmed = after_join.trim();
+                if trimmed.starts_with('(') {
+                    // find matching close paren
+                    let close = find_matching_paren(trimmed)
+                        .ok_or_else(|| DbError::Parse("APPLY missing closing ')'".into()))?;
+                    let subquery_sql = trimmed[1..close].trim();
+                    let after_paren = trimmed[close + 1..].trim();
+                    // parse alias: optional AS
+                    let next = find_next_join_top_level(after_paren)
+                        .map(|(i, _, _)| i)
+                        .unwrap_or(after_paren.len());
+                    let alias_str = after_paren[..next].trim();
+                    let alias = if alias_str.to_uppercase().starts_with("AS ") {
+                        alias_str[3..].trim()
+                    } else {
+                        alias_str
+                    };
+                    let alias = alias.trim_matches('[').trim_matches(']').to_string();
+                    // Parse the subquery
+                    let subquery_stmt = crate::parser::parse_sql(subquery_sql)?;
+                    let subquery = match subquery_stmt {
+                        Statement::Select(s) => s,
+                        _ => return Err(DbError::Parse("APPLY requires a SELECT subquery".into())),
+                    };
+                    applies.push(ApplyClause {
+                        apply_type,
+                        subquery,
+                        alias,
+                    });
+                    if next >= after_paren.len() {
+                        break;
+                    }
+                    rest = after_paren[next..].trim();
+                    continue;
+                }
+            }
+        }
+
+        if join_type == JoinType::Cross {
+            // CROSS JOIN: no ON clause
+            let next_join = find_next_join_top_level(after_join)
+                .map(|(i, _, _)| i)
+                .unwrap_or(after_join.len());
+            let table_ref = parse_table_ref(after_join[..next_join].trim())?;
+            joins.push(JoinClause {
+                join_type: JoinType::Cross,
+                table: table_ref,
+                on: None,
+            });
+            if next_join >= after_join.len() {
+                break;
+            }
+            rest = after_join[next_join..].trim();
+            continue;
+        }
+
         let on_idx = find_keyword_top_level(after_join, "ON")
             .ok_or_else(|| DbError::Parse("JOIN missing ON".into()))?;
 
@@ -242,7 +328,7 @@ fn parse_from_source(input: &str) -> Result<(TableRef, Vec<JoinClause>), DbError
         joins.push(JoinClause {
             join_type,
             table: table_ref,
-            on: on_expr,
+            on: Some(on_expr),
         });
 
         if next_join >= after_on.len() {
@@ -251,13 +337,35 @@ fn parse_from_source(input: &str) -> Result<(TableRef, Vec<JoinClause>), DbError
         rest = after_on[next_join..].trim();
     }
 
-    Ok((base, joins))
+    Ok((base, joins, applies))
+}
+
+fn find_matching_paren(input: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut in_string = false;
+    for (i, ch) in input.char_indices() {
+        match ch {
+            '\'' => in_string = !in_string,
+            '(' if !in_string => depth += 1,
+            ')' if !in_string => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn find_next_join_top_level(input: &str) -> Option<(usize, JoinType, usize)> {
-    let patterns = [
+    let patterns: &[(&str, JoinType)] = &[
         ("FULL OUTER JOIN", JoinType::Full),
         ("FULL JOIN", JoinType::Full),
+        ("CROSS APPLY", JoinType::Cross),
+        ("OUTER APPLY", JoinType::Left),
+        ("CROSS JOIN", JoinType::Cross),
         ("LEFT JOIN", JoinType::Left),
         ("RIGHT JOIN", JoinType::Right),
         ("INNER JOIN", JoinType::Inner),
@@ -291,7 +399,7 @@ fn find_next_join_top_level(input: &str) -> Option<(usize, JoinType, usize)> {
                     let next_ok =
                         i + p.len() == bytes.len() || (bytes[i + p.len()] as char).is_whitespace();
                     if prev_ok && next_ok {
-                        return Some((i, ty, p.len()));
+                        return Some((i, *ty, p.len()));
                     }
                 }
             }
@@ -367,7 +475,8 @@ fn parse_order_by(input: &str) -> Result<Vec<OrderByExpr>, DbError> {
         let (processed, subquery_map) = extract_subqueries(expr_text.trim());
         let mut expr = parse_expr_with_subqueries(&processed, &subquery_map)?;
         apply_subquery_map(&mut expr, &subquery_map);
-        out.push(OrderByExpr { expr, desc });
+        let asc = !desc;
+        out.push(OrderByExpr { expr, asc });
     }
     Ok(out)
 }
@@ -393,4 +502,54 @@ fn parse_optional_top(input: &str) -> Result<(Option<TopSpec>, &str), DbError> {
         rest = rest[end..].trim_start();
         Ok((Some(TopSpec { value: expr }), rest))
     }
+}
+
+fn parse_offset_fetch_clause(
+    tail: &str,
+    bounds: &SelectClauseBounds,
+) -> Result<(Option<Expr>, Option<Expr>), DbError> {
+    let Some(oidx) = bounds.offset_idx else {
+        return Ok((None, None));
+    };
+
+    let after_offset = &tail[oidx + "OFFSET".len()..].trim();
+    let fetch_idx = find_keyword_top_level(after_offset, "FETCH");
+
+    // Parse offset value: extract number before ROW/ROWS
+    let offset_expr = if let Some(fi) = fetch_idx {
+        let raw = after_offset[..fi].trim();
+        parse_offset_value(raw)?
+    } else {
+        parse_offset_value(after_offset)?
+    };
+
+    let fetch_expr = if let Some(fi) = fetch_idx {
+        let after_fetch = &after_offset[fi + "FETCH".len()..].trim();
+        // NEXT <n> ROWS ONLY - skip NEXT
+        let trimmed = after_fetch
+            .trim_start_matches(|c: char| c.is_alphabetic())
+            .trim();
+        parse_offset_value(trimmed)?
+    } else {
+        None
+    };
+
+    Ok((offset_expr, fetch_expr))
+}
+
+fn parse_offset_value(input: &str) -> Result<Option<Expr>, DbError> {
+    // Extract just the number, skipping ROW/ROWS/ONLY
+    let raw = input.trim();
+    let mut end = raw.len();
+    for (i, ch) in raw.char_indices() {
+        if ch.is_whitespace() {
+            end = i;
+            break;
+        }
+    }
+    let num_str = &raw[..end];
+    if num_str.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(parse_expr(num_str)?))
 }

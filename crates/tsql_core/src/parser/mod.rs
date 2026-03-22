@@ -178,6 +178,10 @@ pub fn parse_sql(sql: &str) -> Result<Statement, DbError> {
         return statements::parse_with_cte(trimmed);
     }
 
+    if upper.starts_with("MERGE ") || upper.starts_with("MERGE INTO ") {
+        return statements::parse_merge(trimmed);
+    }
+
     if upper.starts_with("DECLARE ") {
         return statements::parse_declare(trimmed);
     }

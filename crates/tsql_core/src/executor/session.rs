@@ -37,6 +37,7 @@ pub struct SessionRuntime<C, S> {
     pub(crate) table_var_counter: u64,
     pub(crate) workspace: Option<TxWorkspace<C, S>>,
     pub(crate) options: SessionOptions,
+    pub(crate) random_state: u64,
 }
 
 impl<C, S> SessionRuntime<C, S>
@@ -57,6 +58,7 @@ where
             table_var_counter: 0,
             workspace: None,
             options: SessionOptions::default(),
+            random_state: 1,
         }
     }
 
@@ -70,6 +72,7 @@ where
         self.table_var_counter = 0;
         self.workspace = None;
         self.options = SessionOptions::default();
+        self.random_state = 1;
     }
 }
 

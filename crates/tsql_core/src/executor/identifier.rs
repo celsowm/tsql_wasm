@@ -39,6 +39,29 @@ pub(crate) fn resolve_identifier(
     }
 
     if matches.is_empty() {
+        for apply_row in ctx.apply_row_stack.iter().rev() {
+            for binding in apply_row.iter() {
+                if let Some(col_idx) = binding
+                    .table
+                    .columns
+                    .iter()
+                    .position(|c| c.name.eq_ignore_ascii_case(name))
+                {
+                    let value = binding
+                        .row
+                        .as_ref()
+                        .map(|r| r.values[col_idx].clone())
+                        .unwrap_or(Value::Null);
+                    matches.push((0, value));
+                }
+            }
+            if !matches.is_empty() {
+                break;
+            }
+        }
+    }
+
+    if matches.is_empty() {
         if let Some(ref outer_row) = ctx.outer_row {
             for binding in outer_row.iter() {
                 if let Some(col_idx) = binding
@@ -110,6 +133,12 @@ pub(crate) fn resolve_qualified_identifier(
 
     if let Some(val) = search_row(row) {
         return Ok(val);
+    }
+
+    for apply_row in ctx.apply_row_stack.iter().rev() {
+        if let Some(val) = search_row(apply_row) {
+            return Ok(val);
+        }
     }
 
     if let Some(ref outer_row) = ctx.outer_row {

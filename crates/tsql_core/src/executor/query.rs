@@ -1,4 +1,4 @@
-use crate::ast::{Expr, SelectItem, SelectStmt};
+use crate::ast::{ApplyType, Expr, SelectItem, SelectStmt};
 use crate::catalog::{Catalog, RoutineKind};
 use crate::error::DbError;
 use crate::parser::parse_expr_subquery_aware;
@@ -17,6 +17,7 @@ use super::projection::{
     deduplicate_projected_rows, expand_projection_columns, expand_wildcard_values, eval_top_n,
 };
 use super::query_planner::{bind_table as planner_bind_table, build_logical_plan, build_physical_plan, execute_scan};
+use super::window::{has_window_function, WindowExecutor};
 
 pub struct QueryExecutor<'a> {
     pub catalog: &'a dyn Catalog,
@@ -89,6 +90,10 @@ impl<'a> QueryExecutor<'a> {
             )?;
         }
 
+        for apply_clause in &plan.applies {
+            source_rows = self.execute_apply(source_rows, apply_clause, ctx)?;
+        }
+
         if let Some(where_clause) = &plan.residual_filter {
             let mut filtered = Vec::new();
             for row in source_rows {
@@ -111,6 +116,12 @@ impl<'a> QueryExecutor<'a> {
             .iter()
             .any(|item| matches!(&item.expr, Expr::FunctionCall { name, .. } if is_aggregate_function(name)));
 
+        // Check for window functions early
+        let has_window = plan
+            .projection
+            .iter()
+            .any(|item| has_window_function(&item.expr));
+
         let result = if !plan.group_by.is_empty() || has_aggregate {
             let group_executor = GroupExecutor {
                 catalog: self.catalog,
@@ -124,11 +135,15 @@ impl<'a> QueryExecutor<'a> {
                 plan.having,
                 ctx,
             )?
+        } else if has_window {
+            let window_executor = WindowExecutor::new(self.catalog, self.storage, self.clock);
+            window_executor.execute(&plan.projection, source_rows, ctx)?
         } else {
             self.execute_flat_select(plan.projection, source_rows, ctx)?
         };
 
         let mut final_rows = result.rows;
+        
         if plan.distinct {
             final_rows = deduplicate_projected_rows(final_rows);
         }
@@ -145,6 +160,39 @@ impl<'a> QueryExecutor<'a> {
             let n = eval_top_n(&top, ctx, self.catalog, self.storage, self.clock)?;
             if final_rows.len() > n {
                 final_rows.truncate(n);
+            }
+        }
+
+        // OFFSET / FETCH
+        if let Some(ref offset_expr) = plan.offset {
+            let offset_val =
+                eval_expr(offset_expr, &[], ctx, self.catalog, self.storage, self.clock)?;
+            let offset_n = match offset_val {
+                crate::types::Value::Int(n) => n.max(0) as usize,
+                crate::types::Value::BigInt(n) => n.max(0) as usize,
+                crate::types::Value::SmallInt(n) => n.max(0) as usize,
+                crate::types::Value::TinyInt(n) => n as usize,
+                _ => 0,
+            };
+            if offset_n < final_rows.len() {
+                final_rows = final_rows[offset_n..].to_vec();
+            } else {
+                final_rows = vec![];
+            }
+
+            if let Some(ref fetch_expr) = plan.fetch {
+                let fetch_val =
+                    eval_expr(fetch_expr, &[], ctx, self.catalog, self.storage, self.clock)?;
+                let fetch_n = match fetch_val {
+                    crate::types::Value::Int(n) => n.max(0) as usize,
+                    crate::types::Value::BigInt(n) => n.max(0) as usize,
+                    crate::types::Value::SmallInt(n) => n.max(0) as usize,
+                    crate::types::Value::TinyInt(n) => n as usize,
+                    _ => 0,
+                };
+                if final_rows.len() > fetch_n {
+                    final_rows.truncate(fetch_n);
+                }
             }
         }
 
@@ -260,6 +308,103 @@ impl<'a> QueryExecutor<'a> {
             table: table_def,
             virtual_rows: Some(rows),
         }))
+    }
+
+    fn execute_apply(
+        &self,
+        rows: Vec<JoinedRow>,
+        apply: &crate::ast::ApplyClause,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Vec<JoinedRow>, DbError> {
+        use super::model::ContextTable;
+
+        let mut result_rows = Vec::new();
+
+        for left_row in &rows {
+            // Push left row context so the subquery can reference outer columns
+            ctx.push_apply_row(left_row.clone());
+            let sub_result = self.execute_select(apply.subquery.clone(), ctx)?;
+            ctx.pop_apply_row();
+
+            if sub_result.rows.is_empty() {
+                if apply.apply_type == ApplyType::Outer {
+                    // OUTER APPLY: emit left row with NULLs for the apply columns
+                    let mut combined = left_row.clone();
+                    let null_table = crate::catalog::TableDef {
+                        id: 0,
+                        schema_id: 1,
+                        name: apply.alias.clone(),
+                        columns: sub_result
+                            .columns
+                            .iter()
+                            .enumerate()
+                            .map(|(i, cname)| crate::catalog::ColumnDef {
+                                id: (i + 1) as u32,
+                                name: cname.clone(),
+                                data_type: crate::types::DataType::VarChar { max_len: 4000 },
+                                nullable: true,
+                                primary_key: false,
+                                unique: false,
+                                identity: None,
+                                default: None,
+                                default_constraint_name: None,
+                                check: None,
+                                check_constraint_name: None,
+                                computed_expr: None,
+                            })
+                            .collect(),
+                        check_constraints: vec![],
+                    };
+                    combined.push(ContextTable {
+                        table: null_table,
+                        alias: apply.alias.clone(),
+                        row: None,
+                    });
+                    result_rows.push(combined);
+                }
+                // CROSS APPLY: skip (no rows emitted)
+            } else {
+                let apply_table = crate::catalog::TableDef {
+                    id: 0,
+                    schema_id: 1,
+                    name: apply.alias.clone(),
+                    columns: sub_result
+                        .columns
+                        .iter()
+                        .enumerate()
+                        .map(|(i, cname)| crate::catalog::ColumnDef {
+                            id: (i + 1) as u32,
+                            name: cname.clone(),
+                            data_type: crate::types::DataType::VarChar { max_len: 4000 },
+                            nullable: true,
+                            primary_key: false,
+                            unique: false,
+                            identity: None,
+                            default: None,
+                            default_constraint_name: None,
+                            check: None,
+                            check_constraint_name: None,
+                            computed_expr: None,
+                        })
+                        .collect(),
+                    check_constraints: vec![],
+                };
+                for sub_row_values in &sub_result.rows {
+                    let mut combined = left_row.clone();
+                    combined.push(ContextTable {
+                        table: apply_table.clone(),
+                        alias: apply.alias.clone(),
+                        row: Some(StoredRow {
+                            values: sub_row_values.clone(),
+                            deleted: false,
+                        }),
+                    });
+                    result_rows.push(combined);
+                }
+            }
+        }
+
+        Ok(result_rows)
     }
 
     fn execute_flat_select(

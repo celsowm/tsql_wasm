@@ -348,6 +348,24 @@ where
     }
 }
 
+pub trait RandomSeed {
+    fn set_session_seed(&self, session_id: SessionId, seed: u64) -> Result<(), DbError>;
+}
+
+impl<C, S> RandomSeed for DatabaseInner<C, S>
+where
+    C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
+    S: Storage + Serialize + DeserializeOwned + Clone + 'static,
+{
+    fn set_session_seed(&self, session_id: SessionId, seed: u64) -> Result<(), DbError> {
+        let mut guard = self.inner.lock().expect("database mutex poisoned");
+        guard.with_session_mut(session_id, |_, session| {
+            session.random_state = seed;
+            Ok(())
+        })
+    }
+}
+
 impl<C, S> CheckpointManager for DatabaseInner<C, S>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
@@ -546,6 +564,9 @@ where
         &mut session.temp_table_map,
         &mut session.table_var_map,
         &mut session.table_var_counter,
+        session.options.ansi_nulls,
+        session.options.datefirst,
+        &mut session.random_state,
     );
     ctx.enter_scope();
 
@@ -630,6 +651,9 @@ where
         &mut session.temp_table_map,
         &mut session.table_var_map,
         &mut session.table_var_counter,
+        session.options.ansi_nulls,
+        session.options.datefirst,
+        &mut session.random_state,
     );
 
     match execute_non_transaction_statement(
@@ -665,6 +689,8 @@ where
 {
     if let Statement::SetOption(opt) = &stmt {
         let apply = apply_set_option(opt, session_options);
+        ctx.ansi_nulls = session_options.ansi_nulls;
+        ctx.datefirst = session_options.datefirst;
         for warn in apply.warnings {
             journal.record(JournalEvent::Info { message: warn });
         }

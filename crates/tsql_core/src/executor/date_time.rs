@@ -64,6 +64,11 @@ pub(crate) fn days_to_date(days: i64) -> (i32, i32, i32) {
     (y, m, d)
 }
 
+pub(crate) fn day_of_week_from_date(y: i32, m: i32, d: i32) -> i32 {
+    let days = date_to_days(y, m, d);
+    (((days + 719471) % 7 + 7) % 7) as i32
+}
+
 pub(crate) fn apply_dateadd(part: &str, num: i64, date_str: &str) -> Result<String, DbError> {
     let (y, m, d, h, mi, s) = parse_datetime_parts(date_str)?;
 

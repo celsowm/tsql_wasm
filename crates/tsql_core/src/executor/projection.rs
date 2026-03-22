@@ -104,7 +104,7 @@ pub fn compare_projected_rows(
             b.get(idx).unwrap_or(&Value::Null),
         );
         if ord != Ordering::Equal {
-            return if item.desc { ord.reverse() } else { ord };
+            return if item.asc { ord } else { ord.reverse() };
         }
     }
     Ordering::Equal

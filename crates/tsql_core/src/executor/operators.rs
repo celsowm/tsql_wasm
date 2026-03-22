@@ -7,18 +7,18 @@ use crate::types::Value;
 use super::value_helpers::{is_string_type, rescale_raw, to_decimal_parts, to_i64};
 use super::value_ops::{compare_values, truthy};
 
-pub(crate) fn eval_binary(op: &BinaryOp, lv: Value, rv: Value) -> Result<Value, DbError> {
+pub(crate) fn eval_binary(op: &BinaryOp, lv: Value, rv: Value, ansi_nulls: bool) -> Result<Value, DbError> {
     match op {
-        BinaryOp::Eq => Ok(compare_bool(lv, rv, |o| o == Ordering::Equal)),
-        BinaryOp::NotEq => Ok(compare_bool(lv, rv, |o| o != Ordering::Equal)),
-        BinaryOp::Gt => Ok(compare_bool(lv, rv, |o| o == Ordering::Greater)),
-        BinaryOp::Lt => Ok(compare_bool(lv, rv, |o| o == Ordering::Less)),
+        BinaryOp::Eq => Ok(compare_bool(lv, rv, |o| o == Ordering::Equal, ansi_nulls)),
+        BinaryOp::NotEq => Ok(compare_bool(lv, rv, |o| o != Ordering::Equal, ansi_nulls)),
+        BinaryOp::Gt => Ok(compare_bool(lv, rv, |o| o == Ordering::Greater, ansi_nulls)),
+        BinaryOp::Lt => Ok(compare_bool(lv, rv, |o| o == Ordering::Less, ansi_nulls)),
         BinaryOp::Gte => Ok(compare_bool(lv, rv, |o| {
             matches!(o, Ordering::Greater | Ordering::Equal)
-        })),
+        }, ansi_nulls)),
         BinaryOp::Lte => Ok(compare_bool(lv, rv, |o| {
             matches!(o, Ordering::Less | Ordering::Equal)
-        })),
+        }, ansi_nulls)),
         BinaryOp::And => eval_and(lv, rv),
         BinaryOp::Or => eval_or(lv, rv),
         BinaryOp::Add => eval_add(lv, rv),
@@ -175,12 +175,20 @@ fn eval_or(lv: Value, rv: Value) -> Result<Value, DbError> {
     }
 }
 
-pub(crate) fn compare_bool<F>(lv: Value, rv: Value, pred: F) -> Value
+pub(crate) fn compare_bool<F>(lv: Value, rv: Value, pred: F, ansi_nulls: bool) -> Value
 where
     F: FnOnce(Ordering) -> bool,
 {
     if lv.is_null() || rv.is_null() {
-        return Value::Null;
+        if ansi_nulls {
+            return Value::Null;
+        } else {
+            if lv.is_null() && rv.is_null() {
+                return Value::Bit(pred(Ordering::Equal));
+            } else {
+                return Value::Bit(false);
+            }
+        }
     }
     Value::Bit(pred(compare_values(&lv, &rv)))
 }

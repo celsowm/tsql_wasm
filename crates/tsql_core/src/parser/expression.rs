@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ast::{BinaryOp, DataTypeSpec, Expr, SelectStmt, UnaryOp, WhenClause};
+use crate::ast::{BinaryOp, DataTypeSpec, Expr, OrderByExpr, SelectStmt, UnaryOp, WhenClause, WindowFrame, WindowFunc};
 use crate::error::DbError;
 
 use super::tokenizer::{tokenize_expr, ExprToken};
@@ -289,6 +289,9 @@ impl ExprParser {
                     if name.eq_ignore_ascii_case("CONVERT") {
                         return self.parse_convert_call();
                     }
+                    if self.is_window_function(&name) {
+                        return self.parse_window_function(&name);
+                    }
 
                     let mut args = Vec::new();
                     if !self.match_tok(|t| matches!(t, ExprToken::RParen)) {
@@ -315,6 +318,11 @@ impl ExprParser {
                 } else if name.eq_ignore_ascii_case("CURRENT_TIMESTAMP") {
                     Ok(Expr::FunctionCall {
                         name: "CURRENT_TIMESTAMP".to_string(),
+                        args: vec![],
+                    })
+                } else if name.eq_ignore_ascii_case("CURRENT_DATE") {
+                    Ok(Expr::FunctionCall {
+                        name: "CURRENT_DATE".to_string(),
                         args: vec![],
                     })
                 } else if name.contains('.') {
@@ -537,5 +545,85 @@ impl ExprParser {
             self.pos += 1;
         }
         tok
+    }
+
+    fn is_window_function(&self, name: &str) -> bool {
+        matches!(
+            name.to_uppercase().as_str(),
+            "ROW_NUMBER" | "RANK" | "DENSE_RANK" | "NTILE" | "LAG" | "LEAD"
+        )
+    }
+
+    fn parse_window_function(&mut self, name: &str) -> Result<Expr, DbError> {
+        let func = match name.to_uppercase().as_str() {
+            "ROW_NUMBER" => WindowFunc::RowNumber,
+            "RANK" => WindowFunc::Rank,
+            "DENSE_RANK" => WindowFunc::DenseRank,
+            "NTILE" => WindowFunc::NTile,
+            "LAG" => WindowFunc::Lag,
+            "LEAD" => WindowFunc::Lead,
+            _ => return Err(DbError::Parse(format!("unknown window function: {}", name))),
+        };
+
+        let mut args = Vec::new();
+        if !self.match_tok(|t| matches!(t, ExprToken::RParen)) {
+            loop {
+                if matches!(self.peek(), Some(ExprToken::RParen)) {
+                    break;
+                }
+                args.push(self.parse_or()?);
+                if self.match_tok(|t| matches!(t, ExprToken::Comma)) {
+                    continue;
+                }
+                self.expect(|t| matches!(t, ExprToken::RParen), ")")?;
+                break;
+            }
+        }
+
+        self.expect(|t| matches!(t, ExprToken::Over), "OVER")?;
+        self.expect(|t| matches!(t, ExprToken::LParen), "(")?;
+        
+        let mut partition_by = Vec::new();
+        let mut order_by = Vec::new();
+        let mut frame = None;
+
+        if !self.match_tok(|t| matches!(t, ExprToken::RParen)) {
+            loop {
+                if self.match_tok(|t| matches!(t, ExprToken::RParen)) {
+                    break;
+                }
+                if self.match_tok(|t| matches!(t, ExprToken::Partition)) {
+                    self.expect(|t| matches!(t, ExprToken::By), "BY")?;
+                    loop {
+                        partition_by.push(self.parse_or()?);
+                        if self.match_tok(|t| matches!(t, ExprToken::Comma)) {
+                            continue;
+                        }
+                        break;
+                    }
+                } else if self.match_tok(|t| matches!(t, ExprToken::Order)) {
+                    self.expect(|t| matches!(t, ExprToken::By), "BY")?;
+                    loop {
+                        let expr = self.parse_or()?;
+                        let asc = !self.match_tok(|t| matches!(t, ExprToken::Desc));
+                        order_by.push(OrderByExpr { expr, asc });
+                        if self.match_tok(|t| matches!(t, ExprToken::Comma)) {
+                            continue;
+                        }
+                        break;
+                    }
+                } else {
+                    return Err(DbError::Parse("expected PARTITION BY, ORDER BY, or ROWS/RANGE in window specification".into()));
+                }
+            }
+        }
+
+        Ok(Expr::WindowFunction {
+            func,
+            args,
+            partition_by,
+            order_by,
+            frame,
+        })
     }
 }

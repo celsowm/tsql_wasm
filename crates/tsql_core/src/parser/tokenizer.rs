@@ -36,6 +36,13 @@ pub enum ExprToken {
     Like,
     Between,
     Exists,
+    Over,
+    Partition,
+    By,
+    Order,
+    Desc,
+    Rows,
+    Range,
 }
 
 pub fn tokenize_expr(input: &str) -> Result<Vec<ExprToken>, DbError> {
@@ -199,6 +206,14 @@ fn push_ident_token(out: &mut Vec<ExprToken>, ident: String) {
         "LIKE" => out.push(ExprToken::Like),
         "BETWEEN" => out.push(ExprToken::Between),
         "EXISTS" => out.push(ExprToken::Exists),
+        "OVER" => out.push(ExprToken::Over),
+        "PARTITION" => out.push(ExprToken::Partition),
+        "ORDER" => out.push(ExprToken::Order),
+        "BY" => out.push(ExprToken::By),
+        "DESC" => out.push(ExprToken::Desc),
+        "ASC" => out.push(ExprToken::By),
+        "ROWS" => out.push(ExprToken::Rows),
+        "RANGE" => out.push(ExprToken::Range),
         _ => out.push(ExprToken::Identifier(ident)),
     }
 }

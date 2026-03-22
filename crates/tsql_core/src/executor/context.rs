@@ -26,9 +26,14 @@ pub struct ExecutionContext<'a> {
     pub table_vars: Vec<HashMap<String, String>>,
     pub temp_table_map: &'a mut HashMap<String, String>,
     pub session_table_var_map: &'a mut HashMap<String, String>,
-    pub scope_vars: Vec<Vec<String>>,
     pub table_var_counter: &'a mut u64,
+    pub scope_vars: Vec<Vec<String>>,
+    pub ansi_nulls: bool,
+    pub datefirst: i32,
+    pub random_state: &'a mut u64,
+    pub apply_row_stack: Vec<JoinedRow>,
 }
+
 
 impl<'a> ExecutionContext<'a> {
     pub fn new(
@@ -38,6 +43,9 @@ impl<'a> ExecutionContext<'a> {
         temp_table_map: &'a mut HashMap<String, String>,
         session_table_var_map: &'a mut HashMap<String, String>,
         table_var_counter: &'a mut u64,
+        ansi_nulls: bool,
+        datefirst: i32,
+        random_state: &'a mut u64,
     ) -> Self {
         Self {
             variables,
@@ -53,6 +61,10 @@ impl<'a> ExecutionContext<'a> {
             session_table_var_map,
             scope_vars: vec![vec![]],
             table_var_counter,
+            ansi_nulls,
+            datefirst,
+            random_state,
+            apply_row_stack: vec![],
         }
     }
 
@@ -71,6 +83,10 @@ impl<'a> ExecutionContext<'a> {
             session_table_var_map: self.session_table_var_map,
             scope_vars: self.scope_vars.clone(),
             table_var_counter: self.table_var_counter,
+            ansi_nulls: self.ansi_nulls,
+            datefirst: self.datefirst,
+            random_state: self.random_state,
+            apply_row_stack: self.apply_row_stack.clone(),
         }
     }
 
@@ -89,6 +105,10 @@ impl<'a> ExecutionContext<'a> {
             session_table_var_map: self.session_table_var_map,
             scope_vars: self.scope_vars.clone(),
             table_var_counter: self.table_var_counter,
+            ansi_nulls: self.ansi_nulls,
+            datefirst: self.datefirst,
+            random_state: self.random_state,
+            apply_row_stack: self.apply_row_stack.clone(),
         }
     }
 
@@ -111,6 +131,10 @@ impl<'a> ExecutionContext<'a> {
             session_table_var_map: self.session_table_var_map,
             scope_vars: self.scope_vars.clone(),
             table_var_counter: self.table_var_counter,
+            ansi_nulls: self.ansi_nulls,
+            datefirst: self.datefirst,
+            random_state: self.random_state,
+            apply_row_stack: self.apply_row_stack.clone(),
         }
     }
 
@@ -199,6 +223,14 @@ impl<'a> ExecutionContext<'a> {
             return self.temp_table_map.get(&logical.to_uppercase()).cloned();
         }
         Some(logical.to_string())
+    }
+
+    pub fn push_apply_row(&mut self, row: JoinedRow) {
+        self.apply_row_stack.push(row);
+    }
+
+    pub fn pop_apply_row(&mut self) {
+        self.apply_row_stack.pop();
     }
 
     pub fn set_last_identity(&mut self, val: i64) {

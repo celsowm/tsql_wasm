@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::ast::{ObjectName, SelectStmt, SessionOption, SessionOptionValue, SetOptionStmt, Statement, TableRef};
+use crate::ast::{BinaryOp, DataTypeSpec, Expr, JoinClause, JoinType, ObjectName, SelectItem, SelectStmt, SessionOption, SessionOptionValue, SetOptionStmt, Statement, TableRef, UnaryOp};
 use crate::parser::parse_sql;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,6 +192,169 @@ pub fn analyze_sql_batch(sql: &str) -> CompatibilityReport {
     CompatibilityReport { entries }
 }
 
+fn format_data_type_spec(dt: &DataTypeSpec) -> String {
+    match dt {
+        DataTypeSpec::Bit => "BIT".to_string(),
+        DataTypeSpec::TinyInt => "TINYINT".to_string(),
+        DataTypeSpec::SmallInt => "SMALLINT".to_string(),
+        DataTypeSpec::Int => "INT".to_string(),
+        DataTypeSpec::BigInt => "BIGINT".to_string(),
+        DataTypeSpec::Decimal(p, s) => format!("DECIMAL({},{})", p, s),
+        DataTypeSpec::Char(n) => format!("CHAR({})", n),
+        DataTypeSpec::VarChar(n) => format!("VARCHAR({})", n),
+        DataTypeSpec::NChar(n) => format!("NCHAR({})", n),
+        DataTypeSpec::NVarChar(n) => format!("NVARCHAR({})", n),
+        DataTypeSpec::Date => "DATE".to_string(),
+        DataTypeSpec::Time => "TIME".to_string(),
+        DataTypeSpec::DateTime => "DATETIME".to_string(),
+        DataTypeSpec::DateTime2 => "DATETIME2".to_string(),
+        DataTypeSpec::UniqueIdentifier => "UNIQUEIDENTIFIER".to_string(),
+        DataTypeSpec::SqlVariant => "SQL_VARIANT".to_string(),
+    }
+}
+
+fn format_expr(expr: &Expr) -> String {
+    match expr {
+        Expr::Identifier(name) => name.clone(),
+        Expr::QualifiedIdentifier(parts) => parts.join("."),
+        Expr::Wildcard => "*".to_string(),
+        Expr::Integer(v) => v.to_string(),
+        Expr::FloatLiteral(s) => s.clone(),
+        Expr::String(s) => format!("'{}'", s),
+        Expr::UnicodeString(s) => format!("N'{}'", s),
+        Expr::Null => "NULL".to_string(),
+        Expr::FunctionCall { name, args } => {
+            let args_str: Vec<String> = args.iter().map(format_expr).collect();
+            format!("{}({})", name, args_str.join(", "))
+        }
+        Expr::Binary { left, op, right } => {
+            let op_str = match op {
+                BinaryOp::Eq => "=",
+                BinaryOp::NotEq => "<>",
+                BinaryOp::Gt => ">",
+                BinaryOp::Lt => "<",
+                BinaryOp::Gte => ">=",
+                BinaryOp::Lte => "<=",
+                BinaryOp::And => "AND",
+                BinaryOp::Or => "OR",
+                BinaryOp::Add => "+",
+                BinaryOp::Subtract => "-",
+                BinaryOp::Multiply => "*",
+                BinaryOp::Divide => "/",
+                BinaryOp::Modulo => "%",
+            };
+            format!("{} {} {}", format_expr(left), op_str, format_expr(right))
+        }
+        Expr::Unary { op, expr } => {
+            let op_str = match op {
+                UnaryOp::Negate => "-",
+                UnaryOp::Not => "NOT",
+            };
+            format!("{}{}", op_str, format_expr(expr))
+        }
+        Expr::IsNull(inner) => format!("{} IS NULL", format_expr(inner)),
+        Expr::IsNotNull(inner) => format!("{} IS NOT NULL", format_expr(inner)),
+        Expr::Cast { expr, target } => format!("CAST({} AS {})", format_expr(expr), format_data_type_spec(target)),
+        Expr::Convert { target, expr, style } => {
+            if let Some(s) = style {
+                format!("CONVERT({}, {}, {})", format_data_type_spec(target), format_expr(expr), s)
+            } else {
+                format!("CONVERT({}, {})", format_data_type_spec(target), format_expr(expr))
+            }
+        }
+        Expr::Case { operand, when_clauses, else_result } => {
+            let mut parts = vec!["CASE".to_string()];
+            if let Some(op) = operand {
+                parts.push(format_expr(op));
+            }
+            for clause in when_clauses {
+                parts.push(format!("WHEN {} THEN {}", format_expr(&clause.condition), format_expr(&clause.result)));
+            }
+            if let Some(else_expr) = else_result {
+                parts.push(format!("ELSE {}", format_expr(else_expr)));
+            }
+            parts.push("END".to_string());
+            parts.join(" ")
+        }
+        Expr::InList { expr, list, negated } => {
+            let list_str: Vec<String> = list.iter().map(format_expr).collect();
+            if *negated {
+                format!("{} NOT IN ({})", format_expr(expr), list_str.join(", "))
+            } else {
+                format!("{} IN ({})", format_expr(expr), list_str.join(", "))
+            }
+        }
+        Expr::Between { expr, low, high, negated } => {
+            let not = if *negated { "NOT " } else { "" };
+            format!("{} {}BETWEEN {} AND {}", format_expr(expr), not, format_expr(low), format_expr(high))
+        }
+        Expr::Like { expr, pattern, negated } => {
+            let not = if *negated { "NOT " } else { "" };
+            format!("{} {}LIKE {}", format_expr(expr), not, format_expr(pattern))
+        }
+        Expr::Subquery(_) => "(SELECT ...)".to_string(),
+        Expr::Exists { subquery: _, negated } => {
+            if *negated { "NOT EXISTS (...)" } else { "EXISTS (...)" }.to_string()
+        }
+        Expr::InSubquery { expr, subquery: _, negated } => {
+            let not = if *negated { "NOT " } else { "" };
+            format!("{} {}IN (...)", format_expr(expr), not)
+        }
+        Expr::WindowFunction { func, partition_by, order_by, frame: _, .. } => {
+            let func_name = match func {
+                crate::ast::WindowFunc::RowNumber => "ROW_NUMBER()",
+                crate::ast::WindowFunc::Rank => "RANK()",
+                crate::ast::WindowFunc::DenseRank => "DENSE_RANK()",
+                crate::ast::WindowFunc::NTile => "NTILE()",
+                crate::ast::WindowFunc::Lag => "LAG()",
+                crate::ast::WindowFunc::Lead => "LEAD()",
+            };
+            let mut parts: Vec<String> = vec![func_name.to_string()];
+            if !partition_by.is_empty() {
+                let partition_str: Vec<String> = partition_by.iter().map(format_expr).collect();
+                parts.push(format!("PARTITION BY {}", partition_str.join(", ")));
+            }
+            if !order_by.is_empty() {
+                let order_str: Vec<String> = order_by.iter().map(|oe| {
+                    let dir = if oe.asc { "" } else { " DESC" };
+                    format!("{}{}", format_expr(&oe.expr), dir)
+                }).collect();
+                parts.push(format!("ORDER BY {}", order_str.join(", ")));
+            }
+            parts.join(" ")
+        }
+    }
+}
+
+fn format_select_columns(projection: &[SelectItem]) -> String {
+    if projection.is_empty() {
+        return "*".to_string();
+    }
+    let cols: Vec<String> = projection.iter().map(|item| {
+        if let Some(alias) = &item.alias {
+            format!("{} AS {}", format_expr(&item.expr), alias)
+        } else {
+            format_expr(&item.expr)
+        }
+    }).collect();
+    cols.join(", ")
+}
+
+fn format_join(join: &JoinClause) -> String {
+    let join_type = match join.join_type {
+        JoinType::Inner => "INNER JOIN",
+        JoinType::Left => "LEFT JOIN",
+        JoinType::Right => "RIGHT JOIN",
+        JoinType::Full => "FULL OUTER JOIN",
+        JoinType::Cross => "CROSS JOIN",
+    };
+    if let Some(on_expr) = &join.on {
+        format!("{} {} ON {}", join_type, normalize_table_ref(&join.table), format_expr(on_expr))
+    } else {
+        format!("{} {}", join_type, normalize_table_ref(&join.table))
+    }
+}
+
 pub fn explain_statement(stmt: &Statement) -> ExplainPlan {
     let mut operators = Vec::new();
     let statement_kind = statement_kind(stmt).to_string();
@@ -201,46 +364,71 @@ pub fn explain_statement(stmt: &Statement) -> ExplainPlan {
                 op: "Scan".to_string(),
                 detail: format!("from {}", select_from_name(s)),
             });
-            if !s.joins.is_empty() {
+            for join in &s.joins {
                 operators.push(ExplainOperator {
                     op: "Join".to_string(),
-                    detail: format!("{} join(s)", s.joins.len()),
+                    detail: format_join(join),
                 });
             }
-            if s.selection.is_some() {
+            if let Some(where_expr) = &s.selection {
                 operators.push(ExplainOperator {
                     op: "Filter".to_string(),
-                    detail: "WHERE predicate".to_string(),
+                    detail: format!("WHERE {}", format_expr(where_expr)),
                 });
             }
             if !s.group_by.is_empty() {
+                let group_exprs: Vec<String> = s.group_by.iter().map(format_expr).collect();
+                let mut detail = format!("GROUP BY {}", group_exprs.join(", "));
+                if let Some(having) = &s.having {
+                    detail = format!("{} HAVING {}", detail, format_expr(having));
+                }
                 operators.push(ExplainOperator {
                     op: "Aggregate".to_string(),
-                    detail: format!("GROUP BY {} expression(s)", s.group_by.len()),
+                    detail,
                 });
+            } else if s.having.is_some() {
+                if let Some(having) = &s.having {
+                    operators.push(ExplainOperator {
+                        op: "Aggregate".to_string(),
+                        detail: format!("HAVING {}", format_expr(having)),
+                    });
+                }
             }
             if !s.order_by.is_empty() {
+                let order_exprs: Vec<String> = s.order_by.iter().map(|oe| {
+                    let dir = if oe.asc { "" } else { " DESC" };
+                    format!("{}{}", format_expr(&oe.expr), dir)
+                }).collect();
                 operators.push(ExplainOperator {
                     op: "Sort".to_string(),
-                    detail: format!("ORDER BY {} expression(s)", s.order_by.len()),
+                    detail: format!("ORDER BY {}", order_exprs.join(", ")),
                 });
             }
             operators.push(ExplainOperator {
                 op: "Project".to_string(),
-                detail: format!("{} projected column(s)", s.projection.len()),
+                detail: format_select_columns(&s.projection),
             });
         }
         Statement::Insert(i) => operators.push(ExplainOperator {
             op: "Insert".to_string(),
             detail: normalize_object_name(&i.table),
         }),
-        Statement::Update(u) => operators.push(ExplainOperator {
-            op: "Update".to_string(),
-            detail: normalize_object_name(&u.table),
-        }),
+        Statement::Update(u) => {
+            let mut detail = normalize_object_name(&u.table);
+            if !u.assignments.is_empty() {
+                let assigns: Vec<String> = u.assignments.iter().map(|a| {
+                    format!("{} = {}", a.column, format_expr(&a.expr))
+                }).collect();
+                detail = format!("{} SET {}", detail, assigns.join(", "));
+            }
+            operators.push(ExplainOperator {
+                op: "Update".to_string(),
+                detail,
+            });
+        }
         Statement::Delete(d) => operators.push(ExplainOperator {
             op: "Delete".to_string(),
-            detail: normalize_object_name(&d.table),
+            detail: format!("FROM {}", normalize_object_name(&d.table)),
         }),
         Statement::CreateTable(c) => operators.push(ExplainOperator {
             op: "DDL".to_string(),

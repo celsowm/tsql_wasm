@@ -89,7 +89,7 @@ pub fn eval_expr(
         Expr::Binary { left, op, right } => {
             let lv = eval_expr(left, row, ctx, catalog, storage, clock)?;
             let rv = eval_expr(right, row, ctx, catalog, storage, clock)?;
-            eval_binary(op, lv, rv)
+            eval_binary(op, lv, rv, ctx.ansi_nulls)
         }
         Expr::Unary { op, expr: inner } => {
             let val = eval_expr(inner, row, ctx, catalog, storage, clock)?;
@@ -174,6 +174,9 @@ pub fn eval_expr(
         } => eval_in_subquery(
             in_expr, subquery, *negated, row, ctx, catalog, storage, clock,
         ),
+        Expr::WindowFunction { .. } => Err(DbError::Execution(
+            "window functions must be executed via WindowExecutor".into(),
+        )),
     }
 }
 

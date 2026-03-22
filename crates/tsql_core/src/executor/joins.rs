@@ -19,6 +19,7 @@ pub fn apply_join(
     clock: &dyn Clock,
 ) -> Result<Vec<JoinedRow>, DbError> {
     match join.join_type {
+        JoinType::Cross => apply_cross_join(rows, right_rows),
         JoinType::Inner | JoinType::Left => {
             apply_join_left(rows, right_rows, right, join, ctx, catalog, storage, clock)
         }
@@ -31,6 +32,21 @@ pub fn apply_join(
     }
 }
 
+fn apply_cross_join(
+    rows: Vec<JoinedRow>,
+    right_rows: Vec<JoinedRow>,
+) -> Result<Vec<JoinedRow>, DbError> {
+    let mut next_rows = Vec::new();
+    for left_row in &rows {
+        for right_row in &right_rows {
+            let mut candidate = left_row.clone();
+            candidate.extend(right_row.clone());
+            next_rows.push(candidate);
+        }
+    }
+    Ok(next_rows)
+}
+
 fn apply_join_left(
     rows: Vec<JoinedRow>,
     right_rows: Vec<JoinedRow>,
@@ -41,6 +57,8 @@ fn apply_join_left(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Vec<JoinedRow>, DbError> {
+    let on_expr = join.on.as_ref()
+        .ok_or_else(|| DbError::Parse("JOIN requires ON clause".into()))?;
     let mut next_rows = Vec::new();
 
     for left_row in rows {
@@ -48,7 +66,7 @@ fn apply_join_left(
         for right_row in &right_rows {
             let mut candidate = left_row.clone();
             candidate.extend(right_row.clone());
-            if eval_predicate(&join.on, &candidate, ctx, catalog, storage, clock)? {
+            if eval_predicate(on_expr, &candidate, ctx, catalog, storage, clock)? {
                 matched = true;
                 next_rows.push(candidate);
             }
@@ -78,6 +96,8 @@ fn apply_join_right(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Vec<JoinedRow>, DbError> {
+    let on_expr = join.on.as_ref()
+        .ok_or_else(|| DbError::Parse("JOIN requires ON clause".into()))?;
     let mut next_rows = Vec::new();
 
     for right_row in &right_rows {
@@ -85,7 +105,7 @@ fn apply_join_right(
         for left_row in &rows {
             let mut candidate = left_row.clone();
             candidate.extend(right_row.clone());
-            if eval_predicate(&join.on, &candidate, ctx, catalog, storage, clock)? {
+            if eval_predicate(on_expr, &candidate, ctx, catalog, storage, clock)? {
                 matched = true;
                 next_rows.push(candidate);
             }
@@ -121,6 +141,8 @@ fn apply_join_full(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Vec<JoinedRow>, DbError> {
+    let on_expr = join.on.as_ref()
+        .ok_or_else(|| DbError::Parse("JOIN requires ON clause".into()))?;
     let mut next_rows = Vec::new();
     let mut matched_right: Vec<bool> = vec![false; right_rows.len()];
 
@@ -129,7 +151,7 @@ fn apply_join_full(
         for (ri, right_row) in right_rows.iter().enumerate() {
             let mut candidate = left_row.clone();
             candidate.extend(right_row.clone());
-            if eval_predicate(&join.on, &candidate, ctx, catalog, storage, clock)? {
+            if eval_predicate(on_expr, &candidate, ctx, catalog, storage, clock)? {
                 matched = true;
                 matched_right[ri] = true;
                 next_rows.push(candidate);

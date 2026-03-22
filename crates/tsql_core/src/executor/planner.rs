@@ -1,4 +1,4 @@
-use crate::ast::{Expr, JoinClause, OrderByExpr, SelectItem, TopSpec};
+use crate::ast::{ApplyClause, Expr, JoinClause, OrderByExpr, SelectItem, TopSpec};
 
 use super::model::BoundTable;
 
@@ -61,6 +61,7 @@ pub(crate) struct PhysicalJoin {
 pub(crate) struct PhysicalPlan {
     pub(crate) base: PhysicalScan,
     pub(crate) joins: Vec<PhysicalJoin>,
+    pub(crate) applies: Vec<ApplyClause>,
     pub(crate) residual_filter: Option<Expr>,
     pub(crate) projection: Vec<SelectItem>,
     pub(crate) group_by: Vec<Expr>,
@@ -70,4 +71,6 @@ pub(crate) struct PhysicalPlan {
     pub(crate) top: Option<TopSpec>,
     pub(crate) required_columns: Vec<String>,
     pub(crate) order_satisfied_by_scan: bool,
+    pub(crate) offset: Option<Expr>,
+    pub(crate) fetch: Option<Expr>,
 }

@@ -112,6 +112,81 @@ fn test_phase6_trace_respects_nocount() {
 }
 
 #[test]
+fn test_phase6_explain_filter_detail() {
+    let engine = Engine::new();
+    let plan = engine
+        .explain_sql("SELECT id FROM dbo.t WHERE id = 1 AND name <> 'foo'")
+        .unwrap();
+    let filter_op = plan.operators.iter().find(|op| op.op == "Filter").unwrap();
+    assert!(filter_op.detail.contains("WHERE"));
+    assert!(filter_op.detail.contains("id = 1"));
+    assert!(filter_op.detail.contains("AND"));
+    assert!(filter_op.detail.contains("name <> 'foo'"));
+}
+
+#[test]
+fn test_phase6_explain_project_columns() {
+    let engine = Engine::new();
+    let plan = engine
+        .explain_sql("SELECT id, name AS user_name, COUNT(*) AS cnt FROM dbo.t GROUP BY id, name")
+        .unwrap();
+    let project_op = plan.operators.iter().find(|op| op.op == "Project").unwrap();
+    assert!(project_op.detail.contains("id"));
+    assert!(project_op.detail.contains("name AS user_name"));
+    assert!(project_op.detail.contains("COUNT(*) AS cnt"));
+}
+
+#[test]
+fn test_phase6_explain_join_detail() {
+    let engine = Engine::new();
+    let plan = engine
+        .explain_sql("SELECT u.id FROM dbo.users u LEFT JOIN dbo.orders o ON u.id = o.user_id")
+        .unwrap();
+    let join_op = plan.operators.iter().find(|op| op.op == "Join").unwrap();
+    assert!(join_op.detail.contains("LEFT JOIN"));
+    assert!(join_op.detail.contains("ON"));
+    assert!(join_op.detail.contains("u.id = o.user_id"));
+}
+
+#[test]
+fn test_phase6_explain_group_by_having() {
+    let engine = Engine::new();
+    let plan = engine
+        .explain_sql("SELECT id FROM dbo.t GROUP BY id HAVING COUNT(*) > 5")
+        .unwrap();
+    let agg_op = plan.operators.iter().find(|op| op.op == "Aggregate").unwrap();
+    assert!(agg_op.detail.contains("GROUP BY"));
+    assert!(agg_op.detail.contains("id"));
+    assert!(agg_op.detail.contains("HAVING"));
+    assert!(agg_op.detail.contains("COUNT(*) > 5"));
+}
+
+#[test]
+fn test_phase6_explain_order_by_direction() {
+    let engine = Engine::new();
+    let plan = engine
+        .explain_sql("SELECT id FROM dbo.t ORDER BY id ASC, name DESC")
+        .unwrap();
+    let sort_op = plan.operators.iter().find(|op| op.op == "Sort").unwrap();
+    assert!(sort_op.detail.contains("ORDER BY"));
+    assert!(sort_op.detail.contains("id"));
+    assert!(sort_op.detail.contains("name DESC"));
+}
+
+#[test]
+fn test_phase6_explain_update_with_set() {
+    let engine = Engine::new();
+    let plan = engine
+        .explain_sql("UPDATE dbo.t SET name = 'foo', score = 100 WHERE id = 1")
+        .unwrap();
+    assert_eq!(plan.statement_kind, "UPDATE");
+    let update_op = plan.operators.iter().find(|op| op.op == "Update").unwrap();
+    assert!(update_op.detail.contains("SET"));
+    assert!(update_op.detail.contains("name = 'foo'"));
+    assert!(update_op.detail.contains("score = 100"));
+}
+
+#[test]
 fn test_phase6_metadata_routines_and_constraints_views() {
     let mut e = Engine::new();
     exec(
