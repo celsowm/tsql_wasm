@@ -1,4 +1,4 @@
-use tsql_core::types::JsonValue;
+use tsql_core::types::Value;
 use tsql_core::{parse_batch, parse_sql, Engine, QueryResult};
 
 fn setup_engine() -> Engine {
@@ -39,16 +39,26 @@ fn query(engine: &mut Engine, sql: &str) -> QueryResult {
         .expect("expected result")
 }
 
-fn col_str(row: &[JsonValue], idx: usize) -> String {
+fn col_str(row: &[Value], idx: usize) -> String {
     match &row[idx] {
-        JsonValue::String(s) => s.clone(),
-        _ => panic!("expected string at index {}", idx),
+        Value::VarChar(s) => s.clone(),
+        Value::NVarChar(s) => s.clone(),
+        Value::Char(s) => s.clone(),
+        Value::NChar(s) => s.clone(),
+        _ => panic!("expected string at index {}, got {:?}", idx, &row[idx]),
     }
 }
 
-fn col_num(row: &[JsonValue], idx: usize) -> i64 {
+fn col_num(row: &[Value], idx: usize) -> i64 {
     match &row[idx] {
-        JsonValue::Number(n) => *n,
+        Value::TinyInt(n) => *n as i64,
+        Value::SmallInt(n) => *n as i64,
+        Value::Int(n) => *n as i64,
+        Value::BigInt(n) => *n,
+        Value::Decimal(raw, scale) => {
+            let divisor = 10i128.pow(*scale as u32);
+            (*raw / divisor) as i64
+        }
         _ => panic!("expected number at index {}, got {:?}", idx, &row[idx]),
     }
 }
@@ -76,8 +86,6 @@ fn test_scalar_subquery_in_where() {
         "SELECT name, salary FROM employees WHERE salary > (SELECT MIN(salary) FROM employees WHERE salary > 80000) ORDER BY salary DESC",
     );
 
-    // MIN(salary WHERE salary > 80000) = 85000
-    // Employees with salary > 85000: Alice (100000), Bob (90000)
     assert_eq!(result.rows.len(), 2);
     assert_eq!(col_str(&result.rows[0], 0), "Alice");
     assert_eq!(col_str(&result.rows[1], 0), "Bob");
@@ -216,12 +224,6 @@ fn test_correlated_scalar_subquery() {
     let mut engine = setup_engine();
     let result = query(
         &mut engine,
-        "SELECT e.name, e.salary FROM employees e WHERE e.salary > (SELECT MIN(e2.salary) FROM employees e2 WHERE e2.department_id = e.department_id AND e2.salary > e.salary) ORDER BY e.name",
-    );
-    // Engineering: employees sorted by salary [90000, 100000]. For Alice (100000), no one earns more. For Bob (90000), Alice earns more → MIN = 100000. Bob 90000 > 100000? No.
-    // Actually this is testing the correlated mechanism. Let me use a simpler test.
-    let result = query(
-        &mut engine,
         "SELECT d.name FROM departments d WHERE EXISTS (SELECT 1 FROM employees e WHERE e.department_id = d.id AND e.salary > 85000) ORDER BY d.name",
     );
     assert_eq!(result.rows.len(), 1);
@@ -269,7 +271,6 @@ fn test_subquery_with_less_than() {
         &mut engine,
         "SELECT name FROM employees WHERE salary < (SELECT salary FROM employees WHERE name = 'Diana') ORDER BY name",
     );
-    // Diana earns 85000. Charlie (80000) and Eve (70000) are below.
     assert_eq!(result.rows.len(), 2);
     assert_eq!(col_str(&result.rows[0], 0), "Charlie");
     assert_eq!(col_str(&result.rows[1], 0), "Eve");
@@ -288,9 +289,6 @@ fn test_subquery_with_equals() {
 
 // ─── Complex subqueries ───────────────────────────────────────────────────
 
-// NOTE: Correlated subqueries in SELECT projection require setting outer row
-// during projection evaluation, which is not yet implemented.
-// TODO: implement outer row context during flat/grouped projection
 #[test]
 fn test_subquery_in_projection_with_correlated() {
     let mut engine = setup_engine();
@@ -340,7 +338,6 @@ fn test_multiple_subqueries_in_where() {
         &mut engine,
         "SELECT name, salary FROM employees WHERE salary > (SELECT MIN(salary) FROM employees) AND salary < (SELECT MAX(salary) FROM employees) ORDER BY salary DESC",
     );
-    // Between 70000 and 100000 (exclusive): 90000, 85000, 80000
     assert_eq!(result.rows.len(), 3);
     assert_eq!(col_str(&result.rows[0], 0), "Bob");
     assert_eq!(col_str(&result.rows[1], 0), "Diana");
@@ -360,18 +357,15 @@ fn test_not_exists_non_correlated_false() {
 #[test]
 fn test_avg_is_numeric() {
     let mut engine = setup_engine();
-    // AVG(salary) = (100000 + 90000 + 80000 + 85000 + 70000) / 5 = 425000 / 5 = 85000
     let result = query(&mut engine, "SELECT AVG(salary) as avg_sal FROM employees");
     assert_eq!(result.rows.len(), 1);
-    
-    // Internal type should now be Decimal, which JsonValue formats as String but with fixed decimals if scale > 0.
-    // However, our AVG use Decimal(raw, 6).
-    // Let's check the value. 
+
     match &result.rows[0][0] {
-        JsonValue::String(s) => {
-            // Should be "85000.000000" because of Decimal(..., 6)
-            assert!(s.starts_with("85000.000000"));
-        },
-        _ => panic!("Expected string representation of decimal, got {:?}", result.rows[0][0]),
+        Value::Decimal(raw, scale) => {
+            let divisor = 10i128.pow(*scale as u32);
+            let value = *raw as f64 / divisor as f64;
+            assert!((value - 85000.0).abs() < 0.01);
+        }
+        _ => panic!("Expected decimal, got {:?}", result.rows[0][0]),
     }
 }

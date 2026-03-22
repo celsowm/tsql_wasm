@@ -1,4 +1,4 @@
-use tsql_core::{parse_sql, Engine};
+use tsql_core::{parse_sql, types::Value, Engine};
 
 fn exec(engine: &mut Engine, sql: &str) {
     let stmt = parse_sql(sql).expect("parse failed");
@@ -48,11 +48,10 @@ fn test_right_join_unmatched_right() {
     let mut e = Engine::new();
     setup_join_tables(&mut e);
     let r = query(&mut e, "SELECT e.name, d.dept_name FROM employees e RIGHT JOIN departments d ON e.dept_id = d.id ORDER BY d.dept_name");
-    // All departments should appear: Finance (no employee), Engineering (Alice), Marketing (Bob)
     assert_eq!(r.rows.len(), 3);
-    assert_eq!(r.rows[0][1], serde_json::json!("Engineering"));
-    assert_eq!(r.rows[1][1], serde_json::json!("Finance"));
-    assert_eq!(r.rows[2][1], serde_json::json!("Marketing"));
+    assert_eq!(r.rows[0][1], Value::VarChar("Engineering".to_string()));
+    assert_eq!(r.rows[1][1], Value::VarChar("Finance".to_string()));
+    assert_eq!(r.rows[2][1], Value::VarChar("Marketing".to_string()));
 }
 
 // ─── FULL OUTER JOIN ───────────────────────────────────────────────────
@@ -84,8 +83,8 @@ fn test_distinct_in_subquery() {
         "SELECT DISTINCT customer FROM orders ORDER BY customer",
     );
     assert_eq!(r.rows.len(), 2);
-    assert_eq!(r.rows[0][0], serde_json::json!("Alice"));
-    assert_eq!(r.rows[1][0], serde_json::json!("Bob"));
+    assert_eq!(r.rows[0][0], Value::VarChar("Alice".to_string()));
+    assert_eq!(r.rows[1][0], Value::VarChar("Bob".to_string()));
 }
 
 // ─── SET OPERATIONS ────────────────────────────────────────────────────
@@ -163,8 +162,8 @@ fn test_cte_basic() {
 
     let r = query(&mut e, "WITH high_earners AS (SELECT name, salary FROM employees WHERE salary >= 150) SELECT name FROM high_earners ORDER BY name");
     assert_eq!(r.rows.len(), 2);
-    assert_eq!(r.rows[0][0], serde_json::json!("Bob"));
-    assert_eq!(r.rows[1][0], serde_json::json!("Charlie"));
+    assert_eq!(r.rows[0][0], Value::VarChar("Bob".to_string()));
+    assert_eq!(r.rows[1][0], Value::VarChar("Charlie".to_string()));
 }
 
 #[test]
@@ -183,7 +182,7 @@ fn test_cte_with_join() {
 
     let r = query(&mut e, "WITH order_totals AS (SELECT customer_id, SUM(amount) AS total FROM orders GROUP BY customer_id) SELECT c.name, ot.total FROM customers c INNER JOIN order_totals ot ON c.id = ot.customer_id ORDER BY c.name");
     assert_eq!(r.rows.len(), 2);
-    assert_eq!(r.rows[0][0], serde_json::json!("Alice"));
+    assert_eq!(r.rows[0][0], Value::VarChar("Alice".to_string()));
 }
 
 #[test]
@@ -196,8 +195,8 @@ fn test_multiple_ctes() {
 
     let r = query(&mut e, "WITH doubled AS (SELECT v, v * 2 AS v2 FROM t), tripled AS (SELECT v, v * 3 AS v3 FROM t) SELECT d.v, d.v2, t.v3 FROM doubled d INNER JOIN tripled t ON d.v = t.v ORDER BY d.v");
     assert_eq!(r.rows.len(), 3);
-    assert_eq!(r.rows[0][1], serde_json::json!(2));
-    assert_eq!(r.rows[0][2], serde_json::json!(3));
+    assert_eq!(r.rows[0][1], Value::BigInt(2));
+    assert_eq!(r.rows[0][2], Value::BigInt(3));
 }
 
 #[test]
@@ -237,8 +236,8 @@ fn test_inner_join_still_works() {
     setup_join_tables(&mut e);
     let r = query(&mut e, "SELECT e.name, d.dept_name FROM employees e INNER JOIN departments d ON e.dept_id = d.id ORDER BY e.name");
     assert_eq!(r.rows.len(), 2);
-    assert_eq!(r.rows[0][0], serde_json::json!("Alice"));
-    assert_eq!(r.rows[1][0], serde_json::json!("Bob"));
+    assert_eq!(r.rows[0][0], Value::VarChar("Alice".to_string()));
+    assert_eq!(r.rows[1][0], Value::VarChar("Bob".to_string()));
 }
 
 #[test]

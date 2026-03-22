@@ -34,6 +34,9 @@ DROP TABLE dbo.Users;
 
 CREATE SCHEMA app;
 DROP SCHEMA app;
+
+CREATE INDEX app.IX_Users_Name ON app.Users (Name);
+DROP INDEX app.IX_Users_Name ON app.Users;
 ```
 
 ### DML
@@ -359,15 +362,24 @@ const result = await db.query(`
 
 ## Test Coverage
 
-**124 tests** covering:
+Core and integration tests covering:
 
 - DDL (CREATE/DROP/ALTER TABLE, schemas, constraints)
+- Metadata (`sys.*`, `INFORMATION_SCHEMA`)
+- Index catalog operations (`CREATE INDEX` / `DROP INDEX`)
 - DML (INSERT/UPDATE/DELETE with all expression types)
 - Joins (INNER, LEFT, RIGHT, FULL OUTER)
 - Aggregates (COUNT, SUM, AVG, MIN, MAX with GROUP BY/HAVING)
 - Set operations (UNION, UNION ALL, INTERSECT, EXCEPT)
 - CTEs (single and multiple)
-- Variables, IF/ELSE, WHILE loops
+- Variables, IF/ELSE, WHILE loops, BREAK/CONTINUE/RETURN
+- `SELECT @var = ...` assignments
+- Temporary tables (`#temp`) and table variables (`DECLARE @t TABLE (...)`)
+- Stored procedures (subset), scalar UDF (subset), inline TVF (subset)
+- `EXEC` and `sp_executesql` subset with OUTPUT parameters
+- Identity scope functions (`SCOPE_IDENTITY()`, `@@IDENTITY`, `IDENT_CURRENT`)
+- Multi-session transactions and isolation anomaly simulations
+- MVCC-style deterministic commit conflict matrix scenarios
 - All built-in functions
 - Type coercion and NULL semantics
 - Arithmetic, CASE, IN, BETWEEN, LIKE expressions
@@ -377,12 +389,9 @@ const result = await db.query(`
 ## Current Limitations
 
 - In-memory only (no persistence)
-- No indexes (full table scans)
-- No transactions (BEGIN TRANSACTION / COMMIT / ROLLBACK)
-- No stored procedures or scalar UDFs
-- No temp tables or table variables
-- No system catalog views (`sys.tables`, etc.)
-- Scalar subqueries not yet evaluated
+- Indexes are catalog-only in this phase (planner still uses table scans)
+- Transaction fidelity is still partial vs SQL Server edge cases (see roadmap matrix)
+- Catalog coverage is still a subset of SQL Server metadata
 
 See [`docs/roadmap.md`](docs/roadmap.md) for the full compatibility roadmap.
 

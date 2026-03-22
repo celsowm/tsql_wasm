@@ -1,4 +1,4 @@
-use tsql_core::{parse_sql, Engine};
+use tsql_core::{parse_sql, types::Value, Engine};
 
 fn exec(engine: &mut Engine, sql: &str) {
     let stmt = parse_sql(sql).expect("parse failed");
@@ -37,7 +37,7 @@ fn test_create_and_drop_schema() {
     exec(&mut engine, "INSERT INTO sales.orders (id) VALUES (42)");
     let r = query(&mut engine, "SELECT * FROM sales.orders");
     assert_eq!(r.rows.len(), 1);
-    assert_eq!(r.rows[0][0], serde_json::json!(42));
+    assert_eq!(r.rows[0][0], Value::Int(42));
 
     // Can't drop schema with tables
     let stmt = parse_sql("DROP SCHEMA sales").unwrap();

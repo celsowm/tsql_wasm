@@ -1,8 +1,8 @@
 use crate::ast::{
-    AlterTableAction, AlterTableStmt, CreateSchemaStmt, CreateTableStmt, DropSchemaStmt,
-    DropTableStmt,
+    AlterTableAction, AlterTableStmt, CreateIndexStmt, CreateSchemaStmt, CreateTableStmt,
+    DropIndexStmt, DropSchemaStmt, DropTableStmt, TableConstraintSpec,
 };
-use crate::catalog::{Catalog, ColumnDef, IdentityDef, TableDef};
+use crate::catalog::{Catalog, CheckConstraintDef, ColumnDef, IdentityDef, TableDef};
 use crate::error::DbError;
 use crate::storage::Storage;
 
@@ -39,12 +39,34 @@ impl<'a> SchemaExecutor<'a> {
             .map(|spec| self.build_column_def(spec))
             .collect::<Result<Vec<_>, _>>()?;
 
-        let table = TableDef {
+        let mut table_checks = Vec::new();
+        let mut table = TableDef {
             id: table_id,
             schema_id,
             name: stmt.name.name,
             columns,
+            check_constraints: vec![],
         };
+
+        for tc in stmt.table_constraints {
+            match tc {
+                TableConstraintSpec::Default { name, column, expr } => {
+                    let col = table
+                        .columns
+                        .iter_mut()
+                        .find(|c| c.name.eq_ignore_ascii_case(&column))
+                        .ok_or_else(|| {
+                            DbError::Semantic(format!("column '{}' not found", column))
+                        })?;
+                    col.default = Some(expr);
+                    col.default_constraint_name = Some(name);
+                }
+                TableConstraintSpec::Check { name, expr } => {
+                    table_checks.push(CheckConstraintDef { name, expr });
+                }
+            }
+        }
+        table.check_constraints = table_checks;
 
         self.catalog.get_tables_mut().push(table);
         self.storage.ensure_table(table_id);
@@ -77,12 +99,41 @@ impl<'a> SchemaExecutor<'a> {
             unique: spec.unique || spec.primary_key,
             identity: spec.identity.map(|(seed, inc)| IdentityDef::new(seed, inc)),
             default: spec.default,
+            default_constraint_name: spec.default_constraint_name,
+            check: spec.check,
+            check_constraint_name: spec.check_constraint_name,
+            computed_expr: spec.computed_expr,
         })
+    }
+
+    pub(crate) fn create_index(&mut self, stmt: CreateIndexStmt) -> Result<(), DbError> {
+        let index_schema = stmt.name.schema_or_dbo().to_string();
+        let table_schema = stmt.table.schema_or_dbo().to_string();
+        self.catalog.create_index(
+            &index_schema,
+            &stmt.name.name,
+            &table_schema,
+            &stmt.table.name,
+            &stmt.columns,
+        )
+    }
+
+    pub(crate) fn drop_index(&mut self, stmt: DropIndexStmt) -> Result<(), DbError> {
+        let index_schema = stmt.name.schema_or_dbo().to_string();
+        let table_schema = stmt.table.schema_or_dbo().to_string();
+        self.catalog.drop_index(
+            &index_schema,
+            &stmt.name.name,
+            &table_schema,
+            &stmt.table.name,
+        )
     }
 
     pub(crate) fn alter_table(&mut self, stmt: AlterTableStmt) -> Result<(), DbError> {
         let schema_name = stmt.table.schema_or_dbo().to_string();
-        let table_id = self.catalog.find_table(&schema_name, &stmt.table.name)
+        let table_id = self
+            .catalog
+            .find_table(&schema_name, &stmt.table.name)
             .map(|t| t.id)
             .ok_or_else(|| {
                 DbError::Semantic(format!(
@@ -94,7 +145,10 @@ impl<'a> SchemaExecutor<'a> {
         match stmt.action {
             AlterTableAction::AddColumn(col_spec) => {
                 let col = self.build_column_def(col_spec)?;
-                let table_mut = self.catalog.find_table_mut(&schema_name, &stmt.table.name).unwrap();
+                let table_mut = self
+                    .catalog
+                    .find_table_mut(&schema_name, &stmt.table.name)
+                    .unwrap();
                 table_mut.columns.push(col);
 
                 // Add NULL values for the new column in existing rows
@@ -107,7 +161,10 @@ impl<'a> SchemaExecutor<'a> {
                 }
             }
             AlterTableAction::DropColumn(col_name) => {
-                let table_mut = self.catalog.find_table_mut(&schema_name, &stmt.table.name).unwrap();
+                let table_mut = self
+                    .catalog
+                    .find_table_mut(&schema_name, &stmt.table.name)
+                    .unwrap();
                 let col_idx = table_mut
                     .columns
                     .iter()

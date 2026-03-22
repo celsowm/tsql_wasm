@@ -18,7 +18,14 @@ pub struct TableRef {
 
 #[derive(Debug, Clone)]
 pub enum Statement {
+    BeginTransaction(Option<String>),
+    CommitTransaction,
+    RollbackTransaction(Option<String>),
+    SaveTransaction(String),
+    SetTransactionIsolationLevel(IsolationLevel),
     CreateTable(CreateTableStmt),
+    CreateIndex(CreateIndexStmt),
+    DropIndex(DropIndexStmt),
     DropTable(DropTableStmt),
     CreateSchema(CreateSchemaStmt),
     DropSchema(DropSchemaStmt),
@@ -37,8 +44,25 @@ pub enum Statement {
     While(WhileStmt),
     Break,
     Continue,
-    Return,
-    Exec(ExecStmt),
+    Return(Option<Expr>),
+    ExecDynamic(ExecStmt),
+    ExecProcedure(ExecProcedureStmt),
+    SpExecuteSql(SpExecuteSqlStmt),
+    SelectAssign(SelectAssignStmt),
+    DeclareTableVar(DeclareTableVarStmt),
+    CreateProcedure(CreateProcedureStmt),
+    DropProcedure(DropProcedureStmt),
+    CreateFunction(CreateFunctionStmt),
+    DropFunction(DropFunctionStmt),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IsolationLevel {
+    ReadUncommitted,
+    ReadCommitted,
+    RepeatableRead,
+    Serializable,
+    Snapshot,
 }
 
 #[derive(Debug, Clone)]
@@ -70,6 +94,86 @@ pub struct WhileStmt {
 #[derive(Debug, Clone)]
 pub struct ExecStmt {
     pub sql_expr: Expr,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExecArgument {
+    pub name: Option<String>,
+    pub expr: Expr,
+    pub is_output: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExecProcedureStmt {
+    pub name: ObjectName,
+    pub args: Vec<ExecArgument>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SpExecuteSqlStmt {
+    pub sql_expr: Expr,
+    pub params_def: Option<Expr>,
+    pub args: Vec<ExecArgument>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SelectAssignTarget {
+    pub variable: String,
+    pub expr: Expr,
+}
+
+#[derive(Debug, Clone)]
+pub struct SelectAssignStmt {
+    pub targets: Vec<SelectAssignTarget>,
+    pub from: Option<TableRef>,
+    pub joins: Vec<JoinClause>,
+    pub selection: Option<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DeclareTableVarStmt {
+    pub name: String,
+    pub columns: Vec<ColumnSpec>,
+    pub table_constraints: Vec<TableConstraintSpec>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RoutineParam {
+    pub name: String,
+    pub data_type: DataTypeSpec,
+    pub is_output: bool,
+    pub default: Option<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateProcedureStmt {
+    pub name: ObjectName,
+    pub params: Vec<RoutineParam>,
+    pub body: Vec<Statement>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropProcedureStmt {
+    pub name: ObjectName,
+}
+
+#[derive(Debug, Clone)]
+pub enum FunctionBody {
+    ScalarReturn(Expr),
+    InlineTable(SelectStmt),
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateFunctionStmt {
+    pub name: ObjectName,
+    pub params: Vec<RoutineParam>,
+    pub returns: Option<DataTypeSpec>,
+    pub body: FunctionBody,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropFunctionStmt {
+    pub name: ObjectName,
 }
 
 #[derive(Debug, Clone)]
@@ -120,11 +224,25 @@ pub struct SetOpStmt {
 pub struct CreateTableStmt {
     pub name: ObjectName,
     pub columns: Vec<ColumnSpec>,
+    pub table_constraints: Vec<TableConstraintSpec>,
 }
 
 #[derive(Debug, Clone)]
 pub struct DropTableStmt {
     pub name: ObjectName,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateIndexStmt {
+    pub name: ObjectName,
+    pub table: ObjectName,
+    pub columns: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropIndexStmt {
+    pub name: ObjectName,
+    pub table: ObjectName,
 }
 
 #[derive(Debug, Clone)]
@@ -146,6 +264,23 @@ pub struct ColumnSpec {
     pub unique: bool,
     pub identity: Option<(i64, i64)>,
     pub default: Option<Expr>,
+    pub default_constraint_name: Option<String>,
+    pub check: Option<Expr>,
+    pub check_constraint_name: Option<String>,
+    pub computed_expr: Option<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub enum TableConstraintSpec {
+    Default {
+        name: String,
+        column: String,
+        expr: Expr,
+    },
+    Check {
+        name: String,
+        expr: Expr,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -252,6 +387,7 @@ pub enum Expr {
     Convert {
         target: DataTypeSpec,
         expr: Box<Expr>,
+        style: Option<i32>,
     },
     Case {
         operand: Option<Box<Expr>>,
@@ -332,4 +468,5 @@ pub enum DataTypeSpec {
     DateTime,
     DateTime2,
     UniqueIdentifier,
+    SqlVariant,
 }

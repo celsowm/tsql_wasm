@@ -1,4 +1,4 @@
-use tsql_core::{parse_sql, Engine};
+use tsql_core::{parse_sql, types::Value, Engine};
 
 fn exec(engine: &mut Engine, sql: &str) {
     let stmt = parse_sql(sql).expect("parse failed");
@@ -25,7 +25,7 @@ fn test_alter_table_add_column() {
 
     let r = query(&mut e, "SELECT id, name FROM t ORDER BY id");
     assert_eq!(r.rows.len(), 2);
-    assert_eq!(r.rows[0][0], serde_json::json!(1));
+    assert_eq!(r.rows[0][0], Value::Int(1));
     assert!(r.rows[0][1].is_null());
     assert!(r.rows[1][1].is_null());
 }
@@ -39,8 +39,8 @@ fn test_alter_table_add_column_then_insert() {
 
     let r = query(&mut e, "SELECT id, name FROM t");
     assert_eq!(r.rows.len(), 1);
-    assert_eq!(r.rows[0][0], serde_json::json!(1));
-    assert_eq!(r.rows[0][1], serde_json::json!("Alice"));
+    assert_eq!(r.rows[0][0], Value::Int(1));
+    assert_eq!(r.rows[0][1], Value::VarChar("Alice".to_string()));
 }
 
 #[test]
@@ -66,12 +66,12 @@ fn test_truncate_table() {
     exec(&mut e, "INSERT INTO t VALUES (3)");
 
     let r = query(&mut e, "SELECT COUNT(*) AS cnt FROM t");
-    assert_eq!(r.rows[0][0], serde_json::json!(3));
+    assert_eq!(r.rows[0][0], Value::BigInt(3));
 
     exec(&mut e, "TRUNCATE TABLE t");
 
     let r = query(&mut e, "SELECT COUNT(*) AS cnt FROM t");
-    assert_eq!(r.rows[0][0], serde_json::json!(0));
+    assert_eq!(r.rows[0][0], Value::BigInt(0));
 }
 
 #[test]
@@ -88,5 +88,5 @@ fn test_truncate_then_reuse() {
 
     let r = query(&mut e, "SELECT id, name FROM t");
     assert_eq!(r.rows.len(), 1);
-    assert_eq!(r.rows[0][1], serde_json::json!("Charlie"));
+    assert_eq!(r.rows[0][1], Value::VarChar("Charlie".to_string()));
 }

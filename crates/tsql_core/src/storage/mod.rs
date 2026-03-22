@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use crate::types::Value;
 use crate::error::DbError;
+use crate::types::Value;
 
 #[derive(Debug, Clone)]
 pub struct StoredRow {
@@ -18,7 +18,7 @@ pub trait Storage: std::fmt::Debug + Send + Sync {
     fn ensure_table(&mut self, table_id: u32);
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct InMemoryStorage {
     pub tables: HashMap<u32, Vec<StoredRow>>,
 }

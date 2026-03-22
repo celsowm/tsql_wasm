@@ -5,6 +5,7 @@ use crate::storage::StoredRow;
 pub(crate) struct BoundTable {
     pub(crate) table: TableDef,
     pub(crate) alias: String,
+    pub(crate) virtual_rows: Option<Vec<StoredRow>>,
 }
 
 #[derive(Debug, Clone)]
@@ -15,11 +16,6 @@ pub struct ContextTable {
 }
 
 pub type JoinedRow = Vec<ContextTable>;
-
-#[derive(Debug, Clone, Default)]
-pub(crate) struct Group {
-    pub(crate) rows: Vec<JoinedRow>,
-}
 
 pub(crate) fn single_row_context(table: &TableDef, row: StoredRow) -> JoinedRow {
     vec![ContextTable {

@@ -1,0 +1,158 @@
+use crate::ast::Expr;
+use crate::error::DbError;
+use crate::types::Value;
+
+use super::clock::Clock;
+use super::context::ExecutionContext;
+use super::evaluator::eval_expr;
+use super::value_ops::compare_values;
+use crate::catalog::Catalog;
+use crate::storage::Storage;
+
+pub struct Group {
+    pub key: Vec<Value>,
+    pub rows: Vec<Vec<super::model::ContextTable>>,
+}
+
+pub fn is_aggregate_function(name: &str) -> bool {
+    matches!(
+        name.to_uppercase().as_str(),
+        "COUNT" | "SUM" | "AVG" | "MIN" | "MAX"
+    )
+}
+
+pub fn collect_group_values<'a>(
+    expr: &'a Expr,
+    group: &'a Group,
+    ctx: &'a mut ExecutionContext,
+    catalog: &'a dyn Catalog,
+    storage: &'a dyn Storage,
+    clock: &'a dyn Clock,
+) -> Vec<Value> {
+    group
+        .rows
+        .iter()
+        .filter_map(move |row| eval_expr(expr, row, ctx, catalog, storage, clock).ok())
+        .filter(|v| !v.is_null())
+        .collect()
+}
+
+pub fn eval_aggregate_count(
+    args: &[Expr],
+    group: &Group,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Value {
+    let count = if args.first().is_some_and(|a| matches!(a, Expr::Wildcard)) {
+        group.rows.len() as i64
+    } else if let Some(expr) = args.first() {
+        collect_group_values(expr, group, ctx, catalog, storage, clock).len() as i64
+    } else {
+        group.rows.len() as i64
+    };
+    Value::BigInt(count)
+}
+
+pub fn eval_aggregate_sum(
+    args: &[Expr],
+    group: &Group,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    let expr = args
+        .first()
+        .ok_or_else(|| DbError::Execution("SUM requires 1 argument".into()))?;
+    let mut sum_i64: i64 = 0;
+    let mut sum_f64: f64 = 0.0;
+    let mut has_values = false;
+    let mut is_decimal = false;
+
+    for val in collect_group_values(expr, group, ctx, catalog, storage, clock) {
+        has_values = true;
+        match &val {
+            Value::Decimal(raw, scale) => {
+                is_decimal = true;
+                let divisor = 10i128.pow(*scale as u32);
+                sum_f64 += (*raw as f64) / (divisor as f64);
+            }
+            Value::TinyInt(v) => sum_i64 += *v as i64,
+            Value::SmallInt(v) => sum_i64 += *v as i64,
+            Value::Int(v) => sum_i64 += *v as i64,
+            Value::BigInt(v) => sum_i64 += *v,
+            _ => return Err(DbError::Execution("SUM requires numeric argument".into())),
+        }
+    }
+
+    if !has_values {
+        return Ok(Value::Null);
+    }
+
+    if is_decimal {
+        Ok(Value::Decimal((sum_f64 * 100.0) as i128, 2))
+    } else {
+        Ok(Value::BigInt(sum_i64))
+    }
+}
+
+pub fn eval_aggregate_avg(
+    args: &[Expr],
+    group: &Group,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    let values = collect_group_values(args.first().unwrap(), group, ctx, catalog, storage, clock);
+    if values.is_empty() {
+        return Ok(Value::Null);
+    }
+    let sum = eval_aggregate_sum(args, group, ctx, catalog, storage, clock)?;
+    match sum {
+        Value::BigInt(v) => {
+            let avg_f64 = v as f64 / values.len() as f64;
+            let raw = (avg_f64 * 1e6_f64) as i128;
+            Ok(Value::Decimal(raw, 6))
+        }
+        Value::Decimal(v, s) => {
+            let divisor = 10i128.pow(s as u32);
+            let f = (v as f64) / (divisor as f64);
+            let avg = f / (values.len() as f64);
+            Ok(Value::Decimal((avg * 1e6_f64) as i128, 6))
+        }
+        _ => Ok(Value::Null),
+    }
+}
+
+pub fn eval_aggregate_min(
+    args: &[Expr],
+    group: &Group,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    let values = collect_group_values(args.first().unwrap(), group, ctx, catalog, storage, clock);
+    Ok(values
+        .into_iter()
+        .min_by(compare_values)
+        .unwrap_or(Value::Null))
+}
+
+pub fn eval_aggregate_max(
+    args: &[Expr],
+    group: &Group,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    let values = collect_group_values(args.first().unwrap(), group, ctx, catalog, storage, clock);
+    Ok(values
+        .into_iter()
+        .max_by(compare_values)
+        .unwrap_or(Value::Null))
+}

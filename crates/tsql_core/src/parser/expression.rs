@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use crate::ast::{BinaryOp, DataTypeSpec, Expr, SelectStmt, UnaryOp, WhenClause};
 use crate::error::DbError;
 
+use super::tokenizer::{tokenize_expr, ExprToken};
+
 pub fn parse_expr(input: &str) -> Result<Expr, DbError> {
     let tokens = tokenize_expr(input)?;
     let mut parser = ExprParser {
@@ -36,44 +38,6 @@ pub fn parse_expr_with_subqueries(
         ));
     }
     Ok(expr)
-}
-
-#[derive(Debug, Clone)]
-enum ExprToken {
-    Identifier(String),
-    Integer(i64),
-    FloatLiteral(String),
-    String(String),
-    UnicodeString(String),
-    Null,
-    Star,
-    LParen,
-    RParen,
-    Comma,
-    Eq,
-    NotEq,
-    Gt,
-    Lt,
-    Gte,
-    Lte,
-    And,
-    Or,
-    Is,
-    Not,
-    As,
-    Plus,
-    Minus,
-    Slash,
-    Percent,
-    Case,
-    When,
-    Then,
-    Else,
-    End,
-    In,
-    Like,
-    Between,
-    Exists,
 }
 
 struct ExprParser {
@@ -112,7 +76,6 @@ impl ExprParser {
     fn parse_cmp(&mut self) -> Result<Expr, DbError> {
         let expr = self.parse_additive()?;
 
-        // IS [NOT] NULL
         if self.match_tok(|t| matches!(t, ExprToken::Is)) {
             let not = self.match_tok(|t| matches!(t, ExprToken::Not));
             self.expect(|t| matches!(t, ExprToken::Null), "NULL")?;
@@ -123,7 +86,6 @@ impl ExprParser {
             });
         }
 
-        // Comparison operators
         if let Some(op) = self.match_cmp_op() {
             let right = self.parse_additive()?;
             return Ok(Expr::Binary {
@@ -133,10 +95,8 @@ impl ExprParser {
             });
         }
 
-        // NOT prefix for compound operators
         let negated = self.match_tok(|t| matches!(t, ExprToken::Not));
 
-        // IN (...)
         if self.match_tok(|t| matches!(t, ExprToken::In)) {
             self.expect(|t| matches!(t, ExprToken::LParen), "(")?;
             let mut list = Vec::new();
@@ -150,7 +110,6 @@ impl ExprParser {
                     break;
                 }
             }
-            // Check for IN (SELECT ...) pattern - single subquery placeholder or actual subquery
             if list.len() == 1 {
                 match &list[0] {
                     Expr::Identifier(name) if name.starts_with("__SUBQ_") => {
@@ -179,7 +138,6 @@ impl ExprParser {
             });
         }
 
-        // BETWEEN ... AND ...
         if self.match_tok(|t| matches!(t, ExprToken::Between)) {
             let low = self.parse_additive()?;
             self.expect(|t| matches!(t, ExprToken::And), "AND")?;
@@ -192,7 +150,6 @@ impl ExprParser {
             });
         }
 
-        // LIKE
         if self.match_tok(|t| matches!(t, ExprToken::Like)) {
             let pattern = self.parse_additive()?;
             return Ok(Expr::Like {
@@ -274,7 +231,6 @@ impl ExprParser {
         }
 
         if self.match_tok(|t| matches!(t, ExprToken::Not)) {
-            // Check if this NOT is followed by IN/BETWEEN/LIKE — if so, put it back
             if matches!(
                 self.peek(),
                 Some(ExprToken::In | ExprToken::Between | ExprToken::Like)
@@ -293,7 +249,6 @@ impl ExprParser {
     }
 
     fn parse_primary(&mut self) -> Result<Expr, DbError> {
-        // EXISTS __SUBQ_n__
         if self.match_tok(|t| matches!(t, ExprToken::Exists)) {
             let negated = self.match_tok(|t| matches!(t, ExprToken::Not));
             match self.next().cloned() {
@@ -310,21 +265,18 @@ impl ExprParser {
             }
         }
 
-        // Parenthesized expression or subquery
         if self.match_tok(|t| matches!(t, ExprToken::LParen)) {
             let expr = self.parse_or()?;
             self.expect(|t| matches!(t, ExprToken::RParen), ")")?;
             return Ok(expr);
         }
 
-        // CASE expression
         if self.match_tok(|t| matches!(t, ExprToken::Case)) {
             return self.parse_case();
         }
 
         match self.next().cloned() {
             Some(ExprToken::Identifier(name)) => {
-                // Subquery placeholder
                 if name.starts_with("__SUBQ_") {
                     if let Some(stmt) = self.subquery_map.get(&name).cloned() {
                         return Ok(Expr::Subquery(Box::new(stmt)));
@@ -355,6 +307,11 @@ impl ExprParser {
                         }
                     }
                     Ok(Expr::FunctionCall { name, args })
+                } else if name == "@@IDENTITY" {
+                    Ok(Expr::FunctionCall {
+                        name: "@@IDENTITY".to_string(),
+                        args: vec![],
+                    })
                 } else if name.eq_ignore_ascii_case("CURRENT_TIMESTAMP") {
                     Ok(Expr::FunctionCall {
                         name: "CURRENT_TIMESTAMP".to_string(),
@@ -381,8 +338,6 @@ impl ExprParser {
     }
 
     fn parse_case(&mut self) -> Result<Expr, DbError> {
-        // Check for simple CASE: CASE expr WHEN val THEN result ... END
-        // vs searched CASE: CASE WHEN cond THEN result ... END
         let operand = if self.match_tok(|t| matches!(t, ExprToken::When)) {
             None
         } else {
@@ -436,10 +391,19 @@ impl ExprParser {
         let target = self.parse_expr_data_type()?;
         self.expect(|t| matches!(t, ExprToken::Comma), ",")?;
         let expr = self.parse_or()?;
+        let style = if self.match_tok(|t| matches!(t, ExprToken::Comma)) {
+            match self.next().cloned() {
+                Some(ExprToken::Integer(v)) => Some(v as i32),
+                _ => return Err(DbError::Parse("expected integer style code".into())),
+            }
+        } else {
+            None
+        };
         self.expect(|t| matches!(t, ExprToken::RParen), ")")?;
         Ok(Expr::Convert {
             target,
             expr: Box::new(expr),
+            style,
         })
     }
 
@@ -514,6 +478,8 @@ impl ExprParser {
             Ok(DataTypeSpec::DateTime2)
         } else if name.eq_ignore_ascii_case("UNIQUEIDENTIFIER") {
             Ok(DataTypeSpec::UniqueIdentifier)
+        } else if name.eq_ignore_ascii_case("SQL_VARIANT") {
+            Ok(DataTypeSpec::SqlVariant)
         } else if name.eq_ignore_ascii_case("DECIMAL") || name.eq_ignore_ascii_case("NUMERIC") {
             Ok(DataTypeSpec::Decimal(18, 0))
         } else {
@@ -572,178 +538,4 @@ impl ExprParser {
         }
         tok
     }
-}
-
-fn tokenize_expr(input: &str) -> Result<Vec<ExprToken>, DbError> {
-    let chars = input.chars().collect::<Vec<_>>();
-    let mut i = 0usize;
-    let mut out = Vec::new();
-
-    while i < chars.len() {
-        let ch = chars[i];
-        if ch.is_whitespace() {
-            i += 1;
-            continue;
-        }
-
-        match ch {
-            '(' => {
-                out.push(ExprToken::LParen);
-                i += 1;
-            }
-            ')' => {
-                out.push(ExprToken::RParen);
-                i += 1;
-            }
-            ',' => {
-                out.push(ExprToken::Comma);
-                i += 1;
-            }
-            '*' => {
-                out.push(ExprToken::Star);
-                i += 1;
-            }
-            '+' => {
-                out.push(ExprToken::Plus);
-                i += 1;
-            }
-            '-' => {
-                out.push(ExprToken::Minus);
-                i += 1;
-            }
-            '/' => {
-                out.push(ExprToken::Slash);
-                i += 1;
-            }
-            '%' => {
-                out.push(ExprToken::Percent);
-                i += 1;
-            }
-            '=' => {
-                out.push(ExprToken::Eq);
-                i += 1;
-            }
-            '>' => {
-                if i + 1 < chars.len() && chars[i + 1] == '=' {
-                    out.push(ExprToken::Gte);
-                    i += 2;
-                } else {
-                    out.push(ExprToken::Gt);
-                    i += 1;
-                }
-            }
-            '<' => {
-                if i + 1 < chars.len() && chars[i + 1] == '=' {
-                    out.push(ExprToken::Lte);
-                    i += 2;
-                } else if i + 1 < chars.len() && chars[i + 1] == '>' {
-                    out.push(ExprToken::NotEq);
-                    i += 2;
-                } else {
-                    out.push(ExprToken::Lt);
-                    i += 1;
-                }
-            }
-            '\'' => {
-                let start = i + 1;
-                i += 1;
-                while i < chars.len() && chars[i] != '\'' {
-                    i += 1;
-                }
-                if i >= chars.len() {
-                    return Err(DbError::Parse("unterminated string literal".into()));
-                }
-                out.push(ExprToken::String(chars[start..i].iter().collect()));
-                i += 1;
-            }
-            'N' | 'n' => {
-                if i + 1 < chars.len() && chars[i + 1] == '\'' {
-                    let start = i + 2;
-                    i += 2;
-                    while i < chars.len() && chars[i] != '\'' {
-                        i += 1;
-                    }
-                    if i >= chars.len() {
-                        return Err(DbError::Parse("unterminated unicode string literal".into()));
-                    }
-                    out.push(ExprToken::UnicodeString(chars[start..i].iter().collect()));
-                    i += 1;
-                } else {
-                    let ident = read_identifier(&chars, &mut i);
-                    push_ident_token(&mut out, ident);
-                }
-            }
-            c if c.is_ascii_digit() => {
-                let start = i;
-                i += 1;
-                while i < chars.len() && chars[i].is_ascii_digit() {
-                    i += 1;
-                }
-                // Check for decimal part
-                if i < chars.len()
-                    && chars[i] == '.'
-                    && i + 1 < chars.len()
-                    && chars[i + 1].is_ascii_digit()
-                {
-                    i += 1; // skip '.'
-                    while i < chars.len() && chars[i].is_ascii_digit() {
-                        i += 1;
-                    }
-                    let num: String = chars[start..i].iter().collect();
-                    out.push(ExprToken::FloatLiteral(num));
-                } else {
-                    let num: String = chars[start..i].iter().collect();
-                    out.push(ExprToken::Integer(
-                        num.parse::<i64>()
-                            .map_err(|_| DbError::Parse("invalid integer literal".into()))?,
-                    ));
-                }
-            }
-            c if is_ident_start(c) => {
-                let ident = read_identifier(&chars, &mut i);
-                push_ident_token(&mut out, ident);
-            }
-            _ => return Err(DbError::Parse(format!("unexpected character '{}'", ch))),
-        }
-    }
-
-    Ok(out)
-}
-
-fn read_identifier(chars: &[char], i: &mut usize) -> String {
-    let start = *i;
-    *i += 1;
-    while *i < chars.len() && is_ident_char(chars[*i]) {
-        *i += 1;
-    }
-    chars[start..*i].iter().collect()
-}
-
-fn push_ident_token(out: &mut Vec<ExprToken>, ident: String) {
-    match ident.to_uppercase().as_str() {
-        "NULL" => out.push(ExprToken::Null),
-        "AND" => out.push(ExprToken::And),
-        "OR" => out.push(ExprToken::Or),
-        "IS" => out.push(ExprToken::Is),
-        "NOT" => out.push(ExprToken::Not),
-        "AS" => out.push(ExprToken::As),
-        "CASE" => out.push(ExprToken::Case),
-        "WHEN" => out.push(ExprToken::When),
-        "THEN" => out.push(ExprToken::Then),
-        "ELSE" => out.push(ExprToken::Else),
-        "END" => out.push(ExprToken::End),
-        "IN" => out.push(ExprToken::In),
-        "LIKE" => out.push(ExprToken::Like),
-        "BETWEEN" => out.push(ExprToken::Between),
-        "EXISTS" => out.push(ExprToken::Exists),
-        _ => out.push(ExprToken::Identifier(ident)),
-    }
-}
-
-fn is_ident_start(ch: char) -> bool {
-    ch.is_ascii_alphabetic() || ch == '_' || ch == '@'
-}
-
-fn is_ident_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || ch == '_' || ch == '@' || ch == '.'
 }

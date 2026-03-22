@@ -1,10 +1,11 @@
 use wasm_bindgen::prelude::*;
 
-use tsql_core::{parse_sql, Engine};
+use tsql_core::{parse_batch, parse_sql, Database, SessionId};
 
 #[wasm_bindgen]
 pub struct WasmDb {
-    inner: Engine,
+    inner: Database,
+    default_session: SessionId,
 }
 
 impl Default for WasmDb {
@@ -18,14 +19,40 @@ impl WasmDb {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         console_error_panic_hook::set_once();
+        let inner = Database::new();
+        let default_session = inner.create_session();
         Self {
-            inner: Engine::new(),
+            inner,
+            default_session,
         }
     }
 
     pub fn exec(&mut self, sql: &str) -> Result<(), JsValue> {
+        self.exec_session(self.default_session, sql)
+    }
+
+    pub fn exec_batch(&mut self, sql: &str) -> Result<(), JsValue> {
+        self.exec_batch_session(self.default_session, sql)
+    }
+
+    pub fn query(&mut self, sql: &str) -> Result<String, JsValue> {
+        self.query_session(self.default_session, sql)
+    }
+
+    pub fn create_session(&self) -> u64 {
+        self.inner.create_session()
+    }
+
+    pub fn close_session(&self, session_id: u64) -> Result<(), JsValue> {
+        self.inner.close_session(session_id).map_err(js_err)
+    }
+
+    pub fn exec_session(&mut self, session_id: u64, sql: &str) -> Result<(), JsValue> {
         let stmt = parse_sql(sql).map_err(js_err)?;
-        let result = self.inner.execute(stmt).map_err(js_err)?;
+        let result = self
+            .inner
+            .execute_session(session_id, stmt)
+            .map_err(js_err)?;
         if result.is_some() {
             return Err(JsValue::from_str(
                 "exec() received a query statement; use query()",
@@ -34,9 +61,26 @@ impl WasmDb {
         Ok(())
     }
 
-    pub fn query(&mut self, sql: &str) -> Result<String, JsValue> {
+    pub fn exec_batch_session(&mut self, session_id: u64, sql: &str) -> Result<(), JsValue> {
+        let stmts = parse_batch(sql).map_err(js_err)?;
+        let result = self
+            .inner
+            .execute_session_batch(session_id, stmts)
+            .map_err(js_err)?;
+        if result.is_some() {
+            return Err(JsValue::from_str(
+                "exec_batch() ended with a query statement; use query() for SELECT",
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn query_session(&mut self, session_id: u64, sql: &str) -> Result<String, JsValue> {
         let stmt = parse_sql(sql).map_err(js_err)?;
-        let result = self.inner.execute(stmt).map_err(js_err)?;
+        let result = self
+            .inner
+            .execute_session(session_id, stmt)
+            .map_err(js_err)?;
         let result =
             result.ok_or_else(|| JsValue::from_str("query() expected a SELECT statement"))?;
         serde_json::to_string(&result.to_json_result())

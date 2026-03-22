@@ -1,27 +1,163 @@
 use std::cmp::Ordering;
-use crate::ast::{
-    Expr, JoinClause, JoinType, OrderByExpr, SelectItem, SelectStmt, TopSpec,
-};
-use crate::catalog::Catalog;
+
+use crate::ast::{BinaryOp, Expr, JoinType, SelectItem, SelectStmt};
+use crate::catalog::{Catalog, RoutineKind};
 use crate::error::DbError;
-use crate::storage::Storage;
+use crate::parser::parse_expr_subquery_aware;
+use crate::storage::{Storage, StoredRow};
 use crate::types::Value;
 
+use super::aggregates::{
+    eval_aggregate_avg, eval_aggregate_count, eval_aggregate_max, eval_aggregate_min,
+    eval_aggregate_sum, is_aggregate_function, Group,
+};
 use super::clock::Clock;
 use super::context::ExecutionContext;
-use super::evaluator::{eval_constant_expr, eval_expr, compare_values, value_key, eval_predicate};
+use super::cte::{cte_to_context_rows, resolve_cte_table};
+use super::evaluator::{eval_expr, eval_predicate};
+use super::joins::apply_join;
+use super::metadata::resolve_virtual_table;
 use super::model::{BoundTable, ContextTable, JoinedRow};
+use super::operators::eval_binary;
+use super::planner::{LogicalPlan, PhysicalJoin, PhysicalPlan, PhysicalScan, ScanStrategy};
+use super::projection::{
+    compare_projected_rows, deduplicate_projected_rows, eval_top_n, expand_projection_columns,
+    expand_wildcard_values,
+};
+use super::value_ops::{compare_values, truthy};
+
+fn eval_having_expr(
+    expr: &Expr,
+    row: &[ContextTable],
+    group: &Group,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    match expr {
+        Expr::FunctionCall { name, args } if is_aggregate_function(name) => {
+            match name.to_uppercase().as_str() {
+                "COUNT" => Ok(eval_aggregate_count(
+                    args, group, ctx, catalog, storage, clock,
+                )),
+                "SUM" => eval_aggregate_sum(args, group, ctx, catalog, storage, clock),
+                "AVG" => eval_aggregate_avg(args, group, ctx, catalog, storage, clock),
+                "MIN" => eval_aggregate_min(args, group, ctx, catalog, storage, clock),
+                "MAX" => eval_aggregate_max(args, group, ctx, catalog, storage, clock),
+                _ => eval_expr(expr, row, ctx, catalog, storage, clock),
+            }
+        }
+        Expr::Binary { left, op, right } => {
+            let lv = eval_having_expr(left, row, group, ctx, catalog, storage, clock)?;
+            let rv = eval_having_expr(right, row, group, ctx, catalog, storage, clock)?;
+            eval_binary(op, lv, rv)
+        }
+        Expr::Unary { op, expr: inner } => {
+            let val = eval_having_expr(inner, row, group, ctx, catalog, storage, clock)?;
+            super::operators::eval_unary(op, val)
+        }
+        Expr::Case {
+            operand,
+            when_clauses,
+            else_result,
+        } => {
+            let operand_val = match operand {
+                Some(e) => Some(eval_having_expr(
+                    e, row, group, ctx, catalog, storage, clock,
+                )?),
+                None => None,
+            };
+            for clause in when_clauses {
+                let match_found = if let Some(ref op_val) = operand_val {
+                    let when_val = eval_having_expr(
+                        &clause.condition,
+                        row,
+                        group,
+                        ctx,
+                        catalog,
+                        storage,
+                        clock,
+                    )?;
+                    matches!(compare_values(&op_val, &when_val), Ordering::Equal)
+                } else {
+                    let cond = eval_having_expr(
+                        &clause.condition,
+                        row,
+                        group,
+                        ctx,
+                        catalog,
+                        storage,
+                        clock,
+                    )?;
+                    truthy(&cond)
+                };
+                if match_found {
+                    return eval_having_expr(
+                        &clause.result,
+                        row,
+                        group,
+                        ctx,
+                        catalog,
+                        storage,
+                        clock,
+                    );
+                }
+            }
+            match else_result {
+                Some(expr) => eval_having_expr(expr, row, group, ctx, catalog, storage, clock),
+                None => Ok(Value::Null),
+            }
+        }
+        Expr::Between {
+            expr: between_expr,
+            low,
+            high,
+            negated,
+        } => {
+            let val = eval_having_expr(between_expr, row, group, ctx, catalog, storage, clock)?;
+            let low_val = eval_having_expr(low, row, group, ctx, catalog, storage, clock)?;
+            let high_val = eval_having_expr(high, row, group, ctx, catalog, storage, clock)?;
+            if val.is_null() || low_val.is_null() || high_val.is_null() {
+                return Ok(Value::Null);
+            }
+            let ge_low = matches!(
+                compare_values(&val, &low_val),
+                Ordering::Greater | Ordering::Equal
+            );
+            let le_high = matches!(
+                compare_values(&val, &high_val),
+                Ordering::Less | Ordering::Equal
+            );
+            let result = ge_low && le_high;
+            Ok(Value::Bit(if *negated { !result } else { result }))
+        }
+        _ => eval_expr(expr, row, ctx, catalog, storage, clock),
+    }
+}
+
+fn eval_having_predicate(
+    expr: &Expr,
+    row: &[ContextTable],
+    group: &Group,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<bool, DbError> {
+    let value = eval_having_expr(expr, row, group, ctx, catalog, storage, clock)?;
+    let result = match &value {
+        Value::Bit(v) => *v,
+        Value::Null => false,
+        other => truthy(other),
+    };
+    Ok(result)
+}
 
 pub struct QueryExecutor<'a> {
     pub catalog: &'a dyn Catalog,
     pub storage: &'a dyn Storage,
     pub clock: &'a dyn Clock,
-}
-
-#[derive(Debug, Clone)]
-pub struct Group {
-    pub key: Vec<Value>,
-    pub rows: Vec<JoinedRow>,
 }
 
 impl<'a> QueryExecutor<'a> {
@@ -30,73 +166,352 @@ impl<'a> QueryExecutor<'a> {
         stmt: SelectStmt,
         ctx: &mut ExecutionContext,
     ) -> Result<super::result::QueryResult, DbError> {
-        let mut source_rows = if let Some(from) = stmt.from {
-            let bound_table = self.bind_table(from)?;
-            let mut current_rows = self.bind_table_rows(&bound_table)?;
+        if stmt.from.is_none() {
+            let source_rows = vec![vec![]];
+            let has_aggregate = stmt
+                .projection
+                .iter()
+                .any(|item| matches!(&item.expr, Expr::FunctionCall { name, .. } if is_aggregate_function(name)));
+            let result = if !stmt.group_by.is_empty() || has_aggregate {
+                self.execute_grouped_select(
+                    stmt.projection,
+                    source_rows,
+                    stmt.group_by,
+                    stmt.having,
+                    ctx,
+                )?
+            } else {
+                self.execute_flat_select(stmt.projection, source_rows, ctx)?
+            };
+            return Ok(result);
+        }
 
-            if !stmt.joins.is_empty() {
-                for join in &stmt.joins {
-                    let right_bound = self.bind_table(join.table.clone())?;
-                    let right_rows = self.bind_table_rows(&right_bound)?;
-                    current_rows = apply_join(
-                        current_rows,
-                        right_rows,
-                        right_bound,
-                        join,
-                        ctx,
-                        self.catalog,
-                        self.storage,
-                        self.clock,
-                    )?;
-                }
-            }
-            current_rows
-        } else {
-            vec![vec![]] // Single empty row for SELECT without FROM
+        let logical = self.build_logical_plan(&stmt)?;
+        let plan = self.build_physical_plan(stmt, logical, ctx)?;
+        self.execute_physical_plan(plan, ctx)
+    }
+
+    fn build_logical_plan(&self, stmt: &SelectStmt) -> Result<LogicalPlan, DbError> {
+        let Some(from) = &stmt.from else {
+            return Err(DbError::Execution("planner requires FROM source".into()));
+        };
+        let mut plan = LogicalPlan::Scan {
+            table: from.clone(),
+        };
+        for join in &stmt.joins {
+            plan = LogicalPlan::Join {
+                left: Box::new(plan),
+                join: join.clone(),
+            };
+        }
+        if let Some(selection) = &stmt.selection {
+            plan = LogicalPlan::Filter {
+                input: Box::new(plan),
+                predicate: selection.clone(),
+            };
+        }
+        if !stmt.group_by.is_empty() || stmt.having.is_some() {
+            plan = LogicalPlan::Aggregate {
+                input: Box::new(plan),
+                group_by: stmt.group_by.clone(),
+                having: stmt.having.clone(),
+            };
+        }
+        plan = LogicalPlan::Project {
+            input: Box::new(plan),
+            projection: stmt.projection.clone(),
+        };
+        if stmt.distinct {
+            plan = LogicalPlan::Distinct {
+                input: Box::new(plan),
+            };
+        }
+        if !stmt.order_by.is_empty() {
+            plan = LogicalPlan::Sort {
+                input: Box::new(plan),
+                order_by: stmt.order_by.clone(),
+            };
+        }
+        if let Some(top) = &stmt.top {
+            plan = LogicalPlan::Top {
+                input: Box::new(plan),
+                top: top.clone(),
+            };
+        }
+        Ok(plan)
+    }
+
+    fn build_physical_plan(
+        &self,
+        mut stmt: SelectStmt,
+        logical: LogicalPlan,
+        ctx: &mut ExecutionContext,
+    ) -> Result<PhysicalPlan, DbError> {
+        let Some(from) = stmt.from.clone() else {
+            return Err(DbError::Execution("planner requires FROM source".into()));
         };
 
-        if let Some(where_clause) = stmt.selection {
+        // Safe v1 pushdown: only single-source scans.
+        let all_inner = stmt.joins.iter().all(|j| j.join_type == JoinType::Inner);
+        let mut alias_predicates: std::collections::HashMap<String, Vec<Expr>> =
+            std::collections::HashMap::new();
+        let mut residual = stmt.selection.clone();
+        if all_inner && stmt.joins.is_empty() {
+            alias_predicates.insert("".to_string(), split_conjuncts(stmt.selection.clone()));
+            residual = None;
+        }
+
+        if all_inner && !stmt.joins.is_empty() {
+            stmt.joins = self.reorder_inner_joins_heuristic(&from, stmt.joins, ctx)?;
+        }
+
+        let base_bound = self.bind_table(from, ctx)?;
+        let base_predicate = if stmt.joins.is_empty() {
+            alias_predicates.remove("").and_then(and_terms)
+        } else {
+            None
+        };
+        let base_scan = self.plan_scan(base_bound, base_predicate, &stmt.order_by);
+
+        let mut joins = Vec::new();
+        for join in stmt.joins {
+            let right_bound = self.bind_table(join.table.clone(), ctx)?;
+            let right_pred = alias_predicates
+                .remove(&right_bound.alias.to_uppercase())
+                .and_then(and_terms);
+            let right_scan = self.plan_scan(right_bound, right_pred, &[]);
+            joins.push(PhysicalJoin {
+                right: right_scan,
+                join,
+            });
+        }
+
+        let required_columns = required_columns_from_logical(&logical);
+        let order_satisfied_by_scan = joins.is_empty()
+            && base_scan.pushed_predicate.is_none()
+            && scan_satisfies_order(&base_scan, &stmt.order_by, self.catalog);
+
+        Ok(PhysicalPlan {
+            base: base_scan,
+            joins,
+            residual_filter: residual,
+            projection: stmt.projection,
+            group_by: stmt.group_by,
+            having: stmt.having,
+            distinct: stmt.distinct,
+            order_by: stmt.order_by,
+            top: stmt.top,
+            required_columns,
+            order_satisfied_by_scan,
+        })
+    }
+
+    fn plan_scan(
+        &self,
+        bound: BoundTable,
+        pushed_predicate: Option<Expr>,
+        order_by: &[crate::ast::OrderByExpr],
+    ) -> PhysicalScan {
+        let strategy =
+            choose_scan_strategy(&bound, pushed_predicate.as_ref(), order_by, self.catalog);
+        PhysicalScan {
+            bound,
+            strategy,
+            pushed_predicate,
+        }
+    }
+
+    fn reorder_inner_joins_heuristic(
+        &self,
+        from: &crate::ast::TableRef,
+        joins: Vec<crate::ast::JoinClause>,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Vec<crate::ast::JoinClause>, DbError> {
+        // Keep lexical join order to preserve ON-clause binding semantics.
+        // The method still exists as the join-planning hook for future cost/rule work.
+        let _ = from;
+        let _ = ctx;
+        Ok(joins)
+    }
+
+    fn execute_physical_plan(
+        &self,
+        plan: PhysicalPlan,
+        ctx: &mut ExecutionContext,
+    ) -> Result<super::result::QueryResult, DbError> {
+        let mut source_rows = self.execute_scan(&plan.base, ctx)?;
+
+        for join_plan in &plan.joins {
+            let right_rows = self.execute_scan(&join_plan.right, ctx)?;
+            source_rows = apply_join(
+                source_rows,
+                right_rows,
+                join_plan.right.bound.clone(),
+                &join_plan.join,
+                ctx,
+                self.catalog,
+                self.storage,
+                self.clock,
+            )?;
+        }
+
+        if let Some(where_clause) = &plan.residual_filter {
             let mut filtered = Vec::new();
             for row in source_rows {
-                if eval_predicate(&where_clause, &row, ctx, self.catalog, self.storage, self.clock)? {
+                if eval_predicate(
+                    where_clause,
+                    &row,
+                    ctx,
+                    self.catalog,
+                    self.storage,
+                    self.clock,
+                )? {
                     filtered.push(row);
                 }
             }
             source_rows = filtered;
         }
 
-        let result = if !stmt.group_by.is_empty() {
-            self.execute_grouped_select(stmt.projection, source_rows, stmt.group_by, stmt.having, ctx)?
+        let has_aggregate = plan
+            .projection
+            .iter()
+            .any(|item| matches!(&item.expr, Expr::FunctionCall { name, .. } if is_aggregate_function(name)));
+
+        let result = if !plan.group_by.is_empty() || has_aggregate {
+            self.execute_grouped_select(
+                plan.projection,
+                source_rows,
+                plan.group_by,
+                plan.having,
+                ctx,
+            )?
         } else {
-            self.execute_flat_select(stmt.projection, source_rows, ctx)?
+            self.execute_flat_select(plan.projection, source_rows, ctx)?
         };
 
         let mut final_rows = result.rows;
-        if stmt.distinct {
+        if plan.distinct {
             final_rows = deduplicate_projected_rows(final_rows);
         }
 
-        if !stmt.order_by.is_empty() {
+        if !plan.order_by.is_empty() && !plan.order_satisfied_by_scan {
             let columns = &result.columns;
-            let order_by_refs = &stmt.order_by;
-            final_rows.sort_by(|a, b| {
-                compare_projected_rows(a, b, columns, order_by_refs)
-            });
+            let order_by_refs = &plan.order_by;
+            final_rows.sort_by(|a, b| compare_projected_rows(a, b, columns, order_by_refs));
         }
 
-        if let Some(top) = stmt.top {
+        if let Some(top) = plan.top {
             let n = eval_top_n(&top, ctx, self.catalog, self.storage, self.clock)?;
             if final_rows.len() > n {
                 final_rows.truncate(n);
             }
         }
 
-        // OFFSET is not yet supported in the AST
-
+        let _ = &plan.required_columns;
         Ok(super::result::QueryResult {
             columns: result.columns,
             rows: final_rows,
         })
+    }
+
+    fn execute_scan(
+        &self,
+        scan: &PhysicalScan,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Vec<JoinedRow>, DbError> {
+        let rows = self.bind_table_rows(&scan.bound, ctx)?;
+        let mut scanned = match scan.strategy {
+            ScanStrategy::TableScan => rows,
+            ScanStrategy::IndexSeek { .. } | ScanStrategy::IndexScan { .. } => {
+                self.apply_index_strategy(rows, scan, ctx)?
+            }
+        };
+        if let Some(predicate) = &scan.pushed_predicate {
+            scanned.retain(|row| {
+                eval_predicate(predicate, row, ctx, self.catalog, self.storage, self.clock)
+                    .unwrap_or(false)
+            });
+        }
+        Ok(scanned)
+    }
+
+    fn apply_index_strategy(
+        &self,
+        rows: Vec<JoinedRow>,
+        scan: &PhysicalScan,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Vec<JoinedRow>, DbError> {
+        let index_id = match scan.strategy {
+            ScanStrategy::IndexSeek { index_id } | ScanStrategy::IndexScan { index_id } => index_id,
+            ScanStrategy::TableScan => return Ok(rows),
+        };
+        let Some(index) = self
+            .catalog
+            .get_indexes()
+            .iter()
+            .find(|idx| idx.id == index_id && idx.table_id == scan.bound.table.id)
+        else {
+            return Ok(rows);
+        };
+        let Some(first_col_id) = index.column_ids.first().copied() else {
+            return Ok(rows);
+        };
+        let Some(col_idx) = scan
+            .bound
+            .table
+            .columns
+            .iter()
+            .position(|c| c.id == first_col_id)
+        else {
+            return Ok(rows);
+        };
+
+        let mut keyed: Vec<(Value, JoinedRow)> = rows
+            .into_iter()
+            .filter_map(|row| {
+                let v = row
+                    .first()
+                    .and_then(|ct| ct.row.as_ref())
+                    .and_then(|r| r.values.get(col_idx))
+                    .cloned()?;
+                Some((v, row))
+            })
+            .collect();
+        keyed.sort_by(|a, b| compare_values(&a.0, &b.0));
+
+        let out = if matches!(scan.strategy, ScanStrategy::IndexSeek { .. }) {
+            if let Some((op, rhs)) = extract_index_predicate_rhs(
+                scan.pushed_predicate.as_ref(),
+                &scan.bound.alias,
+                &scan.bound.table.columns[col_idx].name,
+            ) {
+                let rhs_val = eval_expr(&rhs, &[], ctx, self.catalog, self.storage, self.clock)?;
+                keyed
+                    .into_iter()
+                    .filter(|(lhs, _)| {
+                        matches!(op, BinaryOp::Eq)
+                            && compare_values(lhs, &rhs_val) == Ordering::Equal
+                    })
+                    .map(|(_, row)| row)
+                    .collect()
+            } else {
+                keyed.into_iter().map(|(_, row)| row).collect()
+            }
+        } else if let Some((op, rhs)) = extract_index_predicate_rhs(
+            scan.pushed_predicate.as_ref(),
+            &scan.bound.alias,
+            &scan.bound.table.columns[col_idx].name,
+        ) {
+            let rhs_val = eval_expr(&rhs, &[], ctx, self.catalog, self.storage, self.clock)?;
+            keyed
+                .into_iter()
+                .filter(|(lhs, _)| compare_with_op(compare_values(lhs, &rhs_val), op))
+                .map(|(_, row)| row)
+                .collect()
+        } else {
+            keyed.into_iter().map(|(_, row)| row).collect()
+        };
+        Ok(out)
     }
 
     fn execute_flat_select(
@@ -126,14 +541,27 @@ impl<'a> QueryExecutor<'a> {
 
         for group in groups {
             if let Some(having_expr) = &having {
-                if !eval_predicate(having_expr, &group.rows[0], ctx, self.catalog, self.storage, self.clock)? {
+                let sample_row = if group.rows.is_empty() {
+                    vec![]
+                } else {
+                    group.rows[0].clone()
+                };
+                if !eval_having_predicate(
+                    having_expr,
+                    &sample_row,
+                    &group,
+                    ctx,
+                    self.catalog,
+                    self.storage,
+                    self.clock,
+                )? {
                     continue;
                 }
             }
             projected_rows.push(self.project_group_row(&projection, &group, ctx)?);
         }
 
-        let columns = expand_projection_columns(&projection, None); // TODO: sample
+        let columns = expand_projection_columns(&projection, None);
         Ok(super::result::QueryResult {
             columns,
             rows: projected_rows,
@@ -146,11 +574,21 @@ impl<'a> QueryExecutor<'a> {
         group_by: &[Expr],
         ctx: &mut ExecutionContext,
     ) -> Result<Vec<Group>, DbError> {
+        if group_by.is_empty() {
+            return Ok(vec![Group { key: vec![], rows }]);
+        }
         let mut groups: Vec<Group> = Vec::new();
         for row in rows {
             let mut key = Vec::new();
             for expr in group_by {
-                key.push(eval_expr(expr, &row, ctx, self.catalog, self.storage, self.clock)?);
+                key.push(eval_expr(
+                    expr,
+                    &row,
+                    ctx,
+                    self.catalog,
+                    self.storage,
+                    self.clock,
+                )?);
             }
 
             if let Some(group) = groups.iter_mut().find(|g| g.key == key) {
@@ -165,26 +603,76 @@ impl<'a> QueryExecutor<'a> {
         Ok(groups)
     }
 
-    fn bind_table(&self, tref: crate::ast::TableRef) -> Result<BoundTable, DbError> {
+    fn bind_table(
+        &self,
+        mut tref: crate::ast::TableRef,
+        ctx: &mut ExecutionContext,
+    ) -> Result<BoundTable, DbError> {
+        if let Some(mapped) = ctx.resolve_table_name(&tref.name.name) {
+            tref.name.name = mapped;
+            if tref.name.schema.is_none() {
+                tref.name.schema = Some("dbo".to_string());
+            }
+        }
         let schema = tref.name.schema_or_dbo();
+        let name = &tref.name.name;
+
+        if let Some(bound_tvf) = self.bind_inline_tvf(schema, name, &tref, ctx)? {
+            return Ok(bound_tvf);
+        }
+
+        if let Some(cte) = resolve_cte_table(&ctx.ctes, schema, name) {
+            return Ok(BoundTable {
+                alias: tref.alias.clone().unwrap_or_else(|| name.clone()),
+                table: cte.table_def.clone(),
+                virtual_rows: None,
+            });
+        }
+
+        if let Some((table, rows)) = resolve_virtual_table(schema, name, self.catalog) {
+            return Ok(BoundTable {
+                alias: tref.alias.clone().unwrap_or_else(|| name.clone()),
+                table,
+                virtual_rows: Some(rows),
+            });
+        }
+
         let table = self
             .catalog
-            .find_table(schema, &tref.name.name)
-            .ok_or_else(|| {
-                DbError::Semantic(format!("table '{}.{}' not found", schema, tref.name.name))
-            })?
+            .find_table(schema, name)
+            .ok_or_else(|| DbError::Semantic(format!("table '{}.{}' not found", schema, name)))?
             .clone();
 
         Ok(BoundTable {
             alias: tref.alias.clone().unwrap_or_else(|| table.name.clone()),
             table,
+            virtual_rows: None,
         })
     }
 
-    fn bind_table_rows(&self, bound: &BoundTable) -> Result<Vec<JoinedRow>, DbError> {
-        let stored_rows = self
-            .storage
-            .get_rows(bound.table.id)?;
+    fn bind_table_rows(
+        &self,
+        bound: &BoundTable,
+        ctx: &ExecutionContext,
+    ) -> Result<Vec<JoinedRow>, DbError> {
+        if let Some(cte) = ctx.ctes.get(&bound.table.name.to_uppercase()) {
+            return Ok(cte_to_context_rows(cte, &bound.alias));
+        }
+
+        if let Some(rows) = &bound.virtual_rows {
+            return Ok(rows
+                .iter()
+                .map(|row| {
+                    vec![ContextTable {
+                        table: bound.table.clone(),
+                        alias: bound.alias.clone(),
+                        row: Some(row.clone()),
+                    }]
+                })
+                .collect());
+        }
+
+        let stored_rows = self.storage.get_rows(bound.table.id)?;
 
         Ok(stored_rows
             .iter()
@@ -229,469 +717,493 @@ impl<'a> QueryExecutor<'a> {
         ctx: &mut ExecutionContext,
     ) -> Result<Vec<Value>, DbError> {
         let mut out = Vec::new();
-        let sample_row = &group.rows[0];
+        let sample_row = if group.rows.is_empty() {
+            None
+        } else {
+            Some(&group.rows[0])
+        };
 
         for item in projection {
             match &item.expr {
                 Expr::FunctionCall { name, args } if is_aggregate_function(name) => {
                     out.push(self.eval_aggregate(name, args, group, ctx));
                 }
+                Expr::Wildcard => {
+                    if let Some(row) = sample_row {
+                        out.extend(super::projection::expand_wildcard_values(row));
+                    }
+                }
                 expr => {
-                    // If it's a grouped column, just evaluate on sample row
-                    out.push(eval_expr(expr, sample_row, ctx, self.catalog, self.storage, self.clock)?);
+                    if let Some(row) = sample_row {
+                        out.push(eval_expr(
+                            expr,
+                            row,
+                            ctx,
+                            self.catalog,
+                            self.storage,
+                            self.clock,
+                        )?);
+                    } else {
+                        out.push(Value::Null);
+                    }
                 }
             }
         }
         Ok(out)
     }
 
-    fn eval_aggregate(&self, name: &str, args: &[Expr], group: &Group, ctx: &mut ExecutionContext) -> Value {
+    fn eval_aggregate(
+        &self,
+        name: &str,
+        args: &[Expr],
+        group: &Group,
+        ctx: &mut ExecutionContext,
+    ) -> Value {
         match name.to_uppercase().as_str() {
-            "COUNT" => eval_aggregate_count(args, group, ctx, self.catalog, self.storage, self.clock),
-            "SUM" => eval_aggregate_sum(args, group, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null),
-            "AVG" => eval_aggregate_avg(args, group, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null),
-            "MIN" => eval_aggregate_min(args, group, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null),
-            "MAX" => eval_aggregate_max(args, group, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null),
+            "COUNT" => {
+                eval_aggregate_count(args, group, ctx, self.catalog, self.storage, self.clock)
+            }
+            "SUM" => eval_aggregate_sum(args, group, ctx, self.catalog, self.storage, self.clock)
+                .unwrap_or(Value::Null),
+            "AVG" => eval_aggregate_avg(args, group, ctx, self.catalog, self.storage, self.clock)
+                .unwrap_or(Value::Null),
+            "MIN" => eval_aggregate_min(args, group, ctx, self.catalog, self.storage, self.clock)
+                .unwrap_or(Value::Null),
+            "MAX" => eval_aggregate_max(args, group, ctx, self.catalog, self.storage, self.clock)
+                .unwrap_or(Value::Null),
             _ => Value::Null,
         }
     }
 
-    fn compare_joined_rows(
+    fn bind_inline_tvf(
         &self,
-        a: &JoinedRow,
-        b: &JoinedRow,
-        order_by: &[OrderByExpr],
+        schema: &str,
+        name: &str,
+        tref: &crate::ast::TableRef,
         ctx: &mut ExecutionContext,
-    ) -> Ordering {
-        for item in order_by {
-            let av = eval_expr(&item.expr, a, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null);
-            let bv = eval_expr(&item.expr, b, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null);
-            let ord = compare_values(&av, &bv);
-            if ord != Ordering::Equal {
-                return if item.desc { ord.reverse() } else { ord };
-            }
+    ) -> Result<Option<BoundTable>, DbError> {
+        let Some(open) = name.find('(') else {
+            return Ok(None);
+        };
+        if !name.ends_with(')') {
+            return Ok(None);
         }
-        Ordering::Equal
+        let fname = name[..open].trim();
+        let args_raw = &name[open + 1..name.len() - 1];
+        let Some(routine) = self.catalog.find_routine(schema, fname).cloned() else {
+            return Ok(None);
+        };
+        let RoutineKind::Function { body, .. } = routine.kind else {
+            return Ok(None);
+        };
+        let crate::ast::FunctionBody::InlineTable(query) = body else {
+            return Ok(None);
+        };
+        let arg_exprs = split_csv_top_level_local(args_raw);
+        if arg_exprs.len() != routine.params.len() {
+            return Err(DbError::Execution(format!(
+                "TVF '{}.{}' expected {} args, got {}",
+                schema,
+                fname,
+                routine.params.len(),
+                arg_exprs.len()
+            )));
+        }
+
+        ctx.enter_scope();
+        for (param, arg_raw) in routine.params.iter().zip(arg_exprs.iter()) {
+            let expr = parse_expr_subquery_aware(arg_raw)?;
+            let val = super::evaluator::eval_expr(
+                &expr,
+                &[],
+                ctx,
+                self.catalog,
+                self.storage,
+                self.clock,
+            )?;
+            let ty = super::type_mapping::data_type_spec_to_runtime(&param.data_type);
+            let coerced = super::value_ops::coerce_value_to_type(val, &ty)?;
+            ctx.variables.insert(param.name.clone(), (ty, coerced));
+            ctx.register_declared_var(&param.name);
+        }
+
+        let result = self.execute_select(query, ctx)?;
+        ctx.leave_scope();
+
+        let table_def = crate::catalog::TableDef {
+            id: 0,
+            schema_id: 1,
+            name: fname.to_string(),
+            columns: result
+                .columns
+                .iter()
+                .enumerate()
+                .map(|(i, cname)| crate::catalog::ColumnDef {
+                    id: (i + 1) as u32,
+                    name: cname.clone(),
+                    data_type: crate::types::DataType::VarChar { max_len: 4000 },
+                    nullable: true,
+                    primary_key: false,
+                    unique: false,
+                    identity: None,
+                    default: None,
+                    default_constraint_name: None,
+                    check: None,
+                    check_constraint_name: None,
+                    computed_expr: None,
+                })
+                .collect(),
+            check_constraints: vec![],
+        };
+        let rows = result
+            .rows
+            .into_iter()
+            .map(|values| StoredRow {
+                values,
+                deleted: false,
+            })
+            .collect::<Vec<_>>();
+        Ok(Some(BoundTable {
+            alias: tref.alias.clone().unwrap_or_else(|| fname.to_string()),
+            table: table_def,
+            virtual_rows: Some(rows),
+        }))
     }
 }
 
-// ─── Join ────────────────────────────────────────────────────────────────
+fn split_csv_top_level_local(input: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut buf = String::new();
+    let mut depth = 0usize;
+    let mut in_string = false;
+    for ch in input.chars() {
+        match ch {
+            '\'' => {
+                in_string = !in_string;
+                buf.push(ch);
+            }
+            '(' if !in_string => {
+                depth += 1;
+                buf.push(ch);
+            }
+            ')' if !in_string => {
+                depth = depth.saturating_sub(1);
+                buf.push(ch);
+            }
+            ',' if !in_string && depth == 0 => {
+                if !buf.trim().is_empty() {
+                    out.push(buf.trim().to_string());
+                }
+                buf.clear();
+            }
+            _ => buf.push(ch),
+        }
+    }
+    if !buf.trim().is_empty() {
+        out.push(buf.trim().to_string());
+    }
+    out
+}
 
-fn apply_join(
-    rows: Vec<JoinedRow>,
-    right_rows: Vec<JoinedRow>,
-    right: BoundTable,
-    join: &JoinClause,
-    ctx: &mut ExecutionContext,
+fn split_conjuncts(expr: Option<Expr>) -> Vec<Expr> {
+    fn walk(expr: Expr, out: &mut Vec<Expr>) {
+        match expr {
+            Expr::Binary {
+                left,
+                op: BinaryOp::And,
+                right,
+            } => {
+                walk(*left, out);
+                walk(*right, out);
+            }
+            other => out.push(other),
+        }
+    }
+    let mut out = Vec::new();
+    if let Some(e) = expr {
+        walk(e, &mut out);
+    }
+    out
+}
+
+fn and_terms(mut terms: Vec<Expr>) -> Option<Expr> {
+    if terms.is_empty() {
+        return None;
+    }
+    let mut acc = terms.remove(0);
+    for term in terms {
+        acc = Expr::Binary {
+            left: Box::new(acc),
+            op: BinaryOp::And,
+            right: Box::new(term),
+        };
+    }
+    Some(acc)
+}
+
+fn expr_aliases(expr: &Expr) -> std::collections::HashSet<String> {
+    fn walk(expr: &Expr, out: &mut std::collections::HashSet<String>) {
+        match expr {
+            Expr::QualifiedIdentifier(parts) => {
+                if let Some(alias) = parts.first() {
+                    out.insert(alias.to_uppercase());
+                }
+            }
+            Expr::Binary { left, right, .. } => {
+                walk(left, out);
+                walk(right, out);
+            }
+            Expr::Unary { expr, .. } => walk(expr, out),
+            Expr::IsNull(inner) | Expr::IsNotNull(inner) => walk(inner, out),
+            Expr::Cast { expr, .. } => walk(expr, out),
+            Expr::Convert { expr, .. } => walk(expr, out),
+            Expr::Case {
+                operand,
+                when_clauses,
+                else_result,
+            } => {
+                if let Some(op) = operand {
+                    walk(op, out);
+                }
+                for wc in when_clauses {
+                    walk(&wc.condition, out);
+                    walk(&wc.result, out);
+                }
+                if let Some(er) = else_result {
+                    walk(er, out);
+                }
+            }
+            Expr::InList { expr, list, .. } => {
+                walk(expr, out);
+                for item in list {
+                    walk(item, out);
+                }
+            }
+            Expr::Between {
+                expr, low, high, ..
+            } => {
+                walk(expr, out);
+                walk(low, out);
+                walk(high, out);
+            }
+            Expr::Like { expr, pattern, .. } => {
+                walk(expr, out);
+                walk(pattern, out);
+            }
+            Expr::FunctionCall { args, .. } => {
+                for arg in args {
+                    walk(arg, out);
+                }
+            }
+            Expr::Subquery(_) | Expr::Exists { .. } | Expr::InSubquery { .. } => {}
+            _ => {}
+        }
+    }
+    let mut out = std::collections::HashSet::new();
+    walk(expr, &mut out);
+    out
+}
+
+fn required_columns_from_logical(plan: &LogicalPlan) -> Vec<String> {
+    fn collect(plan: &LogicalPlan, out: &mut std::collections::HashSet<String>) {
+        match plan {
+            LogicalPlan::Scan { table } => {
+                out.insert(format!(
+                    "{}.{}",
+                    table.name.schema_or_dbo().to_uppercase(),
+                    table.name.name.to_uppercase()
+                ));
+            }
+            LogicalPlan::Join { left, join } => {
+                collect(left, out);
+                out.insert(join.table.name.name.to_uppercase());
+            }
+            LogicalPlan::Filter { input, predicate } => {
+                collect(input, out);
+                for alias in expr_aliases(predicate) {
+                    out.insert(alias);
+                }
+            }
+            LogicalPlan::Aggregate {
+                input,
+                group_by,
+                having,
+            } => {
+                collect(input, out);
+                for expr in group_by {
+                    for alias in expr_aliases(expr) {
+                        out.insert(alias);
+                    }
+                }
+                if let Some(h) = having {
+                    for alias in expr_aliases(h) {
+                        out.insert(alias);
+                    }
+                }
+            }
+            LogicalPlan::Project { input, projection } => {
+                collect(input, out);
+                for item in projection {
+                    for alias in expr_aliases(&item.expr) {
+                        out.insert(alias);
+                    }
+                }
+            }
+            LogicalPlan::Distinct { input } => collect(input, out),
+            LogicalPlan::Sort { input, order_by } => {
+                collect(input, out);
+                for item in order_by {
+                    for alias in expr_aliases(&item.expr) {
+                        out.insert(alias);
+                    }
+                }
+            }
+            LogicalPlan::Top { input, top } => {
+                collect(input, out);
+                for alias in expr_aliases(&top.value) {
+                    out.insert(alias);
+                }
+            }
+        }
+    }
+    let mut out = std::collections::HashSet::new();
+    collect(plan, &mut out);
+    out.into_iter().collect()
+}
+
+fn choose_scan_strategy(
+    bound: &BoundTable,
+    predicate: Option<&Expr>,
+    order_by: &[crate::ast::OrderByExpr],
     catalog: &dyn Catalog,
-    storage: &dyn Storage,
-    clock: &dyn Clock,
-) -> Result<Vec<JoinedRow>, DbError> {
-    match join.join_type {
-        JoinType::Inner | JoinType::Left => {
-            apply_join_left(rows, right_rows, right, join, ctx, catalog, storage, clock)
-        }
-        JoinType::Right => {
-            apply_join_right(rows, right_rows, right, join, ctx, catalog, storage, clock)
-        }
-        JoinType::Full => apply_join_full(rows, right_rows, right, join, ctx, catalog, storage, clock),
+) -> ScanStrategy {
+    let indexes: Vec<&crate::catalog::IndexDef> = catalog
+        .get_indexes()
+        .iter()
+        .filter(|idx| idx.table_id == bound.table.id)
+        .collect();
+    if indexes.is_empty() {
+        return ScanStrategy::TableScan;
     }
+    let Some(idx) = indexes.first() else {
+        return ScanStrategy::TableScan;
+    };
+    let Some(first_col_id) = idx.column_ids.first() else {
+        return ScanStrategy::TableScan;
+    };
+    let Some(first_col) = bound.table.columns.iter().find(|c| c.id == *first_col_id) else {
+        return ScanStrategy::TableScan;
+    };
+
+    if let Some(pred) = predicate {
+        if let Some((op, _)) =
+            extract_index_predicate_rhs(Some(pred), &bound.alias, &first_col.name)
+        {
+            if matches!(op, BinaryOp::Eq) {
+                return ScanStrategy::IndexSeek { index_id: idx.id };
+            }
+            return ScanStrategy::IndexScan { index_id: idx.id };
+        }
+    }
+    if order_by.len() == 1 {
+        if let Expr::QualifiedIdentifier(parts) = &order_by[0].expr {
+            if parts.len() >= 2
+                && parts[0].eq_ignore_ascii_case(&bound.alias)
+                && parts[1].eq_ignore_ascii_case(&first_col.name)
+                && !order_by[0].desc
+            {
+                return ScanStrategy::IndexScan { index_id: idx.id };
+            }
+        }
+    }
+    ScanStrategy::TableScan
 }
 
-fn apply_join_left(
-    rows: Vec<JoinedRow>,
-    right_rows: Vec<JoinedRow>,
-    right: BoundTable,
-    join: &JoinClause,
-    ctx: &mut ExecutionContext,
+fn scan_satisfies_order(
+    scan: &PhysicalScan,
+    order_by: &[crate::ast::OrderByExpr],
     catalog: &dyn Catalog,
-    storage: &dyn Storage,
-    clock: &dyn Clock,
-) -> Result<Vec<JoinedRow>, DbError> {
-    let mut next_rows = Vec::new();
-
-    for left_row in rows {
-        let mut matched = false;
-        for right_row in &right_rows {
-            let mut candidate = left_row.clone();
-            candidate.extend(right_row.clone());
-            if eval_predicate(&join.on, &candidate, ctx, catalog, storage, clock)? {
-                matched = true;
-                next_rows.push(candidate);
-            }
-        }
-
-        if !matched && join.join_type == JoinType::Left {
-            let mut candidate = left_row.clone();
-            candidate.push(ContextTable {
-                table: right.table.clone(),
-                alias: right.alias.clone(),
-                row: None,
-            });
-            next_rows.push(candidate);
-        }
+) -> bool {
+    if order_by.is_empty() {
+        return true;
     }
-
-    Ok(next_rows)
-}
-
-fn apply_join_right(
-    rows: Vec<JoinedRow>,
-    right_rows: Vec<JoinedRow>,
-    _right: BoundTable, // Fixed: prepend underscore
-    join: &JoinClause,
-    ctx: &mut ExecutionContext,
-    catalog: &dyn Catalog,
-    storage: &dyn Storage,
-    clock: &dyn Clock,
-) -> Result<Vec<JoinedRow>, DbError> {
-    let mut next_rows = Vec::new();
-
-    for right_row in &right_rows {
-        let mut matched = false;
-        for left_row in &rows {
-            let mut candidate = left_row.clone();
-            candidate.extend(right_row.clone());
-            if eval_predicate(&join.on, &candidate, ctx, catalog, storage, clock)? {
-                matched = true;
-                next_rows.push(candidate);
-            }
-        }
-
-        if !matched {
-            // Null-pad the left side
-            let left_table = rows
-                .first()
-                .and_then(|r| r.first())
-                .map(|ctx| (ctx.table.clone(), ctx.alias.clone()));
-            if let Some((table, alias)) = left_table {
-                let mut candidate = vec![ContextTable {
-                    table,
-                    alias,
-                    row: None,
-                }];
-                candidate.extend(right_row.clone());
-                next_rows.push(candidate);
-            }
-        }
+    let index_id = match scan.strategy {
+        ScanStrategy::IndexSeek { index_id } | ScanStrategy::IndexScan { index_id } => index_id,
+        ScanStrategy::TableScan => return false,
+    };
+    let Some(index) = catalog.get_indexes().iter().find(|idx| idx.id == index_id) else {
+        return false;
+    };
+    let Some(col_id) = index.column_ids.first() else {
+        return false;
+    };
+    let Some(col) = scan.bound.table.columns.iter().find(|c| c.id == *col_id) else {
+        return false;
+    };
+    if order_by.len() != 1 || order_by[0].desc {
+        return false;
     }
-
-    Ok(next_rows)
-}
-
-fn apply_join_full(
-    rows: Vec<JoinedRow>,
-    right_rows: Vec<JoinedRow>,
-    right: BoundTable,
-    join: &JoinClause,
-    ctx: &mut ExecutionContext,
-    catalog: &dyn Catalog,
-    storage: &dyn Storage,
-    clock: &dyn Clock,
-) -> Result<Vec<JoinedRow>, DbError> {
-    let mut next_rows = Vec::new();
-    let mut matched_right: Vec<bool> = vec![false; right_rows.len()];
-
-    for left_row in &rows {
-        let mut matched = false;
-        for (ri, right_row) in right_rows.iter().enumerate() {
-            let mut candidate = left_row.clone();
-            candidate.extend(right_row.clone());
-            if eval_predicate(&join.on, &candidate, ctx, catalog, storage, clock)? {
-                matched = true;
-                matched_right[ri] = true;
-                next_rows.push(candidate);
-            }
+    match &order_by[0].expr {
+        Expr::QualifiedIdentifier(parts) if parts.len() >= 2 => {
+            parts[0].eq_ignore_ascii_case(&scan.bound.alias)
+                && parts[1].eq_ignore_ascii_case(&col.name)
         }
-
-        if !matched {
-            let mut candidate = left_row.clone();
-            candidate.push(ContextTable {
-                table: right.table.clone(),
-                alias: right.alias.clone(),
-                row: None,
-            });
-            next_rows.push(candidate);
-        }
-    }
-
-    // Add unmatched right rows with null-padded left
-    let left_table = rows
-        .first()
-        .and_then(|r| r.first())
-        .map(|ctx| (ctx.table.clone(), ctx.alias.clone()));
-    for (ri, matched) in matched_right.iter().enumerate() {
-        if !matched {
-            if let Some((table, alias)) = &left_table {
-                let mut candidate = vec![ContextTable {
-                    table: table.clone(),
-                    alias: alias.clone(),
-                    row: None,
-                }];
-                candidate.extend(right_rows[ri].clone());
-                next_rows.push(candidate);
-            }
-        }
-    }
-
-    Ok(next_rows)
-}
-
-// ─── TOP ─────────────────────────────────────────────────────────────────
-
-fn eval_top_n(
-    top: &TopSpec,
-    ctx: &mut ExecutionContext,
-    catalog: &dyn Catalog,
-    storage: &dyn Storage,
-    clock: &dyn Clock,
-) -> Result<usize, DbError> {
-    match eval_constant_expr(&top.value, ctx, catalog, storage, clock)? {
-        Value::Int(v) => Ok(v.max(0) as usize),
-        Value::BigInt(v) => Ok(v.max(0) as usize),
-        _ => Err(DbError::Execution(
-            "TOP currently requires an integer expression".into(),
-        )),
+        Expr::Identifier(name) => name.eq_ignore_ascii_case(&col.name),
+        _ => false,
     }
 }
 
-// ─── Projection utilities ───────────────────────────────────────────────
-
-fn expand_projection_columns(projection: &[SelectItem], sample: Option<&JoinedRow>) -> Vec<String> {
-    let mut columns = Vec::new();
-    for item in projection {
-        columns.extend(expand_projection_labels(item, sample));
-    }
-    columns
-}
-
-fn expand_projection_labels(item: &SelectItem, sample: Option<&JoinedRow>) -> Vec<String> {
-    match &item.expr {
-        Expr::Wildcard => {
-            if let Some(row) = sample {
-                row.iter()
-                    .flat_map(|binding| binding.table.columns.iter().map(|c| c.name.clone()))
-                    .collect()
+fn extract_index_predicate_rhs(
+    predicate: Option<&Expr>,
+    alias: &str,
+    column: &str,
+) -> Option<(BinaryOp, Expr)> {
+    let pred = predicate?;
+    match pred {
+        Expr::Binary { left, op, right } => {
+            if let Expr::QualifiedIdentifier(parts) = left.as_ref() {
+                if parts.len() >= 2
+                    && parts[0].eq_ignore_ascii_case(alias)
+                    && parts[1].eq_ignore_ascii_case(column)
+                    && is_supported_index_op(*op)
+                {
+                    return Some((*op, (*right.clone())));
+                }
+            }
+            if let Expr::QualifiedIdentifier(parts) = right.as_ref() {
+                if parts.len() >= 2
+                    && parts[0].eq_ignore_ascii_case(alias)
+                    && parts[1].eq_ignore_ascii_case(column)
+                    && is_supported_index_op(*op)
+                {
+                    return Some((*op, (*left.clone())));
+                }
+            }
+            if *op == BinaryOp::And {
+                extract_index_predicate_rhs(Some(left), alias, column)
+                    .or_else(|| extract_index_predicate_rhs(Some(right), alias, column))
             } else {
-                vec!["*".to_string()]
+                None
             }
         }
-        _ => vec![item.alias.clone().unwrap_or_else(|| expr_label(&item.expr))],
+        _ => None,
     }
 }
 
-fn expand_wildcard_values(row: &JoinedRow) -> Vec<Value> {
-    let mut values = Vec::new();
-    for binding in row {
-        for (idx, _) in binding.table.columns.iter().enumerate() {
-            let value = binding
-                .row
-                .as_ref()
-                .map(|r| r.values[idx].clone())
-                .unwrap_or(Value::Null);
-            values.push(value);
-        }
-    }
-    values
-}
-
-fn expr_label(expr: &Expr) -> String {
-    match expr {
-        Expr::Identifier(name) => name.clone(),
-        Expr::QualifiedIdentifier(parts) => {
-            parts.last().cloned().unwrap_or_else(|| "expr".to_string())
-        }
-        Expr::FunctionCall { name, .. } => name.clone(),
-        Expr::Cast { .. } => "CAST".to_string(),
-        Expr::Convert { .. } => "CONVERT".to_string(),
-        Expr::Wildcard => "*".to_string(),
-        Expr::Case { .. } => "CASE".to_string(),
-        Expr::InList { .. } => "IN".to_string(),
-        Expr::Between { .. } => "BETWEEN".to_string(),
-        Expr::Like { .. } => "LIKE".to_string(),
-        Expr::Unary { expr: inner, .. } => expr_label(inner),
-        Expr::Subquery(_) => "subquery".to_string(),
-        Expr::Exists { .. } => "EXISTS".to_string(),
-        Expr::InSubquery { .. } => "IN".to_string(),
-        _ => "expr".to_string(),
-    }
-}
-
-// ─── Aggregate helpers ──────────────────────────────────────────────────
-
-fn is_aggregate_function(name: &str) -> bool {
+fn is_supported_index_op(op: BinaryOp) -> bool {
     matches!(
-        name.to_uppercase().as_str(),
-        "COUNT" | "SUM" | "AVG" | "MIN" | "MAX"
+        op,
+        BinaryOp::Eq | BinaryOp::Gt | BinaryOp::Gte | BinaryOp::Lt | BinaryOp::Lte
     )
 }
 
-fn collect_group_values<'a>(
-    expr: &'a Expr,
-    group: &'a Group,
-    ctx: &'a mut ExecutionContext,
-    catalog: &'a dyn Catalog,
-    storage: &'a dyn Storage,
-    clock: &'a dyn Clock,
-) -> Vec<Value> {
-    group
-        .rows
-        .iter()
-        .filter_map(move |row| eval_expr(expr, row, ctx, catalog, storage, clock).ok())
-        .filter(|v| !v.is_null())
-        .collect()
-}
-
-fn eval_aggregate_count(
-    args: &[Expr],
-    group: &Group,
-    ctx: &mut ExecutionContext,
-    catalog: &dyn Catalog,
-    storage: &dyn Storage,
-    clock: &dyn Clock,
-) -> Value {
-    let count = if args.first().is_some_and(|a| matches!(a, Expr::Wildcard)) {
-        group.rows.len() as i64
-    } else if let Some(expr) = args.first() {
-        collect_group_values(expr, group, ctx, catalog, storage, clock).len() as i64
-    } else {
-        group.rows.len() as i64
-    };
-    Value::BigInt(count)
-}
-
-fn eval_aggregate_sum(
-    args: &[Expr],
-    group: &Group,
-    ctx: &mut ExecutionContext,
-    catalog: &dyn Catalog,
-    storage: &dyn Storage,
-    clock: &dyn Clock,
-) -> Result<Value, DbError> {
-    let expr = args
-        .first()
-        .ok_or_else(|| DbError::Execution("SUM requires 1 argument".into()))?;
-    let mut sum_i64: i64 = 0;
-    let mut sum_f64: f64 = 0.0;
-    let mut has_values = false;
-    let mut is_decimal = false;
-
-    for val in collect_group_values(expr, group, ctx, catalog, storage, clock) {
-        has_values = true;
-        match &val {
-            Value::Decimal(raw, scale) => {
-                is_decimal = true;
-                let divisor = 10i128.pow(*scale as u32);
-                sum_f64 += (*raw as f64) / (divisor as f64);
-            }
-            Value::TinyInt(v) => sum_i64 += *v as i64,
-            Value::SmallInt(v) => sum_i64 += *v as i64,
-            Value::Int(v) => sum_i64 += *v as i64,
-            Value::BigInt(v) => sum_i64 += *v,
-            _ => return Err(DbError::Execution("SUM requires numeric argument".into())),
-        }
+fn compare_with_op(ord: Ordering, op: BinaryOp) -> bool {
+    match op {
+        BinaryOp::Eq => ord == Ordering::Equal,
+        BinaryOp::Gt => ord == Ordering::Greater,
+        BinaryOp::Gte => ord == Ordering::Greater || ord == Ordering::Equal,
+        BinaryOp::Lt => ord == Ordering::Less,
+        BinaryOp::Lte => ord == Ordering::Less || ord == Ordering::Equal,
+        _ => false,
     }
-
-    if !has_values {
-        return Ok(Value::Null);
-    }
-
-    if is_decimal {
-        Ok(Value::Decimal((sum_f64 * 100.0) as i128, 2)) // Simplified
-    } else {
-        Ok(Value::BigInt(sum_i64))
-    }
-}
-
-fn eval_aggregate_avg(
-    args: &[Expr],
-    group: &Group,
-    ctx: &mut ExecutionContext,
-    catalog: &dyn Catalog,
-    storage: &dyn Storage,
-    clock: &dyn Clock,
-) -> Result<Value, DbError> {
-    let values = collect_group_values(args.first().unwrap(), group, ctx, catalog, storage, clock);
-    if values.is_empty() {
-        return Ok(Value::Null);
-    }
-    let sum = eval_aggregate_sum(args, group, ctx, catalog, storage, clock)?;
-    match sum {
-        Value::BigInt(v) => Ok(Value::BigInt(v / values.len() as i64)),
-        Value::Decimal(v, s) => {
-             let divisor = 10i128.pow(s as u32);
-             let f = (v as f64) / (divisor as f64);
-             let avg = f / (values.len() as f64);
-             Ok(Value::Decimal((avg * 100.0) as i128, 2))
-        }
-        _ => Ok(Value::Null),
-    }
-}
-
-fn eval_aggregate_min(
-    args: &[Expr],
-    group: &Group,
-    ctx: &mut ExecutionContext,
-    catalog: &dyn Catalog,
-    storage: &dyn Storage,
-    clock: &dyn Clock,
-) -> Result<Value, DbError> {
-    let values = collect_group_values(args.first().unwrap(), group, ctx, catalog, storage, clock);
-    Ok(values.into_iter().min_by(compare_values).unwrap_or(Value::Null))
-}
-
-fn eval_aggregate_max(
-    args: &[Expr],
-    group: &Group,
-    ctx: &mut ExecutionContext,
-    catalog: &dyn Catalog,
-    storage: &dyn Storage,
-    clock: &dyn Clock,
-) -> Result<Value, DbError> {
-    let values = collect_group_values(args.first().unwrap(), group, ctx, catalog, storage, clock);
-    Ok(values.into_iter().max_by(compare_values).unwrap_or(Value::Null))
-}
-
-fn compare_projected_rows(
-    a: &[Value],
-    b: &[Value],
-    columns: &[String],
-    order_by: &[OrderByExpr],
-) -> Ordering {
-    for item in order_by {
-        let idx = resolve_projected_order_index(columns, item).unwrap_or(0);
-        let ord = compare_values(
-            a.get(idx).unwrap_or(&Value::Null),
-            b.get(idx).unwrap_or(&Value::Null),
-        );
-        if ord != Ordering::Equal {
-            return if item.desc { ord.reverse() } else { ord };
-        }
-    }
-    Ordering::Equal
-}
-
-fn resolve_projected_order_index(columns: &[String], item: &OrderByExpr) -> Option<usize> {
-    match &item.expr {
-        Expr::Identifier(name) => columns.iter().position(|c| c.eq_ignore_ascii_case(name)),
-        Expr::QualifiedIdentifier(parts) => parts
-            .last()
-            .and_then(|name| columns.iter().position(|c| c.eq_ignore_ascii_case(name))),
-        _ => columns
-            .iter()
-            .position(|c| c.eq_ignore_ascii_case(&expr_label(&item.expr))),
-    }
-}
-
-fn deduplicate_projected_rows(rows: Vec<Vec<Value>>) -> Vec<Vec<Value>> {
-    let mut seen: Vec<String> = Vec::new();
-    let mut result = Vec::new();
-    for row in rows {
-        let key = row.iter().map(value_key).collect::<Vec<_>>().join("|");
-        if !seen.contains(&key) {
-            seen.push(key);
-            result.push(row);
-        }
-    }
-    result
 }

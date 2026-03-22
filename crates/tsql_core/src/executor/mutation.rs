@@ -5,7 +5,7 @@ use crate::storage::{Storage, StoredRow};
 use crate::types::{DataType, Value};
 
 use super::clock::Clock;
-use super::context::{ExecutionContext, Variables};
+use super::context::ExecutionContext;
 use super::evaluator::{eval_expr_to_type_constant, eval_expr_to_type_in_context, eval_predicate};
 use super::model::single_row_context;
 use super::value_ops::compare_values;
@@ -17,18 +17,26 @@ pub(crate) struct MutationExecutor<'a> {
 }
 
 impl<'a> MutationExecutor<'a> {
-    pub(crate) fn execute_insert(&mut self, stmt: InsertStmt) -> Result<(), DbError> {
-        let mut vars = Variables::new();
-        let mut ctx = ExecutionContext::new(&mut vars);
-        self.execute_insert_with_context(stmt, &mut ctx)
-    }
-
-    pub(crate) fn execute_insert_with_context(&mut self, stmt: InsertStmt, ctx: &mut ExecutionContext) -> Result<(), DbError> {
+    pub(crate) fn execute_insert_with_context(
+        &mut self,
+        mut stmt: InsertStmt,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), DbError> {
+        if let Some(mapped) = ctx.resolve_table_name(&stmt.table.name) {
+            stmt.table.name = mapped;
+            if stmt.table.schema.is_none() {
+                stmt.table.schema = Some("dbo".to_string());
+            }
+        }
         let schema = stmt.table.schema_or_dbo().to_string();
         let table_name = stmt.table.name.clone();
-        
-        let table = self.catalog.find_table(&schema, &table_name)
-            .ok_or_else(|| DbError::Semantic(format!("table '{}.{}' not found", schema, table_name)))?
+
+        let table = self
+            .catalog
+            .find_table(&schema, &table_name)
+            .ok_or_else(|| {
+                DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
+            })?
             .clone();
 
         let table_id = table.id;
@@ -45,6 +53,7 @@ impl<'a> MutationExecutor<'a> {
             table
                 .columns
                 .iter()
+                .filter(|c| c.computed_expr.is_none())
                 .map(|c| c.name.clone())
                 .collect::<Vec<_>>()
         };
@@ -52,24 +61,33 @@ impl<'a> MutationExecutor<'a> {
         for value_row in stmt.values {
             let row = self.build_insert_row(&table, &insert_columns, value_row, ctx)?;
             enforce_unique_on_insert(&table, self.storage, table_id, &row)?;
+            enforce_checks_on_row(&table, &row, ctx, self.catalog, self.storage, self.clock)?;
             self.storage.insert_row(table_id, row)?;
         }
 
         Ok(())
     }
 
-    pub(crate) fn execute_update(&mut self, stmt: UpdateStmt) -> Result<(), DbError> {
-        let mut vars = Variables::new();
-        let mut ctx = ExecutionContext::new(&mut vars);
-        self.execute_update_with_context(stmt, &mut ctx)
-    }
-
-    pub(crate) fn execute_update_with_context(&mut self, stmt: UpdateStmt, ctx: &mut ExecutionContext) -> Result<(), DbError> {
+    pub(crate) fn execute_update_with_context(
+        &mut self,
+        mut stmt: UpdateStmt,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), DbError> {
+        if let Some(mapped) = ctx.resolve_table_name(&stmt.table.name) {
+            stmt.table.name = mapped;
+            if stmt.table.schema.is_none() {
+                stmt.table.schema = Some("dbo".to_string());
+            }
+        }
         let schema = stmt.table.schema_or_dbo().to_string();
         let table_name = stmt.table.name.clone();
 
-        let table = self.catalog.find_table(&schema, &table_name)
-            .ok_or_else(|| DbError::Semantic(format!("table '{}.{}' not found", schema, table_name)))?
+        let table = self
+            .catalog
+            .find_table(&schema, &table_name)
+            .ok_or_else(|| {
+                DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
+            })?
             .clone();
 
         let table_id = table.id;
@@ -105,6 +123,14 @@ impl<'a> MutationExecutor<'a> {
                     self.clock,
                 )?;
                 validate_row_against_table(&table, &rows[i].values)?;
+                enforce_checks_on_row(
+                    &table,
+                    &rows[i],
+                    ctx,
+                    self.catalog,
+                    self.storage,
+                    self.clock,
+                )?;
                 updated_indices.push(i);
             }
         }
@@ -118,18 +144,26 @@ impl<'a> MutationExecutor<'a> {
         Ok(())
     }
 
-    pub(crate) fn execute_delete(&mut self, stmt: DeleteStmt) -> Result<(), DbError> {
-        let mut vars = Variables::new();
-        let mut ctx = ExecutionContext::new(&mut vars);
-        self.execute_delete_with_context(stmt, &mut ctx)
-    }
-
-    pub(crate) fn execute_delete_with_context(&mut self, stmt: DeleteStmt, ctx: &mut ExecutionContext) -> Result<(), DbError> {
+    pub(crate) fn execute_delete_with_context(
+        &mut self,
+        mut stmt: DeleteStmt,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), DbError> {
+        if let Some(mapped) = ctx.resolve_table_name(&stmt.table.name) {
+            stmt.table.name = mapped;
+            if stmt.table.schema.is_none() {
+                stmt.table.schema = Some("dbo".to_string());
+            }
+        }
         let schema = stmt.table.schema_or_dbo().to_string();
         let table_name = stmt.table.name.clone();
 
-        let table = self.catalog.find_table(&schema, &table_name)
-            .ok_or_else(|| DbError::Semantic(format!("table '{}.{}' not found", schema, table_name)))?
+        let table = self
+            .catalog
+            .find_table(&schema, &table_name)
+            .ok_or_else(|| {
+                DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
+            })?
             .clone();
 
         let table_id = table.id;
@@ -138,7 +172,14 @@ impl<'a> MutationExecutor<'a> {
         for row in rows.iter_mut().filter(|r| !r.deleted) {
             let joined = single_row_context(&table, row.clone());
             let matches = if let Some(selection) = &stmt.selection {
-                eval_predicate(selection, &joined, ctx, self.catalog, self.storage, self.clock)?
+                eval_predicate(
+                    selection,
+                    &joined,
+                    ctx,
+                    self.catalog,
+                    self.storage,
+                    self.clock,
+                )?
             } else {
                 true
             };
@@ -174,6 +215,12 @@ impl<'a> MutationExecutor<'a> {
                 .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", input_col)))?;
 
             let col = &table.columns[col_idx];
+            if col.computed_expr.is_some() {
+                return Err(DbError::Execution(format!(
+                    "cannot insert explicit value for computed column '{}'",
+                    col.name
+                )));
+            }
             let value = eval_expr_to_type_constant(
                 expr,
                 &col.data_type,
@@ -201,9 +248,13 @@ impl<'a> MutationExecutor<'a> {
         ctx: &mut ExecutionContext,
     ) -> Result<(), DbError> {
         for (idx, col) in table.columns.iter().enumerate() {
+            if col.computed_expr.is_some() {
+                continue;
+            }
             if matches!(final_values[idx], Value::Null) {
                 if col.identity.is_some() {
                     let next_val = self.catalog.next_identity_value(table.id, &col.name)?;
+                    ctx.set_last_identity(next_val);
                     final_values[idx] = match &col.data_type {
                         DataType::TinyInt => Value::TinyInt(next_val as u8),
                         DataType::SmallInt => Value::SmallInt(next_val as i16),
@@ -237,6 +288,26 @@ impl<'a> MutationExecutor<'a> {
                         col.name
                     )));
                 }
+            }
+        }
+
+        // Computed columns are materialized after base/default/identity values are known.
+        for (idx, col) in table.columns.iter().enumerate() {
+            if let Some(computed) = &col.computed_expr {
+                let snapshot = StoredRow {
+                    values: final_values.to_vec(),
+                    deleted: false,
+                };
+                let joined = single_row_context(table, snapshot);
+                let value = super::evaluator::eval_expr(
+                    computed,
+                    &joined,
+                    ctx,
+                    self.catalog,
+                    self.storage,
+                    self.clock,
+                )?;
+                final_values[idx] = value;
             }
         }
         Ok(())
@@ -353,6 +424,12 @@ fn apply_assignments(
                 DbError::Semantic(format!("column '{}' not found", assignment.column))
             })?;
         let target = &table.columns[idx].data_type;
+        if table.columns[idx].computed_expr.is_some() {
+            return Err(DbError::Execution(format!(
+                "cannot update computed column '{}'",
+                table.columns[idx].name
+            )));
+        }
         let value = eval_expr_to_type_in_context(
             &assignment.expr,
             target,
@@ -364,6 +441,17 @@ fn apply_assignments(
         )?;
         enforce_string_length(target, &value, &table.columns[idx].name)?;
         row.values[idx] = value;
+    }
+
+    // Recompute computed columns after base assignments.
+    for (idx, col) in table.columns.iter().enumerate() {
+        if let Some(computed) = &col.computed_expr {
+            let snapshot = row.clone();
+            let joined = single_row_context(table, snapshot);
+            let value =
+                super::evaluator::eval_expr(computed, &joined, ctx, catalog, storage, clock)?;
+            row.values[idx] = value;
+        }
     }
     Ok(())
 }
@@ -377,5 +465,45 @@ fn validate_row_against_table(table: &TableDef, values: &[Value]) -> Result<(), 
             )));
         }
     }
+    Ok(())
+}
+
+fn enforce_checks_on_row(
+    table: &TableDef,
+    row: &StoredRow,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<(), DbError> {
+    let joined = single_row_context(table, row.clone());
+    for col in &table.columns {
+        if let Some(check_expr) = &col.check {
+            let check_val =
+                super::evaluator::eval_expr(check_expr, &joined, ctx, catalog, storage, clock)?;
+            if !check_val.is_null() && !super::value_ops::truthy(&check_val) {
+                let cname = col
+                    .check_constraint_name
+                    .as_deref()
+                    .unwrap_or("unnamed_check");
+                return Err(DbError::Execution(format!(
+                    "CHECK constraint '{}' violated",
+                    cname
+                )));
+            }
+        }
+    }
+
+    for chk in &table.check_constraints {
+        let check_val =
+            super::evaluator::eval_expr(&chk.expr, &joined, ctx, catalog, storage, clock)?;
+        if !check_val.is_null() && !super::value_ops::truthy(&check_val) {
+            return Err(DbError::Execution(format!(
+                "CHECK constraint '{}' violated",
+                chk.name
+            )));
+        }
+    }
+
     Ok(())
 }

@@ -1,4 +1,4 @@
-use tsql_core::{parse_sql, Engine};
+use tsql_core::{parse_sql, types::Value, Engine};
 
 fn exec(engine: &mut Engine, sql: &str) {
     let stmt = parse_sql(sql).expect("parse failed");
@@ -21,8 +21,8 @@ fn test_tinyint_basic() {
     exec(&mut engine, "INSERT INTO dbo.t (id) VALUES (255)");
     let r = query(&mut engine, "SELECT id FROM dbo.t ORDER BY id");
     assert_eq!(r.rows.len(), 2);
-    assert_eq!(r.rows[0][0], serde_json::json!(0));
-    assert_eq!(r.rows[1][0], serde_json::json!(255));
+    assert_eq!(r.rows[0][0], Value::TinyInt(0));
+    assert_eq!(r.rows[1][0], Value::TinyInt(255));
 }
 
 #[test]
@@ -43,8 +43,8 @@ fn test_smallint_basic() {
     exec(&mut engine, "INSERT INTO dbo.t (id) VALUES (32767)");
     let r = query(&mut engine, "SELECT id FROM dbo.t ORDER BY id");
     assert_eq!(r.rows.len(), 2);
-    assert_eq!(r.rows[0][0], serde_json::json!(100));
-    assert_eq!(r.rows[1][0], serde_json::json!(32767));
+    assert_eq!(r.rows[0][0], Value::SmallInt(100));
+    assert_eq!(r.rows[1][0], Value::SmallInt(32767));
 }
 
 #[test]
@@ -58,15 +58,15 @@ fn test_decimal_basic() {
     exec(&mut engine, "INSERT INTO dbo.t (price) VALUES ('0.50')");
     let r = query(&mut engine, "SELECT price FROM dbo.t ORDER BY price");
     assert_eq!(r.rows.len(), 2);
-    assert_eq!(r.rows[0][0], serde_json::json!("0.50"));
-    assert_eq!(r.rows[1][0], serde_json::json!("19.99"));
+    assert_eq!(r.rows[0][0], Value::Decimal(50, 2));
+    assert_eq!(r.rows[1][0], Value::Decimal(1999, 2));
 }
 
 #[test]
 fn test_decimal_cast() {
     let mut engine = Engine::new();
     let r = query(&mut engine, "SELECT CAST('123.45' AS DECIMAL(10,2)) AS val");
-    assert_eq!(r.rows[0][0], serde_json::json!("123.45"));
+    assert_eq!(r.rows[0][0], Value::Decimal(12345, 2));
 }
 
 #[test]
@@ -76,8 +76,7 @@ fn test_char_basic() {
     exec(&mut engine, "INSERT INTO dbo.t (code) VALUES ('AB')");
     let r = query(&mut engine, "SELECT code FROM dbo.t");
     assert_eq!(r.rows.len(), 1);
-    // CHAR pads with spaces
-    assert_eq!(r.rows[0][0], serde_json::json!("AB   "));
+    assert_eq!(r.rows[0][0], Value::Char("AB   ".to_string()));
 }
 
 #[test]
@@ -87,7 +86,7 @@ fn test_nchar_basic() {
     exec(&mut engine, "INSERT INTO dbo.t (code) VALUES (N'AB')");
     let r = query(&mut engine, "SELECT code FROM dbo.t");
     assert_eq!(r.rows.len(), 1);
-    assert_eq!(r.rows[0][0], serde_json::json!("AB "));
+    assert_eq!(r.rows[0][0], Value::NChar("AB ".to_string()));
 }
 
 #[test]
@@ -96,7 +95,7 @@ fn test_date_type() {
     exec(&mut engine, "CREATE TABLE dbo.t (d DATE NOT NULL)");
     exec(&mut engine, "INSERT INTO dbo.t (d) VALUES ('2025-06-15')");
     let r = query(&mut engine, "SELECT d FROM dbo.t");
-    assert_eq!(r.rows[0][0], serde_json::json!("2025-06-15"));
+    assert_eq!(r.rows[0][0], Value::Date("2025-06-15".to_string()));
 }
 
 #[test]
@@ -105,7 +104,7 @@ fn test_time_type() {
     exec(&mut engine, "CREATE TABLE dbo.t (t TIME NOT NULL)");
     exec(&mut engine, "INSERT INTO dbo.t (t) VALUES ('14:30:00')");
     let r = query(&mut engine, "SELECT t FROM dbo.t");
-    assert_eq!(r.rows[0][0], serde_json::json!("14:30:00"));
+    assert_eq!(r.rows[0][0], Value::Time("14:30:00".to_string()));
 }
 
 #[test]
@@ -117,7 +116,10 @@ fn test_datetime2_type() {
         "INSERT INTO dbo.t (dt) VALUES ('2025-06-15T14:30:00')",
     );
     let r = query(&mut engine, "SELECT dt FROM dbo.t");
-    assert_eq!(r.rows[0][0], serde_json::json!("2025-06-15T14:30:00"));
+    assert_eq!(
+        r.rows[0][0],
+        Value::DateTime2("2025-06-15T14:30:00".to_string())
+    );
 }
 
 #[test]
@@ -134,7 +136,7 @@ fn test_uniqueidentifier_type() {
     let r = query(&mut engine, "SELECT id FROM dbo.t");
     assert_eq!(
         r.rows[0][0],
-        serde_json::json!("550e8400-e29b-41d4-a716-446655440000")
+        Value::UniqueIdentifier("550e8400-e29b-41d4-a716-446655440000".to_string())
     );
 }
 
@@ -152,24 +154,24 @@ fn test_string_length_enforcement() {
 fn test_cast_to_new_types() {
     let mut engine = Engine::new();
     let r = query(&mut engine, "SELECT CAST(42 AS TINYINT) AS v");
-    assert_eq!(r.rows[0][0], serde_json::json!(42));
+    assert_eq!(r.rows[0][0], Value::TinyInt(42));
 
     let r = query(&mut engine, "SELECT CAST(42 AS SMALLINT) AS v");
-    assert_eq!(r.rows[0][0], serde_json::json!(42));
+    assert_eq!(r.rows[0][0], Value::SmallInt(42));
 
     let r = query(&mut engine, "SELECT CAST('hello' AS CHAR(10)) AS v");
-    assert_eq!(r.rows[0][0], serde_json::json!("hello     "));
+    assert_eq!(r.rows[0][0], Value::Char("hello     ".to_string()));
 
     let r = query(&mut engine, "SELECT CAST('2025-01-01' AS DATE) AS v");
-    assert_eq!(r.rows[0][0], serde_json::json!("2025-01-01"));
+    assert_eq!(r.rows[0][0], Value::Date("2025-01-01".to_string()));
 }
 
 #[test]
 fn test_convert_new_types() {
     let mut engine = Engine::new();
     let r = query(&mut engine, "SELECT CONVERT(TINYINT, 100) AS v");
-    assert_eq!(r.rows[0][0], serde_json::json!(100));
+    assert_eq!(r.rows[0][0], Value::TinyInt(100));
 
     let r = query(&mut engine, "SELECT CONVERT(SMALLINT, 999) AS v");
-    assert_eq!(r.rows[0][0], serde_json::json!(999));
+    assert_eq!(r.rows[0][0], Value::SmallInt(999));
 }

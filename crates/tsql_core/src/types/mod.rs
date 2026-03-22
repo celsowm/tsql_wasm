@@ -17,6 +17,7 @@ pub enum DataType {
     DateTime,
     DateTime2,
     UniqueIdentifier,
+    SqlVariant,
 }
 
 impl DataType {
@@ -37,6 +38,7 @@ impl DataType {
             DataType::SmallInt => 3,
             DataType::TinyInt => 2,
             DataType::Bit => 1,
+            DataType::SqlVariant => 16,
         }
     }
 
@@ -76,6 +78,7 @@ pub enum Value {
     DateTime(String),
     DateTime2(String),
     UniqueIdentifier(String),
+    SqlVariant(Box<Value>),
 }
 
 #[derive(Debug, Clone)]
@@ -131,6 +134,7 @@ impl Value {
             | Value::DateTime(v)
             | Value::DateTime2(v)
             | Value::UniqueIdentifier(v) => JsonValue::String(v.clone()),
+            Value::SqlVariant(v) => v.to_json(),
         }
     }
 
@@ -167,6 +171,7 @@ impl Value {
             Value::DateTime(_) => Some(DataType::DateTime),
             Value::DateTime2(_) => Some(DataType::DateTime2),
             Value::UniqueIdentifier(_) => Some(DataType::UniqueIdentifier),
+            Value::SqlVariant(_) => Some(DataType::SqlVariant),
         }
     }
 
@@ -188,6 +193,7 @@ impl Value {
             | Value::DateTime(v)
             | Value::DateTime2(v)
             | Value::UniqueIdentifier(v) => v.clone(),
+            Value::SqlVariant(v) => v.to_string_value(),
         }
     }
 
@@ -202,6 +208,7 @@ impl Value {
                 let divisor = 10i128.pow(*scale as u32);
                 Some((*raw / divisor) as i64)
             }
+            Value::SqlVariant(v) => v.to_integer_i64(),
             _ => None,
         }
     }

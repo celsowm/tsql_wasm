@@ -49,21 +49,21 @@ A release can be considered “close” when it supports most day-to-day T-SQL u
 
 ## Release Train Overview
 
-| Release | Theme | Target outcome |
-|---|---|---|
-| R0 | Engine skeleton | Compilable core, storage, parser, executor, WASM shell |
-| R1 | Foundational T-SQL | Reliable CRUD + SELECT semantics for basic test plans |
-| R2 | Relational completeness | Joins, grouping, aggregates, subqueries, set operations |
-| R3 | SQL Server semantics | Types, conversion rules, identity/defaults, metadata, errors |
-| R4 | Programmability | Variables, batches, procedures/functions subset, flow control |
-| R5 | Transaction fidelity | Isolation behavior, snapshot/versioning, recovery model subset |
-| R6 | Tooling compatibility | Catalog views, information schema, explainability, migration friendliness |
-| R7 | Modern language parity | JSON, regex, fuzzy matching, vector primitives, selected preview features |
-| R8 | Hardening | Differential suite scale-up, perf work, compatibility scorecard |
+| Release | Theme | Target outcome | Status |
+|---|---|---|---|
+| R0 | Engine skeleton | Compilable core, storage, parser, executor, WASM shell | ✅ Complete |
+| R1 | Foundational T-SQL | Reliable CRUD + SELECT semantics for basic test plans | ✅ Complete (CONVERT added) |
+| R2 | Relational completeness | Joins, grouping, aggregates, subqueries, set operations | ✅ Complete (planner pending) |
+| R3 | SQL Server semantics | Types, conversion rules, identity/defaults, metadata, errors | ✅ MVP complete |
+| R4 | Programmability | Variables, batches, procedures/functions subset, flow control | ✅ Complete (subset) |
+| R5 | Transaction fidelity | Isolation behavior, snapshot/versioning, recovery model subset | 🚧 In progress |
+| R6 | Tooling compatibility | Catalog views, information schema, explainability, migration friendliness | ❌ Not started |
+| R7 | Modern language parity | JSON, regex, fuzzy matching, vector primitives, selected preview features | ❌ Not started |
+| R8 | Hardening | Differential suite scale-up, perf work, compatibility scorecard | ❌ Not started |
 
 ---
 
-## R0 — Engine Skeleton
+## R0 — Engine Skeleton ✅ Complete
 
 ### Objectives
 
@@ -96,7 +96,7 @@ Establish the minimum architecture needed to grow into a serious T-SQL engine.
 
 ---
 
-## R1 — Foundational T-SQL
+## R1 — Foundational T-SQL ✅ Complete
 
 ### Objectives
 
@@ -162,7 +162,7 @@ Make the engine useful for real test plans built around straightforward CRUD and
 
 ---
 
-## R2 — Relational Completeness
+## R2 — Relational Completeness ✅ Complete
 
 ### Objectives
 
@@ -204,7 +204,7 @@ Support the majority of read-query shapes expected in nontrivial business logic.
 
 ---
 
-## R3 — SQL Server Semantics
+## R3 — SQL Server Semantics ✅ MVP complete
 
 ### Objectives
 
@@ -257,9 +257,23 @@ Move from “works like SQL” toward “behaves like SQL Server.”
 - migration scripts and metadata-dependent test scripts start working with minimal changes
 - type-conversion differences are documented and shrinking fast
 
+### R3 MVP delivered in this repo
+
+- `CREATE INDEX` / `DROP INDEX` implemented as catalog abstraction (no planner/index scan optimization yet)
+- Named constraints:
+  - `CONSTRAINT ... DEFAULT ... FOR ...` (table-level default assignment)
+  - `CONSTRAINT ... CHECK (...)` (column-level and table-level enforcement)
+- Metadata surface:
+  - `sys.schemas`, `sys.tables`, `sys.columns`, `sys.types`, `sys.indexes`, `sys.objects`
+  - `INFORMATION_SCHEMA.TABLES`, `INFORMATION_SCHEMA.COLUMNS`
+  - `OBJECT_ID(...)`
+- Error taxonomy with stable class/code API on `DbError`
+- Batch failure rule stays strict: first statement error aborts remaining statements in the batch
+- Regression and R3 suites are green locally
+
 ---
 
-## R4 — Programmability
+## R4 — Programmability ✅ Complete (subset)
 
 ### Objectives
 
@@ -305,7 +319,7 @@ Support T-SQL as a scripting language, not only as a query language.
 
 ---
 
-## R5 — Transaction Fidelity
+## R5 — Transaction Fidelity 🚧 In progress
 
 ### Objectives
 
@@ -708,3 +722,203 @@ Unless there is a direct product need, defer these until after R5 or R6:
 ## Notes on Scope vs Current SQL Server Surface
 
 This roadmap intentionally targets the broad T-SQL reference surface, including statements, built-in functions, data types, system catalog usage, and newer SQL Server 2025 language additions such as JSON aggregation, regex functions, fuzzy string matching, vector-related functions, and preview-gated features. It also assumes de-emphasis of deprecated legacy large-object types in new development, favoring modern replacements.
+
+---
+
+## Implementation Log
+
+### 2026-03-22 — Session 5: R5 multi-session + MVCC matrix baseline
+
+#### R5 — Transaction Fidelity 🚧 In progress
+
+**Delivered in this session:**
+
+1. **Shared-state multi-session runtime**
+   - Introduced shared `Database` with explicit `create_session` / `close_session`
+   - Refactored `Engine` into a backward-compatible default-session facade over shared state
+   - Added session-routed execution (`execute_session`, `execute_session_batch`)
+
+2. **Deterministic commit-conflict model**
+   - Added transaction workspaces with base table-version snapshots
+   - Added immediate conflict errors on `COMMIT` based on isolation level and read/write table sets
+   - Kept deterministic no-wait conflict handling (no blocking lock queue model)
+
+3. **Concurrent anomaly simulation DSL and tests**
+   - Added `phase5_concurrency_mvcc.rs` with deterministic interleaving steps across sessions
+   - Added anomaly coverage for:
+     - dirty read (modeled behavior)
+     - non-repeatable read
+     - phantom read
+     - lost update
+     - write skew (modeled behavior)
+
+4. **MVCC conflict matrix artifacts**
+   - Added executable matrix tests for write/write and read/write conflict outcomes by isolation level
+   - Added `docs/mvcc_conflict_matrix.md` with modeled allow/block outcomes and explicit caveats
+
+5. **WASM + client multi-session surface**
+   - `WasmDb` now supports:
+     - `create_session`
+     - `close_session`
+     - `exec_session`
+     - `exec_batch_session`
+     - `query_session`
+   - `packages/client` now exposes `TsqlSession` and `TsqlDatabase.createSession()`
+   - Added client integration test: `multi_session_transactions.test.ts`
+
+**Known R5 caveats kept explicit:**
+- Dirty reads remain blocked in current modeled runtime.
+- Conflict granularity is table-version based (not row/predicate-lock exact SQL Server behavior).
+
+### 2026-03-22 — Session 4: R4 Closure (subset)
+
+#### R4 — Programmability ✅ Complete (subset)
+
+**Delivered in this session:**
+
+1. **Batch/variable language gaps**
+   - Added `SELECT @var = ...` support (with and without `FROM`; last-row-wins behavior)
+   - Added `DECLARE @t TABLE (...)` parsing/execution for table variables
+
+2. **Temporary/table variable runtime**
+   - Added session-level `#temp` table name mapping
+   - Added table variable internal mapping and resolution precedence in table binding/mutation paths
+
+3. **Programmable objects**
+   - Added `CREATE PROCEDURE` / `DROP PROCEDURE` subset with parameters and `OUTPUT`
+   - Added `CREATE FUNCTION` / `DROP FUNCTION` subset:
+     - scalar UDF (`RETURNS <scalar>`, `RETURN <expr>`)
+     - inline TVF (`RETURNS TABLE AS RETURN (SELECT ...)`)
+   - Added scalar UDF invocation in expression evaluation
+   - Added inline TVF resolution in `FROM fn(args)`
+
+4. **Dynamic execution subset**
+   - Preserved dynamic SQL: `EXEC '...'`
+   - Added procedure execution form: `EXEC schema.proc ...`
+   - Added `EXEC sp_executesql ...` subset with typed argument binding and OUTPUT propagation
+
+5. **Identity scope semantics**
+   - Added `SCOPE_IDENTITY()`
+   - Added `@@IDENTITY`
+   - Added `IDENT_CURRENT('schema.table')`
+   - Insert path now updates session/scope identity metadata
+
+6. **Validation suite**
+   - Added `phase4_programmability_closure.rs` with 10 tests covering:
+     - select-variable assignment
+     - `#temp` lifecycle/isolation
+     - table variables
+     - procedures + output params
+     - scalar UDF
+     - inline TVF
+     - `sp_executesql` output
+     - identity functions
+
+**Test suite status after session 4:**
+- **191 tests passing**
+- 0 failures, 0 ignored
+
+**Known R4 caveat kept explicit:**
+- Scope cleanup for table-variable physical objects is simplified for now (logical resolution is correct for supported scenarios).
+
+### 2026-03-21 — Session 3: R3 MVP Closure
+
+#### R3 — SQL Server Semantics ✅ MVP complete
+
+**Delivered in this session:**
+
+1. **DDL & catalog (migration compatibility)**
+   - Added `CREATE INDEX` and `DROP INDEX` statements (catalog abstraction only)
+   - Added named constraints support:
+     - table-level named default (`CONSTRAINT ... DEFAULT ... FOR ...`)
+     - column/table `CHECK` constraints with enforcement on `INSERT`/`UPDATE`
+
+2. **Metadata surface**
+   - Added virtual metadata tables:
+     - `sys.schemas`, `sys.tables`, `sys.columns`, `sys.types`, `sys.indexes`, `sys.objects`
+     - `INFORMATION_SCHEMA.TABLES`, `INFORMATION_SCHEMA.COLUMNS`
+   - Added `OBJECT_ID()` scalar function
+
+3. **Type/semantic improvements**
+   - Improved deterministic mixed-type comparison behavior for numeric/string and datetime/string cases
+   - Kept existing overflow/truncation behavior and expanded test coverage for these cases
+
+4. **Error model baseline**
+   - Added stable taxonomy helpers to `DbError` (`class()` and `code()`)
+   - Preserved strict batch execution behavior: stop on first error
+
+5. **Validation suites added**
+   - `phase3_semantics.rs`
+   - `phase3_metadata.rs`
+   - `phase3_indexes_constraints.rs`
+   - `phase3_errors_rowcount.rs`
+
+**Test suite status after session 3:**
+- **181 tests passing**
+- 0 failures, 0 ignored
+
+**Known R3 deferrals kept explicit:**
+- No index-aware planner/execution yet (metadata/catalog only)
+- `sql_variant` still out of this MVP closure
+
+### 2026-03-21 — Session 2: R2 Completion
+
+#### R2 — Relational Completeness ✅ Complete
+
+**Bug fixes resolved:**
+
+1. **UNION deduplication** (`executor/engine.rs`)
+   - Split `Union` and `UnionAll` branches; `Union` now calls `deduplicate_projected_rows`
+
+2. **Subqueries correlacionadas** (`executor/predicates.rs`, `identifier.rs`, `context.rs`)
+   - Added `ExecutionContext::with_outer_row_extended` to propagate outer row context
+   - Updated `eval_exists`, `eval_scalar_subquery`, `eval_in_subquery` to pass outer row
+   - Updated `resolve_identifier` and `resolve_qualified_identifier` to search in `ctx.outer_row`
+   - All 13 correlated subquery tests now pass
+
+3. **Aggregates sem GROUP BY** (`executor/query.rs`, `scalar_fn.rs`)
+   - Added aggregate detection in projection: `has_aggregate` flag
+   - `execute_grouped_select` is now called for queries with aggregates in projection (even without GROUP BY)
+   - Fixed `build_groups` to return single group for empty GROUP BY
+   - Fixed `project_group_row` to handle empty groups (return NULL for non-aggregates, COUNT(*) = 0)
+   - Removed MIN/MAX from scalar_fn.rs error guard (SUM/AVG/COUNT still error in scalar context)
+   - Fixed `eval_aggregate_avg` to return Decimal instead of integer division
+   - All 4 aggregate tests (SUM, AVG, MIN/MAX) now pass
+
+4. **HAVING com aggregates** (`executor/query.rs`)
+   - Added `eval_having_expr` and `eval_having_predicate` functions
+   - Evaluates HAVING expressions in group context, routing aggregate functions to `eval_aggregate_*`
+   - Handles Binary, Unary, Case, Between expressions with aggregates
+   - `test_having_basic` now passes
+
+5. **COUNT(*) em contexto procedural** (`executor/aggregates.rs`)
+   - Root cause was same as Fix 4 (aggregate detection). After fix, COUNT works everywhere.
+
+**Test suite status after session 2:**
+- **158 tests passing** (24 builtins/aggregates, 4 DDL advanced, 1 example, 7 integration, 14 new types, 50 expressions, 15 relational, 5 DDL, 13 programmability, 25 subqueries)
+- 0 tests ignored, 0 failures
+
+**Remaining R2 gap:** Query planner (logical algebra, predicate pushdown, projection trimming) — deferred
+
+---
+
+### 2026-03-21 — Session 1: R1 Completion
+
+**R1 — Foundational T-SQL (complete)**
+- Added `CONVERT()` built-in function with T-SQL style codes (0, 1/101, 2/102, 3/103, 4/104, 5/105, 6/106, 7/107, 8/108, 9/109, 10/110, 11/111, 12/112, 13/113, 14/114, 20/120, 21/121, 22/126, 130, 131)
+- Extended `Expr::Convert` AST with optional `style: Option<i32>` field
+- Extended parser to capture style code parameter
+- Added `convert_with_style()` and date formatting functions in `value_ops.rs`
+- Added 11 new tests covering CONVERT with and without style codes
+
+**R2 — Relational Completeness (CTE now working)**
+- Implemented CTE execution engine in `executor/cte.rs` (`CteStorage`, `CteTable`, `resolve_cte_table`, `cte_to_context_rows`)
+- Extended `ExecutionContext` with `ctes: CteStorage` field
+- Updated `QueryExecutor::bind_table` to resolve CTE references alongside catalog tables
+- Updated `ScriptExecutor::execute` to handle `Statement::WithCte`
+- Enabled and passing: `test_cte_basic`, `test_cte_with_join`, `test_multiple_ctes`
+- Remaining R2 gap: query planner, aggregate bugs, correlated subqueries, HAVING
+
+#### Previous test suite status (before session 2)
+- **120 tests passing**, 24 tests ignored
+

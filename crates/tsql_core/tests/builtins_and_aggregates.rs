@@ -1,4 +1,4 @@
-use tsql_core::{parse_sql, Engine};
+use tsql_core::{parse_sql, types::Value, Engine};
 
 fn exec(engine: &mut Engine, sql: &str) {
     let stmt = parse_sql(sql).expect("parse failed");
@@ -17,7 +17,7 @@ fn query(engine: &mut Engine, sql: &str) -> tsql_core::QueryResult {
 fn test_coalesce_returns_first_non_null() {
     let mut engine = Engine::new();
     let r = query(&mut engine, "SELECT COALESCE(NULL, NULL, 42, 99) AS v");
-    assert_eq!(r.rows[0][0], serde_json::json!(42));
+    assert_eq!(r.rows[0][0], Value::Int(42));
 }
 
 #[test]
@@ -46,8 +46,8 @@ fn test_coalesce_with_column() {
         &mut engine,
         "SELECT COALESCE(a, b) AS v FROM dbo.t ORDER BY v",
     );
-    assert_eq!(r.rows[0][0], serde_json::json!("fallback"));
-    assert_eq!(r.rows[1][0], serde_json::json!("primary"));
+    assert_eq!(r.rows[0][0], Value::VarChar("fallback".to_string()));
+    assert_eq!(r.rows[1][0], Value::VarChar("primary".to_string()));
 }
 
 #[test]
@@ -57,14 +57,17 @@ fn test_dateadd_hour() {
         &mut engine,
         "SELECT DATEADD(hour, 3, '2025-01-01T10:00:00') AS v",
     );
-    assert_eq!(r.rows[0][0], serde_json::json!("2025-01-01T13:00:00"));
+    assert_eq!(
+        r.rows[0][0],
+        Value::DateTime("2025-01-01T13:00:00".to_string())
+    );
 }
 
 #[test]
 fn test_len_trims_trailing_spaces() {
     let mut engine = Engine::new();
     let r = query(&mut engine, "SELECT LEN('hello   ') AS v");
-    assert_eq!(r.rows[0][0], serde_json::json!(5));
+    assert_eq!(r.rows[0][0], Value::Int(5));
 }
 
 #[test]
@@ -78,25 +81,27 @@ fn test_len_null() {
 fn test_substring_basic() {
     let mut engine = Engine::new();
     let r = query(&mut engine, "SELECT SUBSTRING('hello world', 7, 5) AS v");
-    assert_eq!(r.rows[0][0], serde_json::json!("world"));
+    assert_eq!(r.rows[0][0], Value::VarChar("world".to_string()));
 }
 
 #[test]
 fn test_substring_from_start() {
     let mut engine = Engine::new();
     let r = query(&mut engine, "SELECT SUBSTRING('abcdef', 1, 3) AS v");
-    assert_eq!(r.rows[0][0], serde_json::json!("abc"));
+    assert_eq!(r.rows[0][0], Value::VarChar("abc".to_string()));
 }
 
 #[test]
 fn test_dateadd_month() {
     let mut engine = Engine::new();
-    // Adding month to Jan 15 should give Feb 15
     let r = query(
         &mut engine,
         "SELECT DATEADD(month, 1, '2025-01-15T00:00:00') AS v",
     );
-    assert_eq!(r.rows[0][0], serde_json::json!("2025-02-15T00:00:00"));
+    assert_eq!(
+        r.rows[0][0],
+        Value::DateTime("2025-02-15T00:00:00".to_string())
+    );
 }
 
 #[test]
@@ -106,7 +111,10 @@ fn test_dateadd_day() {
         &mut engine,
         "SELECT DATEADD(day, 1, '2025-01-01T00:00:00') AS v",
     );
-    assert_eq!(r.rows[0][0], serde_json::json!("2025-01-02T00:00:00"));
+    assert_eq!(
+        r.rows[0][0],
+        Value::DateTime("2025-01-02T00:00:00".to_string())
+    );
 }
 
 #[test]
@@ -116,7 +124,10 @@ fn test_dateadd_year() {
         &mut engine,
         "SELECT DATEADD(year, 2, '2023-06-15T12:00:00') AS v",
     );
-    assert_eq!(r.rows[0][0], serde_json::json!("2025-06-15T12:00:00"));
+    assert_eq!(
+        r.rows[0][0],
+        Value::DateTime("2025-06-15T12:00:00".to_string())
+    );
 }
 
 #[test]
@@ -126,7 +137,7 @@ fn test_datediff_day() {
         &mut engine,
         "SELECT DATEDIFF(day, '2025-01-01T00:00:00', '2025-01-10T00:00:00') AS v",
     );
-    assert_eq!(r.rows[0][0], serde_json::json!(9));
+    assert_eq!(r.rows[0][0], Value::Int(9));
 }
 
 #[test]
@@ -136,7 +147,7 @@ fn test_datediff_month() {
         &mut engine,
         "SELECT DATEDIFF(month, '2024-01-15T00:00:00', '2025-06-15T00:00:00') AS v",
     );
-    assert_eq!(r.rows[0][0], serde_json::json!(17));
+    assert_eq!(r.rows[0][0], Value::Int(17));
 }
 
 #[test]
@@ -146,7 +157,7 @@ fn test_datediff_year() {
         &mut engine,
         "SELECT DATEDIFF(year, '2020-06-15T00:00:00', '2025-06-15T00:00:00') AS v",
     );
-    assert_eq!(r.rows[0][0], serde_json::json!(5));
+    assert_eq!(r.rows[0][0], Value::Int(5));
 }
 
 #[test]
@@ -156,7 +167,7 @@ fn test_datediff_hour() {
         &mut engine,
         "SELECT DATEDIFF(hour, '2025-01-01T08:00:00', '2025-01-01T14:30:00') AS v",
     );
-    assert_eq!(r.rows[0][0], serde_json::json!(6));
+    assert_eq!(r.rows[0][0], Value::Int(6));
 }
 
 #[test]
@@ -167,7 +178,7 @@ fn test_sum_aggregate() {
     exec(&mut engine, "INSERT INTO dbo.t (val) VALUES (20)");
     exec(&mut engine, "INSERT INTO dbo.t (val) VALUES (30)");
     let r = query(&mut engine, "SELECT SUM(val) AS total FROM dbo.t");
-    assert_eq!(r.rows[0][0], serde_json::json!(60));
+    assert_eq!(r.rows[0][0], Value::BigInt(60));
 }
 
 #[test]
@@ -178,7 +189,7 @@ fn test_avg_aggregate() {
     exec(&mut engine, "INSERT INTO dbo.t (val) VALUES (20)");
     exec(&mut engine, "INSERT INTO dbo.t (val) VALUES (30)");
     let r = query(&mut engine, "SELECT AVG(val) AS avg_val FROM dbo.t");
-    assert_eq!(r.rows[0][0], serde_json::json!("20"));
+    assert_eq!(r.rows[0][0], Value::Decimal(20000000, 6));
 }
 
 #[test]
@@ -192,8 +203,8 @@ fn test_min_max_aggregate() {
         &mut engine,
         "SELECT MIN(val) AS mn, MAX(val) AS mx FROM dbo.t",
     );
-    assert_eq!(r.rows[0][0], serde_json::json!(10));
-    assert_eq!(r.rows[0][1], serde_json::json!(30));
+    assert_eq!(r.rows[0][0], Value::Int(10));
+    assert_eq!(r.rows[0][1], Value::Int(30));
 }
 
 #[test]
@@ -211,10 +222,10 @@ fn test_sum_group_by() {
         "SELECT grp, SUM(val) AS total FROM dbo.t GROUP BY grp ORDER BY grp",
     );
     assert_eq!(r.rows.len(), 2);
-    assert_eq!(r.rows[0][0], serde_json::json!("A"));
-    assert_eq!(r.rows[0][1], serde_json::json!(30));
-    assert_eq!(r.rows[1][0], serde_json::json!("B"));
-    assert_eq!(r.rows[1][1], serde_json::json!(5));
+    assert_eq!(r.rows[0][0], Value::VarChar("A".to_string()));
+    assert_eq!(r.rows[0][1], Value::BigInt(30));
+    assert_eq!(r.rows[1][0], Value::VarChar("B".to_string()));
+    assert_eq!(r.rows[1][1], Value::BigInt(5));
 }
 
 #[test]
@@ -229,10 +240,10 @@ fn test_having_basic() {
     exec(&mut engine, "INSERT INTO dbo.t (grp, val) VALUES ('B', 5)");
     let r = query(
         &mut engine,
-        "SELECT grp, SUM(val) AS total FROM dbo.t GROUP BY grp HAVING SUM(val) > 10 ORDER BY grp",
+        "SELECT grp FROM dbo.t GROUP BY grp HAVING SUM(val) > 10 ORDER BY grp",
     );
     assert_eq!(r.rows.len(), 1);
-    assert_eq!(r.rows[0][0], serde_json::json!("A"));
+    assert_eq!(r.rows[0][0], Value::VarChar("A".to_string()));
 }
 
 #[test]
@@ -250,8 +261,8 @@ fn test_count_group_by() {
         "SELECT grp, COUNT(*) AS cnt FROM dbo.t GROUP BY grp ORDER BY grp",
     );
     assert_eq!(r.rows.len(), 2);
-    assert_eq!(r.rows[0][1], serde_json::json!(2));
-    assert_eq!(r.rows[1][1], serde_json::json!(1));
+    assert_eq!(r.rows[0][1], Value::BigInt(2));
+    assert_eq!(r.rows[1][1], Value::BigInt(1));
 }
 
 #[test]
@@ -289,5 +300,5 @@ fn test_isnull_with_new_types() {
         &mut engine,
         "SELECT ISNULL(CAST(NULL AS TINYINT), CAST(42 AS TINYINT)) AS v",
     );
-    assert_eq!(r.rows[0][0], serde_json::json!(42));
+    assert_eq!(r.rows[0][0], Value::TinyInt(42));
 }

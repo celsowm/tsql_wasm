@@ -1,0 +1,212 @@
+use crate::error::DbError;
+
+#[derive(Debug, Clone)]
+pub enum ExprToken {
+    Identifier(String),
+    Integer(i64),
+    FloatLiteral(String),
+    String(String),
+    UnicodeString(String),
+    Null,
+    Star,
+    LParen,
+    RParen,
+    Comma,
+    Eq,
+    NotEq,
+    Gt,
+    Lt,
+    Gte,
+    Lte,
+    And,
+    Or,
+    Is,
+    Not,
+    As,
+    Plus,
+    Minus,
+    Slash,
+    Percent,
+    Case,
+    When,
+    Then,
+    Else,
+    End,
+    In,
+    Like,
+    Between,
+    Exists,
+}
+
+pub fn tokenize_expr(input: &str) -> Result<Vec<ExprToken>, DbError> {
+    let chars = input.chars().collect::<Vec<_>>();
+    let mut i = 0usize;
+    let mut out = Vec::new();
+
+    while i < chars.len() {
+        let ch = chars[i];
+        if ch.is_whitespace() {
+            i += 1;
+            continue;
+        }
+
+        match ch {
+            '(' => {
+                out.push(ExprToken::LParen);
+                i += 1;
+            }
+            ')' => {
+                out.push(ExprToken::RParen);
+                i += 1;
+            }
+            ',' => {
+                out.push(ExprToken::Comma);
+                i += 1;
+            }
+            '*' => {
+                out.push(ExprToken::Star);
+                i += 1;
+            }
+            '+' => {
+                out.push(ExprToken::Plus);
+                i += 1;
+            }
+            '-' => {
+                out.push(ExprToken::Minus);
+                i += 1;
+            }
+            '/' => {
+                out.push(ExprToken::Slash);
+                i += 1;
+            }
+            '%' => {
+                out.push(ExprToken::Percent);
+                i += 1;
+            }
+            '=' => {
+                out.push(ExprToken::Eq);
+                i += 1;
+            }
+            '>' => {
+                if i + 1 < chars.len() && chars[i + 1] == '=' {
+                    out.push(ExprToken::Gte);
+                    i += 2;
+                } else {
+                    out.push(ExprToken::Gt);
+                    i += 1;
+                }
+            }
+            '<' => {
+                if i + 1 < chars.len() && chars[i + 1] == '=' {
+                    out.push(ExprToken::Lte);
+                    i += 2;
+                } else if i + 1 < chars.len() && chars[i + 1] == '>' {
+                    out.push(ExprToken::NotEq);
+                    i += 2;
+                } else {
+                    out.push(ExprToken::Lt);
+                    i += 1;
+                }
+            }
+            '\'' => {
+                let start = i + 1;
+                i += 1;
+                while i < chars.len() && chars[i] != '\'' {
+                    i += 1;
+                }
+                if i >= chars.len() {
+                    return Err(DbError::Parse("unterminated string literal".into()));
+                }
+                out.push(ExprToken::String(chars[start..i].iter().collect()));
+                i += 1;
+            }
+            'N' | 'n' => {
+                if i + 1 < chars.len() && chars[i + 1] == '\'' {
+                    let start = i + 2;
+                    i += 2;
+                    while i < chars.len() && chars[i] != '\'' {
+                        i += 1;
+                    }
+                    if i >= chars.len() {
+                        return Err(DbError::Parse("unterminated unicode string literal".into()));
+                    }
+                    out.push(ExprToken::UnicodeString(chars[start..i].iter().collect()));
+                    i += 1;
+                } else {
+                    let ident = read_identifier(&chars, &mut i);
+                    push_ident_token(&mut out, ident);
+                }
+            }
+            c if c.is_ascii_digit() => {
+                let start = i;
+                i += 1;
+                while i < chars.len() && chars[i].is_ascii_digit() {
+                    i += 1;
+                }
+                if i < chars.len()
+                    && chars[i] == '.'
+                    && i + 1 < chars.len()
+                    && chars[i + 1].is_ascii_digit()
+                {
+                    i += 1;
+                    while i < chars.len() && chars[i].is_ascii_digit() {
+                        i += 1;
+                    }
+                    let num: String = chars[start..i].iter().collect();
+                    out.push(ExprToken::FloatLiteral(num));
+                } else {
+                    let num: String = chars[start..i].iter().collect();
+                    out.push(ExprToken::Integer(
+                        num.parse::<i64>()
+                            .map_err(|_| DbError::Parse("invalid integer literal".into()))?,
+                    ));
+                }
+            }
+            c if is_ident_start(c) => {
+                let ident = read_identifier(&chars, &mut i);
+                push_ident_token(&mut out, ident);
+            }
+            _ => return Err(DbError::Parse(format!("unexpected character '{}'", ch))),
+        }
+    }
+
+    Ok(out)
+}
+
+fn read_identifier(chars: &[char], i: &mut usize) -> String {
+    let start = *i;
+    *i += 1;
+    while *i < chars.len() && is_ident_char(chars[*i]) {
+        *i += 1;
+    }
+    chars[start..*i].iter().collect()
+}
+
+fn push_ident_token(out: &mut Vec<ExprToken>, ident: String) {
+    match ident.to_uppercase().as_str() {
+        "NULL" => out.push(ExprToken::Null),
+        "AND" => out.push(ExprToken::And),
+        "OR" => out.push(ExprToken::Or),
+        "IS" => out.push(ExprToken::Is),
+        "NOT" => out.push(ExprToken::Not),
+        "AS" => out.push(ExprToken::As),
+        "CASE" => out.push(ExprToken::Case),
+        "WHEN" => out.push(ExprToken::When),
+        "THEN" => out.push(ExprToken::Then),
+        "ELSE" => out.push(ExprToken::Else),
+        "END" => out.push(ExprToken::End),
+        "IN" => out.push(ExprToken::In),
+        "LIKE" => out.push(ExprToken::Like),
+        "BETWEEN" => out.push(ExprToken::Between),
+        "EXISTS" => out.push(ExprToken::Exists),
+        _ => out.push(ExprToken::Identifier(ident)),
+    }
+}
+
+fn is_ident_start(ch: char) -> bool {
+    ch.is_ascii_alphabetic() || ch == '_' || ch == '@'
+}
+
+fn is_ident_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || ch == '_' || ch == '@' || ch == '.'
+}
