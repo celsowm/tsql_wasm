@@ -222,7 +222,7 @@ fn test_phase8_perf_join() {
 /// Performance baseline: batch execution
 #[test]
 fn test_phase8_perf_batch() {
-    let mut engine = Engine::new();
+    let _engine = Engine::new();
 
     let batch = r#"
         CREATE TABLE batch_test (id INT, value INT);

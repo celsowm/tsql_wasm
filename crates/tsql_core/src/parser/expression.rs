@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ast::{BinaryOp, DataTypeSpec, Expr, OrderByExpr, SelectStmt, UnaryOp, WhenClause, WindowFrame, WindowFunc};
+use crate::ast::{BinaryOp, DataTypeSpec, Expr, OrderByExpr, SelectStmt, UnaryOp, WhenClause, WindowFunc};
 use crate::error::DbError;
 
 use super::tokenizer::{tokenize_expr, ExprToken};
@@ -337,6 +337,7 @@ impl ExprParser {
             }
             Some(ExprToken::Integer(v)) => Ok(Expr::Integer(v)),
             Some(ExprToken::FloatLiteral(s)) => Ok(Expr::FloatLiteral(s)),
+            Some(ExprToken::BinaryLiteral(bytes)) => Ok(Expr::BinaryLiteral(bytes)),
             Some(ExprToken::String(v)) => Ok(Expr::String(v)),
             Some(ExprToken::UnicodeString(v)) => Ok(Expr::UnicodeString(v)),
             Some(ExprToken::Null) => Ok(Expr::Null),
@@ -455,6 +456,15 @@ impl ExprParser {
             if name.eq_ignore_ascii_case("DECIMAL") || name.eq_ignore_ascii_case("NUMERIC") {
                 return Ok(DataTypeSpec::Decimal(first as u8, 0));
             }
+            if name.eq_ignore_ascii_case("FLOAT") || name.eq_ignore_ascii_case("REAL") {
+                return Ok(DataTypeSpec::Float);
+            }
+            if name.eq_ignore_ascii_case("BINARY") {
+                return Ok(DataTypeSpec::Binary(first));
+            }
+            if name.eq_ignore_ascii_case("VARBINARY") {
+                return Ok(DataTypeSpec::VarBinary(first));
+            }
             return Err(DbError::Parse(format!("unsupported data type '{}'", name)));
         }
 
@@ -468,6 +478,12 @@ impl ExprParser {
             Ok(DataTypeSpec::Int)
         } else if name.eq_ignore_ascii_case("BIGINT") {
             Ok(DataTypeSpec::BigInt)
+        } else if name.eq_ignore_ascii_case("FLOAT") || name.eq_ignore_ascii_case("REAL") {
+            Ok(DataTypeSpec::Float)
+        } else if name.eq_ignore_ascii_case("MONEY") {
+            Ok(DataTypeSpec::Money)
+        } else if name.eq_ignore_ascii_case("SMALLMONEY") {
+            Ok(DataTypeSpec::SmallMoney)
         } else if name.eq_ignore_ascii_case("VARCHAR") {
             Ok(DataTypeSpec::VarChar(8000))
         } else if name.eq_ignore_ascii_case("NVARCHAR") {
@@ -476,6 +492,10 @@ impl ExprParser {
             Ok(DataTypeSpec::Char(1))
         } else if name.eq_ignore_ascii_case("NCHAR") {
             Ok(DataTypeSpec::NChar(1))
+        } else if name.eq_ignore_ascii_case("BINARY") {
+            Ok(DataTypeSpec::Binary(1))
+        } else if name.eq_ignore_ascii_case("VARBINARY") {
+            Ok(DataTypeSpec::VarBinary(8000))
         } else if name.eq_ignore_ascii_case("DATE") {
             Ok(DataTypeSpec::Date)
         } else if name.eq_ignore_ascii_case("TIME") {
@@ -585,7 +605,7 @@ impl ExprParser {
         
         let mut partition_by = Vec::new();
         let mut order_by = Vec::new();
-        let mut frame = None;
+        let frame = None;
 
         if !self.match_tok(|t| matches!(t, ExprToken::RParen)) {
             loop {

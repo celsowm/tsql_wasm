@@ -5,6 +5,7 @@ pub enum ExprToken {
     Identifier(String),
     Integer(i64),
     FloatLiteral(String),
+    BinaryLiteral(Vec<u8>),
     String(String),
     UnicodeString(String),
     Null,
@@ -147,26 +148,37 @@ pub fn tokenize_expr(input: &str) -> Result<Vec<ExprToken>, DbError> {
             c if c.is_ascii_digit() => {
                 let start = i;
                 i += 1;
-                while i < chars.len() && chars[i].is_ascii_digit() {
+                // Check for hex literal 0x...
+                if chars[start] == '0' && i < chars.len() && (chars[i] == 'x' || chars[i] == 'X') {
                     i += 1;
-                }
-                if i < chars.len()
-                    && chars[i] == '.'
-                    && i + 1 < chars.len()
-                    && chars[i + 1].is_ascii_digit()
-                {
-                    i += 1;
+                    while i < chars.len() && chars[i].is_ascii_hexdigit() {
+                        i += 1;
+                    }
+                    let hex_str: String = chars[start + 2..i].iter().collect();
+                    let bytes = hex_to_bytes(&hex_str)?;
+                    out.push(ExprToken::BinaryLiteral(bytes));
+                } else {
                     while i < chars.len() && chars[i].is_ascii_digit() {
                         i += 1;
                     }
-                    let num: String = chars[start..i].iter().collect();
-                    out.push(ExprToken::FloatLiteral(num));
-                } else {
-                    let num: String = chars[start..i].iter().collect();
-                    out.push(ExprToken::Integer(
-                        num.parse::<i64>()
-                            .map_err(|_| DbError::Parse("invalid integer literal".into()))?,
-                    ));
+                    if i < chars.len()
+                        && chars[i] == '.'
+                        && i + 1 < chars.len()
+                        && chars[i + 1].is_ascii_digit()
+                    {
+                        i += 1;
+                        while i < chars.len() && chars[i].is_ascii_digit() {
+                            i += 1;
+                        }
+                        let num: String = chars[start..i].iter().collect();
+                        out.push(ExprToken::FloatLiteral(num));
+                    } else {
+                        let num: String = chars[start..i].iter().collect();
+                        out.push(ExprToken::Integer(
+                            num.parse::<i64>()
+                                .map_err(|_| DbError::Parse("invalid integer literal".into()))?,
+                        ));
+                    }
                 }
             }
             c if is_ident_start(c) => {
@@ -224,4 +236,29 @@ fn is_ident_start(ch: char) -> bool {
 
 fn is_ident_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || ch == '_' || ch == '@' || ch == '.'
+}
+
+fn hex_to_bytes(hex: &str) -> Result<Vec<u8>, DbError> {
+    if hex.len() % 2 != 0 {
+        return Err(DbError::Parse("hex literal must have even number of digits".into()));
+    }
+    let mut bytes = Vec::with_capacity(hex.len() / 2);
+    let chars: Vec<char> = hex.chars().collect();
+    for i in (0..chars.len()).step_by(2) {
+        let hi = hex_char_to_val(chars[i])
+            .ok_or_else(|| DbError::Parse(format!("invalid hex digit '{}'", chars[i])))?;
+        let lo = hex_char_to_val(chars[i + 1])
+            .ok_or_else(|| DbError::Parse(format!("invalid hex digit '{}'", chars[i + 1])))?;
+        bytes.push((hi << 4) | lo);
+    }
+    Ok(bytes)
+}
+
+fn hex_char_to_val(c: char) -> Option<u8> {
+    match c {
+        '0'..='9' => Some(c as u8 - b'0'),
+        'a'..='f' => Some(c as u8 - b'a' + 10),
+        'A'..='F' => Some(c as u8 - b'A' + 10),
+        _ => None,
+    }
 }

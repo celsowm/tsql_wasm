@@ -4,6 +4,8 @@ use std::fmt::Debug;
 use crate::error::DbError;
 use crate::types::{DataType, Value};
 
+use super::value_helpers::value_to_f64;
+
 fn to_12hour(h: i32) -> (i32, &'static str) {
     let ampm = if h >= 12 { "PM" } else { "AM" };
     let h12 = match h {
@@ -29,8 +31,11 @@ where
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueCategory {
     Integer,
+    Float,
     Decimal,
+    Money,
     String,
+    Binary,
     DateTime,
     Uuid,
     Null,
@@ -42,10 +47,13 @@ fn categorize(v: &Value) -> ValueCategory {
         Value::Bit(_) | Value::TinyInt(_) | Value::SmallInt(_) | Value::Int(_) | Value::BigInt(_) => {
             ValueCategory::Integer
         }
+        Value::Float(_) => ValueCategory::Float,
         Value::Decimal(_, _) => ValueCategory::Decimal,
+        Value::Money(_) | Value::SmallMoney(_) => ValueCategory::Money,
         Value::Char(_) | Value::VarChar(_) | Value::NChar(_) | Value::NVarChar(_) => {
             ValueCategory::String
         }
+        Value::Binary(_) | Value::VarBinary(_) => ValueCategory::Binary,
         Value::Date(_) | Value::Time(_) | Value::DateTime(_) | Value::DateTime2(_) => {
             ValueCategory::DateTime
         }
@@ -266,10 +274,14 @@ pub fn coerce_value_to_type(value: Value, ty: &DataType) -> Result<Value, DbErro
         Value::SmallInt(v) => coerce_int(v as i64, ty),
         Value::Int(v) => coerce_int(v as i64, ty),
         Value::BigInt(v) => coerce_int(v, ty),
+        Value::Float(v) => coerce_float(v, ty),
         Value::Decimal(raw, scale) => coerce_decimal(raw, scale, ty),
+        Value::Money(v) => coerce_money(v, ty),
+        Value::SmallMoney(v) => coerce_money(v as i128, ty),
         Value::Char(v) | Value::VarChar(v) | Value::NChar(v) | Value::NVarChar(v) => {
             coerce_string(&v, ty)
         }
+        Value::Binary(v) | Value::VarBinary(v) => coerce_binary(&v, ty),
         Value::Date(v) => coerce_date_time_string(&v, ty),
         Value::Time(v) => coerce_date_time_string(&v, ty),
         Value::DateTime(v) => coerce_date_time_string(&v, ty),
@@ -287,10 +299,16 @@ fn coerce_bit(v: bool, ty: &DataType) -> Result<Value, DbError> {
         DataType::SmallInt => Ok(Value::SmallInt(int_val as i16)),
         DataType::Int => Ok(Value::Int(int_val as i32)),
         DataType::BigInt => Ok(Value::BigInt(int_val)),
+        DataType::Float => Ok(Value::Float((int_val as f64).to_bits())),
         DataType::Decimal { scale, .. } => Ok(Value::Decimal(int_val as i128, *scale)),
+        DataType::Money => Ok(Value::Money(int_val as i128 * 10000)),
+        DataType::SmallMoney => Ok(Value::SmallMoney(int_val * 10000)),
         DataType::Char { .. } | DataType::VarChar { .. } => Ok(Value::VarChar(int_val.to_string())),
         DataType::NChar { .. } | DataType::NVarChar { .. } => {
             Ok(Value::NVarChar(int_val.to_string()))
+        }
+        DataType::Binary { .. } | DataType::VarBinary { .. } => {
+            Ok(Value::Binary(int_val.to_le_bytes().to_vec()))
         }
         DataType::DateTime | DataType::DateTime2 | DataType::Date | DataType::Time => Err(
             DbError::Execution(format!("cannot convert bit to {:?}", ty)),
@@ -309,12 +327,18 @@ fn coerce_int(v: i64, ty: &DataType) -> Result<Value, DbError> {
         DataType::SmallInt => check_int_range::<i16>(v, "SMALLINT").map(Value::SmallInt),
         DataType::Int => check_int_range::<i32>(v, "INT").map(Value::Int),
         DataType::BigInt => Ok(Value::BigInt(v)),
+        DataType::Float => Ok(Value::Float((v as f64).to_bits())),
         DataType::Decimal { scale, .. } => {
             let raw = v as i128 * 10i128.pow(*scale as u32);
             Ok(Value::Decimal(raw, *scale))
         }
+        DataType::Money => Ok(Value::Money(v as i128 * 10000)),
+        DataType::SmallMoney => Ok(Value::SmallMoney(v * 10000)),
         DataType::Char { .. } | DataType::VarChar { .. } => Ok(Value::VarChar(v.to_string())),
         DataType::NChar { .. } | DataType::NVarChar { .. } => Ok(Value::NVarChar(v.to_string())),
+        DataType::Binary { .. } | DataType::VarBinary { .. } => {
+            Ok(Value::Binary(v.to_le_bytes().to_vec()))
+        }
         DataType::DateTime | DataType::DateTime2 | DataType::Date | DataType::Time => Err(
             DbError::Execution(format!("cannot convert integer to {:?}", ty)),
         ),
@@ -336,6 +360,10 @@ fn coerce_decimal(raw: i128, scale: u8, ty: &DataType) -> Result<Value, DbError>
             }
         }
         DataType::Bit => Ok(Value::Bit(raw != 0)),
+        DataType::Float => {
+            let divisor = 10f64.powi(scale as i32);
+            Ok(Value::Float((raw as f64 / divisor).to_bits()))
+        }
         DataType::TinyInt => {
             let v = if scale > 0 {
                 raw / 10i128.pow(scale as u32)
@@ -392,6 +420,30 @@ fn coerce_decimal(raw: i128, scale: u8, ty: &DataType) -> Result<Value, DbError>
                 Ok(Value::BigInt(v as i64))
             }
         }
+        DataType::Money => {
+            let money_scale = 4u8;
+            let converted = if scale == money_scale {
+                raw
+            } else {
+                rescale_decimal(raw, scale, money_scale)
+            };
+            Ok(Value::Money(converted))
+        }
+        DataType::SmallMoney => {
+            let money_scale = 4u8;
+            let converted = if scale == money_scale {
+                raw
+            } else {
+                rescale_decimal(raw, scale, money_scale)
+            };
+            if converted < i64::MIN as i128 || converted > i64::MAX as i128 {
+                Err(DbError::Execution(
+                    "Arithmetic overflow error converting DECIMAL to SMALLMONEY".into(),
+                ))
+            } else {
+                Ok(Value::SmallMoney(converted as i64))
+            }
+        }
         DataType::Char { .. } | DataType::VarChar { .. } => {
             Ok(Value::VarChar(crate::types::format_decimal(raw, scale)))
         }
@@ -425,7 +477,27 @@ fn coerce_string(v: &str, ty: &DataType) -> Result<Value, DbError> {
             .parse::<i64>()
             .map(Value::BigInt)
             .map_err(|_| DbError::Execution(format!("cannot convert '{}' to BIGINT", v))),
+        DataType::Float => v
+            .parse::<f64>()
+            .map(|f| Value::Float(f.to_bits()))
+            .map_err(|_| DbError::Execution(format!("cannot convert '{}' to FLOAT", v))),
         DataType::Decimal { scale, .. } => parse_decimal_string(v, *scale),
+        DataType::Money => parse_money_string(v),
+        DataType::SmallMoney => {
+            let m = parse_money_string(v)?;
+            match m {
+                Value::Money(raw) => {
+                    if raw < i64::MIN as i128 || raw > i64::MAX as i128 {
+                        Err(DbError::Execution(
+                            "Arithmetic overflow error converting to SMALLMONEY".into(),
+                        ))
+                    } else {
+                        Ok(Value::SmallMoney(raw as i64))
+                    }
+                }
+                other => Ok(other),
+            }
+        }
         DataType::Char { len } => {
             let padded = pad_right(v, *len as usize);
             Ok(Value::Char(padded))
@@ -436,6 +508,23 @@ fn coerce_string(v: &str, ty: &DataType) -> Result<Value, DbError> {
             Ok(Value::NChar(padded))
         }
         DataType::NVarChar { .. } => Ok(Value::NVarChar(v.to_string())),
+        DataType::Binary { len } => {
+            let bytes = if v.starts_with("0x") || v.starts_with("0X") {
+                parse_hex_string(&v[2..])?
+            } else {
+                v.as_bytes().to_vec()
+            };
+            let padded = pad_binary_right(&bytes, *len as usize);
+            Ok(Value::Binary(padded))
+        }
+        DataType::VarBinary { .. } => {
+            let bytes = if v.starts_with("0x") || v.starts_with("0X") {
+                parse_hex_string(&v[2..])?
+            } else {
+                v.as_bytes().to_vec()
+            };
+            Ok(Value::VarBinary(bytes))
+        }
         DataType::Date => Ok(Value::Date(v.to_string())),
         DataType::Time => Ok(Value::Time(v.to_string())),
         DataType::DateTime => Ok(Value::DateTime(v.to_string())),
@@ -458,6 +547,146 @@ fn coerce_date_time_string(v: &str, ty: &DataType) -> Result<Value, DbError> {
             "cannot convert datetime-like value to {:?}",
             ty
         ))),
+    }
+}
+
+fn coerce_float(bits: u64, ty: &DataType) -> Result<Value, DbError> {
+    let f = f64::from_bits(bits);
+    match ty {
+        DataType::Float => Ok(Value::Float(bits)),
+        DataType::Bit => Ok(Value::Bit(f != 0.0)),
+        DataType::TinyInt => {
+            if f < 0.0 || f > 255.0 {
+                Err(DbError::Execution("Arithmetic overflow error converting FLOAT to TINYINT".into()))
+            } else {
+                Ok(Value::TinyInt(f as u8))
+            }
+        }
+        DataType::SmallInt => {
+            if f < i16::MIN as f64 || f > i16::MAX as f64 {
+                Err(DbError::Execution("Arithmetic overflow error converting FLOAT to SMALLINT".into()))
+            } else {
+                Ok(Value::SmallInt(f as i16))
+            }
+        }
+        DataType::Int => {
+            if f < i32::MIN as f64 || f > i32::MAX as f64 {
+                Err(DbError::Execution("Arithmetic overflow error converting FLOAT to INT".into()))
+            } else {
+                Ok(Value::Int(f as i32))
+            }
+        }
+        DataType::BigInt => {
+            if f < i64::MIN as f64 || f > i64::MAX as f64 {
+                Err(DbError::Execution("Arithmetic overflow error converting FLOAT to BIGINT".into()))
+            } else {
+                Ok(Value::BigInt(f as i64))
+            }
+        }
+        DataType::Decimal { scale, .. } => {
+            let raw = (f * 10f64.powi(*scale as i32)) as i128;
+            Ok(Value::Decimal(raw, *scale))
+        }
+        DataType::Money => {
+            let raw = (f * 10000.0) as i128;
+            Ok(Value::Money(raw))
+        }
+        DataType::SmallMoney => {
+            let raw = (f * 10000.0) as i64;
+            Ok(Value::SmallMoney(raw))
+        }
+        DataType::Char { .. } | DataType::VarChar { .. } => {
+            Ok(Value::VarChar(crate::types::format_float(f)))
+        }
+        DataType::NChar { .. } | DataType::NVarChar { .. } => {
+            Ok(Value::NVarChar(crate::types::format_float(f)))
+        }
+        DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Float(bits)))),
+        _ => Err(DbError::Execution(format!("cannot convert FLOAT to {:?}", ty))),
+    }
+}
+
+fn coerce_money(raw: i128, ty: &DataType) -> Result<Value, DbError> {
+    match ty {
+        DataType::Money => Ok(Value::Money(raw)),
+        DataType::SmallMoney => {
+            if raw < i64::MIN as i128 || raw > i64::MAX as i128 {
+                Err(DbError::Execution("Arithmetic overflow error converting MONEY to SMALLMONEY".into()))
+            } else {
+                Ok(Value::SmallMoney(raw as i64))
+            }
+        }
+        DataType::Bit => Ok(Value::Bit(raw != 0)),
+        DataType::TinyInt => {
+            let v = raw / 10000;
+            if !(0..=255).contains(&v) {
+                Err(DbError::Execution("Arithmetic overflow error converting MONEY to TINYINT".into()))
+            } else {
+                Ok(Value::TinyInt(v as u8))
+            }
+        }
+        DataType::SmallInt => {
+            let v = raw / 10000;
+            if v < i16::MIN as i128 || v > i16::MAX as i128 {
+                Err(DbError::Execution("Arithmetic overflow error converting MONEY to SMALLINT".into()))
+            } else {
+                Ok(Value::SmallInt(v as i16))
+            }
+        }
+        DataType::Int => {
+            let v = raw / 10000;
+            if v < i32::MIN as i128 || v > i32::MAX as i128 {
+                Err(DbError::Execution("Arithmetic overflow error converting MONEY to INT".into()))
+            } else {
+                Ok(Value::Int(v as i32))
+            }
+        }
+        DataType::BigInt => {
+            let v = raw / 10000;
+            if v < i64::MIN as i128 || v > i64::MAX as i128 {
+                Err(DbError::Execution("Arithmetic overflow error converting MONEY to BIGINT".into()))
+            } else {
+                Ok(Value::BigInt(v as i64))
+            }
+        }
+        DataType::Float => {
+            Ok(Value::Float((raw as f64 / 10000.0).to_bits()))
+        }
+        DataType::Decimal { scale, .. } => {
+            let money_scale = 4u8;
+            if *scale == money_scale {
+                Ok(Value::Decimal(raw, *scale))
+            } else {
+                let converted = rescale_decimal(raw, money_scale, *scale);
+                Ok(Value::Decimal(converted, *scale))
+            }
+        }
+        DataType::Char { .. } | DataType::VarChar { .. } => {
+            Ok(Value::VarChar(crate::types::format_money(raw)))
+        }
+        DataType::NChar { .. } | DataType::NVarChar { .. } => {
+            Ok(Value::NVarChar(crate::types::format_money(raw)))
+        }
+        DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Money(raw)))),
+        _ => Err(DbError::Execution(format!("cannot convert MONEY to {:?}", ty))),
+    }
+}
+
+fn coerce_binary(data: &[u8], ty: &DataType) -> Result<Value, DbError> {
+    match ty {
+        DataType::Binary { len } => {
+            let padded = pad_binary_right(data, *len as usize);
+            Ok(Value::Binary(padded))
+        }
+        DataType::VarBinary { .. } => Ok(Value::VarBinary(data.to_vec())),
+        DataType::Char { .. } | DataType::VarChar { .. } => {
+            Ok(Value::VarChar(crate::types::format_binary(data)))
+        }
+        DataType::NChar { .. } | DataType::NVarChar { .. } => {
+            Ok(Value::NVarChar(crate::types::format_binary(data)))
+        }
+        DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Binary(data.to_vec())))),
+        _ => Err(DbError::Execution(format!("cannot convert BINARY to {:?}", ty))),
     }
 }
 
@@ -518,6 +747,85 @@ pub(crate) fn parse_decimal_string(s: &str, scale: u8) -> Result<Value, DbError>
     Ok(Value::Decimal(raw, scale))
 }
 
+pub(crate) fn parse_money_string(s: &str) -> Result<Value, DbError> {
+    let trimmed = s.trim().trim_start_matches('$');
+    if trimmed.is_empty() {
+        return Err(DbError::Execution(
+            "cannot convert empty string to MONEY".into(),
+        ));
+    }
+    let scale = 4u8;
+    let negative = trimmed.starts_with('-');
+    let abs_str = if negative || trimmed.starts_with('+') {
+        &trimmed[1..]
+    } else {
+        trimmed
+    };
+
+    let parts: Vec<&str> = abs_str.splitn(2, '.').collect();
+    let whole_str = parts[0];
+    let frac_str = parts.get(1).copied().unwrap_or("");
+
+    let whole: i128 = whole_str
+        .parse()
+        .map_err(|_| DbError::Execution(format!("cannot convert '{}' to MONEY", s)))?;
+
+    let mut frac: i128 = 0;
+    if !frac_str.is_empty() {
+        let truncated = if frac_str.len() > scale as usize {
+            &frac_str[..scale as usize]
+        } else {
+            frac_str
+        };
+        frac = truncated
+            .parse()
+            .map_err(|_| DbError::Execution(format!("cannot convert '{}' to MONEY", s)))?;
+        if frac_str.len() < scale as usize {
+            frac *= 10i128.pow((scale as usize - frac_str.len()) as u32);
+        }
+    }
+
+    let raw = whole * 10i128.pow(scale as u32) + frac;
+    let raw = if negative { -raw } else { raw };
+    Ok(Value::Money(raw))
+}
+
+pub(crate) fn parse_hex_string(s: &str) -> Result<Vec<u8>, DbError> {
+    let s = s.trim();
+    if s.len() % 2 != 0 {
+        return Err(DbError::Execution("hex string must have even number of digits".into()));
+    }
+    let mut bytes = Vec::with_capacity(s.len() / 2);
+    let chars: Vec<char> = s.chars().collect();
+    for i in (0..chars.len()).step_by(2) {
+        let hi = hex_char_to_val(chars[i])
+            .ok_or_else(|| DbError::Execution(format!("invalid hex digit '{}'", chars[i])))?;
+        let lo = hex_char_to_val(chars[i + 1])
+            .ok_or_else(|| DbError::Execution(format!("invalid hex digit '{}'", chars[i + 1])))?;
+        bytes.push((hi << 4) | lo);
+    }
+    Ok(bytes)
+}
+
+fn hex_char_to_val(c: char) -> Option<u8> {
+    match c {
+        '0'..='9' => Some(c as u8 - b'0'),
+        'a'..='f' => Some(c as u8 - b'a' + 10),
+        'A'..='F' => Some(c as u8 - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn pad_binary_right(data: &[u8], len: usize) -> Vec<u8> {
+    if data.len() >= len {
+        data[..len].to_vec()
+    } else {
+        let mut v = data.to_vec();
+        v.resize(len, 0);
+        v
+    }
+}
+
 fn rescale_decimal(raw: i128, from_scale: u8, to_scale: u8) -> i128 {
     if from_scale == to_scale {
         return raw;
@@ -555,20 +863,62 @@ pub fn compare_values(a: &Value, b: &Value) -> Ordering {
             ai.cmp(&bi)
         }
 
+        (ValueCategory::Float, ValueCategory::Float) => {
+            let af = value_to_f64(&a).unwrap_or(0.0);
+            let bf = value_to_f64(&b).unwrap_or(0.0);
+            af.partial_cmp(&bf).unwrap_or(Ordering::Equal)
+        }
+
+        (ValueCategory::Float, ValueCategory::Integer) | (ValueCategory::Integer, ValueCategory::Float) => {
+            let af = value_to_f64(&a).unwrap_or(0.0);
+            let bf = value_to_f64(&b).unwrap_or(0.0);
+            af.partial_cmp(&bf).unwrap_or(Ordering::Equal)
+        }
+
+        (ValueCategory::Float, ValueCategory::Decimal) | (ValueCategory::Decimal, ValueCategory::Float) => {
+            let af = value_to_f64(&a).unwrap_or(0.0);
+            let bf = value_to_f64(&b).unwrap_or(0.0);
+            af.partial_cmp(&bf).unwrap_or(Ordering::Equal)
+        }
+
         (ValueCategory::Decimal, ValueCategory::Decimal) | (ValueCategory::Decimal, ValueCategory::Integer) | (ValueCategory::Integer, ValueCategory::Decimal) => {
             let (a_dec, b_dec) = to_comparable_decimals(&a, &b);
             a_dec.cmp(&b_dec)
+        }
+
+        (ValueCategory::Money, ValueCategory::Money) => {
+            let am = extract_money_raw(&a);
+            let bm = extract_money_raw(&b);
+            am.cmp(&bm)
+        }
+
+        (ValueCategory::Money, ValueCategory::Integer) | (ValueCategory::Integer, ValueCategory::Money) => {
+            let am = extract_money_raw(&a);
+            let bm = extract_money_raw(&b);
+            am.cmp(&bm)
+        }
+
+        (ValueCategory::Money, ValueCategory::Decimal) | (ValueCategory::Decimal, ValueCategory::Money) => {
+            let am = extract_money_raw(&a);
+            let bm = extract_money_raw(&b);
+            am.cmp(&bm)
+        }
+
+        (ValueCategory::Money, ValueCategory::Float) | (ValueCategory::Float, ValueCategory::Money) => {
+            let af = value_to_f64(&a).unwrap_or(0.0);
+            let bf = value_to_f64(&b).unwrap_or(0.0);
+            af.partial_cmp(&bf).unwrap_or(Ordering::Equal)
         }
 
         (ValueCategory::String, ValueCategory::String) => {
             extract_string(&a).cmp(extract_string(&b))
         }
 
-        (ValueCategory::Integer, ValueCategory::String) | (ValueCategory::Decimal, ValueCategory::String) => {
+        (ValueCategory::Integer, ValueCategory::String) | (ValueCategory::Decimal, ValueCategory::String) | (ValueCategory::Float, ValueCategory::String) | (ValueCategory::Money, ValueCategory::String) => {
             compare_numeric_with_string(&a, &b)
         }
 
-        (ValueCategory::String, ValueCategory::Integer) | (ValueCategory::String, ValueCategory::Decimal) => {
+        (ValueCategory::String, ValueCategory::Integer) | (ValueCategory::String, ValueCategory::Decimal) | (ValueCategory::String, ValueCategory::Float) | (ValueCategory::String, ValueCategory::Money) => {
             compare_numeric_with_string(&a, &b)
         }
 
@@ -582,6 +932,10 @@ pub fn compare_values(a: &Value, b: &Value) -> Ordering {
 
         (ValueCategory::Uuid, ValueCategory::Uuid) => {
             extract_string(&a).cmp(extract_string(&b))
+        }
+
+        (ValueCategory::Binary, ValueCategory::Binary) => {
+            extract_bytes(&a).cmp(extract_bytes(&b))
         }
 
         _ => value_key(&a).cmp(&value_key(&b)),
@@ -612,6 +966,29 @@ fn extract_string(v: &Value) -> &str {
         Value::Char(s) | Value::VarChar(s) | Value::NChar(s) | Value::NVarChar(s) => s,
         Value::Date(s) | Value::Time(s) | Value::DateTime(s) | Value::DateTime2(s) => s,
         _ => "",
+    }
+}
+
+fn extract_bytes(v: &Value) -> &[u8] {
+    match v {
+        Value::Binary(b) | Value::VarBinary(b) => b,
+        _ => &[],
+    }
+}
+
+fn extract_money_raw(v: &Value) -> i128 {
+    match v {
+        Value::Money(r) => *r,
+        Value::SmallMoney(r) => *r as i128,
+        Value::Decimal(raw, scale) => {
+            // Convert to money-scale (4) for comparison
+            rescale_decimal(*raw, *scale, 4)
+        }
+        Value::Int(v) => *v as i128 * 10000,
+        Value::BigInt(v) => *v as i128 * 10000,
+        Value::TinyInt(v) => *v as i128 * 10000,
+        Value::SmallInt(v) => *v as i128 * 10000,
+        _ => 0,
     }
 }
 
@@ -674,8 +1051,12 @@ pub fn truthy(value: &Value) -> bool {
         Value::SmallInt(v) => *v != 0,
         Value::Int(v) => *v != 0,
         Value::BigInt(v) => *v != 0,
+        Value::Float(v) => f64::from_bits(*v) != 0.0,
         Value::Decimal(raw, _) => *raw != 0,
+        Value::Money(v) => *v != 0,
+        Value::SmallMoney(v) => *v != 0,
         Value::Char(v) | Value::VarChar(v) | Value::NChar(v) | Value::NVarChar(v) => !v.is_empty(),
+        Value::Binary(v) | Value::VarBinary(v) => !v.is_empty(),
         Value::Date(_)
         | Value::Time(_)
         | Value::DateTime(_)
@@ -693,11 +1074,16 @@ pub fn value_key(v: &Value) -> String {
         Value::SmallInt(v) => format!("SMALLINT:{}", v),
         Value::Int(v) => format!("INT:{}", v),
         Value::BigInt(v) => format!("BIGINT:{}", v),
+        Value::Float(v) => format!("FLOAT:{:?}", f64::from_bits(*v)),
         Value::Decimal(raw, scale) => format!("DECIMAL:{}:{}", raw, scale),
+        Value::Money(v) => format!("MONEY:{}", v),
+        Value::SmallMoney(v) => format!("SMALLMONEY:{}", v),
         Value::Char(v) => format!("CHAR:{}", v),
         Value::VarChar(v) => format!("VARCHAR:{}", v),
         Value::NChar(v) => format!("NCHAR:{}", v),
         Value::NVarChar(v) => format!("NVARCHAR:{}", v),
+        Value::Binary(v) => format!("BINARY:{}", crate::types::format_binary(v)),
+        Value::VarBinary(v) => format!("VARBINARY:{}", crate::types::format_binary(v)),
         Value::Date(v) => format!("DATE:{}", v),
         Value::Time(v) => format!("TIME:{}", v),
         Value::DateTime(v) => format!("DATETIME:{}", v),

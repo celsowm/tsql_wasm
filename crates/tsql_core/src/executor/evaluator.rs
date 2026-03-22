@@ -77,9 +77,9 @@ pub fn eval_expr(
             let f: f64 = s
                 .parse()
                 .map_err(|_| DbError::Execution(format!("invalid float literal '{}'", s)))?;
-            let raw = (f * 1e6_f64) as i128;
-            Ok(Value::Decimal(raw, 6))
+            Ok(Value::Float(f.to_bits()))
         }
+        Expr::BinaryLiteral(bytes) => Ok(Value::Binary(bytes.clone())),
         Expr::String(v) => Ok(Value::VarChar(v.clone())),
         Expr::UnicodeString(v) => Ok(Value::NVarChar(v.clone())),
         Expr::Null => Ok(Value::Null),

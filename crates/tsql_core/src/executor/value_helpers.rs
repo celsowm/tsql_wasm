@@ -15,9 +15,18 @@ pub(crate) fn to_i64(v: &Value) -> Result<i64, DbError> {
         Value::SmallInt(v) => Ok(*v as i64),
         Value::Int(v) => Ok(*v as i64),
         Value::BigInt(v) => Ok(*v),
+        Value::Float(v) => Ok(f64::from_bits(*v) as i64),
         Value::Decimal(raw, scale) => {
             let divisor = 10i128.pow(*scale as u32);
             Ok((*raw / divisor) as i64)
+        }
+        Value::Money(v) => {
+            let divisor = 10i128.pow(4u32);
+            Ok((*v / divisor) as i64)
+        }
+        Value::SmallMoney(v) => {
+            let divisor = 10i64.pow(4u32);
+            Ok(v / divisor)
         }
         _ => Err(DbError::Execution(format!(
             "cannot convert {:?} to integer",
@@ -34,6 +43,13 @@ pub(crate) fn to_decimal_parts(v: &Value) -> (i128, u8) {
         Value::SmallInt(v) => (*v as i128, 0),
         Value::Int(v) => (*v as i128, 0),
         Value::BigInt(v) => (*v as i128, 0),
+        Value::Float(v) => {
+            let f = f64::from_bits(*v);
+            let scale = 6u8;
+            ((f * 10f64.powi(scale as i32)) as i128, scale)
+        }
+        Value::Money(v) => (*v, 4),
+        Value::SmallMoney(v) => (*v as i128, 4),
         _ => (0, 0),
     }
 }
@@ -51,6 +67,7 @@ pub(crate) fn rescale_raw(raw: i128, from_scale: u8, to_scale: u8) -> i128 {
 
 pub(crate) fn value_to_f64(v: &Value) -> Result<f64, DbError> {
     match v {
+        Value::Float(v) => Ok(f64::from_bits(*v)),
         Value::TinyInt(n) => Ok(*n as f64),
         Value::SmallInt(n) => Ok(*n as f64),
         Value::Int(n) => Ok(*n as f64),
@@ -59,6 +76,8 @@ pub(crate) fn value_to_f64(v: &Value) -> Result<f64, DbError> {
             let divisor = 10f64.powi(*scale as i32);
             Ok(*raw as f64 / divisor)
         }
+        Value::Money(raw) => Ok(*raw as f64 / 10000.0),
+        Value::SmallMoney(raw) => Ok(*raw as f64 / 10000.0),
         Value::VarChar(s) | Value::NVarChar(s) => s
             .parse::<f64>()
             .map_err(|_| DbError::Execution(format!("cannot convert '{}' to float", s))),

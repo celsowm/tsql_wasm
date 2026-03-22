@@ -70,6 +70,8 @@ fn parse_type_from_declare(input: &str) -> Result<(DataTypeSpec, &str), DbError>
         ("NVARCHAR(", DataTypeSpec::NVarChar),
         ("CHAR(", DataTypeSpec::Char),
         ("NCHAR(", DataTypeSpec::NChar),
+        ("BINARY(", DataTypeSpec::Binary),
+        ("VARBINARY(", DataTypeSpec::VarBinary),
     ];
 
     for (prefix, constructor) in types {
@@ -106,12 +108,24 @@ fn parse_type_from_declare(input: &str) -> Result<(DataTypeSpec, &str), DbError>
         return Ok((DataTypeSpec::Decimal(p, s), rest));
     }
 
+    if upper.starts_with("FLOAT(") {
+        let close = upper
+            .find(')')
+            .ok_or_else(|| DbError::Parse("missing ')' for FLOAT".into()))?;
+        let rest = &trimmed[close + 1..];
+        return Ok((DataTypeSpec::Float, rest));
+    }
+
     let simple_types: &[(&str, DataTypeSpec)] = &[
         ("BIT", DataTypeSpec::Bit),
         ("TINYINT", DataTypeSpec::TinyInt),
         ("SMALLINT", DataTypeSpec::SmallInt),
         ("INT", DataTypeSpec::Int),
         ("BIGINT", DataTypeSpec::BigInt),
+        ("FLOAT", DataTypeSpec::Float),
+        ("REAL", DataTypeSpec::Float),
+        ("MONEY", DataTypeSpec::Money),
+        ("SMALLMONEY", DataTypeSpec::SmallMoney),
         ("DATE", DataTypeSpec::Date),
         ("TIME", DataTypeSpec::Time),
         ("DATETIME", DataTypeSpec::DateTime),
@@ -120,6 +134,8 @@ fn parse_type_from_declare(input: &str) -> Result<(DataTypeSpec, &str), DbError>
         ("SQL_VARIANT", DataTypeSpec::SqlVariant),
         ("VARCHAR", DataTypeSpec::VarChar(8000)),
         ("NVARCHAR", DataTypeSpec::NVarChar(4000)),
+        ("BINARY", DataTypeSpec::Binary(1)),
+        ("VARBINARY", DataTypeSpec::VarBinary(8000)),
         ("DECIMAL", DataTypeSpec::Decimal(18, 0)),
     ];
 

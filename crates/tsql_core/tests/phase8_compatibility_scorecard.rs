@@ -521,7 +521,7 @@ fn test_phase8_feature_coverage() {
 /// Test JSON function coverage
 #[test]
 fn test_phase8_json_coverage() {
-    let engine = Engine::new();
+    let _engine = Engine::new();
 
     let tests = vec![
         ("SELECT JSON_VALUE('{\"a\":1}', '$.a')", "1"),
@@ -545,7 +545,7 @@ fn test_phase8_json_coverage() {
 /// Test regex function coverage
 #[test]
 fn test_phase8_regex_coverage() {
-    let engine = Engine::new();
+    let _engine = Engine::new();
 
     let tests = vec![
         "SELECT REGEXP_LIKE('hello', 'ell')",
@@ -564,7 +564,7 @@ fn test_phase8_regex_coverage() {
 /// Test fuzzy matching coverage
 #[test]
 fn test_phase8_fuzzy_coverage() {
-    let engine = Engine::new();
+    let _engine = Engine::new();
 
     let tests = vec![
         "SELECT EDIT_DISTANCE('kitten', 'sitting')",

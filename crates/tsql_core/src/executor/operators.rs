@@ -4,7 +4,7 @@ use crate::ast::{BinaryOp, UnaryOp};
 use crate::error::DbError;
 use crate::types::Value;
 
-use super::value_helpers::{is_string_type, rescale_raw, to_decimal_parts, to_i64};
+use super::value_helpers::{is_string_type, rescale_raw, to_decimal_parts, to_i64, value_to_f64};
 use super::value_ops::{compare_values, truthy};
 
 pub(crate) fn eval_binary(op: &BinaryOp, lv: Value, rv: Value, ansi_nulls: bool) -> Result<Value, DbError> {
@@ -39,7 +39,10 @@ pub(crate) fn eval_unary(op: &UnaryOp, val: Value) -> Result<Value, DbError> {
             Value::SmallInt(v) => Ok(Value::SmallInt(-v)),
             Value::Int(v) => Ok(Value::Int(-v)),
             Value::BigInt(v) => Ok(Value::BigInt(-v)),
+            Value::Float(v) => Ok(Value::Float((-f64::from_bits(v)).to_bits())),
             Value::Decimal(raw, scale) => Ok(Value::Decimal(-raw, scale)),
+            Value::Money(v) => Ok(Value::Money(-v)),
+            Value::SmallMoney(v) => Ok(Value::SmallMoney(-v)),
             _ => Err(DbError::Execution(format!(
                 "cannot negate value of type {:?}",
                 val.data_type()
@@ -57,6 +60,16 @@ fn eval_add(lv: Value, rv: Value) -> Result<Value, DbError> {
         let ls = lv.to_string_value();
         let rs = rv.to_string_value();
         return Ok(Value::VarChar(format!("{}{}", ls, rs)));
+    }
+    if is_float_type(&lv) || is_float_type(&rv) {
+        let a = value_to_f64(&lv)?;
+        let b = value_to_f64(&rv)?;
+        return Ok(Value::Float((a + b).to_bits()));
+    }
+    if is_money_type(&lv) || is_money_type(&rv) {
+        let a = extract_money_as_i128(&lv);
+        let b = extract_money_as_i128(&rv);
+        return Ok(Value::Money(a + b));
     }
     match (&lv, &rv) {
         (Value::Decimal(_, _), _) | (_, Value::Decimal(_, _)) => {
@@ -79,6 +92,16 @@ fn eval_subtract(lv: Value, rv: Value) -> Result<Value, DbError> {
     if lv.is_null() || rv.is_null() {
         return Ok(Value::Null);
     }
+    if is_float_type(&lv) || is_float_type(&rv) {
+        let a = value_to_f64(&lv)?;
+        let b = value_to_f64(&rv)?;
+        return Ok(Value::Float((a - b).to_bits()));
+    }
+    if is_money_type(&lv) || is_money_type(&rv) {
+        let a = extract_money_as_i128(&lv);
+        let b = extract_money_as_i128(&rv);
+        return Ok(Value::Money(a - b));
+    }
     match (&lv, &rv) {
         (Value::Decimal(_, _), _) | (_, Value::Decimal(_, _)) => {
             let (ar, as_) = to_decimal_parts(&lv);
@@ -100,6 +123,16 @@ fn eval_multiply(lv: Value, rv: Value) -> Result<Value, DbError> {
     if lv.is_null() || rv.is_null() {
         return Ok(Value::Null);
     }
+    if is_float_type(&lv) || is_float_type(&rv) {
+        let a = value_to_f64(&lv)?;
+        let b = value_to_f64(&rv)?;
+        return Ok(Value::Float((a * b).to_bits()));
+    }
+    if is_money_type(&lv) || is_money_type(&rv) {
+        let a = extract_money_as_i128(&lv);
+        let b = extract_money_as_i128(&rv);
+        return Ok(Value::Money((a * b) / 10000));
+    }
     match (&lv, &rv) {
         (Value::Decimal(_, _), _) | (_, Value::Decimal(_, _)) => {
             let (ar, as_) = to_decimal_parts(&lv);
@@ -118,6 +151,22 @@ fn eval_multiply(lv: Value, rv: Value) -> Result<Value, DbError> {
 fn eval_divide(lv: Value, rv: Value) -> Result<Value, DbError> {
     if lv.is_null() || rv.is_null() {
         return Ok(Value::Null);
+    }
+    if is_float_type(&lv) || is_float_type(&rv) {
+        let a = value_to_f64(&lv)?;
+        let b = value_to_f64(&rv)?;
+        if b == 0.0 {
+            return Ok(Value::Null);
+        }
+        return Ok(Value::Float((a / b).to_bits()));
+    }
+    if is_money_type(&lv) || is_money_type(&rv) {
+        let a = extract_money_as_i128(&lv);
+        let b = extract_money_as_i128(&rv);
+        if b == 0 {
+            return Ok(Value::Null);
+        }
+        return Ok(Value::Money(a * 10000 / b));
     }
     match (&lv, &rv) {
         (Value::Decimal(_, _), _) | (_, Value::Decimal(_, _)) => {
@@ -191,4 +240,28 @@ where
         }
     }
     Value::Bit(pred(compare_values(&lv, &rv)))
+}
+
+fn is_float_type(v: &Value) -> bool {
+    matches!(v, Value::Float(_))
+}
+
+fn is_money_type(v: &Value) -> bool {
+    matches!(v, Value::Money(_) | Value::SmallMoney(_))
+}
+
+fn extract_money_as_i128(v: &Value) -> i128 {
+    match v {
+        Value::Money(r) => *r,
+        Value::SmallMoney(r) => *r as i128,
+        Value::Int(v) => *v as i128 * 10000,
+        Value::BigInt(v) => *v as i128 * 10000,
+        Value::TinyInt(v) => *v as i128 * 10000,
+        Value::SmallInt(v) => *v as i128 * 10000,
+        Value::Decimal(raw, scale) => {
+            super::value_helpers::rescale_raw(*raw, *scale, 4)
+        }
+        Value::Float(v) => (f64::from_bits(*v) * 10000.0) as i128,
+        _ => 0,
+    }
 }

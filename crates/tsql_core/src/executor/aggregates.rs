@@ -89,16 +89,31 @@ pub fn eval_aggregate_sum(
         .ok_or_else(|| DbError::Execution("SUM requires 1 argument".into()))?;
     let mut sum_i64: i64 = 0;
     let mut sum_f64: f64 = 0.0;
+    let mut sum_i128: i128 = 0;
     let mut has_values = false;
     let mut is_decimal = false;
+    let mut is_float = false;
+    let mut is_money = false;
 
     for val in collect_group_values(expr, group, ctx, catalog, storage, clock) {
         has_values = true;
         match &val {
+            Value::Float(v) => {
+                is_float = true;
+                sum_f64 += f64::from_bits(*v);
+            }
             Value::Decimal(raw, scale) => {
                 is_decimal = true;
                 let divisor = 10i128.pow(*scale as u32);
                 sum_f64 += (*raw as f64) / (divisor as f64);
+            }
+            Value::Money(v) => {
+                is_money = true;
+                sum_i128 += *v;
+            }
+            Value::SmallMoney(v) => {
+                is_money = true;
+                sum_i128 += *v as i128;
             }
             Value::TinyInt(v) => sum_i64 += *v as i64,
             Value::SmallInt(v) => sum_i64 += *v as i64,
@@ -112,7 +127,11 @@ pub fn eval_aggregate_sum(
         return Ok(Value::Null);
     }
 
-    if is_decimal {
+    if is_float {
+        Ok(Value::Float(sum_f64.to_bits()))
+    } else if is_money {
+        Ok(Value::Money(sum_i128))
+    } else if is_decimal {
         Ok(Value::Decimal((sum_f64 * 100.0) as i128, 2))
     } else {
         Ok(Value::BigInt(sum_i64))
@@ -131,6 +150,32 @@ pub fn eval_aggregate_avg(
     if values.is_empty() {
         return Ok(Value::Null);
     }
+    let first_val = &values[0];
+    let is_float = matches!(first_val, Value::Float(_));
+    let is_money = matches!(first_val, Value::Money(_) | Value::SmallMoney(_));
+
+    if is_float {
+        let mut sum_f64 = 0.0;
+        for val in &values {
+            if let Value::Float(v) = val {
+                sum_f64 += f64::from_bits(*v);
+            }
+        }
+        return Ok(Value::Float((sum_f64 / values.len() as f64).to_bits()));
+    }
+
+    if is_money {
+        let mut sum_i128: i128 = 0;
+        for val in &values {
+            match val {
+                Value::Money(v) => sum_i128 += *v,
+                Value::SmallMoney(v) => sum_i128 += *v as i128,
+                _ => {}
+            }
+        }
+        return Ok(Value::Money(sum_i128 / values.len() as i128));
+    }
+
     let sum = eval_aggregate_sum(args, group, ctx, catalog, storage, clock)?;
     match sum {
         Value::BigInt(v) => {

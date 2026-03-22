@@ -795,17 +795,19 @@ fn enforce_string_length(
     let max_len = match data_type {
         DataType::Char { len } | DataType::NChar { len } => Some(*len as usize),
         DataType::VarChar { max_len } | DataType::NVarChar { max_len } => Some(*max_len as usize),
+        DataType::Binary { len } | DataType::VarBinary { max_len: len } => Some(*len as usize),
         _ => None,
     };
 
     if let Some(max) = max_len {
-        let s = match value {
+        let actual_len = match value {
             Value::Char(s) | Value::VarChar(s) | Value::NChar(s) | Value::NVarChar(s) => {
                 Some(s.len())
             }
+            Value::Binary(v) | Value::VarBinary(v) => Some(v.len()),
             _ => None,
         };
-        if let Some(actual_len) = s {
+        if let Some(actual_len) = actual_len {
             if actual_len > max {
                 return Err(DbError::Execution(format!(
                     "String or binary data would be truncated for column '{}'",

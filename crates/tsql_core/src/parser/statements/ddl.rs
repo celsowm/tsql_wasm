@@ -428,6 +428,10 @@ pub(crate) fn parse_data_type(input: &str) -> Result<DataTypeSpec, DbError> {
         "SMALLINT" => Ok(DataTypeSpec::SmallInt),
         "INT" => Ok(DataTypeSpec::Int),
         "BIGINT" => Ok(DataTypeSpec::BigInt),
+        "FLOAT" => Ok(DataTypeSpec::Float),
+        "REAL" => Ok(DataTypeSpec::Float),
+        "MONEY" => Ok(DataTypeSpec::Money),
+        "SMALLMONEY" => Ok(DataTypeSpec::SmallMoney),
         "DATE" => Ok(DataTypeSpec::Date),
         "TIME" => Ok(DataTypeSpec::Time),
         "DATETIME" => Ok(DataTypeSpec::DateTime),
@@ -435,6 +439,8 @@ pub(crate) fn parse_data_type(input: &str) -> Result<DataTypeSpec, DbError> {
         "UNIQUEIDENTIFIER" => Ok(DataTypeSpec::UniqueIdentifier),
         "SQL_VARIANT" => Ok(DataTypeSpec::SqlVariant),
         "DECIMAL" | "NUMERIC" => Ok(DataTypeSpec::Decimal(18, 0)),
+        "BINARY" => Ok(DataTypeSpec::Binary(1)),
+        "VARBINARY" => Ok(DataTypeSpec::VarBinary(8000)),
         _ => parse_parameterized_data_type(&upper),
     }
 }
@@ -469,6 +475,20 @@ fn parse_parameterized_data_type(upper: &str) -> Result<DataTypeSpec, DbError> {
     if (upper.starts_with("DECIMAL(") || upper.starts_with("NUMERIC(")) && upper.ends_with(')') {
         let (p, s) = parse_decimal_params(upper)?;
         return Ok(DataTypeSpec::Decimal(p, s));
+    }
+
+    if (upper.starts_with("FLOAT(")) && upper.ends_with(')') {
+        return Ok(DataTypeSpec::Float);
+    }
+
+    if (upper.starts_with("BINARY(")) && upper.ends_with(')') {
+        let n = parse_parameterized_type("BINARY(", upper)?;
+        return Ok(DataTypeSpec::Binary(n));
+    }
+
+    if (upper.starts_with("VARBINARY(")) && upper.ends_with(')') {
+        let n = parse_parameterized_type("VARBINARY(", upper)?;
+        return Ok(DataTypeSpec::VarBinary(n));
     }
 
     let prefixes: &[(&str, DataTypeParser)] = &[
