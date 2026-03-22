@@ -8,20 +8,21 @@ This document captures the currently modeled multi-session transaction outcomes 
 |---|---|---|---|---|---|
 | READ UNCOMMITTED | Blocked in current model | Allowed | Allowed | Allowed | Allowed |
 | READ COMMITTED | Blocked in current model | Allowed | Allowed | Allowed | Allowed |
-| REPEATABLE READ | Blocked | Blocked | Blocked | Commit conflict on overlapping write sets | Model-dependent (can conflict by schedule) |
-| SERIALIZABLE | Blocked | Blocked | Blocked | Commit conflict on overlapping write sets | Model-dependent (can conflict by schedule) |
-| SNAPSHOT | Blocked | Blocked | Blocked | Commit conflict on overlapping write sets | Model-dependent (can conflict by schedule) |
+| REPEATABLE READ | Blocked | Blocked (read lock + no-wait write conflict) | Blocked (read lock + no-wait write conflict) | Blocked (write lock no-wait) | Blocked at table-lock granularity (no-wait) |
+| SERIALIZABLE | Blocked | Blocked (read lock + no-wait write conflict) | Blocked (read lock + no-wait write conflict) | Blocked (write lock no-wait) | Blocked at table-lock granularity (no-wait) |
+| SNAPSHOT | Blocked | Blocked (read lock + no-wait write conflict) | Blocked (read lock + no-wait write conflict) | Blocked (write lock no-wait) | Blocked at table-lock granularity (no-wait) |
 
 ## Commit Conflict Matrix (Modeled)
 
 | Conflict shape | RU | RC | RR | SER | SNAPSHOT |
 |---|---|---|---|---|---|
-| WW (same table) | Allow last committer | Allow last committer | Conflict (late committer) | Conflict (late committer) | Conflict (late committer) |
-| RW then W on same table | Allow | Allow | Conflict (table changed since snapshot) | Conflict (table changed since snapshot) | Conflict when writer overlaps changed table |
-| Predicate-read then concurrent insert | Allow | Allow | May conflict by commit order | May conflict by commit order | May conflict by commit order |
+| WW (same table) | Immediate lock conflict (no-wait) | Immediate lock conflict (no-wait) | Immediate lock conflict (no-wait) | Immediate lock conflict (no-wait) | Immediate lock conflict (no-wait) |
+| RW then W on same table | Allow | Allow | Immediate lock conflict (no-wait) | Immediate lock conflict (no-wait) | Immediate lock conflict (no-wait) |
+| Predicate-read then concurrent insert | Allow | Allow | Immediate lock conflict (no-wait) | Immediate lock conflict (no-wait) | Immediate lock conflict (no-wait) |
 
 ## Notes
 
 - Conflict handling is deterministic and immediate: no lock-wait simulation.
+- Locking is table-level and no-wait in this R5 model.
 - RU dirty reads are intentionally blocked in the current implementation because reads only observe committed shared state.
-- Write skew behavior is currently table-version based and may differ from SQL Server row/predicate-lock semantics.
+- Write skew remains table-level (not row/predicate-lock equivalent to SQL Server).

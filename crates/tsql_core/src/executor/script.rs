@@ -230,6 +230,9 @@ impl<'a> ScriptExecutor<'a> {
                 }
                 Ok(None)
             }
+            Statement::SetOption(_) => Err(DbError::Execution(
+                "SET option statements are handled at engine level".into(),
+            )),
             Statement::If(stmt) => {
                 let cond = super::evaluator::eval_expr(
                     &stmt.condition,

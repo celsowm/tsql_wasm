@@ -56,7 +56,7 @@ A release can be considered “close” when it supports most day-to-day T-SQL u
 | R2 | Relational completeness | Joins, grouping, aggregates, subqueries, set operations | ✅ Complete (planner pending) |
 | R3 | SQL Server semantics | Types, conversion rules, identity/defaults, metadata, errors | ✅ MVP complete |
 | R4 | Programmability | Variables, batches, procedures/functions subset, flow control | ✅ Complete (subset) |
-| R5 | Transaction fidelity | Isolation behavior, snapshot/versioning, recovery model subset | 🚧 In progress |
+| R5 | Transaction fidelity | Isolation behavior, snapshot/versioning, recovery model subset | ✅ Complete (modeled) |
 | R6 | Tooling compatibility | Catalog views, information schema, explainability, migration friendliness | ❌ Not started |
 | R7 | Modern language parity | JSON, regex, fuzzy matching, vector primitives, selected preview features | ❌ Not started |
 | R8 | Hardening | Differential suite scale-up, perf work, compatibility scorecard | ❌ Not started |
@@ -726,6 +726,56 @@ This roadmap intentionally targets the broad T-SQL reference surface, including 
 ---
 
 ## Implementation Log
+
+### 2026-03-22 — Session 6: R5 completion (locking + recovery surface)
+
+#### R5 — Transaction Fidelity ✅ Complete (modeled)
+
+**Delivered in this session:**
+
+1. **Deterministic table-lock no-wait enforcement**
+   - Added shared table-lock ownership tracking across sessions.
+   - Added immediate lock-conflict errors (no wait queue simulation).
+   - Added isolation-aware read lock policy:
+     - RU/RC: no read-lock acquisition for read-only statements.
+     - RR/SERIALIZABLE/SNAPSHOT: read locks for read-only statements.
+   - DML/DDL now acquires write locks consistently.
+
+2. **Savepoint-aware lock release**
+   - Added savepoint-depth tracking for lock acquisitions.
+   - `ROLLBACK TRANSACTION <savepoint>` releases locks acquired after that savepoint.
+   - Full `COMMIT` / `ROLLBACK` releases all transaction locks.
+
+3. **Recovery checkpoint durability abstraction**
+   - Added `DurabilitySink` and `RecoveryCheckpoint`.
+   - Added default `NoopDurability` and test utility `InMemoryDurability`.
+   - Added commit-time checkpoint persistence for:
+     - autocommit writes
+     - explicit transaction `COMMIT`
+   - Uncommitted workspace state remains excluded from persisted checkpoints.
+
+4. **Public recovery APIs (core + WASM + TS client)**
+   - `tsql_core`:
+     - `Database::new_with_durability(...)`
+     - checkpoint export/import and checkpoint bootstrap constructors
+     - `Engine` passthrough methods for durability and checkpoint operations
+   - `WasmDb`:
+     - `export_checkpoint()`
+     - `import_checkpoint(payload)`
+   - `packages/client`:
+     - `TsqlDatabase.exportCheckpoint()`
+     - `TsqlDatabase.importCheckpoint(...)`
+     - `TsqlDatabase.fromCheckpoint(...)`
+
+5. **Validation and docs updates**
+   - Updated phase-5 concurrency matrix tests for no-wait lock behavior.
+   - Added `phase5_locking_recovery.rs` tests:
+     - savepoint lock release
+     - checkpoint roundtrip
+     - exclusion of uncommitted workspace data
+     - savepoint rollback + commit persistence
+   - Added client integration checkpoint roundtrip test.
+   - Updated `docs/mvcc_conflict_matrix.md` for lock-driven outcomes.
 
 ### 2026-03-22 — Session 5: R5 multi-session + MVCC matrix baseline
 

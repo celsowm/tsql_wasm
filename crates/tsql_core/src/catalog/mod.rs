@@ -2,14 +2,15 @@ use crate::ast::Expr;
 use crate::ast::{DataTypeSpec, FunctionBody, RoutineParam, Statement};
 use crate::error::DbError;
 use crate::types::DataType;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SchemaDef {
     pub id: u32,
     pub name: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IdentityDef {
     pub seed: i64,
     pub increment: i64,
@@ -32,7 +33,7 @@ impl IdentityDef {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColumnDef {
     pub id: u32,
     pub name: String,
@@ -48,13 +49,13 @@ pub struct ColumnDef {
     pub computed_expr: Option<Expr>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CheckConstraintDef {
     pub name: String,
     pub expr: Expr,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexDef {
     pub id: u32,
     pub schema_id: u32,
@@ -65,7 +66,7 @@ pub struct IndexDef {
     pub is_clustered: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TableDef {
     pub id: u32,
     pub schema_id: u32,
@@ -74,7 +75,7 @@ pub struct TableDef {
     pub check_constraints: Vec<CheckConstraintDef>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RoutineKind {
     Procedure {
         body: Vec<Statement>,
@@ -85,7 +86,7 @@ pub enum RoutineKind {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoutineDef {
     pub schema: String,
     pub name: String,
@@ -97,6 +98,7 @@ pub trait Catalog: std::fmt::Debug + Send + Sync {
     fn get_schemas(&self) -> &[SchemaDef];
     fn get_tables(&self) -> &[TableDef];
     fn get_indexes(&self) -> &[IndexDef];
+    fn get_routines(&self) -> &[RoutineDef];
     fn get_tables_mut(&mut self) -> &mut Vec<TableDef>;
     fn get_indexes_mut(&mut self) -> &mut Vec<IndexDef>;
     fn alloc_table_id(&mut self) -> u32;
@@ -135,7 +137,7 @@ pub trait Catalog: std::fmt::Debug + Send + Sync {
     fn find_routine(&self, schema: &str, name: &str) -> Option<&RoutineDef>;
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct CatalogImpl {
     pub schemas: Vec<SchemaDef>,
     pub tables: Vec<TableDef>,
@@ -182,6 +184,10 @@ impl Catalog for CatalogImpl {
 
     fn get_indexes(&self) -> &[IndexDef] {
         &self.indexes
+    }
+
+    fn get_routines(&self) -> &[RoutineDef] {
+        &self.routines
     }
 
     fn get_tables_mut(&mut self) -> &mut Vec<TableDef> {
@@ -455,3 +461,4 @@ impl Catalog for CatalogImpl {
             .find(|r| r.schema.eq_ignore_ascii_case(schema) && r.name.eq_ignore_ascii_case(name))
     }
 }
+

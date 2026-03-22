@@ -145,6 +145,12 @@ fn parse_type_from_declare(input: &str) -> Result<(DataTypeSpec, &str), DbError>
 
 pub(crate) fn parse_set(sql: &str) -> Result<Statement, DbError> {
     let after_set = sql["SET".len()..].trim();
+    let upper = after_set.to_uppercase();
+
+    if !after_set.contains('=') {
+        return parse_set_option(after_set, &upper);
+    }
+
     let eq_pos = after_set
         .find('=')
         .ok_or_else(|| DbError::Parse("SET requires '=' assignment".into()))?;
@@ -156,6 +162,78 @@ pub(crate) fn parse_set(sql: &str) -> Result<Statement, DbError> {
     Ok(Statement::Set(SetStmt {
         name: var_name,
         expr,
+    }))
+}
+
+fn parse_set_option(raw: &str, upper: &str) -> Result<Statement, DbError> {
+    let mut split = raw.split_whitespace();
+    let opt = split
+        .next()
+        .ok_or_else(|| DbError::Parse("SET requires option name".into()))?;
+    let rest = raw[opt.len()..].trim();
+    let opt_upper = opt.to_uppercase();
+
+    let stmt = match opt_upper.as_str() {
+        "ANSI_NULLS" => parse_set_bool_option(crate::ast::SessionOption::AnsiNulls, rest)?,
+        "QUOTED_IDENTIFIER" => {
+            parse_set_bool_option(crate::ast::SessionOption::QuotedIdentifier, rest)?
+        }
+        "NOCOUNT" => parse_set_bool_option(crate::ast::SessionOption::NoCount, rest)?,
+        "XACT_ABORT" => parse_set_bool_option(crate::ast::SessionOption::XactAbort, rest)?,
+        "DATEFIRST" => {
+            if rest.is_empty() {
+                return Err(DbError::Parse("SET DATEFIRST requires a value".into()));
+            }
+            let n = rest
+                .parse::<i32>()
+                .map_err(|_| DbError::Parse("SET DATEFIRST requires numeric value".into()))?;
+            Statement::SetOption(crate::ast::SetOptionStmt {
+                option: crate::ast::SessionOption::DateFirst,
+                value: crate::ast::SessionOptionValue::Int(n),
+            })
+        }
+        "LANGUAGE" => {
+            if rest.is_empty() {
+                return Err(DbError::Parse("SET LANGUAGE requires a value".into()));
+            }
+            Statement::SetOption(crate::ast::SetOptionStmt {
+                option: crate::ast::SessionOption::Language,
+                value: crate::ast::SessionOptionValue::Text(rest.to_string()),
+            })
+        }
+        _ => {
+            return Err(DbError::Parse(format!(
+                "unsupported SET option '{}'",
+                upper.split_whitespace().next().unwrap_or_default()
+            )))
+        }
+    };
+    Ok(stmt)
+}
+
+fn parse_set_bool_option(option: crate::ast::SessionOption, rest: &str) -> Result<Statement, DbError> {
+    let value = rest.to_uppercase();
+    let on = match value.as_str() {
+        "ON" => true,
+        "OFF" => false,
+        _ => {
+            let name = match option {
+                crate::ast::SessionOption::AnsiNulls => "ANSI_NULLS",
+                crate::ast::SessionOption::QuotedIdentifier => "QUOTED_IDENTIFIER",
+                crate::ast::SessionOption::NoCount => "NOCOUNT",
+                crate::ast::SessionOption::XactAbort => "XACT_ABORT",
+                crate::ast::SessionOption::DateFirst => "DATEFIRST",
+                crate::ast::SessionOption::Language => "LANGUAGE",
+            };
+            return Err(DbError::Parse(format!(
+                "SET {} expects ON|OFF",
+                name
+            )))
+        }
+    };
+    Ok(Statement::SetOption(crate::ast::SetOptionStmt {
+        option,
+        value: crate::ast::SessionOptionValue::Bool(on),
     }))
 }
 

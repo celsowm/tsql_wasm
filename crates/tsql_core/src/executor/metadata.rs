@@ -179,6 +179,70 @@ fn resolve_sys_table(name: &str, catalog: &dyn Catalog) -> Option<(TableDef, Vec
         return Some((table, rows));
     }
 
+    if name.eq_ignore_ascii_case("check_constraints") {
+        let table = virtual_table_def(
+            "check_constraints",
+            vec![
+                ("object_id", DataType::Int, false),
+                ("parent_object_id", DataType::Int, false),
+                ("name", DataType::VarChar { max_len: 128 }, false),
+            ],
+        );
+        let mut rows = Vec::new();
+        let mut object_id = 1_000_000i32;
+        for t in catalog.get_tables() {
+            for chk in &t.check_constraints {
+                rows.push(StoredRow {
+                    values: vec![
+                        Value::Int(object_id),
+                        Value::Int(t.id as i32),
+                        Value::VarChar(chk.name.clone()),
+                    ],
+                    deleted: false,
+                });
+                object_id += 1;
+            }
+        }
+        return Some((table, rows));
+    }
+
+    if name.eq_ignore_ascii_case("routines") {
+        let table = virtual_table_def(
+            "routines",
+            vec![
+                ("object_id", DataType::Int, false),
+                ("schema_id", DataType::Int, false),
+                ("name", DataType::VarChar { max_len: 128 }, false),
+                ("type", DataType::Char { len: 2 }, false),
+                ("type_desc", DataType::VarChar { max_len: 60 }, false),
+            ],
+        );
+        let mut rows = Vec::new();
+        for r in catalog.get_routines() {
+            let schema_id = catalog.get_schema_id(&r.schema).unwrap_or(1);
+            let object_id = catalog.object_id(&r.schema, &r.name).unwrap_or(-1);
+            let (ty, desc) = match &r.kind {
+                crate::catalog::RoutineKind::Procedure { .. } => {
+                    ("P ".to_string(), "SQL_STORED_PROCEDURE".to_string())
+                }
+                crate::catalog::RoutineKind::Function { .. } => {
+                    ("FN".to_string(), "SQL_SCALAR_FUNCTION".to_string())
+                }
+            };
+            rows.push(StoredRow {
+                values: vec![
+                    Value::Int(object_id),
+                    Value::Int(schema_id as i32),
+                    Value::VarChar(r.name.clone()),
+                    Value::Char(ty),
+                    Value::VarChar(desc),
+                ],
+                deleted: false,
+            });
+        }
+        return Some((table, rows));
+    }
+
     None
 }
 
@@ -236,6 +300,77 @@ fn resolve_information_schema_table(
                     ],
                     deleted: false,
                 });
+            }
+        }
+        return Some((table, rows));
+    }
+
+    if name.eq_ignore_ascii_case("ROUTINES") {
+        let table = virtual_table_def(
+            "ROUTINES",
+            vec![
+                ("ROUTINE_SCHEMA", DataType::VarChar { max_len: 128 }, false),
+                ("ROUTINE_NAME", DataType::VarChar { max_len: 128 }, false),
+                ("ROUTINE_TYPE", DataType::VarChar { max_len: 16 }, false),
+            ],
+        );
+        let rows = catalog
+            .get_routines()
+            .iter()
+            .map(|r| {
+                let kind = match &r.kind {
+                    crate::catalog::RoutineKind::Procedure { .. } => "PROCEDURE",
+                    crate::catalog::RoutineKind::Function { .. } => "FUNCTION",
+                };
+                StoredRow {
+                    values: vec![
+                        Value::VarChar(r.schema.clone()),
+                        Value::VarChar(r.name.clone()),
+                        Value::VarChar(kind.to_string()),
+                    ],
+                    deleted: false,
+                }
+            })
+            .collect();
+        return Some((table, rows));
+    }
+
+    if name.eq_ignore_ascii_case("TABLE_CONSTRAINTS") {
+        let table = virtual_table_def(
+            "TABLE_CONSTRAINTS",
+            vec![
+                ("TABLE_SCHEMA", DataType::VarChar { max_len: 128 }, false),
+                ("TABLE_NAME", DataType::VarChar { max_len: 128 }, false),
+                ("CONSTRAINT_NAME", DataType::VarChar { max_len: 128 }, false),
+                ("CONSTRAINT_TYPE", DataType::VarChar { max_len: 16 }, false),
+            ],
+        );
+        let mut rows = Vec::new();
+        for t in catalog.get_tables() {
+            let schema = schema_name_by_id(catalog, t.schema_id);
+            for chk in &t.check_constraints {
+                rows.push(StoredRow {
+                    values: vec![
+                        Value::VarChar(schema.clone()),
+                        Value::VarChar(t.name.clone()),
+                        Value::VarChar(chk.name.clone()),
+                        Value::VarChar("CHECK".to_string()),
+                    ],
+                    deleted: false,
+                });
+            }
+            for col in &t.columns {
+                if let Some(name) = &col.default_constraint_name {
+                    rows.push(StoredRow {
+                        values: vec![
+                            Value::VarChar(schema.clone()),
+                            Value::VarChar(t.name.clone()),
+                            Value::VarChar(name.clone()),
+                            Value::VarChar("DEFAULT".to_string()),
+                        ],
+                        deleted: false,
+                    });
+                }
             }
         }
         return Some((table, rows));

@@ -356,6 +356,10 @@ const result = await db.query(`
 
 // result.columns = ["Name", "Status"]
 // result.rows    = [["Alice", "Active"]]
+
+const checkpoint = await db.exportCheckpoint();
+const restored = await TsqlDatabase.fromCheckpoint(checkpoint);
+const restoredRows = await restored.query(`SELECT COUNT(*) FROM dbo.Users`);
 ```
 
 ---
@@ -379,6 +383,7 @@ Core and integration tests covering:
 - `EXEC` and `sp_executesql` subset with OUTPUT parameters
 - Identity scope functions (`SCOPE_IDENTITY()`, `@@IDENTITY`, `IDENT_CURRENT`)
 - Multi-session transactions and isolation anomaly simulations
+- Checkpoint export/import recovery surface (`tsql_core`, WASM, TS client)
 - MVCC-style deterministic commit conflict matrix scenarios
 - All built-in functions
 - Type coercion and NULL semantics
@@ -388,9 +393,9 @@ Core and integration tests covering:
 
 ## Current Limitations
 
-- In-memory only (no persistence)
+- No on-disk WAL/page persistence (current recovery model is checkpoint export/import for embedded runtimes)
 - Indexes are catalog-only in this phase (planner still uses table scans)
-- Transaction fidelity is still partial vs SQL Server edge cases (see roadmap matrix)
+- Transaction fidelity is modeled and still partial vs SQL Server edge cases (see roadmap matrix)
 - Catalog coverage is still a subset of SQL Server metadata
 
 See [`docs/roadmap.md`](docs/roadmap.md) for the full compatibility roadmap.

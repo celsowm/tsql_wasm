@@ -1,4 +1,5 @@
-#[derive(Debug, Clone)]
+use serde::{Deserialize, Serialize};
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObjectName {
     pub schema: Option<String>,
     pub name: String,
@@ -10,13 +11,13 @@ impl ObjectName {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TableRef {
     pub name: ObjectName,
     pub alias: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Statement {
     BeginTransaction(Option<String>),
     CommitTransaction,
@@ -39,6 +40,7 @@ pub enum Statement {
     WithCte(WithCteStmt),
     Declare(DeclareStmt),
     Set(SetStmt),
+    SetOption(SetOptionStmt),
     If(IfStmt),
     BeginEnd(Vec<Statement>),
     While(WhileStmt),
@@ -56,7 +58,7 @@ pub enum Statement {
     DropFunction(DropFunctionStmt),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IsolationLevel {
     ReadUncommitted,
     ReadCommitted,
@@ -65,64 +67,87 @@ pub enum IsolationLevel {
     Snapshot,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeclareStmt {
     pub name: String,
     pub data_type: DataTypeSpec,
     pub default: Option<Expr>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetStmt {
     pub name: String,
     pub expr: Expr,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetOptionStmt {
+    pub option: SessionOption,
+    pub value: SessionOptionValue,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SessionOption {
+    AnsiNulls,
+    QuotedIdentifier,
+    NoCount,
+    XactAbort,
+    DateFirst,
+    Language,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SessionOptionValue {
+    Bool(bool),
+    Int(i32),
+    Text(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IfStmt {
     pub condition: Expr,
     pub then_body: Vec<Statement>,
     pub else_body: Option<Vec<Statement>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WhileStmt {
     pub condition: Expr,
     pub body: Vec<Statement>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecStmt {
     pub sql_expr: Expr,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecArgument {
     pub name: Option<String>,
     pub expr: Expr,
     pub is_output: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecProcedureStmt {
     pub name: ObjectName,
     pub args: Vec<ExecArgument>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpExecuteSqlStmt {
     pub sql_expr: Expr,
     pub params_def: Option<Expr>,
     pub args: Vec<ExecArgument>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelectAssignTarget {
     pub variable: String,
     pub expr: Expr,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelectAssignStmt {
     pub targets: Vec<SelectAssignTarget>,
     pub from: Option<TableRef>,
@@ -130,14 +155,14 @@ pub struct SelectAssignStmt {
     pub selection: Option<Expr>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeclareTableVarStmt {
     pub name: String,
     pub columns: Vec<ColumnSpec>,
     pub table_constraints: Vec<TableConstraintSpec>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoutineParam {
     pub name: String,
     pub data_type: DataTypeSpec,
@@ -145,25 +170,25 @@ pub struct RoutineParam {
     pub default: Option<Expr>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateProcedureStmt {
     pub name: ObjectName,
     pub params: Vec<RoutineParam>,
     pub body: Vec<Statement>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DropProcedureStmt {
     pub name: ObjectName,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FunctionBody {
     ScalarReturn(Expr),
     InlineTable(SelectStmt),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateFunctionStmt {
     pub name: ObjectName,
     pub params: Vec<RoutineParam>,
@@ -171,41 +196,41 @@ pub struct CreateFunctionStmt {
     pub body: FunctionBody,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DropFunctionStmt {
     pub name: ObjectName,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WithCteStmt {
     pub ctes: Vec<CteDef>,
     pub body: Box<Statement>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CteDef {
     pub name: String,
     pub query: SelectStmt,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TruncateTableStmt {
     pub name: ObjectName,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlterTableStmt {
     pub table: ObjectName,
     pub action: AlterTableAction,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AlterTableAction {
     AddColumn(ColumnSpec),
     DropColumn(String),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SetOpKind {
     Union,
     UnionAll,
@@ -213,49 +238,49 @@ pub enum SetOpKind {
     Except,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetOpStmt {
     pub left: Box<Statement>,
     pub op: SetOpKind,
     pub right: Box<Statement>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateTableStmt {
     pub name: ObjectName,
     pub columns: Vec<ColumnSpec>,
     pub table_constraints: Vec<TableConstraintSpec>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DropTableStmt {
     pub name: ObjectName,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateIndexStmt {
     pub name: ObjectName,
     pub table: ObjectName,
     pub columns: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DropIndexStmt {
     pub name: ObjectName,
     pub table: ObjectName,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateSchemaStmt {
     pub name: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DropSchemaStmt {
     pub name: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColumnSpec {
     pub name: String,
     pub data_type: DataTypeSpec,
@@ -270,7 +295,7 @@ pub struct ColumnSpec {
     pub computed_expr: Option<Expr>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TableConstraintSpec {
     Default {
         name: String,
@@ -283,7 +308,7 @@ pub enum TableConstraintSpec {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InsertStmt {
     pub table: ObjectName,
     pub columns: Option<Vec<String>>,
@@ -291,7 +316,7 @@ pub struct InsertStmt {
     pub default_values: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelectStmt {
     pub from: Option<TableRef>,
     pub joins: Vec<JoinClause>,
@@ -304,14 +329,14 @@ pub struct SelectStmt {
     pub order_by: Vec<OrderByExpr>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JoinClause {
     pub join_type: JoinType,
     pub table: TableRef,
     pub on: Expr,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum JoinType {
     Inner,
     Left,
@@ -319,43 +344,43 @@ pub enum JoinType {
     Full,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelectItem {
     pub expr: Expr,
     pub alias: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TopSpec {
     pub value: Expr,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrderByExpr {
     pub expr: Expr,
     pub desc: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateStmt {
     pub table: ObjectName,
     pub assignments: Vec<Assignment>,
     pub selection: Option<Expr>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Assignment {
     pub column: String,
     pub expr: Expr,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeleteStmt {
     pub table: ObjectName,
     pub selection: Option<Expr>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Expr {
     Identifier(String),
     QualifiedIdentifier(Vec<String>),
@@ -422,19 +447,19 @@ pub enum Expr {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WhenClause {
     pub condition: Expr,
     pub result: Expr,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UnaryOp {
     Negate,
     Not,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BinaryOp {
     Eq,
     NotEq,
@@ -451,7 +476,7 @@ pub enum BinaryOp {
     Modulo,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DataTypeSpec {
     Bit,
     TinyInt,
@@ -470,3 +495,4 @@ pub enum DataTypeSpec {
     UniqueIdentifier,
     SqlVariant,
 }
+

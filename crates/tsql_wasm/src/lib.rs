@@ -87,8 +87,43 @@ impl WasmDb {
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
+    pub fn analyze_sql_batch(&self, sql: &str) -> Result<String, JsValue> {
+        serde_json::to_string(&self.inner.analyze_sql_batch(sql))
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    pub fn explain_sql(&self, sql: &str) -> Result<String, JsValue> {
+        let plan = self.inner.explain_sql(sql).map_err(js_err)?;
+        serde_json::to_string(&plan).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    pub fn trace_exec_batch_session(&self, session_id: u64, sql: &str) -> Result<String, JsValue> {
+        let trace = self
+            .inner
+            .trace_execute_session_sql(session_id, sql)
+            .map_err(js_err)?;
+        serde_json::to_string(&trace).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    pub fn trace_exec_batch(&self, sql: &str) -> Result<String, JsValue> {
+        self.trace_exec_batch_session(self.default_session, sql)
+    }
+
+    pub fn session_options(&self, session_id: u64) -> Result<String, JsValue> {
+        let options = self.inner.session_options(session_id).map_err(js_err)?;
+        serde_json::to_string(&options).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
     pub fn reset(&mut self) {
         self.inner.reset();
+    }
+
+    pub fn export_checkpoint(&self) -> Result<String, JsValue> {
+        self.inner.export_checkpoint().map_err(js_err)
+    }
+
+    pub fn import_checkpoint(&mut self, payload: &str) -> Result<(), JsValue> {
+        self.inner.import_checkpoint(payload).map_err(js_err)
     }
 }
 

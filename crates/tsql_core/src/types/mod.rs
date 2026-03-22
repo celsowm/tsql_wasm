@@ -1,6 +1,6 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DataType {
     Bit,
     TinyInt,
@@ -60,7 +60,7 @@ impl DataType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Value {
     Null,
     Bit(bool),
@@ -81,13 +81,13 @@ pub enum Value {
     SqlVariant(Box<Value>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypedValue {
     pub ty: DataType,
     pub value: Value,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Hash)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Hash)]
 #[serde(untagged)]
 pub enum JsonValue {
     Null,
@@ -234,3 +234,4 @@ pub fn type_precedence_join(a: &DataType, b: &DataType) -> DataType {
         b.clone()
     }
 }
+

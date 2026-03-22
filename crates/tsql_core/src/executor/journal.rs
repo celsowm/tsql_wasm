@@ -20,6 +20,9 @@ pub enum JournalEvent {
         kind: WriteKind,
         table: Option<String>,
     },
+    Info {
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

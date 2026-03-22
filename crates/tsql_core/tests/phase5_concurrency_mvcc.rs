@@ -146,14 +146,26 @@ fn test_phase5_multisession_dirty_read_blocked_even_read_uncommitted() {
 #[test]
 fn test_phase5_multisession_nonrepeatable_read_matrix() {
     let levels = [
-        (IsolationLevel::ReadUncommitted, true),
-        (IsolationLevel::ReadCommitted, true),
-        (IsolationLevel::RepeatableRead, false),
-        (IsolationLevel::Serializable, false),
-        (IsolationLevel::Snapshot, false),
+        (IsolationLevel::ReadUncommitted, true, None),
+        (IsolationLevel::ReadCommitted, true, None),
+        (
+            IsolationLevel::RepeatableRead,
+            false,
+            Some("lock conflict (no-wait)"),
+        ),
+        (
+            IsolationLevel::Serializable,
+            false,
+            Some("lock conflict (no-wait)"),
+        ),
+        (
+            IsolationLevel::Snapshot,
+            false,
+            Some("lock conflict (no-wait)"),
+        ),
     ];
 
-    for (level, should_change) in levels {
+    for (level, should_change, update_err) in levels {
         let (db, s1, s2) = new_db_with_sessions();
         setup_single_counter_table(&db, s1);
 
@@ -183,7 +195,7 @@ fn test_phase5_multisession_nonrepeatable_read_matrix() {
                 Step::Exec {
                     sid: s2,
                     sql: "UPDATE t SET v = 20 WHERE id = 1",
-                    expect_err: None,
+                    expect_err: update_err,
                 },
                 Step::Exec {
                     sid: s2,
@@ -208,14 +220,26 @@ fn test_phase5_multisession_nonrepeatable_read_matrix() {
 #[test]
 fn test_phase5_multisession_phantom_read_matrix() {
     let levels = [
-        (IsolationLevel::ReadUncommitted, true),
-        (IsolationLevel::ReadCommitted, true),
-        (IsolationLevel::RepeatableRead, false),
-        (IsolationLevel::Serializable, false),
-        (IsolationLevel::Snapshot, false),
+        (IsolationLevel::ReadUncommitted, true, None),
+        (IsolationLevel::ReadCommitted, true, None),
+        (
+            IsolationLevel::RepeatableRead,
+            false,
+            Some("lock conflict (no-wait)"),
+        ),
+        (
+            IsolationLevel::Serializable,
+            false,
+            Some("lock conflict (no-wait)"),
+        ),
+        (
+            IsolationLevel::Snapshot,
+            false,
+            Some("lock conflict (no-wait)"),
+        ),
     ];
 
-    for (level, should_change) in levels {
+    for (level, should_change, insert_err) in levels {
         let (db, s1, s2) = new_db_with_sessions();
         run_steps(
             &db,
@@ -258,7 +282,7 @@ fn test_phase5_multisession_phantom_read_matrix() {
                 Step::Exec {
                     sid: s2,
                     sql: "INSERT INTO p (id, flag) VALUES (3, 1)",
-                    expect_err: None,
+                    expect_err: insert_err,
                 },
                 Step::Exec {
                     sid: s2,
@@ -283,14 +307,14 @@ fn test_phase5_multisession_phantom_read_matrix() {
 #[test]
 fn test_phase5_mvcc_conflict_matrix_lost_update_and_write_skew() {
     let levels = [
-        (IsolationLevel::ReadUncommitted, false),
-        (IsolationLevel::ReadCommitted, false),
-        (IsolationLevel::RepeatableRead, true),
-        (IsolationLevel::Serializable, true),
-        (IsolationLevel::Snapshot, true),
+        IsolationLevel::ReadUncommitted,
+        IsolationLevel::ReadCommitted,
+        IsolationLevel::RepeatableRead,
+        IsolationLevel::Serializable,
+        IsolationLevel::Snapshot,
     ];
 
-    for (level, expect_conflict) in levels {
+    for level in levels {
         let (db, s1, s2) = new_db_with_sessions();
         setup_single_counter_table(&db, s1);
 
@@ -325,7 +349,7 @@ fn test_phase5_mvcc_conflict_matrix_lost_update_and_write_skew() {
                 Step::Exec {
                     sid: s2,
                     sql: "UPDATE t SET v = 15 WHERE id = 1",
-                    expect_err: None,
+                    expect_err: Some("lock conflict (no-wait)"),
                 },
                 Step::Exec {
                     sid: s2,
@@ -335,11 +359,7 @@ fn test_phase5_mvcc_conflict_matrix_lost_update_and_write_skew() {
                 Step::Exec {
                     sid: s1,
                     sql: "COMMIT",
-                    expect_err: if expect_conflict {
-                        Some("transaction conflict detected during COMMIT")
-                    } else {
-                        None
-                    },
+                    expect_err: None,
                 },
             ],
         );
@@ -349,7 +369,7 @@ fn test_phase5_mvcc_conflict_matrix_lost_update_and_write_skew() {
             &[Step::QueryI64 {
                 sid: s2,
                 sql: "SELECT v FROM t WHERE id = 1",
-                expected: if expect_conflict { 15 } else { 11 },
+                expected: 11,
             }],
         );
     }
@@ -358,14 +378,29 @@ fn test_phase5_mvcc_conflict_matrix_lost_update_and_write_skew() {
 #[test]
 fn test_phase5_mvcc_write_skew_matrix() {
     let levels = [
-        (IsolationLevel::ReadUncommitted, false),
-        (IsolationLevel::ReadCommitted, false),
-        (IsolationLevel::RepeatableRead, false),
-        (IsolationLevel::Serializable, false),
-        (IsolationLevel::Snapshot, false),
+        (IsolationLevel::ReadUncommitted, None, Some("lock conflict (no-wait)"), 1),
+        (IsolationLevel::ReadCommitted, None, Some("lock conflict (no-wait)"), 1),
+        (
+            IsolationLevel::RepeatableRead,
+            Some("lock conflict (no-wait)"),
+            Some("lock conflict (no-wait)"),
+            2,
+        ),
+        (
+            IsolationLevel::Serializable,
+            Some("lock conflict (no-wait)"),
+            Some("lock conflict (no-wait)"),
+            2,
+        ),
+        (
+            IsolationLevel::Snapshot,
+            Some("lock conflict (no-wait)"),
+            Some("lock conflict (no-wait)"),
+            2,
+        ),
     ];
 
-    for (level, expect_conflict) in levels {
+    for (level, s1_update_err, s2_update_err, expected_on_call) in levels {
         let (db, s1, s2) = new_db_with_sessions();
         run_steps(
             &db,
@@ -418,12 +453,12 @@ fn test_phase5_mvcc_write_skew_matrix() {
                 Step::Exec {
                     sid: s1,
                     sql: "UPDATE duty SET on_call = 0 WHERE id = 1",
-                    expect_err: None,
+                    expect_err: s1_update_err,
                 },
                 Step::Exec {
                     sid: s2,
                     sql: "UPDATE duty SET on_call = 0 WHERE id = 2",
-                    expect_err: None,
+                    expect_err: s2_update_err,
                 },
                 Step::Exec {
                     sid: s2,
@@ -433,19 +468,14 @@ fn test_phase5_mvcc_write_skew_matrix() {
             ],
         );
 
-        let commit_stmt = parse_sql("COMMIT").unwrap();
-        let commit_result = db.execute_session(s1, commit_stmt);
-        let conflicted = commit_result.is_err();
-        if expect_conflict {
-            assert!(conflicted, "expected conflict for level {}", iso_sql(level));
-        }
+        db.execute_session(s1, parse_sql("COMMIT").unwrap()).unwrap();
 
         run_steps(
             &db,
             &[Step::QueryI64 {
                 sid: s2,
                 sql: "SELECT COUNT(*) FROM duty WHERE on_call = 1",
-                expected: 1,
+                expected: expected_on_call,
             }],
         );
     }

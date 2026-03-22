@@ -2,8 +2,9 @@ use std::collections::HashMap;
 
 use crate::error::DbError;
 use crate::types::Value;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredRow {
     pub values: Vec<Value>,
     pub deleted: bool,
@@ -18,7 +19,7 @@ pub trait Storage: std::fmt::Debug + Send + Sync {
     fn ensure_table(&mut self, table_id: u32);
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct InMemoryStorage {
     pub tables: HashMap<u32, Vec<StoredRow>>,
 }
@@ -63,3 +64,4 @@ impl Storage for InMemoryStorage {
         self.tables.entry(table_id).or_default();
     }
 }
+
