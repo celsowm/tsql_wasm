@@ -51,6 +51,12 @@ pub trait StatementExecutor {
         session_id: SessionId,
         sql: &str,
     ) -> Result<Option<QueryResult>, DbError>;
+    /// Execute a batch and return ALL result sets (one per SELECT/statement).
+    fn execute_session_batch_sql_multi(
+        &self,
+        session_id: SessionId,
+        sql: &str,
+    ) -> Result<Vec<Option<QueryResult>>, DbError>;
 }
 
 pub trait SqlAnalyzer {
@@ -419,6 +425,18 @@ where
         let stmts = parse_batch(sql)?;
         self.execute_session_batch(session_id, stmts)
     }
+
+    fn execute_session_batch_sql_multi(
+        &self,
+        session_id: SessionId,
+        sql: &str,
+    ) -> Result<Vec<Option<QueryResult>>, DbError> {
+        let stmts = parse_batch(sql)?;
+        let mut guard = self.inner.lock().expect("database mutex poisoned");
+        guard.with_session_mut(session_id, |state, session| {
+            execute_batch_statements_multi(state, session_id, session, stmts)
+        })
+    }
 }
 
 impl<C, S> SqlAnalyzer for DatabaseInner<C, S>
@@ -621,6 +639,85 @@ where
         cleanup_scope_table_vars(&mut state.catalog, &mut state.storage, &mut ctx)?;
     }
     out
+}
+
+/// Like execute_batch_statements but collects ALL result sets instead of only the last.
+fn execute_batch_statements_multi<C, S>(
+    state: &mut SharedState<C, S>,
+    session_id: SessionId,
+    session: &mut SessionRuntime<C, S>,
+    stmts: Vec<Statement>,
+) -> Result<Vec<Option<QueryResult>>, DbError>
+where
+    C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
+    S: Storage + Serialize + DeserializeOwned + Clone + 'static,
+{
+    let mut results: Vec<Option<QueryResult>> = Vec::new();
+    let mut ctx = ExecutionContext::new(
+        &mut session.variables,
+        &mut session.session_last_identity,
+        &mut session.scope_identity_stack,
+        &mut session.temp_table_map,
+        &mut session.table_var_map,
+        &mut session.table_var_counter,
+        session.options.ansi_nulls,
+        session.options.datefirst,
+        &mut session.random_state,
+    );
+    ctx.enter_scope();
+
+    for stmt in stmts {
+        if is_transaction_statement(&stmt) {
+            match transaction_exec::execute_transaction_statement(
+                state,
+                session_id,
+                &mut session.tx_manager,
+                &mut session.journal,
+                &mut session.workspace,
+                stmt,
+            ) {
+                Ok(r) => results.push(r),
+                Err(e) => {
+                    cleanup_scope_table_vars(&mut state.catalog, &mut state.storage, &mut ctx)?;
+                    return Err(e);
+                }
+            }
+        } else {
+            match execute_non_transaction_statement(
+                state,
+                session_id,
+                &mut session.tx_manager,
+                session.journal.as_mut(),
+                &mut session.workspace,
+                session.clock.as_ref(),
+                &mut session.options,
+                stmt,
+                &mut ctx,
+            ) {
+                Ok(r) => results.push(r),
+                Err(DbError::Return(_)) => {
+                    results.push(None);
+                    break;
+                }
+                Err(e) => {
+                    cleanup_scope_table_vars(&mut state.catalog, &mut state.storage, &mut ctx)?;
+                    return Err(e);
+                }
+            }
+        }
+    }
+
+    if session.tx_manager.active.is_some() {
+        if let Some(workspace) = session.workspace.as_mut() {
+            cleanup_scope_table_vars(&mut workspace.catalog, &mut workspace.storage, &mut ctx)?;
+        } else {
+            let _ = ctx.leave_scope_collect_table_vars();
+        }
+    } else {
+        cleanup_scope_table_vars(&mut state.catalog, &mut state.storage, &mut ctx)?;
+    }
+
+    Ok(results)
 }
 
 fn execute_single_statement<C, S>(

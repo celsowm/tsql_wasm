@@ -6,7 +6,7 @@ use crate::types::{DataType, Value};
 
 use super::super::clock::Clock;
 use super::super::context::ExecutionContext;
-use super::super::evaluator::{eval_expr_to_type_in_context, eval_predicate};
+use super::super::evaluator::eval_expr_to_type_in_context;
 use super::super::model::single_row_context;
 use super::super::value_ops::compare_values;
 

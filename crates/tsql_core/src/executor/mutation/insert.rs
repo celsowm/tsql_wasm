@@ -4,7 +4,6 @@ use crate::error::DbError;
 use crate::storage::{Storage, StoredRow};
 use crate::types::{DataType, Value};
 
-use super::super::clock::Clock;
 use super::super::context::ExecutionContext;
 use super::super::evaluator::eval_expr_to_type_constant;
 use super::super::model::single_row_context;

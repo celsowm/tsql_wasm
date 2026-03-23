@@ -310,9 +310,9 @@ impl ExprParser {
                         }
                     }
                     Ok(Expr::FunctionCall { name, args })
-                } else if name == "@@IDENTITY" {
+                } else if name == "@@IDENTITY" || name.starts_with("@@") {
                     Ok(Expr::FunctionCall {
-                        name: "@@IDENTITY".to_string(),
+                        name,
                         args: vec![],
                     })
                 } else if name.eq_ignore_ascii_case("CURRENT_TIMESTAMP") {

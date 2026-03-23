@@ -110,7 +110,7 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
                 tds_type: BIGCHARTYPE,
                 length_prefix: {
                     let mut v = Vec::new();
-                    v.extend_from_slice(&max_len.to_be_bytes());
+                    v.extend_from_slice(&max_len.to_le_bytes());
                     v
                 },
                 collation: Some(DEFAULT_COLLATION),
@@ -125,7 +125,7 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
                 tds_type: BIGVARCHARTYPE,
                 length_prefix: {
                     let mut v = Vec::new();
-                    v.extend_from_slice(&max_len.to_be_bytes());
+                    v.extend_from_slice(&max_len.to_le_bytes());
                     v
                 },
                 collation: Some(DEFAULT_COLLATION),
@@ -135,12 +135,12 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
             }
         }
         Value::NChar(s) => {
-            let max_len = s.len().max(1) as u16;
+            let max_len = (s.encode_utf16().count() * 2).max(2) as u16;
             TypeInfo {
                 tds_type: NCHARTYPE,
                 length_prefix: {
                     let mut v = Vec::new();
-                    v.extend_from_slice(&max_len.to_be_bytes());
+                    v.extend_from_slice(&max_len.to_le_bytes());
                     v
                 },
                 collation: Some(DEFAULT_COLLATION),
@@ -150,12 +150,12 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
             }
         }
         Value::NVarChar(s) => {
-            let max_len = s.len().max(1) as u16;
+            let max_len = (s.encode_utf16().count() * 2).max(2) as u16;
             TypeInfo {
                 tds_type: NVARCHARTYPE,
                 length_prefix: {
                     let mut v = Vec::new();
-                    v.extend_from_slice(&max_len.to_be_bytes());
+                    v.extend_from_slice(&max_len.to_le_bytes());
                     v
                 },
                 collation: Some(DEFAULT_COLLATION),
@@ -170,7 +170,7 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
                 tds_type: BIGBINARYTYPE,
                 length_prefix: {
                     let mut bv = Vec::new();
-                    bv.extend_from_slice(&len.to_be_bytes());
+                    bv.extend_from_slice(&len.to_le_bytes());
                     bv
                 },
                 collation: None,
@@ -185,7 +185,7 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
                 tds_type: BIGVARBINARYTYPE,
                 length_prefix: {
                     let mut bv = Vec::new();
-                    bv.extend_from_slice(&len.to_be_bytes());
+                    bv.extend_from_slice(&len.to_le_bytes());
                     bv
                 },
                 collation: None,
@@ -240,7 +240,7 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
                 tds_type: NVARCHARTYPE,
                 length_prefix: {
                     let mut v = Vec::new();
-                    v.extend_from_slice(&255u16.to_be_bytes());
+                    v.extend_from_slice(&(510u16).to_le_bytes());
                     v
                 },
                 collation: Some(DEFAULT_COLLATION),
@@ -323,14 +323,14 @@ pub fn value_to_wire_bytes(value: &Value) -> Vec<u8> {
         Value::Char(s) | Value::VarChar(s) => {
             let bytes = s.as_bytes();
             let mut buf = Vec::with_capacity(2 + bytes.len());
-            buf.extend_from_slice(&(bytes.len() as u16).to_be_bytes());
+            buf.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
             buf.extend_from_slice(bytes);
             buf
         }
         Value::NChar(s) | Value::NVarChar(s) => {
             let utf16: Vec<u16> = s.encode_utf16().collect();
             let mut buf = Vec::with_capacity(2 + utf16.len() * 2);
-            buf.extend_from_slice(&(utf16.len() as u16).to_be_bytes());
+            buf.extend_from_slice(&((utf16.len() * 2) as u16).to_le_bytes());
             for c in &utf16 {
                 buf.extend_from_slice(&c.to_le_bytes());
             }
@@ -338,7 +338,7 @@ pub fn value_to_wire_bytes(value: &Value) -> Vec<u8> {
         }
         Value::Binary(v) | Value::VarBinary(v) => {
             let mut buf = Vec::with_capacity(2 + v.len());
-            buf.extend_from_slice(&(v.len() as u16).to_be_bytes());
+            buf.extend_from_slice(&(v.len() as u16).to_le_bytes());
             buf.extend_from_slice(v);
             buf
         }
@@ -529,7 +529,7 @@ pub fn infer_column_types(
                 tds_type: NVARCHARTYPE,
                 length_prefix: {
                     let mut v = Vec::new();
-                    v.extend_from_slice(&255u16.to_be_bytes());
+                    v.extend_from_slice(&510u16.to_le_bytes());
                     v
                 },
                 collation: Some(DEFAULT_COLLATION),

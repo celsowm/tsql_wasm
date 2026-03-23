@@ -158,7 +158,7 @@ impl PacketBuilder {
     }
 
     pub fn put_us_varchar(&mut self, s: &str) -> &mut Self {
-        self.buf.extend_from_slice(&(s.len() as u16).to_be_bytes());
+        self.buf.extend_from_slice(&(s.len() as u16).to_le_bytes());
         self.buf.extend_from_slice(s.as_bytes());
         self
     }
@@ -175,7 +175,7 @@ impl PacketBuilder {
     pub fn put_us_vchar_utf16(&mut self, s: &str) -> &mut Self {
         let utf16: Vec<u16> = s.encode_utf16().collect();
         self.buf
-            .extend_from_slice(&(utf16.len() as u16).to_be_bytes());
+            .extend_from_slice(&(utf16.len() as u16).to_le_bytes());
         for c in &utf16 {
             self.buf.extend_from_slice(&c.to_le_bytes());
         }
@@ -281,7 +281,22 @@ impl<'a> PacketReader<'a> {
         Ok(v)
     }
 
-    pub fn read_bytes(&mut self, n: usize) -> io::Result<&[u8]> {
+    pub fn read_u64_le(&mut self) -> io::Result<u64> {
+        if self.pos + 8 > self.data.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "unexpected EOF reading u64 LE",
+            ));
+        }
+        let v = u64::from_le_bytes([
+            self.data[self.pos], self.data[self.pos+1],
+            self.data[self.pos+2], self.data[self.pos+3],
+            self.data[self.pos+4], self.data[self.pos+5],
+            self.data[self.pos+6], self.data[self.pos+7],
+        ]);
+        self.pos += 8;
+        Ok(v)
+    }    pub fn read_bytes(&mut self, n: usize) -> io::Result<&[u8]> {
         if self.pos + n > self.data.len() {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,

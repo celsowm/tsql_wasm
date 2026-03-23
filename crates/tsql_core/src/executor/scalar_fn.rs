@@ -201,6 +201,30 @@ pub(crate) fn eval_function(
             Some(v) => Value::BigInt(v),
             None => Value::Null,
         })
+    } else if name.eq_ignore_ascii_case("@@VERSION") {
+        Ok(Value::NVarChar(
+            "Microsoft SQL Server 2022 (RTM) - 16.0.1000.6 (tsql_wasm emulator)".into(),
+        ))
+    } else if name.eq_ignore_ascii_case("@@SERVERNAME") {
+        Ok(Value::NVarChar("localhost".into()))
+    } else if name.eq_ignore_ascii_case("@@SERVICENAME") {
+        Ok(Value::NVarChar("MSSQLSERVER".into()))
+    } else if name.eq_ignore_ascii_case("@@SPID") {
+        Ok(Value::SmallInt(1))
+    } else if name.eq_ignore_ascii_case("@@TRANCOUNT") {
+        Ok(Value::Int(0))
+    } else if name.eq_ignore_ascii_case("@@ERROR") {
+        Ok(Value::Int(0))
+    } else if name.eq_ignore_ascii_case("@@FETCH_STATUS") {
+        Ok(Value::Int(-1))
+    } else if name.eq_ignore_ascii_case("@@LANGUAGE") {
+        Ok(Value::NVarChar("us_english".into()))
+    } else if name.eq_ignore_ascii_case("@@TEXTSIZE") {
+        Ok(Value::Int(2147483647))
+    } else if name.eq_ignore_ascii_case("@@MAX_PRECISION") {
+        Ok(Value::TinyInt(38))
+    } else if name.eq_ignore_ascii_case("@@DATEFIRST") {
+        Ok(Value::TinyInt(ctx.datefirst as u8))
     } else if name.eq_ignore_ascii_case("IDENT_CURRENT") {
         eval_ident_current(args, row, ctx, catalog, storage, clock)
     } else {

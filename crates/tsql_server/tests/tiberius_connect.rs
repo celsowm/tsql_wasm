@@ -287,6 +287,7 @@ async fn test_auth_reject() {
     tds_config.host("127.0.0.1");
     tds_config.port(port);
     tds_config.trust_cert();
+    tds_config.encryption(tiberius::EncryptionLevel::Off);
     tds_config.authentication(tiberius::AuthMethod::sql_server("wrong", "creds"));
 
     let tcp = TcpStream::connect(tds_config.get_addr())
@@ -329,6 +330,7 @@ async fn test_auth_accept() {
     tds_config.host("127.0.0.1");
     tds_config.port(port);
     tds_config.trust_cert();
+    tds_config.encryption(tiberius::EncryptionLevel::Off);
     tds_config.authentication(tiberius::AuthMethod::sql_server("admin", "secret"));
 
     let tcp = TcpStream::connect(tds_config.get_addr())

@@ -27,7 +27,7 @@ pub const ENVCHANGE_COLLATION: u8 = 0x07;
 
 pub fn write_colmetadata(b: &mut PacketBuilder, columns: &[String], types: &[TypeInfo]) {
     b.put_u8(COLMETADATA_TOKEN);
-    b.put_u16_be(columns.len() as u16);
+    b.put_u16_le(columns.len() as u16);
 
     for (i, col_name) in columns.iter().enumerate() {
         let ti = if i < types.len() {
@@ -47,8 +47,8 @@ pub fn write_colmetadata(b: &mut PacketBuilder, columns: &[String], types: &[Typ
         // UserType: 4 bytes (ULONG)
         b.put_u32_le(0);
 
-        // Flags: 2 bytes (USHORT BE)
-        b.put_u16_be(ti.flags);
+        // Flags: 2 bytes (USHORT LE)
+        b.put_u16_le(ti.flags);
 
         // TYPE_INFO
         b.put_u8(ti.tds_type);
@@ -72,8 +72,8 @@ pub fn write_colmetadata(b: &mut PacketBuilder, columns: &[String], types: &[Typ
             }
         }
 
-        // Column name: B_VARCHAR
-        b.put_b_varchar(col_name);
+        // Column name: B_VARCHAR (UTF-16LE)
+        b.put_b_vchar_utf16(col_name);
     }
 }
 
@@ -86,15 +86,15 @@ pub fn write_row(b: &mut PacketBuilder, row: &[Value]) {
 
 pub fn write_done(b: &mut PacketBuilder, status: u16, cur_cmd: u16, row_count: u64) {
     b.put_u8(DONE_TOKEN);
-    b.put_u16_be(status);
-    b.put_u16_be(cur_cmd);
+    b.put_u16_le(status);
+    b.put_u16_le(cur_cmd);
     b.put_u64_le(row_count);
 }
 
 pub fn write_done_in_proc(b: &mut PacketBuilder, status: u16, cur_cmd: u16, row_count: u64) {
     b.put_u8(DONEINPROC_TOKEN);
-    b.put_u16_be(status);
-    b.put_u16_be(cur_cmd);
+    b.put_u16_le(status);
+    b.put_u16_le(cur_cmd);
     b.put_u64_le(row_count);
 }
 
@@ -114,41 +114,14 @@ pub fn write_error(
     data_b.put_u8(state);
     data_b.put_u8(class);
     data_b.put_us_vchar_utf16(message);
-    data_b.put_b_varchar(server_name);
-    data_b.put_b_varchar(proc_name);
+    data_b.put_b_vchar_utf16(server_name);
+    data_b.put_b_vchar_utf16(proc_name);
     data_b.put_i32_le(line_number);
 
     let data_bytes = data_b.as_bytes();
 
     b.put_u8(ERROR_TOKEN);
-    b.put_u16_be(data_bytes.len() as u16);
-    b.put_bytes(data_bytes);
-}
-
-pub fn write_error_fixed(
-    b: &mut PacketBuilder,
-    number: i32,
-    state: u8,
-    class: u8,
-    message: &str,
-    server_name: &str,
-    proc_name: &str,
-    line_number: i32,
-) {
-    // First, build the data portion to know its length
-    let mut data_b = PacketBuilder::new();
-    data_b.put_i32_le(number);
-    data_b.put_u8(state);
-    data_b.put_u8(class);
-    data_b.put_us_vchar_utf16(message);
-    data_b.put_b_varchar(server_name);
-    data_b.put_b_varchar(proc_name);
-    data_b.put_i32_le(line_number);
-
-    let data_bytes = data_b.as_bytes();
-
-    b.put_u8(ERROR_TOKEN);
-    b.put_u16_be(data_bytes.len() as u16);
+    b.put_u16_le(data_bytes.len() as u16);
     b.put_bytes(data_bytes);
 }
 
@@ -162,38 +135,34 @@ pub fn write_envchange_packet_size(b: &mut PacketBuilder, new_size: u16, old_siz
     let new_utf16_bytes = new_val.len() * 2;
     let old_utf16_bytes = old_val.len() * 2;
     let total_len = 1 + 1 + new_utf16_bytes + 1 + old_utf16_bytes;
-    b.put_u16_be(total_len as u16);
+    b.put_u16_le(total_len as u16);
 
     b.put_u8(ENVCHANGE_PACKET_SIZE);
 
-    // New value: B_VARCHAR (byte count in UTF-16, but for this envchange it's byte count)
-    b.put_u8(new_utf16_bytes as u8);
+    // New value: B_VARCHAR (char count)
+    b.put_u8(new_val.len() as u8);
     b.put_utf16le(&new_val);
 
     // Old value
-    b.put_u8(old_utf16_bytes as u8);
+    b.put_u8(old_val.len() as u8);
     b.put_utf16le(&old_val);
 }
 
 pub fn write_envchange_database(b: &mut PacketBuilder, new_db: &str, old_db: &str) {
     b.put_u8(ENVCHANGE_TOKEN);
 
-    // Database envchange value includes ";1;0;1" suffix
-    let new_val = format!("{};1;0;1", new_db);
-    let old_val = format!("{};1;0;1", old_db);
-
-    let new_utf16_bytes = new_val.len() * 2;
-    let old_utf16_bytes = old_val.len() * 2;
+    let new_utf16_bytes = new_db.len() * 2;
+    let old_utf16_bytes = old_db.len() * 2;
     let total_len = 1 + 1 + new_utf16_bytes + 1 + old_utf16_bytes;
-    b.put_u16_be(total_len as u16);
+    b.put_u16_le(total_len as u16);
 
     b.put_u8(ENVCHANGE_DATABASE);
 
-    b.put_u8(new_utf16_bytes as u8);
-    b.put_utf16le(&new_val);
+    b.put_u8(new_db.len() as u8);
+    b.put_utf16le(new_db);
 
-    b.put_u8(old_utf16_bytes as u8);
-    b.put_utf16le(&old_val);
+    b.put_u8(old_db.len() as u8);
+    b.put_utf16le(old_db);
 }
 
 pub fn write_envchange_collation(b: &mut PacketBuilder) {
@@ -203,7 +172,7 @@ pub fn write_envchange_collation(b: &mut PacketBuilder) {
     let collation = [0x09, 0x04, 0x00, 0x00, 0x00];
 
     let total_len = 1 + 1 + 5 + 1 + 5;
-    b.put_u16_be(total_len as u16);
+    b.put_u16_le(total_len as u16);
 
     b.put_u8(ENVCHANGE_COLLATION);
 
@@ -221,8 +190,8 @@ pub fn write_loginack(b: &mut PacketBuilder, tds_version: u32) {
     data_b.put_u32_be(tds_version); // TDS version (BE)
 
     let prog_name = "Microsoft SQL Server";
-    data_b.put_u8(prog_name.len() as u8); // ProgNameLen
-    data_b.put_bytes(prog_name.as_bytes()); // ProgName
+    data_b.put_u8(prog_name.encode_utf16().count() as u8); // ProgNameLen
+    data_b.put_utf16le(prog_name); // ProgName
 
     // Version: 16.0.4105.1 (SQL Server 2022-ish)
     data_b.put_u8(16); // MajorVer
@@ -232,7 +201,7 @@ pub fn write_loginack(b: &mut PacketBuilder, tds_version: u32) {
     let data_bytes = data_b.as_bytes();
 
     b.put_u8(LOGINACK_TOKEN);
-    b.put_u16_be(data_bytes.len() as u16);
+    b.put_u16_le(data_bytes.len() as u16);
     b.put_bytes(data_bytes);
 }
 

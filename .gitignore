@@ -3,6 +3,16 @@ target/
 **/*.rs.bk
 *.pdb
 
+# .NET build artifacts
+**/bin/
+**/obj/
+
+# TLS certs (generated at runtime)
+*.pem
+*.pfx
+*.crt
+*.key
+
 # WASM
 pkg/
 dist/

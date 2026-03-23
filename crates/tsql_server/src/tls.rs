@@ -1,4 +1,4 @@
-use rcgen::{generate_simple_self_signed, CertifiedKey};
+use rcgen::generate_simple_self_signed;
 use rustls::ServerConfig;
 use std::io;
 

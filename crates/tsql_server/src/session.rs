@@ -4,13 +4,14 @@ use tokio::net::TcpStream;
 
 use tsql_core::{Database, SessionId, SessionManager, StatementExecutor};
 
-use super::tds::batch::{build_batch_response, build_error_response, parse_sql_batch};
+use super::tds::batch::{build_error_response, parse_sql_batch};
 use super::tds::login::parse_login7;
 use super::tds::packet::{
-    self, PacketBuilder, ATTENTION, SQL_BATCH, TABULAR_RESULT, TDS7_LOGIN,
+    self, PacketBuilder, ATTENTION, RPC, SQL_BATCH, TABULAR_RESULT, TDS7_LOGIN,
     TDS7_PRELOGIN,
 };
-use super::tds::prelogin::{build_prelogin_response, parse_prelogin, ENCRYPT_OFF, ENCRYPT_ON, ENCRYPT_REQUIRED};
+use super::tds::prelogin::{build_prelogin_response, parse_prelogin, ENCRYPT_NOT_SUP, ENCRYPT_ON, ENCRYPT_REQUIRED};
+use super::tds::rpc::{build_param_preamble, parse_rpc};
 use super::tds::tokens;
 use super::tls;
 use super::ServerConfig;
@@ -54,15 +55,18 @@ impl TdsSession {
         let prelogin = parse_prelogin(&data).map_err(|e| e.to_string())?;
         log::debug!("PRELOGIN: version={:?}, encryption={}", prelogin.version, prelogin.encryption);
 
-        // Determine encryption response based on server config and client request
+        // Determine encryption response based on server config and client request.
+        // IMPORTANT: When TLS is disabled we must respond ENCRYPT_NOT_SUP (0x02) so that
+        // SqlClient / SSMS skip the login-time TLS handshake entirely. Responding ENCRYPT_OFF
+        // (0x00) still causes SqlClient v5+ to attempt a TLS ClientHello before LOGIN7.
         let server_encrypt = if self.config.tls_enabled {
             ENCRYPT_ON
         } else {
-            ENCRYPT_OFF
+            ENCRYPT_NOT_SUP
         };
 
-        // If client requests encryption (ON or REQUIRED) and server has TLS enabled, upgrade
-        let needs_tls_upgrade = self.config.tls_enabled 
+        // Only upgrade to TLS when server has TLS enabled and client wants it
+        let needs_tls_upgrade = self.config.tls_enabled
             && (prelogin.encryption == ENCRYPT_ON || prelogin.encryption == ENCRYPT_REQUIRED);
 
         let response = build_prelogin_response(server_encrypt);
@@ -163,6 +167,33 @@ impl TdsSession {
                                 break;
                             }
                         }
+                        RPC => {
+                            match parse_rpc(&data) {
+                                Ok(Some(rpc)) => {
+                                    let preamble = build_param_preamble(&rpc.params);
+                                    let full_sql = if preamble.is_empty() {
+                                        rpc.sql
+                                    } else {
+                                        format!("{}{}", preamble, rpc.sql)
+                                    };
+                                    if let Err(e) = self.execute_sql(full_sql.trim(), &mut writer).await {
+                                        log::error!("RPC SQL error: {}", e);
+                                        let err_resp = build_error_response(&e);
+                                        let _ = packet::write_packet(&mut writer, TABULAR_RESULT, &err_resp.data).await;
+                                        break;
+                                    }
+                                }
+                                Ok(None) => {
+                                    let mut b = PacketBuilder::new();
+                                    tokens::write_done(&mut b, tokens::DONE_FINAL, 1, 0);
+                                    let _ = packet::write_packet(&mut writer, TABULAR_RESULT, b.as_bytes()).await;
+                                }
+                                Err(e) => {
+                                    let err_resp = build_error_response(&format!("RPC parse error: {}", e));
+                                    let _ = packet::write_packet(&mut writer, TABULAR_RESULT, &err_resp.data).await;
+                                }
+                            }
+                        }
                         ATTENTION => {
                             log::debug!("ATTENTION received");
                             let mut attn = PacketBuilder::new();
@@ -207,9 +238,14 @@ impl TdsSession {
                 return Ok(true);
             }
         };
+        self.execute_sql(sql.trim(), writer).await
+    }
 
-        let sql = sql.trim();
-        log::debug!("SQL: {}", sql);
+    async fn execute_sql<W: AsyncWriteExt + Unpin>(
+        &mut self,
+        sql: &str,
+        writer: &mut W,
+    ) -> Result<bool, String> {
 
         if sql.is_empty() {
             let mut b = PacketBuilder::new();
@@ -237,35 +273,57 @@ impl TdsSession {
             return Ok(true);
         }
 
-        match StatementExecutor::execute_session_batch_sql(&self.db, session_id, sql) {
-            Ok(result) => match result {
-                Some(query_result) => {
-                    if !query_result.columns.is_empty() {
-                        let resp = build_batch_response(
-                            &query_result.columns,
-                            &query_result.rows,
-                            query_result.rows.len() as u64,
-                            true,
-                        );
-                        packet::write_packet(writer, TABULAR_RESULT, &resp.data)
-                            .await
-                            .map_err(|e| e.to_string())?;
-                    } else {
-                        let resp =
-                            build_batch_response(&[], &[], query_result.rows.len() as u64, false);
-                        packet::write_packet(writer, TABULAR_RESULT, &resp.data)
-                            .await
-                            .map_err(|e| e.to_string())?;
+        log::debug!("SQL: {}", sql);
+        match StatementExecutor::execute_session_batch_sql_multi(&self.db, session_id, sql) {
+            Ok(results) => {
+                let count = results.len();
+                let mut b = PacketBuilder::with_capacity(4096);
+
+                for (i, result) in results.into_iter().enumerate() {
+                    let is_last = i == count - 1;
+                    let done_status = if is_last { tokens::DONE_FINAL } else { tokens::DONE_MORE };
+
+                    match result {
+                        Some(query_result) if !query_result.columns.is_empty() => {
+                            let types = crate::tds::type_mapping::infer_column_types(
+                                &query_result.columns,
+                                &query_result.rows,
+                            );
+                            tokens::write_colmetadata(&mut b, &query_result.columns, &types);
+                            for row in &query_result.rows {
+                                tokens::write_row(&mut b, row);
+                            }
+                            tokens::write_done(
+                                &mut b,
+                                done_status | tokens::DONE_COUNT,
+                                1,
+                                query_result.rows.len() as u64,
+                            );
+                        }
+                        Some(query_result) => {
+                            // DML/DDL with row count
+                            tokens::write_done(
+                                &mut b,
+                                done_status | tokens::DONE_COUNT,
+                                1,
+                                query_result.rows.len() as u64,
+                            );
+                        }
+                        None => {
+                            tokens::write_done(&mut b, done_status, 1, 0);
+                        }
                     }
                 }
-                None => {
-                    let mut b = PacketBuilder::new();
+
+                // If no statements at all, send a final DONE
+                if count == 0 {
                     tokens::write_done(&mut b, tokens::DONE_FINAL, 1, 0);
-                    packet::write_packet(writer, TABULAR_RESULT, b.as_bytes())
-                        .await
-                        .map_err(|e| e.to_string())?;
                 }
-            },
+
+                packet::write_packet(writer, TABULAR_RESULT, b.as_bytes())
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
             Err(e) => {
                 let err_resp = build_error_response(&format!("{}", e));
                 packet::write_packet(writer, TABULAR_RESULT, &err_resp.data)

@@ -31,8 +31,8 @@ pub struct Login7Data {
 pub fn decode_password(encrypted: &[u8]) -> String {
     let mut bytes = Vec::with_capacity(encrypted.len());
     for &b in encrypted {
-        let swapped = ((b & 0x0F) << 4) | ((b & 0xF0) >> 4);
-        bytes.push(swapped ^ 0xA5);
+        let xored = b ^ 0xA5;
+        bytes.push(((xored & 0x0F) << 4) | ((xored & 0xF0) >> 4));
     }
     // Decode as UTF-16LE
     let mut u16s = Vec::with_capacity(bytes.len() / 2);
