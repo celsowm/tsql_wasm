@@ -310,10 +310,9 @@ fn find_set_operation(sql: &str) -> Option<(&str, SetOpKind, &str)> {
                 let kw_bytes = kw.as_bytes();
                 let kw_len = kw_bytes.len();
                 if i + kw_len <= bytes.len() && &bytes[i..i + kw_len] == kw_bytes {
-                    let prev_ok = i == 0 || !(bytes[i - 1] as char).is_ascii_alphanumeric();
-                    let next_ok = i + kw_len == bytes.len()
-                        || !(bytes[i + kw_len] as char).is_ascii_alphanumeric();
-                    if prev_ok && next_ok {
+                    let prev_is_ident = i > 0 && ((bytes[i - 1] as char).is_ascii_alphanumeric() || bytes[i - 1] == b'_');
+                    let next_is_ident = i + kw_len < bytes.len() && ((bytes[i + kw_len] as char).is_ascii_alphanumeric() || bytes[i + kw_len] == b'_');
+                    if !prev_is_ident && !next_is_ident {
                         let left = sql[..i].trim();
                         let right = sql[i + kw_len..].trim();
                         return Some((left, kind, right));

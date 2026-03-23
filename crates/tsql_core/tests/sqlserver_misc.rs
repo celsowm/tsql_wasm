@@ -39,11 +39,20 @@ fn row_to_strings(row: &Row) -> Vec<String> {
             if let Ok(Some(v)) = row.try_get::<i16, _>(i) {
                 return v.to_string();
             }
+            if let Ok(Some(v)) = row.try_get::<u8, _>(i) {
+                return v.to_string();
+            }
             if let Ok(Some(v)) = row.try_get::<f64, _>(i) {
                 return v.to_string();
             }
             if let Ok(Some(v)) = row.try_get::<bool, _>(i) {
                 return if v { "1".to_string() } else { "0".to_string() };
+            }
+            if let Ok(Some(v)) = row.try_get::<tiberius::numeric::Numeric, _>(i) {
+                return v.to_string();
+            }
+            if let Ok(Some(v)) = row.try_get::<tiberius::time::chrono::NaiveDateTime, _>(i) {
+                return v.to_string();
             }
             "NULL".to_string()
         })

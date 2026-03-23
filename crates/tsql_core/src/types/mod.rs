@@ -330,9 +330,16 @@ pub fn format_decimal(raw: i128, scale: u8) -> String {
 pub fn format_float(f: f64) -> String {
     let s = format!("{}", f);
     if s.contains('.') || s.contains('e') || s.contains('E') || s == "inf" || s == "-inf" || s == "nan" {
+        // Strip trailing ".0" for whole numbers (e.g., "256.0" → "256")
+        if let Some(dot_pos) = s.find('.') {
+            let after_dot = &s[dot_pos + 1..];
+            if after_dot.chars().all(|c| c == '0') && !s.contains('e') && !s.contains('E') {
+                return s[..dot_pos].to_string();
+            }
+        }
         s
     } else {
-        format!("{}.0", s)
+        s
     }
 }
 

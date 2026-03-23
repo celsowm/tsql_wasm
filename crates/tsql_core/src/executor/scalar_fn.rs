@@ -52,6 +52,12 @@ pub(crate) fn eval_function(
         eval_datepart(args, row, ctx, catalog, storage, clock)
     } else if name.eq_ignore_ascii_case("DATENAME") {
         eval_datename(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("YEAR") {
+        eval_year(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("MONTH") {
+        eval_month(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("DAY") {
+        eval_day(args, row, ctx, catalog, storage, clock)
     } else if name.eq_ignore_ascii_case("COUNT")
         || name.eq_ignore_ascii_case("SUM")
         || name.eq_ignore_ascii_case("AVG")
@@ -109,6 +115,16 @@ pub(crate) fn eval_function(
         )
     } else if name.eq_ignore_ascii_case("ABS") {
         eval_abs(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("POWER") {
+        eval_power(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("SQRT") {
+        eval_sqrt(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("SIGN") {
+        eval_sign(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("LEFT") {
+        eval_left(args, row, ctx, catalog, storage, clock)
+    } else if name.eq_ignore_ascii_case("RIGHT") {
+        eval_right(args, row, ctx, catalog, storage, clock)
     } else if name.eq_ignore_ascii_case("CHARINDEX") {
         eval_charindex(args, row, ctx, catalog, storage, clock)
     } else if name.eq_ignore_ascii_case("JSON_VALUE") {
@@ -693,6 +709,7 @@ pub(crate) fn eval_round(
             let divisor = 10f64.powi(*scale as i32);
             *raw as f64 / divisor
         }
+        Value::Float(bits) => f64::from_bits(*bits),
         Value::TinyInt(v) => *v as f64,
         Value::SmallInt(v) => *v as f64,
         Value::Int(v) => *v as f64,
@@ -706,7 +723,10 @@ pub(crate) fn eval_round(
 
     let multiplier = 10f64.powi(precision);
     let rounded = (f * multiplier).round() / multiplier;
-    Ok(Value::VarChar(rounded.to_string()))
+    let s = rounded.to_string();
+    // Strip trailing ".0" for whole numbers
+    let s = if s.ends_with(".0") { s[..s.len()-2].to_string() } else { s };
+    Ok(Value::VarChar(s))
 }
 
 pub(crate) fn eval_math_unary<F>(
@@ -731,7 +751,10 @@ where
     }
     let f = value_to_f64(&val)?;
     let result = func(f);
-    Ok(Value::VarChar(result.to_string()))
+    let s = result.to_string();
+    // Strip trailing ".0" for whole numbers (e.g., "5.0" -> "5")
+    let s = if s.ends_with(".0") { s[..s.len()-2].to_string() } else { s };
+    Ok(Value::VarChar(s))
 }
 
 pub(crate) fn eval_abs(
@@ -759,6 +782,190 @@ pub(crate) fn eval_abs(
             let f = value_to_f64(&val)?;
             Ok(Value::VarChar(f.abs().to_string()))
         }
+    }
+}
+
+pub(crate) fn eval_left(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution("LEFT expects 2 arguments".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let count = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let s = val.to_string_value();
+    let n = count.to_integer_i64().unwrap_or(0) as usize;
+    let result: String = s.chars().take(n).collect();
+    Ok(Value::VarChar(result))
+}
+
+pub(crate) fn eval_right(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution("RIGHT expects 2 arguments".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let count = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let s = val.to_string_value();
+    let n = count.to_integer_i64().unwrap_or(0) as usize;
+    let chars: Vec<char> = s.chars().collect();
+    let start = chars.len().saturating_sub(n);
+    let result: String = chars[start..].iter().collect();
+    Ok(Value::VarChar(result))
+}
+
+pub(crate) fn eval_power(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution("POWER expects 2 arguments".into()));
+    }
+    let base = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let exponent = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+
+    if base.is_null() || exponent.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let b = value_to_f64(&base)?;
+    let e = value_to_f64(&exponent)?;
+    let result = b.powf(e);
+    Ok(Value::Float(result.to_bits()))
+}
+
+pub(crate) fn eval_sqrt(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("SQRT expects 1 argument".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let f = value_to_f64(&val)?;
+    let result = f.sqrt();
+    Ok(Value::Float(result.to_bits()))
+}
+
+pub(crate) fn eval_sign(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("SIGN expects 1 argument".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let f = value_to_f64(&val)?;
+    let result = if f > 0.0 { 1 } else if f < 0.0 { -1 } else { 0 };
+    Ok(Value::Int(result))
+}
+
+pub(crate) fn eval_year(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("YEAR expects 1 argument".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+    let date_str = val.to_string_value();
+    match parse_datetime_parts(&date_str) {
+        Ok((y, _, _, _, _, _)) => Ok(Value::Int(y)),
+        Err(_) => Ok(Value::Null),
+    }
+}
+
+pub(crate) fn eval_month(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("MONTH expects 1 argument".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+    let date_str = val.to_string_value();
+    match parse_datetime_parts(&date_str) {
+        Ok((_, m, _, _, _, _)) => Ok(Value::Int(m)),
+        Err(_) => Ok(Value::Null),
+    }
+}
+
+pub(crate) fn eval_day(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("DAY expects 1 argument".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+    let date_str = val.to_string_value();
+    match parse_datetime_parts(&date_str) {
+        Ok((_, _, d, _, _, _)) => Ok(Value::Int(d)),
+        Err(_) => Ok(Value::Null),
     }
 }
 

@@ -584,7 +584,7 @@ fn coerce_float(bits: u64, ty: &DataType) -> Result<Value, DbError> {
             }
         }
         DataType::Decimal { scale, .. } => {
-            let raw = (f * 10f64.powi(*scale as i32)) as i128;
+            let raw = (f * 10f64.powi(*scale as i32)).round() as i128;
             Ok(Value::Decimal(raw, *scale))
         }
         DataType::Money => {
