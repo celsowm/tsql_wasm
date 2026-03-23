@@ -112,7 +112,7 @@ impl<'a> ScriptExecutor<'a> {
                     return Ok(None);
                 }
 
-                // With OUTPUT: count rows before, execute, collect new rows
+                // With OUTPUT: record total row count before, execute, collect new rows
                 let schema = stmt.table.schema_or_dbo().to_string();
                 let table_name = stmt.table.name.clone();
                 let table = self
@@ -123,11 +123,7 @@ impl<'a> ScriptExecutor<'a> {
                     })?
                     .clone();
 
-                let before_count = self
-                    .storage
-                    .get_rows(table.id)
-                    .map(|r| r.iter().filter(|r| !r.deleted).count())
-                    .unwrap_or(0);
+                let before_total = self.storage.get_rows(table.id)?.len();
 
                 MutationExecutor {
                     catalog: self.catalog,
@@ -136,12 +132,11 @@ impl<'a> ScriptExecutor<'a> {
                 }
                 .execute_insert_with_context(stmt.clone(), ctx)?;
 
-                // Collect inserted rows
-                let all_rows = self.storage.get_rows(table.id)?;
-                let inserted: Vec<_> = all_rows
+                // Collect inserted rows by position (more robust than count-based skip)
+                let after_rows = self.storage.get_rows(table.id)?;
+                let inserted: Vec<_> = after_rows[before_total..]
                     .iter()
                     .filter(|r| !r.deleted)
-                    .skip(before_count)
                     .collect();
 
                 super::mutation::build_output_result(
@@ -864,8 +859,15 @@ impl<'a> ScriptExecutor<'a> {
             }
         };
 
+        let target_alias = stmt
+            .target
+            .alias
+            .clone()
+            .unwrap_or_else(|| target_name.clone());
+
         let mut target_rows = self.storage.get_rows(target_table.id)?;
         let mut matched_used = vec![false; source_rows.len()];
+        let mut merge_output_rows: Vec<super::mutation::MergeOutputRow> = Vec::new();
 
         // Process target rows against source
         for i in 0..target_rows.len() {
@@ -875,8 +877,11 @@ impl<'a> ScriptExecutor<'a> {
 
             for (s_idx, source_row) in source_rows.iter().enumerate() {
                 // Build combined context for ON condition evaluation
-                let mut combined_ctx: super::model::JoinedRow =
-                    super::model::single_row_context(&target_table, target_rows[i].clone());
+                let mut combined_ctx: super::model::JoinedRow = vec![super::model::ContextTable {
+                    table: target_table.clone(),
+                    alias: target_alias.clone(),
+                    row: Some(target_rows[i].clone()),
+                }];
 
                 // Add source row context
                 let source_alias = match &stmt.source {
@@ -897,10 +902,10 @@ impl<'a> ScriptExecutor<'a> {
                         .columns
                         .iter()
                         .enumerate()
-                        .map(|(idx, _)| crate::catalog::ColumnDef {
+                        .map(|(idx, col)| crate::catalog::ColumnDef {
                             id: (idx + 1) as u32,
-                            name: format!("col{}", idx),
-                            data_type: crate::types::DataType::Int,
+                            name: col.name.clone(),
+                            data_type: col.data_type.clone(),
                             nullable: true,
                             primary_key: false,
                             unique: false,
@@ -959,6 +964,8 @@ impl<'a> ScriptExecutor<'a> {
 
                             match &when_clause.action {
                                 crate::ast::MergeAction::Update { assignments } => {
+                                    // Snapshot old values for OUTPUT
+                                    let old_values = target_rows[i].values.clone();
                                     // Create a mapping from source columns to target
                                     let mut temp_row = target_rows[i].clone();
                                     for assign in assignments {
@@ -986,8 +993,20 @@ impl<'a> ScriptExecutor<'a> {
                                         temp_row.values[col_idx] = val;
                                     }
                                     target_rows[i] = temp_row;
+                                    if stmt.output.is_some() {
+                                        merge_output_rows.push(super::mutation::MergeOutputRow {
+                                            inserted_values: Some(target_rows[i].values.clone()),
+                                            deleted_values: Some(old_values),
+                                        });
+                                    }
                                 }
                                 crate::ast::MergeAction::Delete => {
+                                    if stmt.output.is_some() {
+                                        merge_output_rows.push(super::mutation::MergeOutputRow {
+                                            inserted_values: None,
+                                            deleted_values: Some(target_rows[i].values.clone()),
+                                        });
+                                    }
                                     target_rows[i].deleted = true;
                                 }
                                 crate::ast::MergeAction::Insert { .. } => {
@@ -1006,10 +1025,57 @@ impl<'a> ScriptExecutor<'a> {
         }
 
         // Process WHEN NOT MATCHED (source rows not matched to target)
-        for (s_idx, _source_row) in source_rows.iter().enumerate() {
+        let source_alias = match &stmt.source {
+            crate::ast::MergeSource::Table(ref t) => {
+                t.alias.clone().unwrap_or_else(|| t.name.name.clone())
+            }
+            crate::ast::MergeSource::Subquery(_, ref alias) => {
+                alias.clone().unwrap_or_else(|| "source".to_string())
+            }
+        };
+
+        // Create a temporary table def for source row context
+        // Use target column names so source.col references work
+        let source_table_def = crate::catalog::TableDef {
+            id: 0,
+            schema_id: 0,
+            name: source_alias.clone(),
+            columns: target_table
+                .columns
+                .iter()
+                .enumerate()
+                .map(|(idx, col)| crate::catalog::ColumnDef {
+                    id: (idx + 1) as u32,
+                    name: col.name.clone(),
+                    data_type: col.data_type.clone(),
+                    nullable: true,
+                    primary_key: false,
+                    unique: false,
+                    identity: None,
+                    default: None,
+                    default_constraint_name: None,
+                    check: None,
+                    check_constraint_name: None,
+                    computed_expr: None,
+                })
+                .collect(),
+            check_constraints: vec![],
+        };
+
+        for (s_idx, source_row) in source_rows.iter().enumerate() {
             if matched_used[s_idx] {
                 continue;
             }
+
+            // Build source context for expression evaluation
+            let source_ctx: super::model::JoinedRow = vec![super::model::ContextTable {
+                table: source_table_def.clone(),
+                alias: source_alias.clone(),
+                row: Some(crate::storage::StoredRow {
+                    values: source_row.clone(),
+                    deleted: false,
+                }),
+            }];
 
             for when_clause in &stmt.when_clauses {
                 match when_clause.when {
@@ -1033,7 +1099,7 @@ impl<'a> ScriptExecutor<'a> {
 
                                     let val = super::evaluator::eval_expr(
                                         val_expr,
-                                        &[],
+                                        &source_ctx,
                                         ctx,
                                         self.catalog,
                                         self.storage,
@@ -1081,7 +1147,13 @@ impl<'a> ScriptExecutor<'a> {
                                         }
                                     }
                                 }
-                                temp_row.values = final_values;
+                                temp_row.values = final_values.clone();
+                                if stmt.output.is_some() {
+                                    merge_output_rows.push(super::mutation::MergeOutputRow {
+                                        inserted_values: Some(final_values),
+                                        deleted_values: None,
+                                    });
+                                }
                                 self.storage.insert_row(target_table.id, temp_row)?;
                             }
                             _ => {
@@ -1101,8 +1173,11 @@ impl<'a> ScriptExecutor<'a> {
 
         // Handle OUTPUT
         if let Some(ref output) = stmt.output {
-            // Simplified OUTPUT for MERGE - just return OK for now
-            let _ = output;
+            return super::mutation::build_output_result_merge(
+                output,
+                &target_table,
+                &merge_output_rows,
+            );
         }
 
         Ok(None)

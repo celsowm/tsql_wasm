@@ -14,26 +14,48 @@ fn parse_output_clause(input: &str) -> Result<Vec<OutputColumn>, DbError> {
             (OutputSource::Inserted, &trimmed["INSERTED.".len()..])
         } else if upper.starts_with("DELETED.") {
             (OutputSource::Deleted, &trimmed["DELETED.".len()..])
+        } else if upper == "INSERTED" {
+            return Err(DbError::Parse(
+                "OUTPUT columns must reference INSERTED.column or INSERTED.*".into(),
+            ));
+        } else if upper == "DELETED" {
+            return Err(DbError::Parse(
+                "OUTPUT columns must reference DELETED.column or DELETED.*".into(),
+            ));
         } else {
             return Err(DbError::Parse(
                 "OUTPUT columns must reference INSERTED. or DELETED.".into(),
             ));
         };
 
+        let rest_trimmed = rest.trim();
+
+        // Handle wildcard: INSERTED.* or DELETED.*
+        if rest_trimmed == "*" {
+            columns.push(OutputColumn {
+                source,
+                column: "*".to_string(),
+                alias: None,
+                is_wildcard: true,
+            });
+            continue;
+        }
+
         // Check for alias (AS alias)
-        let rest_upper = rest.trim().to_uppercase();
+        let rest_upper = rest_trimmed.to_uppercase();
         let (col_name, alias) = if let Some(as_idx) = rest_upper.find(" AS ") {
-            let col = rest[..as_idx].trim().to_string();
-            let al = rest[as_idx + " AS ".len()..].trim().to_string();
+            let col = rest_trimmed[..as_idx].trim().to_string();
+            let al = rest_trimmed[as_idx + " AS ".len()..].trim().to_string();
             (col, Some(al))
         } else {
-            (rest.trim().to_string(), None)
+            (rest_trimmed.to_string(), None)
         };
 
         columns.push(OutputColumn {
             source,
             column: col_name,
             alias,
+            is_wildcard: false,
         });
     }
     Ok(columns)
@@ -57,11 +79,9 @@ pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {
 
     // Check for OUTPUT clause
     let output_idx = find_keyword_top_level(after_into, "OUTPUT");
-    let _select_idx = find_keyword_top_level(after_into, "SELECT");
-    let _values_idx = find_keyword_top_level(after_into, "VALUES");
 
     // Determine OUTPUT content
-    let (output, after_into_stripped) = if let Some(oi) = output_idx {
+    let (output, after_into_no_output) = if let Some(oi) = output_idx {
         // OUTPUT INSERTED.col1, DELETED.col1
         // The OUTPUT is between table/columns and VALUES/SELECT
         let after_output = &after_into[oi + "OUTPUT".len()..];
@@ -70,10 +90,16 @@ pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {
             .unwrap_or(after_output.len());
         let output_raw = &after_output[..end_idx];
         let parsed_output = parse_output_clause(output_raw.trim())?;
-        (Some(parsed_output), &after_into[..oi])
+        // Reconstruct: table part + VALUES/SELECT part (skipping OUTPUT columns)
+        let before_output = &after_into[..oi];
+        let after_output_cols = &after_output[end_idx..];
+        let reconstructed = format!("{}{}", before_output, after_output_cols);
+        (Some(parsed_output), reconstructed)
     } else {
-        (None, after_into)
+        (None, after_into.to_string())
     };
+
+    let after_into_stripped = &after_into_no_output;
 
     // Re-check with stripped string
     let select_idx_stripped = find_keyword_top_level(after_into_stripped, "SELECT");
@@ -166,10 +192,16 @@ pub(crate) fn parse_update(sql: &str) -> Result<Statement, DbError> {
             .unwrap_or(after_output.len());
         let output_raw = &after_output[..end_idx];
         let parsed_output = parse_output_clause(output_raw.trim())?;
-        (Some(parsed_output), &tail[..oi])
+        // Reconstruct: assignments part + FROM/WHERE part (skipping OUTPUT columns)
+        let before_output = &tail[..oi];
+        let after_output_cols = &after_output[end_idx..];
+        let reconstructed = format!("{}{}", before_output, after_output_cols);
+        (Some(parsed_output), reconstructed)
     } else {
-        (None, tail)
+        (None, tail.to_string())
     };
+
+    let tail_stripped = tail_stripped.as_str();
 
     // Check for FROM clause (UPDATE ... SET ... OUTPUT ... FROM ... WHERE ...)
     let from_idx = find_keyword_top_level(tail_stripped, "FROM");
@@ -228,10 +260,16 @@ pub(crate) fn parse_delete(sql: &str) -> Result<Statement, DbError> {
             .unwrap_or(after_output.len());
         let output_raw = &after_output[..end_idx];
         let parsed_output = parse_output_clause(output_raw.trim())?;
-        (Some(parsed_output), &after_delete[..oi])
+        // Reconstruct: table part + FROM/WHERE part (skipping OUTPUT columns)
+        let before_output = &after_delete[..oi];
+        let after_output_cols = &after_output[end_idx..];
+        let reconstructed = format!("{}{}", before_output, after_output_cols);
+        (Some(parsed_output), reconstructed)
     } else {
-        (None, after_delete)
+        (None, after_delete.to_string())
     };
+
+    let after_delete_stripped = after_delete_stripped.as_str();
 
     let _upper_stripped = after_delete_stripped.to_uppercase();
 
@@ -296,8 +334,17 @@ fn parse_assignment(input: &str) -> Result<Assignment, DbError> {
     let mut expr =
         crate::parser::expression::parse_expr_with_subqueries(&processed, &subquery_map)?;
     apply_subquery_map(&mut expr, &subquery_map);
+
+    // Strip table alias prefix from column name (e.g., "t.col" -> "col")
+    let column_raw = input[..eq_idx].trim();
+    let column = if let Some(dot_pos) = column_raw.rfind('.') {
+        column_raw[dot_pos + 1..].trim().to_string()
+    } else {
+        column_raw.to_string()
+    };
+
     Ok(Assignment {
-        column: input[..eq_idx].trim().to_string(),
+        column,
         expr,
     })
 }
@@ -497,21 +544,28 @@ pub(crate) fn parse_merge(sql: &str) -> Result<Statement, DbError> {
         let after_when = &remaining[when_idx_local + "WHEN".len()..].trim();
         let upper_when = after_when.to_uppercase();
 
-        let (when_kind, _after_when_kind) = if upper_when.starts_with("MATCHED THEN") {
-            (MergeWhen::Matched, after_when["MATCHED THEN".len()..].trim())
-        } else if upper_when.starts_with("NOT MATCHED BY SOURCE THEN") {
-            (
-                MergeWhen::NotMatchedBySource,
-                after_when["NOT MATCHED BY SOURCE THEN".len()..].trim(),
-            )
-        } else if upper_when.starts_with("NOT MATCHED THEN") {
-            (
-                MergeWhen::NotMatched,
-                after_when["NOT MATCHED THEN".len()..].trim(),
-            )
-        } else {
-            return Err(DbError::Parse("invalid WHEN clause in MERGE".into()));
-        };
+        let (when_kind, _after_when_kind, _matched_prefix_len) =
+            if upper_when.starts_with("NOT MATCHED BY SOURCE THEN") {
+                (
+                    MergeWhen::NotMatchedBySource,
+                    after_when["NOT MATCHED BY SOURCE THEN".len()..].trim(),
+                    "NOT MATCHED BY SOURCE THEN".len(),
+                )
+            } else if upper_when.starts_with("NOT MATCHED THEN") {
+                (
+                    MergeWhen::NotMatched,
+                    after_when["NOT MATCHED THEN".len()..].trim(),
+                    "NOT MATCHED THEN".len(),
+                )
+            } else if upper_when.starts_with("MATCHED THEN") {
+                (
+                    MergeWhen::Matched,
+                    after_when["MATCHED THEN".len()..].trim(),
+                    "MATCHED THEN".len(),
+                )
+            } else {
+                return Err(DbError::Parse("invalid WHEN clause in MERGE".into()));
+            };
 
         // Find the end of this action (next WHEN or OUTPUT or end)
         // Search in the original remaining string after the current WHEN
@@ -523,7 +577,15 @@ pub(crate) fn parse_merge(sql: &str) -> Result<Statement, DbError> {
             .or(output_in_action)
             .unwrap_or(after_current_when.len());
 
-        let action_str = after_current_when[..action_end_pos].trim();
+        // Strip the MATCHED/NOT MATCHED prefix from the action string
+        // after_current_when is untrimmed, so account for leading whitespace
+        let leading_ws: usize = after_current_when
+            .chars()
+            .take_while(|c| c.is_ascii_whitespace())
+            .map(|c| c.len_utf8())
+            .sum();
+        let action_start = leading_ws + _matched_prefix_len;
+        let action_str = after_current_when[action_start..action_end_pos].trim();
         let action_upper = action_str.to_uppercase();
 
         let action = if action_upper.starts_with("UPDATE SET") {
@@ -538,7 +600,24 @@ pub(crate) fn parse_merge(sql: &str) -> Result<Statement, DbError> {
             let open_idx = after_insert.find('(').ok_or_else(|| {
                 DbError::Parse("INSERT in MERGE missing column list".into())
             })?;
-            let close_idx = after_insert.rfind(')').ok_or_else(|| {
+            // Find matching closing paren (not rfind, which gets the last one)
+            let col_start = open_idx + 1;
+            let mut paren_depth = 1usize;
+            let mut close_idx = None;
+            for (i, ch) in after_insert[col_start..].char_indices() {
+                match ch {
+                    '(' => paren_depth += 1,
+                    ')' => {
+                        paren_depth -= 1;
+                        if paren_depth == 0 {
+                            close_idx = Some(col_start + i);
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let close_idx = close_idx.ok_or_else(|| {
                 DbError::Parse("INSERT in MERGE missing closing ')'".into())
             })?;
             let columns: Vec<String> = after_insert[open_idx + 1..close_idx]

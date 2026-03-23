@@ -360,6 +360,8 @@ pub struct OutputColumn {
     pub source: OutputSource,
     pub column: String,
     pub alias: Option<String>,
+    #[serde(default)]
+    pub is_wildcard: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

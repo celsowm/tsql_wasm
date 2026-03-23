@@ -1,0 +1,11 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    container_name: tsql_test_sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Test@12345"
+    ports:
+      - "11433:1433"
+    mem_limit: 512m
+    restart: unless-stopped
