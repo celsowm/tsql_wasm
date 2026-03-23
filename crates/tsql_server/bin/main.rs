@@ -1,0 +1,201 @@
+use tsql_server::{Credentials, ServerConfig, TdsServer, playground};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
+    let mut args: Vec<String> = std::env::args().collect();
+    args.remove(0); // remove program name
+
+    let mut config = ServerConfig::default();
+    let mut playground_mode = false;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--host" | "-h" => {
+                i += 1;
+                config.host = args.get(i).cloned().unwrap_or_default();
+            }
+            "--port" | "-p" => {
+                i += 1;
+                config.port = args
+                    .get(i)
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(1433);
+            }
+            "--user" | "-u" => {
+                i += 1;
+                let user = args.get(i).cloned().unwrap_or_default();
+                if config.auth.is_none() {
+                    config.auth = Some(Credentials {
+                        user: user.clone(),
+                        password: String::new(),
+                    });
+                } else if let Some(ref mut creds) = config.auth {
+                    creds.user = user;
+                }
+            }
+            "--password" | "-P" => {
+                i += 1;
+                let pass = args.get(i).cloned().unwrap_or_default();
+                if config.auth.is_none() {
+                    config.auth = Some(Credentials {
+                        user: String::new(),
+                        password: pass,
+                    });
+                } else if let Some(ref mut creds) = config.auth {
+                    creds.password = pass;
+                }
+            }
+            "--database" | "-d" => {
+                i += 1;
+                config.database = args.get(i).cloned().unwrap_or_default();
+            }
+            "--tls" | "-t" => {
+                config.tls_enabled = true;
+            }
+            "--no-tls" => {
+                config.tls_enabled = false;
+            }
+            "--tls-cert" => {
+                i += 1;
+                config.tls_cert_path = args.get(i).cloned();
+            }
+            "--tls-key" => {
+                i += 1;
+                config.tls_key_path = args.get(i).cloned();
+            }
+            "--tls-gen" => {
+                let cert_path = "tls_cert.pem";
+                let key_path = "tls_key.pem";
+                println!("Generating self-signed TLS certificate...");
+                tsql_server::tls::generate_self_signed_cert(cert_path, key_path)?;
+                println!("Generated {} and {}", cert_path, key_path);
+                config.tls_cert_path = Some(cert_path.to_string());
+                config.tls_key_path = Some(key_path.to_string());
+                config.tls_enabled = true;
+            }
+            "--playground" => {
+                playground_mode = true;
+            }
+            "--help" => {
+                print_help();
+                return Ok(());
+            }
+            _ => {
+                eprintln!("Unknown argument: {}", args[i]);
+                print_help();
+                std::process::exit(1);
+            }
+        }
+        i += 1;
+    }
+
+    if let Some(ref creds) = config.auth {
+        if creds.user.is_empty() && creds.password.is_empty() {
+            config.auth = None;
+        }
+    }
+
+    if config.tls_enabled && config.tls_cert_path.is_none() {
+        eprintln!("Error: TLS is enabled but no certificate specified.");
+        eprintln!("Use --tls-gen to generate a self-signed certificate, or --tls-cert and --tls-key to specify existing files.");
+        std::process::exit(1);
+    }
+
+    println!("tsql-server v{}", env!("CARGO_PKG_VERSION"));
+    println!("Host: {}", config.host);
+    println!("Port: {}", config.port);
+    println!(
+        "Auth: {}",
+        if config.auth.is_some() {
+            "enabled"
+        } else {
+            "disabled (accept any login)"
+        }
+    );
+    println!(
+        "TLS: {}",
+        if config.tls_enabled {
+            format!(
+                "enabled ({})",
+                config.tls_cert_path.as_ref().unwrap()
+            )
+        } else {
+            "disabled".to_string()
+        }
+    );
+    println!("Database: {}", config.database);
+    println!();
+
+    // Create database and seed playground if enabled
+    let db = tsql_core::Database::new();
+    if playground_mode {
+        println!("🚀 Starting in PLAYGROUND mode...");
+        println!("Seeding database with sample tables, views, and data...");
+        if let Err(e) = playground::seed_playground(&db) {
+            eprintln!("Warning: Some playground seed operations failed: {}", e);
+        }
+        println!("✓ Playground database ready!");
+        println!();
+        println!("Sample tables:");
+        println!("  - dbo.Customers");
+        println!("  - dbo.Products");
+        println!("  - dbo.Orders");
+        println!("  - dbo.OrderItems");
+        println!("  - dbo.Employees");
+        println!("  - dbo.Categories");
+        println!();
+        println!("Sample views:");
+        println!("  - dbo.vCustomerOrders");
+        println!("  - dbo.vOrderDetails");
+        println!("  - dbo.vProductSales");
+        println!("  - dbo.vEmployeeHierarchy");
+        println!("  - dbo.vMonthlySales");
+        println!();
+    }
+
+    let server = TdsServer::new_with_database(db, config);
+    server.run().await?;
+
+    Ok(())
+}
+
+fn print_help() {
+    println!("tsql-server - TDS 7.4 SQL Server emulator");
+    println!();
+    println!("USAGE:");
+    println!("  tsql-server [OPTIONS]");
+    println!();
+    println!("OPTIONS:");
+    println!("  --host, -h <HOST>       Hostname to bind to (default: 127.0.0.1)");
+    println!("  --port, -p <PORT>       Port to listen on (default: 1433)");
+    println!("  --user, -u <USER>       Username for authentication (optional)");
+    println!("  --password, -P <PASS>   Password for authentication (optional)");
+    println!("  --database, -d <DB>     Default database name (default: master)");
+    println!("  --tls, -t               Enable TLS (default: enabled)");
+    println!("  --no-tls                Disable TLS");
+    println!("  --tls-cert <PATH>       TLS certificate file (required if TLS enabled)");
+    println!("  --tls-key <PATH>        TLS private key file (required if TLS enabled)");
+    println!("  --tls-gen               Generate self-signed TLS certificate");
+    println!("  --playground            Start with sample tables, views, and data");
+    println!("  --help                  Show this help message");
+    println!();
+    println!("EXAMPLES:");
+    println!("  tsql-server                         # TLS enabled, no auth");
+    println!("  tsql-server --tls-gen               # Generate cert and start server");
+    println!("  tsql-server --port 14330            # No auth, port 14330");
+    println!("  tsql-server -u sa -P Test@12345     # With auth");
+    println!("  tsql-server --playground            # Playground mode with sample data");
+    println!("  tsql-server --playground --no-tls   # Playground without TLS");
+    println!();
+    println!("PLAYGROUND MODE:");
+    println!("  When --playground is enabled, the server starts with pre-loaded");
+    println!("  sample tables (Customers, Products, Orders, etc.) and views for");
+    println!("  testing SQL Server clients without manual setup.");
+    println!();
+    println!("NOTES:");
+    println!("  - TLS is enabled by default");
+    println!("  - Use --tls-gen to generate a self-signed certificate for testing");
+}

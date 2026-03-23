@@ -1,0 +1,279 @@
+use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
+
+use tsql_core::{Database, SessionId, SessionManager, StatementExecutor};
+
+use super::tds::batch::{build_batch_response, build_error_response, parse_sql_batch};
+use super::tds::login::parse_login7;
+use super::tds::packet::{
+    self, PacketBuilder, ATTENTION, SQL_BATCH, TABULAR_RESULT, TDS7_LOGIN,
+    TDS7_PRELOGIN,
+};
+use super::tds::prelogin::{build_prelogin_response, parse_prelogin, ENCRYPT_OFF, ENCRYPT_ON, ENCRYPT_REQUIRED};
+use super::tds::tokens;
+use super::tls;
+use super::ServerConfig;
+
+trait AsyncReadWrite: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin {}
+impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin> AsyncReadWrite for T {}
+
+pub struct TdsSession {
+    db: Database,
+    config: Arc<ServerConfig>,
+    session_id: Option<SessionId>,
+    packet_size: u16,
+    database: String,
+}
+
+impl TdsSession {
+    pub fn new(db: Database, config: Arc<ServerConfig>) -> Self {
+        let database = config.database.clone();
+        Self {
+            db,
+            config,
+            session_id: None,
+            packet_size: 4096,
+            database,
+        }
+    }
+
+    pub async fn handle(mut self, stream: TcpStream) -> Result<(), String> {
+        let mut stream = stream;
+
+        // Read PRELOGIN
+        let (header, data) = packet::read_packet(&mut stream)
+            .await
+            .map_err(|e| format!("Failed to read PRELOGIN: {}", e))?;
+        log::debug!("Received PRELOGIN packet type=0x{:02X} len={}", header.packet_type, header.length);
+
+        if header.packet_type != TDS7_PRELOGIN {
+            return Err(format!("Expected PRELOGIN (0x12), got 0x{:02X}", header.packet_type));
+        }
+
+        let prelogin = parse_prelogin(&data).map_err(|e| e.to_string())?;
+        log::debug!("PRELOGIN: version={:?}, encryption={}", prelogin.version, prelogin.encryption);
+
+        // Determine encryption response based on server config and client request
+        let server_encrypt = if self.config.tls_enabled {
+            ENCRYPT_ON
+        } else {
+            ENCRYPT_OFF
+        };
+
+        // If client requests encryption (ON or REQUIRED) and server has TLS enabled, upgrade
+        let needs_tls_upgrade = self.config.tls_enabled 
+            && (prelogin.encryption == ENCRYPT_ON || prelogin.encryption == ENCRYPT_REQUIRED);
+
+        let response = build_prelogin_response(server_encrypt);
+        packet::write_packet(&mut stream, TABULAR_RESULT, &response)
+            .await
+            .map_err(|e| format!("Failed to write PRELOGIN response: {}", e))?;
+        stream.flush().await.map_err(|e| format!("Failed to flush: {}", e))?;
+        log::debug!("Sent PRELOGIN response (encryption={})", server_encrypt);
+
+        // Perform TLS upgrade if needed
+        let stream: Box<dyn AsyncReadWrite> = if needs_tls_upgrade {
+            log::info!("Client requested TLS, upgrading connection");
+            
+            let tls_config = if let (Some(cert_path), Some(key_path)) = 
+                (&self.config.tls_cert_path, &self.config.tls_key_path) 
+            {
+                tls::load_tls_config(cert_path, key_path)
+                    .map_err(|e| format!("Failed to load TLS config: {}", e))?
+            } else {
+                return Err("TLS enabled but no certificate configured".to_string());
+            };
+
+            let acceptor = tokio_rustls::TlsAcceptor::from(std::sync::Arc::new(tls_config));
+            
+            let tls_stream = acceptor.accept(stream).await
+                .map_err(|e| format!("TLS handshake failed: {}", e))?;
+            
+            log::info!("TLS handshake completed");
+            Box::new(tls_stream)
+        } else {
+            Box::new(stream)
+        };
+
+        // Now use the stream for the rest
+        let (mut reader, mut writer) = tokio::io::split(stream);
+
+        // Read LOGIN7
+        let (login_header, login_data) = packet::read_packet(&mut reader)
+            .await
+            .map_err(|e| format!("Failed to read LOGIN7: {}", e))?;
+        log::debug!("Received LOGIN7 packet type=0x{:02X} len={}", login_header.packet_type, login_header.length);
+
+        if login_header.packet_type != TDS7_LOGIN {
+            return Err(format!("Expected LOGIN7 (0x10), got 0x{:02X}", login_header.packet_type));
+        }
+
+        let login = parse_login7(&login_data).map_err(|e| e.to_string())?;
+        log::info!(
+            "LOGIN7: user={}, database={}, app={}, packet_size={}",
+            login.username, login.database, login.app_name, login.packet_size
+        );
+
+        if let Some(ref creds) = self.config.auth {
+            if login.username != creds.user || login.password != creds.password {
+                let err_resp = build_error_response("Login failed for user.");
+                packet::write_packet(&mut writer, TABULAR_RESULT, &err_resp.data)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                return Ok(());
+            }
+        }
+
+        if login.packet_size > 0 {
+            self.packet_size = login.packet_size.min(32767) as u16;
+        }
+        if !login.database.is_empty() {
+            self.database = login.database.clone();
+        }
+
+        let session_id = self.db.create_session();
+        self.session_id = Some(session_id);
+
+        // Build LOGINACK response
+        let mut b = PacketBuilder::with_capacity(256);
+        tokens::write_envchange_packet_size(&mut b, self.packet_size, self.packet_size);
+        tokens::write_envchange_database(&mut b, &self.database, "master");
+        tokens::write_envchange_collation(&mut b);
+        tokens::write_loginack(&mut b, 0x74000004);
+        tokens::write_done(&mut b, tokens::DONE_FINAL, 0, 0);
+
+        packet::write_packet(&mut writer, TABULAR_RESULT, b.as_bytes())
+            .await
+            .map_err(|e| format!("Failed to write LOGINACK: {}", e))?;
+        log::debug!("Sent LOGINACK response");
+
+        // Main loop: handle SQL Batch and other packets
+        loop {
+            let result = packet::read_packet(&mut reader).await;
+            match result {
+                Ok((header, data)) => {
+                    log::debug!("Received packet type=0x{:02X} len={}", header.packet_type, header.length);
+                    match header.packet_type {
+                        SQL_BATCH => {
+                            if let Err(e) = self.handle_sql_batch(&data, &mut writer).await {
+                                log::error!("SQL batch error: {}", e);
+                                let err_resp = build_error_response(&e);
+                                let _ = packet::write_packet(&mut writer, TABULAR_RESULT, &err_resp.data).await;
+                                break;
+                            }
+                        }
+                        ATTENTION => {
+                            log::debug!("ATTENTION received");
+                            let mut attn = PacketBuilder::new();
+                            tokens::write_done(&mut attn, tokens::DONE_ATTN, 0, 0);
+                            let _ = packet::write_packet(&mut writer, TABULAR_RESULT, attn.as_bytes()).await;
+                        }
+                        _ => {
+                            log::warn!("Unsupported packet type 0x{:02X}", header.packet_type);
+                        }
+                    }
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                    log::debug!("Client disconnected");
+                    break;
+                }
+                Err(e) => {
+                    log::error!("Read error: {}", e);
+                    break;
+                }
+            }
+        }
+
+        if let Some(sid) = self.session_id {
+            let _ = self.db.close_session(sid);
+        }
+
+        Ok(())
+    }
+
+    async fn handle_sql_batch<W: AsyncWriteExt + Unpin>(
+        &mut self,
+        data: &[u8],
+        writer: &mut W,
+    ) -> Result<bool, String> {
+        let sql = match parse_sql_batch(data) {
+            Ok(s) => s,
+            Err(e) => {
+                let err_resp = build_error_response(&format!("Failed to parse SQL batch: {}", e));
+                packet::write_packet(writer, TABULAR_RESULT, &err_resp.data)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                return Ok(true);
+            }
+        };
+
+        let sql = sql.trim();
+        log::debug!("SQL: {}", sql);
+
+        if sql.is_empty() {
+            let mut b = PacketBuilder::new();
+            tokens::write_done(&mut b, tokens::DONE_FINAL, 1, 0);
+            packet::write_packet(writer, TABULAR_RESULT, b.as_bytes())
+                .await
+                .map_err(|e| e.to_string())?;
+            return Ok(true);
+        }
+
+        let session_id = self.session_id.unwrap();
+
+        let upper = sql.to_uppercase();
+        if upper.starts_with("USE ") {
+            let db_name = sql[4..].trim().trim_end_matches(';').trim();
+            let old_db = self.database.clone();
+            self.database = db_name.to_string();
+
+            let mut b = PacketBuilder::new();
+            tokens::write_envchange_database(&mut b, &self.database, &old_db);
+            tokens::write_done(&mut b, tokens::DONE_FINAL, 1, 0);
+            packet::write_packet(writer, TABULAR_RESULT, b.as_bytes())
+                .await
+                .map_err(|e| e.to_string())?;
+            return Ok(true);
+        }
+
+        match StatementExecutor::execute_session_batch_sql(&self.db, session_id, sql) {
+            Ok(result) => match result {
+                Some(query_result) => {
+                    if !query_result.columns.is_empty() {
+                        let resp = build_batch_response(
+                            &query_result.columns,
+                            &query_result.rows,
+                            query_result.rows.len() as u64,
+                            true,
+                        );
+                        packet::write_packet(writer, TABULAR_RESULT, &resp.data)
+                            .await
+                            .map_err(|e| e.to_string())?;
+                    } else {
+                        let resp =
+                            build_batch_response(&[], &[], query_result.rows.len() as u64, false);
+                        packet::write_packet(writer, TABULAR_RESULT, &resp.data)
+                            .await
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
+                None => {
+                    let mut b = PacketBuilder::new();
+                    tokens::write_done(&mut b, tokens::DONE_FINAL, 1, 0);
+                    packet::write_packet(writer, TABULAR_RESULT, b.as_bytes())
+                        .await
+                        .map_err(|e| e.to_string())?;
+                }
+            },
+            Err(e) => {
+                let err_resp = build_error_response(&format!("{}", e));
+                packet::write_packet(writer, TABULAR_RESULT, &err_resp.data)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        Ok(true)
+    }
+}

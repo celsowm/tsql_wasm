@@ -364,6 +364,84 @@ const restoredRows = await restored.query(`SELECT COUNT(*) FROM dbo.Users`);
 
 ---
 
+## Playground Mode
+
+**tsql-server** includes a **playground mode** that starts the server with pre-loaded sample tables, views, and data. This is useful for testing SQL Server clients without manual setup.
+
+### Quick Start
+
+```bash
+# Run with playground mode (TLS disabled for easy client testing)
+cargo run --package tsql_server --bin tsql-server -- --playground --no-tls
+
+# Or with TLS enabled
+cargo run --package tsql_server --bin tsql-server -- --playground --tls-gen
+```
+
+### Sample Tables
+
+The playground includes the following tables:
+
+| Table | Description |
+|-------|-------------|
+| `dbo.Customers` | Customer information (name, email, phone) |
+| `dbo.Products` | Product catalog with prices and stock |
+| `dbo.Orders` | Order headers with status and totals |
+| `dbo.OrderItems` | Order line items |
+| `dbo.Employees` | Employee hierarchy with departments |
+| `dbo.Categories` | Category tree for products |
+
+### Sample Views
+
+| View | Description |
+|------|-------------|
+| `dbo.vCustomerOrders` | Customer order summary with totals |
+| `dbo.vOrderDetails` | Full order details with product info |
+| `dbo.vProductSales` | Product sales summary |
+| `dbo.vEmployeeHierarchy` | Employee list with manager names |
+| `dbo.vMonthlySales` | Monthly sales aggregation |
+
+### Connecting with SQL Server Clients
+
+Once the playground server is running, you can connect with any SQL Server client:
+
+#### Using `sqlcmd`
+
+```bash
+sqlcmd -S localhost,14330 -U sa -P '' -Q "SELECT * FROM dbo.vCustomerOrders"
+```
+
+#### Using Azure Data Studio / SSMS
+
+- Server: `localhost,14330`
+- Authentication: SQL Server Authentication (or Windows if no auth configured)
+- Username: `sa` (if auth enabled)
+- Password: (any password if no auth configured)
+
+#### Using Node.js (tedious/tiberius)
+
+```ts
+import { connect } from 'tedious';
+
+const config = {
+  server: 'localhost',
+  port: 14330,
+  authentication: { type: 'default', options: { userName: 'sa', password: '' } },
+  options: { encrypt: false, trustServerCertificate: true }
+};
+
+const connection = await connect(config);
+```
+
+### Docker
+
+```bash
+# Build and run playground container
+docker-compose --profile playground up tsql-playground
+```
+
+---
+
 ## Test Coverage
 
 Core and integration tests covering:

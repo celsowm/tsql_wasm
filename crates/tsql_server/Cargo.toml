@@ -1,0 +1,25 @@
+[package]
+name = "tsql_server"
+version = "0.1.0"
+edition = "2021"
+description = "TDS 7.4 server that emulates Microsoft SQL Server using the tsql_core engine"
+
+[dependencies]
+tsql_core = { path = "../tsql_core" }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macros", "sync"] }
+rustls = "0.23"
+rcgen = { version = "0.13", features = ["pem", "crypto"] }
+tokio-rustls = "0.26"
+rustls-pemfile = "2"
+bytes = "1"
+log = "0.4"
+env_logger = "0.11"
+
+[dev-dependencies]
+tiberius = { version = "0.12", default-features = false, features = ["tokio", "tds73", "chrono"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+chrono = "0.4"
+
+[[bin]]
+name = "tsql-server"
+path = "bin/main.rs"

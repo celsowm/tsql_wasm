@@ -9,3 +9,15 @@ services:
       - "11433:1433"
     mem_limit: 512m
     restart: unless-stopped
+
+  # tsql-server playground mode for testing with any SQL Server client
+  tsql-playground:
+    build:
+      context: .
+      dockerfile: Dockerfile.playground
+    ports:
+      - "14330:1433"
+    mem_limit: 256m
+    restart: unless-stopped
+    profiles:
+      - playground

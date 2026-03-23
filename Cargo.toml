@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/tsql_core",
-  "crates/tsql_wasm"
+  "crates/tsql_wasm",
+  "crates/tsql_server"
 ]
 resolver = "2"

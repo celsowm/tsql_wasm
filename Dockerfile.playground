@@ -1,0 +1,37 @@
+# Multi-stage build for tsql-server playground mode
+FROM rust:1.75-slim-bookworm AS builder
+
+WORKDIR /app
+
+# Copy just what's needed for dependencies first (layer caching)
+COPY Cargo.toml Cargo.lock ./
+COPY crates/tsql_core/Cargo.toml crates/tsql_core/
+COPY crates/tsql_server/Cargo.toml crates/tsql_server/
+
+# Dummy build to cache dependencies
+RUN mkdir -p crates/tsql_core/src crates/tsql_server/src
+RUN echo "fn main() {}" > crates/tsql_core/src/lib.rs
+RUN echo "fn main() {}" > crates/tsql_server/src/lib.rs
+RUN cargo build --release --package tsql_server --bin tsql-server || true
+
+# Remove dummy files and copy real source
+RUN rm -rf crates
+COPY crates crates
+COPY Cargo.toml Cargo.lock ./
+
+# Real build
+RUN cargo build --release --package tsql_server --bin tsql-server
+
+# Runtime image
+FROM debian:bookworm-slim
+
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /app/target/release/tsql-server /app/tsql-server
+
+# Expose default port
+EXPOSE 1433
+
+# Run in playground mode with TLS disabled for easy client testing
+CMD ["./tsql-server", "--playground", "--no-tls"]
