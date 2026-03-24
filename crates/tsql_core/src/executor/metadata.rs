@@ -402,7 +402,8 @@ fn virtual_table_def(name: &str, cols: Vec<(&str, DataType, bool)>) -> TableDef 
                 computed_expr: None,
             })
             .collect(),
-        check_constraints: vec![],
+        check_constraints: vec![], foreign_keys: vec![],
+
     }
 }
 

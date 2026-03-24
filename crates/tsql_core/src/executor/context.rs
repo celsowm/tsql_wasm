@@ -32,6 +32,7 @@ pub struct ExecutionContext<'a> {
     pub datefirst: i32,
     pub random_state: &'a mut u64,
     pub apply_row_stack: Vec<JoinedRow>,
+    pub current_group: Option<super::model::Group>,
 }
 
 
@@ -65,6 +66,7 @@ impl<'a> ExecutionContext<'a> {
             datefirst,
             random_state,
             apply_row_stack: vec![],
+            current_group: None,
         }
     }
 
@@ -87,6 +89,7 @@ impl<'a> ExecutionContext<'a> {
             datefirst: self.datefirst,
             random_state: self.random_state,
             apply_row_stack: self.apply_row_stack.clone(),
+            current_group: self.current_group.clone(),
         }
     }
 
@@ -109,6 +112,7 @@ impl<'a> ExecutionContext<'a> {
             datefirst: self.datefirst,
             random_state: self.random_state,
             apply_row_stack: self.apply_row_stack.clone(),
+            current_group: self.current_group.clone(),
         }
     }
 
@@ -135,6 +139,7 @@ impl<'a> ExecutionContext<'a> {
             datefirst: self.datefirst,
             random_state: self.random_state,
             apply_row_stack: self.apply_row_stack.clone(),
+            current_group: self.current_group.clone(),
         }
     }
 

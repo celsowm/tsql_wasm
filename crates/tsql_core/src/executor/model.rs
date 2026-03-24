@@ -1,5 +1,12 @@
 use crate::catalog::TableDef;
 use crate::storage::StoredRow;
+use crate::types::Value;
+
+#[derive(Debug, Clone)]
+pub struct Group {
+    pub key: Vec<Value>,
+    pub rows: Vec<JoinedRow>,
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct BoundTable {

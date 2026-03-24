@@ -8,7 +8,7 @@ pub struct CteTable {
     pub rows: Vec<StoredRow>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct CteStorage {
     pub tables: HashMap<String, CteTable>,
 }

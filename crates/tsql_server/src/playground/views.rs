@@ -11,12 +11,11 @@ SELECT
     c.CustomerId,
     c.FirstName,
     c.LastName,
-    c.Email,
     COUNT(o.OrderId) AS TotalOrders,
     COALESCE(SUM(o.TotalAmount), 0) AS TotalSpent
 FROM dbo.Customers c
 LEFT JOIN dbo.Orders o ON c.CustomerId = o.CustomerId
-GROUP BY c.CustomerId, c.FirstName, c.LastName, c.Email;
+GROUP BY c.CustomerId, c.FirstName, c.LastName;
 "#,
     // Order details view
     r#"
@@ -46,8 +45,8 @@ SELECT
     p.Category,
     p.Price AS CurrentPrice,
     p.Stock,
-    COALESCE(SUM(oi.Quantity), 0) AS TotalSold,
-    COALESCE(SUM(oi.Subtotal), 0) AS TotalRevenue
+    COALESCE(CAST(SUM(oi.Quantity) AS INT), 0) AS TotalSold,
+    COALESCE(CAST(SUM(oi.Subtotal) AS DECIMAL(18,2)), 0) AS TotalRevenue
 FROM dbo.Products p
 LEFT JOIN dbo.OrderItems oi ON p.ProductId = oi.ProductId
 GROUP BY p.ProductId, p.Name, p.Category, p.Price, p.Stock;

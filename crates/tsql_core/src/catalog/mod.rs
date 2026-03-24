@@ -11,6 +11,14 @@ pub struct SchemaDef {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForeignKeyDef {
+    pub name: String,
+    pub columns: Vec<String>,
+    pub referenced_table: crate::ast::ObjectName,
+    pub referenced_columns: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IdentityDef {
     pub seed: i64,
     pub increment: i64,
@@ -73,6 +81,13 @@ pub struct TableDef {
     pub name: String,
     pub columns: Vec<ColumnDef>,
     pub check_constraints: Vec<CheckConstraintDef>,
+    pub foreign_keys: Vec<ForeignKeyDef>,
+}
+
+impl TableDef {
+    pub fn schema_or_dbo(&self) -> &str {
+        "dbo" // TODO: Look up actual schema name from catalog
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,6 +107,13 @@ pub struct RoutineDef {
     pub name: String,
     pub params: Vec<RoutineParam>,
     pub kind: RoutineKind,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ViewDef {
+    pub schema: String,
+    pub name: String,
+    pub query: Statement, // Should be Statement::Select
 }
 
 pub trait Catalog: std::fmt::Debug + Send + Sync {
@@ -135,6 +157,9 @@ pub trait Catalog: std::fmt::Debug + Send + Sync {
         expect_function: bool,
     ) -> Result<(), DbError>;
     fn find_routine(&self, schema: &str, name: &str) -> Option<&RoutineDef>;
+    fn create_view(&mut self, schema: &str, name: &str, query: Statement) -> Result<(), DbError>;
+    fn drop_view(&mut self, schema: &str, name: &str) -> Result<(), DbError>;
+    fn find_view(&self, schema: &str, name: &str) -> Option<&ViewDef>;
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -143,6 +168,7 @@ pub struct CatalogImpl {
     pub tables: Vec<TableDef>,
     pub indexes: Vec<IndexDef>,
     pub routines: Vec<RoutineDef>,
+    pub views: Vec<ViewDef>,
     next_schema_id: u32,
     next_table_id: u32,
     next_column_id: u32,
@@ -459,6 +485,32 @@ impl Catalog for CatalogImpl {
         self.routines
             .iter()
             .find(|r| r.schema.eq_ignore_ascii_case(schema) && r.name.eq_ignore_ascii_case(name))
+    }
+
+    fn create_view(&mut self, schema: &str, name: &str, query: Statement) -> Result<(), DbError> {
+        if self.find_view(schema, name).is_some() {
+            return Err(DbError::Semantic(format!("view '{}.{}' already exists", schema, name)));
+        }
+        self.views.push(ViewDef {
+            schema: schema.to_string(),
+            name: name.to_string(),
+            query,
+        });
+        Ok(())
+    }
+
+    fn drop_view(&mut self, schema: &str, name: &str) -> Result<(), DbError> {
+        let pos = self.views.iter().position(|v| {
+            v.schema.eq_ignore_ascii_case(schema) && v.name.eq_ignore_ascii_case(name)
+        }).ok_or_else(|| DbError::Semantic(format!("view '{}.{}' not found", schema, name)))?;
+        self.views.remove(pos);
+        Ok(())
+    }
+
+    fn find_view(&self, schema: &str, name: &str) -> Option<&ViewDef> {
+        self.views.iter().find(|v| {
+            v.schema.eq_ignore_ascii_case(schema) && v.name.eq_ignore_ascii_case(name)
+        })
     }
 }
 

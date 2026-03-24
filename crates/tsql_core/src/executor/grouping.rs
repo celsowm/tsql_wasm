@@ -209,8 +209,17 @@ impl<'a> GroupExecutor<'a> {
         }
 
         let columns = expand_projection_columns(&projection, None);
+        let mut column_types = Vec::new();
+        if !projected_rows.is_empty() {
+            for val in &projected_rows[0] {
+                column_types.push(val.data_type().unwrap_or(crate::types::DataType::VarChar { max_len: 4000 }));
+            }
+        } else {
+            column_types = vec![crate::types::DataType::VarChar { max_len: 4000 }; columns.len()];
+        }
         Ok(super::result::QueryResult {
             columns,
+            column_types,
             rows: projected_rows,
         })
     }
@@ -228,33 +237,28 @@ impl<'a> GroupExecutor<'a> {
             Some(&group.rows[0])
         };
 
+        ctx.current_group = Some(group.clone());
         for item in projection {
             match &item.expr {
-                Expr::FunctionCall { name, args } if super::aggregates::is_aggregate_function(name) => {
-                    out.push(dispatch_aggregate(name, args, group, ctx, self.catalog, self.storage, self.clock)
-                        .unwrap_or(Ok(Value::Null))?);
-                }
                 Expr::Wildcard => {
                     if let Some(row) = sample_row {
                         out.extend(super::projection::expand_wildcard_values(row));
                     }
                 }
                 expr => {
-                    if let Some(row) = sample_row {
-                        out.push(eval_expr(
-                            expr,
-                            row,
-                            ctx,
-                            self.catalog,
-                            self.storage,
-                            self.clock,
-                        )?);
-                    } else {
-                        out.push(Value::Null);
-                    }
+                    let row_to_use = sample_row.cloned().unwrap_or_else(|| vec![]);
+                    out.push(eval_expr(
+                        expr,
+                        &row_to_use,
+                        ctx,
+                        self.catalog,
+                        self.storage,
+                        self.clock,
+                    )?);
                 }
             }
         }
+        ctx.current_group = None;
         Ok(out)
     }
 }

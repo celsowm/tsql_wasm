@@ -16,7 +16,8 @@ pub fn parse_expr_subquery_aware(input: &str) -> Result<crate::ast::Expr, DbErro
 }
 
 pub fn parse_batch(sql: &str) -> Result<Vec<Statement>, DbError> {
-    let trimmed = sql.trim();
+    let stripped = strip_comments(sql);
+    let trimmed = stripped.trim();
     if trimmed.is_empty() {
         return Ok(vec![]);
     }
@@ -30,6 +31,31 @@ pub fn parse_batch(sql: &str) -> Result<Vec<Statement>, DbError> {
         }
     }
     Ok(statements)
+}
+
+fn strip_comments(sql: &str) -> String {
+    let mut out = String::new();
+    let mut in_string = false;
+    let chars: Vec<char> = sql.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        let ch = chars[i];
+        if ch == '\'' {
+            in_string = !in_string;
+            out.push(ch);
+            i += 1;
+            continue;
+        }
+        if !in_string && i + 1 < chars.len() && chars[i] == '-' && chars[i + 1] == '-' {
+            while i < chars.len() && chars[i] != '\n' {
+                i += 1;
+            }
+            continue;
+        }
+        out.push(ch);
+        i += 1;
+    }
+    out
 }
 
 fn split_statements(sql: &str) -> Vec<String> {
@@ -232,12 +258,16 @@ pub fn parse_sql(sql: &str) -> Result<Statement, DbError> {
 
     if upper.starts_with("CREATE TABLE ") {
         statements::parse_create_table(trimmed)
+    } else if upper.starts_with("CREATE VIEW ") {
+        statements::parse_create_view(trimmed)
     } else if upper.starts_with("CREATE INDEX ") {
         statements::parse_create_index(trimmed)
     } else if upper.starts_with("CREATE SCHEMA ") {
         statements::parse_create_schema(trimmed)
     } else if upper.starts_with("DROP TABLE ") {
         statements::parse_drop_table(trimmed)
+    } else if upper.starts_with("DROP VIEW ") {
+        statements::parse_drop_view(trimmed)
     } else if upper.starts_with("DROP INDEX ") {
         statements::parse_drop_index(trimmed)
     } else if upper.starts_with("DROP SCHEMA ") {

@@ -56,6 +56,8 @@ pub enum Statement {
     DropProcedure(DropProcedureStmt),
     CreateFunction(CreateFunctionStmt),
     DropFunction(DropFunctionStmt),
+    CreateView(CreateViewStmt),
+    DropView(DropViewStmt),
     Merge(MergeStmt),
 }
 
@@ -239,6 +241,17 @@ pub struct DropFunctionStmt {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateViewStmt {
+    pub name: ObjectName,
+    pub query: SelectStmt,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DropViewStmt {
+    pub name: ObjectName,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WithCteStmt {
     pub ctes: Vec<CteDef>,
     pub body: Box<Statement>,
@@ -342,6 +355,12 @@ pub enum TableConstraintSpec {
     Check {
         name: String,
         expr: Expr,
+    },
+    ForeignKey {
+        name: String,
+        columns: Vec<String>,
+        referenced_table: ObjectName,
+        referenced_columns: Vec<String>,
     },
 }
 

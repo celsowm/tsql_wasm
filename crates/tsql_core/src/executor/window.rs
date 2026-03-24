@@ -177,8 +177,18 @@ impl<'a> WindowExecutor<'a> {
             })
             .collect();
 
+        let mut column_types = Vec::new();
+        if !final_rows.is_empty() {
+            for val in &final_rows[0] {
+                column_types.push(val.data_type().unwrap_or(crate::types::DataType::VarChar { max_len: 4000 }));
+            }
+        } else {
+            column_types = vec![crate::types::DataType::VarChar { max_len: 4000 }; columns.len()];
+        }
+
         Ok(super::result::QueryResult {
             columns,
+            column_types,
             rows: final_rows,
         })
     }
@@ -217,8 +227,18 @@ impl<'a> WindowExecutor<'a> {
             .map(|i| i.alias.clone().unwrap_or_else(|| "".to_string()))
             .collect();
 
+        let mut column_types = Vec::new();
+        if !result.is_empty() {
+            for val in &result[0] {
+                column_types.push(val.data_type().unwrap_or(crate::types::DataType::VarChar { max_len: 4000 }));
+            }
+        } else {
+            column_types = vec![crate::types::DataType::VarChar { max_len: 4000 }; columns.len()];
+        }
+
         Ok(super::result::QueryResult {
             columns,
+            column_types,
             rows: result,
         })
     }

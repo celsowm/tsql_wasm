@@ -42,6 +42,110 @@ pub(crate) fn enforce_string_length(
     Ok(())
 }
 
+pub(crate) fn enforce_foreign_keys_on_delete(
+    table: &TableDef,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    deleted_row: &StoredRow,
+) -> Result<(), DbError> {
+    for other_table in catalog.get_tables() {
+        for fk in &other_table.foreign_keys {
+            if fk.referenced_table.schema_or_dbo().eq_ignore_ascii_case(table.schema_or_dbo())
+                && fk.referenced_table.name.eq_ignore_ascii_case(&table.name)
+            {
+                let other_rows = storage.get_rows(other_table.id)?;
+                for other_row in other_rows.iter().filter(|r| !r.deleted) {
+                    let mut matches = true;
+                    let mut all_null = true;
+                    for (i, ref_col_name) in fk.referenced_columns.iter().enumerate() {
+                        let ref_col_idx = table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(ref_col_name))
+                            .ok_or_else(|| DbError::Semantic(format!("referenced column '{}' not found", ref_col_name)))?;
+
+                        let col_name = &fk.columns[i];
+                        let col_idx = other_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
+                            .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", col_name)))?;
+
+                        if !other_row.values[col_idx].is_null() {
+                            all_null = false;
+                        }
+
+                        if compare_values(&other_row.values[col_idx], &deleted_row.values[ref_col_idx]) != std::cmp::Ordering::Equal {
+                            matches = false;
+                            break;
+                        }
+                    }
+
+                    if matches && !all_null {
+                        return Err(DbError::Execution(format!(
+                            "The DELETE statement conflicted with the REFERENCE constraint \"{}\". The conflict occurred in database \"master\", table \"{}.{}\", column '{}'.",
+                            fk.name, other_table.schema_or_dbo(), other_table.name, fk.columns[0]
+                        )));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn enforce_foreign_keys_on_insert(
+    table: &TableDef,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    row: &StoredRow,
+) -> Result<(), DbError> {
+    for fk in &table.foreign_keys {
+        let mut row_values = Vec::new();
+        let mut all_null = true;
+        for col_name in &fk.columns {
+            let col_idx = table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
+                .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", col_name)))?;
+            let val = &row.values[col_idx];
+            if !val.is_null() {
+                all_null = false;
+            }
+            row_values.push(val.clone());
+        }
+
+        if all_null {
+            continue;
+        }
+
+        let ref_schema = fk.referenced_table.schema_or_dbo();
+        let ref_name = &fk.referenced_table.name;
+        let ref_table = catalog.find_table(ref_schema, ref_name)
+            .ok_or_else(|| DbError::Execution(format!("referenced table '{}.{}' not found", ref_schema, ref_name)))?;
+
+        let ref_rows = storage.get_rows(ref_table.id)?;
+        let mut found = false;
+
+        for ref_row in ref_rows.iter().filter(|r| !r.deleted) {
+            let mut matches = true;
+            for (i, ref_col_name) in fk.referenced_columns.iter().enumerate() {
+                let ref_col_idx = ref_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(ref_col_name))
+                    .ok_or_else(|| DbError::Semantic(format!("referenced column '{}' not found", ref_col_name)))?;
+
+                if compare_values(&row_values[i], &ref_row.values[ref_col_idx]) != std::cmp::Ordering::Equal {
+                    matches = false;
+                    break;
+                }
+            }
+            if matches {
+                found = true;
+                break;
+            }
+        }
+
+        if !found {
+            return Err(DbError::Execution(format!(
+                "The INSERT statement conflicted with the FOREIGN KEY constraint \"{}\". The conflict occurred in database \"master\", table \"{}.{}\", column '{}'.",
+                fk.name, ref_schema, ref_name, fk.referenced_columns[0]
+            )));
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn enforce_unique_on_insert(
     table: &TableDef,
     storage: &dyn Storage,
