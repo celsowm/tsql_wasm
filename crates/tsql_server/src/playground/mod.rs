@@ -15,17 +15,17 @@ pub fn seed_playground(db: &Database) -> Result<(), tsql_core::DbError> {
     
     // Execute schema creation
     for sql in schema::DDL_STATEMENTS {
-        let _ = StatementExecutor::execute_session_batch_sql(db, session_id, sql);
+        StatementExecutor::execute_session_batch_sql(db, session_id, sql)?;
     }
     
     // Execute views creation
     for sql in views::DDL_STATEMENTS {
-        let _ = StatementExecutor::execute_session_batch_sql(db, session_id, sql);
+        StatementExecutor::execute_session_batch_sql(db, session_id, sql)?;
     }
     
     // Insert sample data
     for sql in data::INSERT_STATEMENTS {
-        let _ = StatementExecutor::execute_session_batch_sql(db, session_id, sql);
+        StatementExecutor::execute_session_batch_sql(db, session_id, sql)?;
     }
     
     let _ = db.close_session(session_id);

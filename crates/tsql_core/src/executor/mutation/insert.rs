@@ -10,7 +10,8 @@ use super::super::model::single_row_context;
 
 use super::MutationExecutor;
 use super::validation::{
-    enforce_checks_on_row, enforce_string_length, enforce_unique_on_insert,
+    enforce_checks_on_row, enforce_foreign_keys_on_insert, enforce_string_length,
+    enforce_unique_on_insert,
 };
 
 impl<'a> MutationExecutor<'a> {
@@ -100,6 +101,7 @@ impl<'a> MutationExecutor<'a> {
                 };
                 self.apply_missing_values(&table, &mut temp_row.values, ctx)?;
                 enforce_unique_on_insert(&table, self.storage, table_id, &temp_row)?;
+                enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &temp_row)?;
                 enforce_checks_on_row(
                     &table,
                     &temp_row,
@@ -116,6 +118,7 @@ impl<'a> MutationExecutor<'a> {
         for value_row in stmt.values {
             let row = self.build_insert_row(&table, &insert_columns, value_row, ctx)?;
             enforce_unique_on_insert(&table, self.storage, table_id, &row)?;
+            enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &row)?;
             enforce_checks_on_row(&table, &row, ctx, self.catalog, self.storage, self.clock)?;
             self.storage.insert_row(table_id, row)?;
         }

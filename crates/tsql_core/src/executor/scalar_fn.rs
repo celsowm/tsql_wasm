@@ -3,6 +3,7 @@ use crate::catalog::{Catalog, RoutineKind};
 use crate::error::DbError;
 use crate::types::Value;
 
+use super::aggregates::{dispatch_aggregate, is_aggregate_function};
 use super::clock::Clock;
 use super::context::ExecutionContext;
 use super::date_time::{apply_dateadd, day_of_week_from_date, date_to_days, parse_datetime_parts};
@@ -23,6 +24,14 @@ pub(crate) fn eval_function(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
+    if is_aggregate_function(name) {
+        if let Some(group) = ctx.current_group.clone() {
+            if let Some(res) = dispatch_aggregate(name, args, &group, ctx, catalog, storage, clock) {
+                return res;
+            }
+        }
+    }
+
     if name.eq_ignore_ascii_case("GETDATE") {
         if !args.is_empty() {
             return Err(DbError::Execution("GETDATE expects no arguments".into()));

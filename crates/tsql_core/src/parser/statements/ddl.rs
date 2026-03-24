@@ -106,6 +106,35 @@ pub(crate) fn parse_drop_schema(sql: &str) -> Result<Statement, DbError> {
     }))
 }
 
+pub(crate) fn parse_create_view(sql: &str) -> Result<Statement, DbError> {
+    let after_create = sql["CREATE VIEW".len()..].trim();
+    let as_idx = find_keyword_top_level(after_create, "AS")
+        .ok_or_else(|| DbError::Parse("CREATE VIEW missing AS".into()))?;
+
+    let view_name = parse_object_name(after_create[..as_idx].trim());
+    let query_sql = after_create[as_idx + "AS".len()..].trim();
+
+    let query = match super::select::parse_select(query_sql)? {
+        Statement::Select(s) => s,
+        _ => return Err(DbError::Parse("VIEW body must be a SELECT".into())),
+    };
+
+    Ok(Statement::CreateView(CreateViewStmt {
+        name: view_name,
+        query,
+    }))
+}
+
+pub(crate) fn parse_drop_view(sql: &str) -> Result<Statement, DbError> {
+    let view_name = sql["DROP VIEW".len()..].trim();
+    if view_name.is_empty() {
+        return Err(DbError::Parse("DROP VIEW missing name".into()));
+    }
+    Ok(Statement::DropView(DropViewStmt {
+        name: parse_object_name(view_name),
+    }))
+}
+
 pub(crate) fn parse_truncate_table(sql: &str) -> Result<Statement, DbError> {
     let table_name = sql["TRUNCATE TABLE".len()..].trim();
     let name = parse_object_name(table_name);
@@ -416,6 +445,41 @@ pub(crate) fn parse_table_constraint(input: &str) -> Result<TableConstraintSpec,
         let expr_raw = strip_wrapping_parens(&tokens[3]);
         let expr = parse_expr(expr_raw)?;
         return Ok(TableConstraintSpec::Check { name, expr });
+    }
+    if tokens[2].eq_ignore_ascii_case("FOREIGN") {
+        // CONSTRAINT name FOREIGN KEY (cols) REFERENCES table(ref_cols)
+        if tokens.len() < 7 || !tokens[3].eq_ignore_ascii_case("KEY") {
+            return Err(DbError::Parse("expected KEY after FOREIGN".into()));
+        }
+        let cols_raw = strip_wrapping_parens(&tokens[4]);
+        let columns = split_csv_top_level(cols_raw)
+            .into_iter()
+            .map(|s| s.trim().trim_matches('[').trim_matches(']').to_string())
+            .collect();
+
+        if !tokens[5].eq_ignore_ascii_case("REFERENCES") {
+            return Err(DbError::Parse("expected REFERENCES".into()));
+        }
+
+        let ref_part = &tokens[6];
+        let open = ref_part.find('(').ok_or_else(|| DbError::Parse("missing '(' in REFERENCES".into()))?;
+        let close = ref_part.rfind(')').ok_or_else(|| DbError::Parse("missing ')' in REFERENCES".into()))?;
+
+        let ref_table_name = ref_part[..open].trim();
+        let referenced_table = parse_object_name(ref_table_name);
+
+        let ref_cols_raw = &ref_part[open + 1..close];
+        let referenced_columns = split_csv_top_level(ref_cols_raw)
+            .into_iter()
+            .map(|s| s.trim().trim_matches('[').trim_matches(']').to_string())
+            .collect();
+
+        return Ok(TableConstraintSpec::ForeignKey {
+            name,
+            columns,
+            referenced_table,
+            referenced_columns,
+        });
     }
     Err(DbError::Parse("unsupported table constraint".into()))
 }

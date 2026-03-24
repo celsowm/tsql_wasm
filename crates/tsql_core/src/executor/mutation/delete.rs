@@ -8,6 +8,7 @@ use super::super::evaluator::eval_predicate;
 use super::super::model::single_row_context;
 
 use super::MutationExecutor;
+use super::validation::enforce_foreign_keys_on_delete;
 
 impl<'a> MutationExecutor<'a> {
     pub(crate) fn execute_delete_with_context(
@@ -56,6 +57,7 @@ impl<'a> MutationExecutor<'a> {
                 true
             };
             if matches {
+                enforce_foreign_keys_on_delete(&table, self.catalog, self.storage, row)?;
                 row.deleted = true;
             }
         }
@@ -197,6 +199,10 @@ impl<'a> MutationExecutor<'a> {
             if matches {
                 delete_indices.push(i);
             }
+        }
+
+        for &idx in &delete_indices {
+            enforce_foreign_keys_on_delete(table, self.catalog, self.storage, &rows[idx])?;
         }
 
         for idx in delete_indices {

@@ -38,7 +38,7 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
             collation: None,
             scale: None,
             precision: None,
-            flags: 0x0001, // nullable
+            flags: 0x0001,
         },
         Value::TinyInt(_) => TypeInfo {
             tds_type: INTNTYPE,
@@ -82,7 +82,7 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
         },
         Value::Decimal(_, scale) => TypeInfo {
             tds_type: DECIMALNTYPE,
-            length_prefix: vec![0x0D], // 13 bytes for precision up to 38
+            length_prefix: vec![0x11],
             collation: None,
             scale: Some(*scale),
             precision: Some(38),
@@ -104,60 +104,20 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
             precision: None,
             flags: 0x0001,
         },
-        Value::Char(s) => {
-            let max_len = s.len().max(1) as u16;
-            TypeInfo {
-                tds_type: BIGCHARTYPE,
-                length_prefix: {
-                    let mut v = Vec::new();
-                    v.extend_from_slice(&max_len.to_le_bytes());
-                    v
-                },
-                collation: Some(DEFAULT_COLLATION),
-                scale: None,
-                precision: None,
-                flags: 0x0001,
-            }
-        }
-        Value::VarChar(s) => {
-            let max_len = s.len().max(1) as u16;
+        Value::Char(_) | Value::VarChar(_) => {
             TypeInfo {
                 tds_type: BIGVARCHARTYPE,
-                length_prefix: {
-                    let mut v = Vec::new();
-                    v.extend_from_slice(&max_len.to_le_bytes());
-                    v
-                },
+                length_prefix: 8000u16.to_le_bytes().to_vec(),
                 collation: Some(DEFAULT_COLLATION),
                 scale: None,
                 precision: None,
                 flags: 0x0001,
             }
         }
-        Value::NChar(s) => {
-            let max_len = (s.encode_utf16().count() * 2).max(2) as u16;
-            TypeInfo {
-                tds_type: NCHARTYPE,
-                length_prefix: {
-                    let mut v = Vec::new();
-                    v.extend_from_slice(&max_len.to_le_bytes());
-                    v
-                },
-                collation: Some(DEFAULT_COLLATION),
-                scale: None,
-                precision: None,
-                flags: 0x0001,
-            }
-        }
-        Value::NVarChar(s) => {
-            let max_len = (s.encode_utf16().count() * 2).max(2) as u16;
+        Value::NChar(_) | Value::NVarChar(_) => {
             TypeInfo {
                 tds_type: NVARCHARTYPE,
-                length_prefix: {
-                    let mut v = Vec::new();
-                    v.extend_from_slice(&max_len.to_le_bytes());
-                    v
-                },
+                length_prefix: 8000u16.to_le_bytes().to_vec(),
                 collation: Some(DEFAULT_COLLATION),
                 scale: None,
                 precision: None,
@@ -168,11 +128,7 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
             let len = v.len().max(1) as u16;
             TypeInfo {
                 tds_type: BIGBINARYTYPE,
-                length_prefix: {
-                    let mut bv = Vec::new();
-                    bv.extend_from_slice(&len.to_le_bytes());
-                    bv
-                },
+                length_prefix: len.to_le_bytes().to_vec(),
                 collation: None,
                 scale: None,
                 precision: None,
@@ -183,11 +139,7 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
             let len = v.len().max(1) as u16;
             TypeInfo {
                 tds_type: BIGVARBINARYTYPE,
-                length_prefix: {
-                    let mut bv = Vec::new();
-                    bv.extend_from_slice(&len.to_le_bytes());
-                    bv
-                },
+                length_prefix: len.to_le_bytes().to_vec(),
                 collation: None,
                 scale: None,
                 precision: None,
@@ -204,7 +156,7 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
         },
         Value::Time(_) => TypeInfo {
             tds_type: TIMENTYPE,
-            length_prefix: vec![0x05], // scale 7 = 5 bytes
+            length_prefix: vec![0x05],
             collation: None,
             scale: Some(7),
             precision: None,
@@ -220,7 +172,7 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
         },
         Value::DateTime2(_) => TypeInfo {
             tds_type: DATETIME2NTYPE,
-            length_prefix: vec![0x08], // scale 7 = 3 + 5 = 8 bytes
+            length_prefix: vec![0x08],
             collation: None,
             scale: Some(7),
             precision: None,
@@ -228,76 +180,78 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
         },
         Value::UniqueIdentifier(_) => TypeInfo {
             tds_type: GUIDTYPE,
-            length_prefix: vec![0x10], // 16 bytes
+            length_prefix: vec![0x10],
             collation: None,
             scale: None,
             precision: None,
             flags: 0x0001,
         },
-        Value::Null | Value::SqlVariant(_) => {
-            // Default to NVARCHAR for unknown/null
-            TypeInfo {
-                tds_type: NVARCHARTYPE,
-                length_prefix: {
-                    let mut v = Vec::new();
-                    v.extend_from_slice(&(510u16).to_le_bytes());
-                    v
-                },
-                collation: Some(DEFAULT_COLLATION),
-                scale: None,
-                precision: None,
-                flags: 0x0001,
-            }
-        }
+        Value::Null | Value::SqlVariant(_) => TypeInfo {
+            tds_type: NVARCHARTYPE,
+            length_prefix: 510u16.to_le_bytes().to_vec(),
+            collation: Some(DEFAULT_COLLATION),
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
     }
 }
 
-pub fn value_to_wire_bytes(value: &Value) -> Vec<u8> {
-    match value {
-        Value::Null => vec![0x00], // NULL indicator
-        Value::Bit(b) => {
-            if *b {
-                vec![0x01, 0x01]
-            } else {
-                vec![0x01, 0x00]
+pub fn value_to_wire_bytes(value: &Value, ti: &TypeInfo) -> Vec<u8> {
+    if value.is_null() {
+        match ti.tds_type {
+            BIGVARCHARTYPE | BIGCHARTYPE | NVARCHARTYPE | NCHARTYPE | BIGVARBINARYTYPE | BIGBINARYTYPE => {
+                return vec![0xFF, 0xFF];
             }
+            _ => return vec![0x00],
         }
-        Value::TinyInt(v) => vec![0x01, *v],
-        Value::SmallInt(v) => {
-            let mut buf = vec![0x02];
-            buf.extend_from_slice(&v.to_le_bytes());
-            buf
-        }
-        Value::Int(v) => {
-            let mut buf = vec![0x04];
-            buf.extend_from_slice(&v.to_le_bytes());
-            buf
-        }
-        Value::BigInt(v) => {
-            let mut buf = vec![0x08];
-            buf.extend_from_slice(&v.to_le_bytes());
-            buf
-        }
-        Value::Float(v) => {
-            let mut buf = vec![0x08];
-            buf.extend_from_slice(&v.to_le_bytes());
-            buf
-        }
-        Value::Decimal(raw, scale) => {
-            // DECIMAL: sign byte (0=negative, 1=positive) + LE limbs
-            // Using 13 bytes for precision 38
-            let negative = *raw < 0;
-            let abs_val = if negative {
-                (-raw) as u128
-            } else {
-                (*raw) as u128
+    }
+
+    match ti.tds_type {
+        BITNTYPE => {
+            let b = match value {
+                Value::Bit(b) => *b,
+                _ => value.to_integer_i64().unwrap_or(0) != 0,
             };
-
-            let mut buf = vec![0x0D]; // length = 13
-            buf.push(if negative { 0x00 } else { 0x01 }); // sign
-            buf.push(*scale);
-
-            // 4 x 32-bit LE limbs
+            vec![0x01, if b { 0x01 } else { 0x00 }]
+        }
+        INTNTYPE => {
+            let len = ti.length_prefix[0];
+            let mut buf = vec![len];
+            let v = value.to_integer_i64().unwrap_or(0);
+            match len {
+                1 => buf.push(v as u8),
+                2 => buf.extend_from_slice(&(v as i16).to_le_bytes()),
+                4 => buf.extend_from_slice(&(v as i32).to_le_bytes()),
+                8 => buf.extend_from_slice(&v.to_le_bytes()),
+                _ => {}
+            }
+            buf
+        }
+        FLTNTYPE => {
+            let len = ti.length_prefix[0];
+            let mut buf = vec![len];
+            let f = match value {
+                Value::Float(bits) => f64::from_bits(*bits),
+                _ => value.to_integer_i64().unwrap_or(0) as f64,
+            };
+            match len {
+                4 => buf.extend_from_slice(&(f as f32).to_le_bytes()),
+                8 => buf.extend_from_slice(&f.to_le_bytes()),
+                _ => {}
+            }
+            buf
+        }
+        DECIMALNTYPE | NUMERICNTYPE => {
+            let len = ti.length_prefix[0];
+            let mut buf = vec![len];
+            let raw = match value {
+                Value::Decimal(r, _s) => *r,
+                _ => value.to_integer_i64().unwrap_or(0) as i128 * 10i128.pow(ti.scale.unwrap_or(0) as u32),
+            };
+            let negative = raw < 0;
+            let abs_val = raw.abs() as u128;
+            buf.push(if negative { 0x00 } else { 0x01 });
             let limbs = [
                 (abs_val & 0xFFFFFFFF) as u32,
                 ((abs_val >> 32) & 0xFFFFFFFF) as u32,
@@ -309,83 +263,93 @@ pub fn value_to_wire_bytes(value: &Value) -> Vec<u8> {
             }
             buf
         }
-        Value::Money(v) => {
-            // MONEY is stored as i64 (scaled by 10000)
-            let mut buf = vec![0x08];
-            buf.extend_from_slice(&v.to_le_bytes());
-            buf
-        }
-        Value::SmallMoney(v) => {
-            let mut buf = vec![0x04];
-            buf.extend_from_slice(&(*v as i32).to_le_bytes());
-            buf
-        }
-        Value::Char(s) | Value::VarChar(s) => {
-            let bytes = s.as_bytes();
-            let mut buf = Vec::with_capacity(2 + bytes.len());
-            buf.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
-            buf.extend_from_slice(bytes);
-            buf
-        }
-        Value::NChar(s) | Value::NVarChar(s) => {
-            let utf16: Vec<u16> = s.encode_utf16().collect();
-            let mut buf = Vec::with_capacity(2 + utf16.len() * 2);
-            buf.extend_from_slice(&((utf16.len() * 2) as u16).to_le_bytes());
-            for c in &utf16 {
-                buf.extend_from_slice(&c.to_le_bytes());
+        MONEYNTYPE => {
+            let len = ti.length_prefix[0];
+            let mut buf = vec![len];
+            let m = match value {
+                Value::Money(v) => *v,
+                Value::SmallMoney(v) => *v as i128,
+                _ => value.to_integer_i64().unwrap_or(0) as i128 * 10000,
+            };
+            match len {
+                4 => buf.extend_from_slice(&(m as i32).to_le_bytes()),
+                8 => buf.extend_from_slice(&(m as i64).to_le_bytes()),
+                _ => {}
             }
             buf
         }
-        Value::Binary(v) | Value::VarBinary(v) => {
-            let mut buf = Vec::with_capacity(2 + v.len());
-            buf.extend_from_slice(&(v.len() as u16).to_le_bytes());
-            buf.extend_from_slice(v);
+        BIGVARCHARTYPE | BIGCHARTYPE | NVARCHARTYPE | NCHARTYPE => {
+            let s = value.to_string_value();
+            let is_unicode = ti.tds_type == NVARCHARTYPE || ti.tds_type == NCHARTYPE;
+            if is_unicode {
+                let utf16: Vec<u16> = s.encode_utf16().collect();
+                let mut buf = Vec::with_capacity(3 + utf16.len() * 2);
+                let byte_len = (utf16.len() * 2) as u16;
+                buf.extend_from_slice(&byte_len.to_le_bytes());
+                for c in &utf16 {
+                    buf.extend_from_slice(&c.to_le_bytes());
+                }
+                buf
+            } else {
+                let bytes = s.as_bytes();
+                let mut buf = Vec::with_capacity(3 + bytes.len());
+                buf.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
+                buf.extend_from_slice(bytes);
+                buf
+            }
+        }
+        BIGVARBINARYTYPE | BIGBINARYTYPE => {
+            let bytes = match value {
+                Value::Binary(v) | Value::VarBinary(v) => v.clone(),
+                _ => value.to_string_value().as_bytes().to_vec(),
+            };
+            let mut buf = Vec::with_capacity(3 + bytes.len());
+            buf.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
+            buf.extend_from_slice(&bytes);
             buf
         }
-        Value::Date(s) => {
-            // Parse "YYYY-MM-DD" to days since 2000-01-01
-            let days = parse_date_to_days_since_2000(s);
+        DATENTYPE => {
+            let s = value.to_string_value();
+            let days = parse_date_to_days_since_2000(&s);
             let mut buf = vec![0x03];
             buf.extend_from_slice(&days.to_le_bytes()[..3]);
             buf
         }
-        Value::Time(s) => {
-            // Parse "HH:MM:SS.fffffff" to 100ns ticks (scale 7)
-            let ticks = parse_time_to_ticks(s);
-            // Time with scale 7: 5 bytes
+        TIMENTYPE => {
+            let s = value.to_string_value();
+            let ticks = parse_time_to_ticks(&s);
             let mut buf = vec![0x05];
             buf.extend_from_slice(&ticks.to_le_bytes()[..5]);
             buf
         }
-        Value::DateTime(s) => {
-            // Parse "YYYY-MM-DD HH:MM:SS.fff" to days + 1/300 sec ticks
-            let (days, ticks_300) = parse_datetime(s);
+        DATETIMNTYPE => {
+            let s = value.to_string_value();
+            let (days, ticks) = parse_datetime(&s);
             let mut buf = vec![0x08];
             buf.extend_from_slice(&days.to_le_bytes());
-            buf.extend_from_slice(&ticks_300.to_le_bytes());
+            buf.extend_from_slice(&ticks.to_le_bytes());
             buf
         }
-        Value::DateTime2(s) => {
-            // Parse "YYYY-MM-DD HH:MM:SS.fffffff"
-            let (days, ticks) = parse_datetime2(s);
-            let mut buf = vec![0x08]; // length for scale 7
-            buf.extend_from_slice(&ticks.to_le_bytes()[..5]); // 5 bytes time
-            buf.extend_from_slice(&days.to_le_bytes()[..3]); // 3 bytes date
+        DATETIME2NTYPE => {
+            let s = value.to_string_value();
+            let (days, ticks) = parse_datetime2(&s);
+            let mut buf = vec![0x08];
+            buf.extend_from_slice(&ticks.to_le_bytes()[..5]);
+            buf.extend_from_slice(&days.to_le_bytes()[..3]);
             buf
         }
-        Value::UniqueIdentifier(s) => {
-            // Parse "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" to 16 bytes
-            let bytes = parse_guid(s);
-            let mut buf = vec![0x10]; // length
+        GUIDTYPE => {
+            let s = value.to_string_value();
+            let bytes = parse_guid(&s);
+            let mut buf = vec![0x10];
             buf.extend_from_slice(&bytes);
             buf
         }
-        Value::SqlVariant(v) => value_to_wire_bytes(v),
+        _ => vec![0x00],
     }
 }
 
 fn parse_date_to_days_since_2000(s: &str) -> i32 {
-    // Expected: "YYYY-MM-DD"
     let parts: Vec<&str> = s.split('-').collect();
     if parts.len() < 3 {
         return 0;
@@ -394,7 +358,6 @@ fn parse_date_to_days_since_2000(s: &str) -> i32 {
     let m: i32 = parts[1].parse().unwrap_or(1);
     let d: i32 = parts[2].parse().unwrap_or(1);
 
-    // Days since 2000-01-01
     let total_days = date_to_days(y, m, d);
     let base_days = date_to_days(2000, 1, 1);
     total_days - base_days
@@ -408,7 +371,6 @@ fn date_to_days(y: i32, m: i32, d: i32) -> i32 {
 }
 
 fn parse_time_to_ticks(s: &str) -> u64 {
-    // Expected: "HH:MM:SS" or "HH:MM:SS.fffffff"
     let main_frac: Vec<&str> = s.split('.').collect();
     let parts: Vec<&str> = main_frac[0].split(':').collect();
     if parts.len() < 3 {
@@ -419,7 +381,7 @@ fn parse_time_to_ticks(s: &str) -> u64 {
     let sec: u64 = parts[2].parse().unwrap_or(0);
 
     let mut ticks = h * 3600 + mi * 60 + sec;
-    ticks *= 10_000_000; // Convert to 100ns ticks (scale 7)
+    ticks *= 10_000_000;
 
     if main_frac.len() > 1 {
         let frac_str = main_frac[1];
@@ -433,7 +395,6 @@ fn parse_time_to_ticks(s: &str) -> u64 {
 }
 
 fn parse_datetime(s: &str) -> (i32, u32) {
-    // Expected: "YYYY-MM-DD HH:MM:SS.fff"
     let parts: Vec<&str> = s.split(' ').collect();
     if parts.is_empty() {
         return (0, 0);
@@ -455,9 +416,8 @@ fn parse_datetime(s: &str) -> (i32, u32) {
     let sec: u32 = hms[2].parse().unwrap_or(0);
 
     let mut ticks = h * 3600 + m * 60 + sec;
-    ticks *= 300; // Convert to 1/300 sec
+    ticks *= 300;
 
-    // Milliseconds
     if main_frac.len() > 1 {
         let ms_str = &main_frac[1][..main_frac[1].len().min(3)];
         let ms: u32 = ms_str.parse().unwrap_or(0);
@@ -468,7 +428,6 @@ fn parse_datetime(s: &str) -> (i32, u32) {
 }
 
 fn parse_datetime2(s: &str) -> (i32, u64) {
-    // Expected: "YYYY-MM-DD HH:MM:SS.fffffff"
     let parts: Vec<&str> = s.split(' ').collect();
     if parts.is_empty() {
         return (0, 0);
@@ -494,13 +453,6 @@ fn parse_guid(s: &str) -> [u8; 16] {
         bytes[i] = u8::from_str_radix(byte_str, 16).unwrap_or(0);
     }
 
-    // TDS GUID is stored with mixed-endian:
-    // First 4 bytes reversed (LE), next 2 reversed (LE), next 2 reversed (LE), last 8 as-is (BE)
-    // But the GUID string format is already in the "display" order
-    // Data1: bytes[0..4] LE
-    // Data2: bytes[4..6] LE
-    // Data3: bytes[6..8] LE
-    // Data4: bytes[8..16] BE
     let mut result = [0u8; 16];
     result[0..4].copy_from_slice(&bytes[0..4].iter().rev().cloned().collect::<Vec<_>>());
     result[4..6].copy_from_slice(&bytes[4..6].iter().rev().cloned().collect::<Vec<_>>());
@@ -509,29 +461,195 @@ fn parse_guid(s: &str) -> [u8; 16] {
     result
 }
 
+pub fn runtime_type_to_tds(ty: &tsql_core::types::DataType) -> TypeInfo {
+    match ty {
+        tsql_core::types::DataType::Bit => TypeInfo {
+            tds_type: BITNTYPE,
+            length_prefix: vec![0x01],
+            collation: None,
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
+        tsql_core::types::DataType::TinyInt => TypeInfo {
+            tds_type: INTNTYPE,
+            length_prefix: vec![0x01],
+            collation: None,
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
+        tsql_core::types::DataType::SmallInt => TypeInfo {
+            tds_type: INTNTYPE,
+            length_prefix: vec![0x02],
+            collation: None,
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
+        tsql_core::types::DataType::Int => TypeInfo {
+            tds_type: INTNTYPE,
+            length_prefix: vec![0x04],
+            collation: None,
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
+        tsql_core::types::DataType::BigInt => TypeInfo {
+            tds_type: INTNTYPE,
+            length_prefix: vec![0x08],
+            collation: None,
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
+        tsql_core::types::DataType::Float => TypeInfo {
+            tds_type: FLTNTYPE,
+            length_prefix: vec![0x08],
+            collation: None,
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
+        tsql_core::types::DataType::Decimal { precision, scale } => TypeInfo {
+            tds_type: DECIMALNTYPE,
+            length_prefix: vec![0x11],
+            collation: None,
+            scale: Some(*scale),
+            precision: Some(*precision),
+            flags: 0x0001,
+        },
+        tsql_core::types::DataType::Money => TypeInfo {
+            tds_type: MONEYNTYPE,
+            length_prefix: vec![0x08],
+            collation: None,
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
+        tsql_core::types::DataType::SmallMoney => TypeInfo {
+            tds_type: MONEYNTYPE,
+            length_prefix: vec![0x04],
+            collation: None,
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
+        tsql_core::types::DataType::Char { len } => TypeInfo {
+            tds_type: BIGCHARTYPE,
+            length_prefix: len.to_le_bytes().to_vec(),
+            collation: Some(DEFAULT_COLLATION),
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
+        tsql_core::types::DataType::VarChar { max_len } => TypeInfo {
+            tds_type: BIGVARCHARTYPE,
+            length_prefix: max_len.to_le_bytes().to_vec(),
+            collation: Some(DEFAULT_COLLATION),
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
+        tsql_core::types::DataType::NChar { len } => TypeInfo {
+            tds_type: NCHARTYPE,
+            length_prefix: (len * 2).to_le_bytes().to_vec(),
+            collation: Some(DEFAULT_COLLATION),
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
+        tsql_core::types::DataType::NVarChar { max_len } => TypeInfo {
+            tds_type: NVARCHARTYPE,
+            length_prefix: (max_len * 2).to_le_bytes().to_vec(),
+            collation: Some(DEFAULT_COLLATION),
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
+        tsql_core::types::DataType::Binary { len } => TypeInfo {
+            tds_type: BIGBINARYTYPE,
+            length_prefix: len.to_le_bytes().to_vec(),
+            collation: None,
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
+        tsql_core::types::DataType::VarBinary { max_len } => TypeInfo {
+            tds_type: BIGVARBINARYTYPE,
+            length_prefix: max_len.to_le_bytes().to_vec(),
+            collation: None,
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
+        tsql_core::types::DataType::Date => TypeInfo {
+            tds_type: DATENTYPE,
+            length_prefix: vec![0x03],
+            collation: None,
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
+        tsql_core::types::DataType::Time => TypeInfo {
+            tds_type: TIMENTYPE,
+            length_prefix: vec![0x05],
+            collation: None,
+            scale: Some(7),
+            precision: None,
+            flags: 0x0001,
+        },
+        tsql_core::types::DataType::DateTime => TypeInfo {
+            tds_type: DATETIMNTYPE,
+            length_prefix: vec![0x08],
+            collation: None,
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
+        tsql_core::types::DataType::DateTime2 => TypeInfo {
+            tds_type: DATETIME2NTYPE,
+            length_prefix: vec![0x08],
+            collation: None,
+            scale: Some(7),
+            precision: None,
+            flags: 0x0001,
+        },
+        tsql_core::types::DataType::UniqueIdentifier => TypeInfo {
+            tds_type: GUIDTYPE,
+            length_prefix: vec![0x10],
+            collation: None,
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
+        tsql_core::types::DataType::SqlVariant => TypeInfo {
+            tds_type: NVARCHARTYPE,
+            length_prefix: 510u16.to_le_bytes().to_vec(),
+            collation: Some(DEFAULT_COLLATION),
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
+    }
+}
+
 pub fn infer_column_types(
     columns: &[String],
     rows: &[Vec<Value>],
 ) -> Vec<TypeInfo> {
-    // For each column, look at the first non-null value to determine type
     columns
         .iter()
         .enumerate()
         .map(|(col_idx, _col_name)| {
-            // Try to find first non-null value in this column
             for row in rows {
                 if col_idx < row.len() && !row[col_idx].is_null() {
                     return value_to_type_info(&row[col_idx]);
                 }
             }
-            // Default to NVARCHAR(255) for all-null or empty columns
             TypeInfo {
                 tds_type: NVARCHARTYPE,
-                length_prefix: {
-                    let mut v = Vec::new();
-                    v.extend_from_slice(&510u16.to_le_bytes());
-                    v
-                },
+                length_prefix: 510u16.to_le_bytes().to_vec(),
                 collation: Some(DEFAULT_COLLATION),
                 scale: None,
                 precision: None,

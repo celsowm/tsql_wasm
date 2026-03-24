@@ -1,8 +1,11 @@
 use crate::ast::{
     AlterTableAction, AlterTableStmt, CreateIndexStmt, CreateSchemaStmt, CreateTableStmt,
-    DropIndexStmt, DropSchemaStmt, DropTableStmt, TableConstraintSpec,
+    DropIndexStmt, DropSchemaStmt, DropTableStmt,
+    TableConstraintSpec,
 };
-use crate::catalog::{Catalog, CheckConstraintDef, ColumnDef, IdentityDef, TableDef};
+use crate::catalog::{
+    Catalog, CheckConstraintDef, ColumnDef, ForeignKeyDef, IdentityDef, TableDef,
+};
 use crate::error::DbError;
 use crate::storage::Storage;
 
@@ -40,12 +43,14 @@ impl<'a> SchemaExecutor<'a> {
             .collect::<Result<Vec<_>, _>>()?;
 
         let mut table_checks = Vec::new();
+        let mut table_fks = Vec::new();
         let mut table = TableDef {
             id: table_id,
             schema_id,
             name: stmt.name.name,
             columns,
             check_constraints: vec![],
+            foreign_keys: vec![],
         };
 
         for tc in stmt.table_constraints {
@@ -64,9 +69,18 @@ impl<'a> SchemaExecutor<'a> {
                 TableConstraintSpec::Check { name, expr } => {
                     table_checks.push(CheckConstraintDef { name, expr });
                 }
+                TableConstraintSpec::ForeignKey { name, columns, referenced_table, referenced_columns } => {
+                    table_fks.push(ForeignKeyDef {
+                        name,
+                        columns,
+                        referenced_table,
+                        referenced_columns,
+                    });
+                }
             }
         }
         table.check_constraints = table_checks;
+        table.foreign_keys = table_fks;
 
         self.catalog.get_tables_mut().push(table);
         self.storage.ensure_table(table_id);
@@ -86,6 +100,16 @@ impl<'a> SchemaExecutor<'a> {
 
     pub(crate) fn drop_schema(&mut self, stmt: DropSchemaStmt) -> Result<(), DbError> {
         self.catalog.drop_schema(&stmt.name)
+    }
+
+    pub(crate) fn create_view(&mut self, stmt: crate::ast::CreateViewStmt) -> Result<(), DbError> {
+        let schema = stmt.name.schema_or_dbo();
+        self.catalog.create_view(schema, &stmt.name.name, crate::ast::Statement::Select(stmt.query))
+    }
+
+    pub(crate) fn drop_view(&mut self, stmt: crate::ast::DropViewStmt) -> Result<(), DbError> {
+        let schema = stmt.name.schema_or_dbo();
+        self.catalog.drop_view(schema, &stmt.name.name)
     }
 
     fn build_column_def(&mut self, spec: crate::ast::ColumnSpec) -> Result<ColumnDef, DbError> {

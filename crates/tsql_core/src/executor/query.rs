@@ -199,6 +199,7 @@ impl<'a> QueryExecutor<'a> {
         let _ = &plan.required_columns;
         Ok(super::result::QueryResult {
             columns: result.columns,
+            column_types: result.column_types,
             rows: final_rows,
         })
     }
@@ -212,7 +213,70 @@ impl<'a> QueryExecutor<'a> {
         if let Some(bound_tvf) = self.bind_inline_tvf(&tref, ctx)? {
             return Ok(bound_tvf);
         }
+        if let Some(bound_view) = self.bind_view(&tref, ctx)? {
+            return Ok(bound_view);
+        }
         planner_bind_table(tref, catalog, ctx)
+    }
+
+    fn bind_view(
+        &self,
+        tref: &crate::ast::TableRef,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<BoundTable>, DbError> {
+        let schema = tref.name.schema_or_dbo();
+        let name = &tref.name.name;
+
+        let Some(view) = self.catalog.find_view(schema, name).cloned() else {
+            return Ok(None);
+        };
+
+        let view_query = match view.query {
+            crate::ast::Statement::Select(s) => s,
+            _ => return Err(DbError::Execution("view query must be SELECT".into())),
+        };
+
+        let result = self.execute_select(view_query, ctx)?;
+
+        let table_def = crate::catalog::TableDef {
+            id: 0,
+            schema_id: 1,
+            name: name.clone(),
+            columns: result
+                .columns
+                .iter()
+                .enumerate()
+                .map(|(i, cname)| crate::catalog::ColumnDef {
+                    id: (i + 1) as u32,
+                    name: cname.clone(),
+                    data_type: result.column_types[i].clone(),
+                    nullable: true,
+                    primary_key: false,
+                    unique: false,
+                    identity: None,
+                    default: None,
+                    default_constraint_name: None,
+                    check: None,
+                    check_constraint_name: None,
+                    computed_expr: None,
+                })
+                .collect(),
+            check_constraints: vec![], foreign_keys: vec![],
+
+        };
+        let rows = result
+            .rows
+            .into_iter()
+            .map(|values| StoredRow {
+                values,
+                deleted: false,
+            })
+            .collect::<Vec<_>>();
+        Ok(Some(BoundTable {
+            alias: tref.alias.clone().unwrap_or_else(|| name.clone()),
+            table: table_def,
+            virtual_rows: Some(rows),
+        }))
     }
 
     fn bind_inline_tvf(
@@ -281,7 +345,7 @@ impl<'a> QueryExecutor<'a> {
                 .map(|(i, cname)| crate::catalog::ColumnDef {
                     id: (i + 1) as u32,
                     name: cname.clone(),
-                    data_type: crate::types::DataType::VarChar { max_len: 4000 },
+                    data_type: result.column_types[i].clone(),
                     nullable: true,
                     primary_key: false,
                     unique: false,
@@ -293,7 +357,8 @@ impl<'a> QueryExecutor<'a> {
                     computed_expr: None,
                 })
                 .collect(),
-            check_constraints: vec![],
+            check_constraints: vec![], foreign_keys: vec![],
+
         };
         let rows = result
             .rows
@@ -341,7 +406,7 @@ impl<'a> QueryExecutor<'a> {
                             .map(|(i, cname)| crate::catalog::ColumnDef {
                                 id: (i + 1) as u32,
                                 name: cname.clone(),
-                                data_type: crate::types::DataType::VarChar { max_len: 4000 },
+                                data_type: sub_result.column_types[i].clone(),
                                 nullable: true,
                                 primary_key: false,
                                 unique: false,
@@ -353,7 +418,8 @@ impl<'a> QueryExecutor<'a> {
                                 computed_expr: None,
                             })
                             .collect(),
-                        check_constraints: vec![],
+                        check_constraints: vec![], foreign_keys: vec![],
+
                     };
                     combined.push(ContextTable {
                         table: null_table,
@@ -375,7 +441,7 @@ impl<'a> QueryExecutor<'a> {
                         .map(|(i, cname)| crate::catalog::ColumnDef {
                             id: (i + 1) as u32,
                             name: cname.clone(),
-                            data_type: crate::types::DataType::VarChar { max_len: 4000 },
+                            data_type: sub_result.column_types[i].clone(),
                             nullable: true,
                             primary_key: false,
                             unique: false,
@@ -387,7 +453,8 @@ impl<'a> QueryExecutor<'a> {
                             computed_expr: None,
                         })
                         .collect(),
-                    check_constraints: vec![],
+                    check_constraints: vec![], foreign_keys: vec![],
+
                 };
                 for sub_row_values in &sub_result.rows {
                     let mut combined = left_row.clone();
@@ -415,8 +482,17 @@ impl<'a> QueryExecutor<'a> {
     ) -> Result<super::result::QueryResult, DbError> {
         let columns = expand_projection_columns(&projection, rows.first());
         let projected_rows = self.project_flat_rows(&projection, &rows, ctx);
+        let mut column_types = Vec::new();
+        if !projected_rows.is_empty() {
+            for val in &projected_rows[0] {
+                column_types.push(val.data_type().unwrap_or(crate::types::DataType::VarChar { max_len: 4000 }));
+            }
+        } else {
+            column_types = vec![crate::types::DataType::VarChar { max_len: 4000 }; columns.len()];
+        }
         Ok(super::result::QueryResult {
             columns,
+            column_types,
             rows: projected_rows,
         })
     }

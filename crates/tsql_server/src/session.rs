@@ -39,42 +39,51 @@ impl TdsSession {
         }
     }
 
-    pub async fn handle(mut self, stream: TcpStream) -> Result<(), String> {
-        let mut stream = stream;
+    pub async fn handle(self, mut stream: TcpStream) -> Result<(), String> {
+        let mut needs_tls_upgrade = false;
+        let mut login_packet = None;
 
-        // Read PRELOGIN
-        let (header, data) = packet::read_packet(&mut stream)
-            .await
-            .map_err(|e| format!("Failed to read PRELOGIN: {}", e))?;
-        log::debug!("Received PRELOGIN packet type=0x{:02X} len={}", header.packet_type, header.length);
+        loop {
+            let (header, data) = packet::read_packet(&mut stream)
+                .await
+                .map_err(|e| format!("Handshake read error: {}", e))?;
+            log::debug!("Received handshake packet type=0x{:02X} len={}", header.packet_type, header.length);
 
-        if header.packet_type != TDS7_PRELOGIN {
-            return Err(format!("Expected PRELOGIN (0x12), got 0x{:02X}", header.packet_type));
+            if header.packet_type == TDS7_PRELOGIN {
+                let prelogin = parse_prelogin(&data).map_err(|e| e.to_string())?;
+                log::debug!("PRELOGIN: version={:?}, encryption={}", prelogin.version, prelogin.encryption);
+
+                let server_encrypt = if self.config.tls_enabled {
+                    ENCRYPT_ON
+                } else {
+                    ENCRYPT_NOT_SUP
+                };
+
+                needs_tls_upgrade = self.config.tls_enabled
+                    && (prelogin.encryption == ENCRYPT_ON || prelogin.encryption == ENCRYPT_REQUIRED);
+
+                let response = build_prelogin_response(server_encrypt);
+                packet::write_packet(&mut stream, TDS7_PRELOGIN, &response)
+                    .await
+                    .map_err(|e| format!("Failed to write PRELOGIN response: {}", e))?;
+                stream.flush().await.map_err(|e| format!("Failed to flush: {}", e))?;
+                log::debug!("Sent PRELOGIN response (encryption={})", server_encrypt);
+
+                if needs_tls_upgrade {
+                    break;
+                }
+            } else if header.packet_type == TDS7_LOGIN {
+                login_packet = Some((header, data));
+                break;
+            } else {
+                return Err(format!("Expected PRELOGIN or LOGIN7, got 0x{:02X}", header.packet_type));
+            }
         }
 
-        let prelogin = parse_prelogin(&data).map_err(|e| e.to_string())?;
-        log::debug!("PRELOGIN: version={:?}, encryption={}", prelogin.version, prelogin.encryption);
+        self.handle_login(stream, login_packet, needs_tls_upgrade).await
+    }
 
-        // Determine encryption response based on server config and client request.
-        // IMPORTANT: When TLS is disabled we must respond ENCRYPT_NOT_SUP (0x02) so that
-        // SqlClient / SSMS skip the login-time TLS handshake entirely. Responding ENCRYPT_OFF
-        // (0x00) still causes SqlClient v5+ to attempt a TLS ClientHello before LOGIN7.
-        let server_encrypt = if self.config.tls_enabled {
-            ENCRYPT_ON
-        } else {
-            ENCRYPT_NOT_SUP
-        };
-
-        // Only upgrade to TLS when server has TLS enabled and client wants it
-        let needs_tls_upgrade = self.config.tls_enabled
-            && (prelogin.encryption == ENCRYPT_ON || prelogin.encryption == ENCRYPT_REQUIRED);
-
-        let response = build_prelogin_response(server_encrypt);
-        packet::write_packet(&mut stream, TABULAR_RESULT, &response)
-            .await
-            .map_err(|e| format!("Failed to write PRELOGIN response: {}", e))?;
-        stream.flush().await.map_err(|e| format!("Failed to flush: {}", e))?;
-        log::debug!("Sent PRELOGIN response (encryption={})", server_encrypt);
+    async fn handle_login(mut self, stream: TcpStream, login_packet: Option<(packet::PacketHeader, Vec<u8>)>, needs_tls_upgrade: bool) -> Result<(), String> {
 
         // Perform TLS upgrade if needed
         let stream: Box<dyn AsyncReadWrite> = if needs_tls_upgrade {
@@ -103,15 +112,17 @@ impl TdsSession {
         // Now use the stream for the rest
         let (mut reader, mut writer) = tokio::io::split(stream);
 
-        // Read LOGIN7
-        let (login_header, login_data) = packet::read_packet(&mut reader)
-            .await
-            .map_err(|e| format!("Failed to read LOGIN7: {}", e))?;
-        log::debug!("Received LOGIN7 packet type=0x{:02X} len={}", login_header.packet_type, login_header.length);
-
-        if login_header.packet_type != TDS7_LOGIN {
-            return Err(format!("Expected LOGIN7 (0x10), got 0x{:02X}", login_header.packet_type));
-        }
+        let login_data = if let Some((_, data)) = login_packet {
+            data
+        } else {
+            let (header, data) = packet::read_packet(&mut reader)
+                .await
+                .map_err(|e| format!("Failed to read LOGIN7: {}", e))?;
+            if header.packet_type != TDS7_LOGIN {
+                return Err(format!("Expected LOGIN7 (0x10), got 0x{:02X}", header.packet_type));
+            }
+            data
+        };
 
         let login = parse_login7(&login_data).map_err(|e| e.to_string())?;
         log::info!(
@@ -260,7 +271,7 @@ impl TdsSession {
 
         let upper = sql.to_uppercase();
         if upper.starts_with("USE ") {
-            let db_name = sql[4..].trim().trim_end_matches(';').trim();
+            let db_name = sql[4..].trim().trim_end_matches(';').trim().trim_matches('[').trim_matches(']');
             let old_db = self.database.clone();
             self.database = db_name.to_string();
 
@@ -285,13 +296,13 @@ impl TdsSession {
 
                     match result {
                         Some(query_result) if !query_result.columns.is_empty() => {
-                            let types = crate::tds::type_mapping::infer_column_types(
-                                &query_result.columns,
-                                &query_result.rows,
-                            );
+                            let mut types = Vec::new();
+                            for ct in &query_result.column_types {
+                                types.push(crate::tds::type_mapping::runtime_type_to_tds(ct));
+                            }
                             tokens::write_colmetadata(&mut b, &query_result.columns, &types);
                             for row in &query_result.rows {
-                                tokens::write_row(&mut b, row);
+                                tokens::write_row(&mut b, row, &types);
                             }
                             tokens::write_done(
                                 &mut b,

@@ -9,8 +9,8 @@ use super::super::model::single_row_context;
 
 use super::MutationExecutor;
 use super::validation::{
-    apply_assignments, enforce_checks_on_row, enforce_unique_on_update,
-    validate_row_against_table,
+    apply_assignments, enforce_checks_on_row, enforce_foreign_keys_on_delete,
+    enforce_foreign_keys_on_insert, enforce_unique_on_update, validate_row_against_table,
 };
 
 impl<'a> MutationExecutor<'a> {
@@ -65,6 +65,7 @@ impl<'a> MutationExecutor<'a> {
             };
 
             if matches {
+                enforce_foreign_keys_on_delete(&table, self.catalog, self.storage, &rows[i])?;
                 apply_assignments(
                     &table,
                     &mut rows[i],
@@ -76,6 +77,7 @@ impl<'a> MutationExecutor<'a> {
                     self.clock,
                 )?;
                 validate_row_against_table(&table, &rows[i].values)?;
+                enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &rows[i])?;
                 enforce_checks_on_row(
                     &table,
                     &rows[i],
@@ -227,6 +229,7 @@ impl<'a> MutationExecutor<'a> {
             };
 
             if matches {
+                enforce_foreign_keys_on_delete(table, self.catalog, self.storage, &rows[i])?;
                 apply_assignments(
                     table,
                     &mut rows[i],
@@ -238,6 +241,7 @@ impl<'a> MutationExecutor<'a> {
                     self.clock,
                 )?;
                 validate_row_against_table(table, &rows[i].values)?;
+                enforce_foreign_keys_on_insert(table, self.catalog, self.storage, &rows[i])?;
                 enforce_checks_on_row(
                     table,
                     &rows[i],

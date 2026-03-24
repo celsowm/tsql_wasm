@@ -8,11 +8,7 @@ use super::evaluator::eval_expr;
 use super::value_ops::compare_values;
 use crate::catalog::Catalog;
 use crate::storage::Storage;
-
-pub struct Group {
-    pub key: Vec<Value>,
-    pub rows: Vec<Vec<super::model::ContextTable>>,
-}
+pub use super::model::Group;
 
 pub fn is_aggregate_function(name: &str) -> bool {
     matches!(
@@ -90,13 +86,23 @@ pub fn eval_aggregate_sum(
     let mut sum_i64: i64 = 0;
     let mut sum_f64: f64 = 0.0;
     let mut sum_i128: i128 = 0;
+    let mut current_scale: u8 = 0;
     let mut has_values = false;
     let mut is_decimal = false;
     let mut is_float = false;
     let mut is_money = false;
 
     for val in collect_group_values(expr, group, ctx, catalog, storage, clock) {
-        has_values = true;
+        if !has_values {
+            has_values = true;
+            match &val {
+                Value::Decimal(_, s) => { is_decimal = true; current_scale = *s; }
+                Value::Float(_) => { is_float = true; }
+                Value::Money(_) | Value::SmallMoney(_) => { is_money = true; }
+                _ => {}
+            }
+        }
+
         match &val {
             Value::Float(v) => {
                 is_float = true;
@@ -104,8 +110,10 @@ pub fn eval_aggregate_sum(
             }
             Value::Decimal(raw, scale) => {
                 is_decimal = true;
-                let divisor = 10i128.pow(*scale as u32);
-                sum_f64 += (*raw as f64) / (divisor as f64);
+                let max_scale = current_scale.max(*scale);
+                sum_i128 = super::value_helpers::rescale_raw(sum_i128, current_scale, max_scale)
+                         + super::value_helpers::rescale_raw(*raw, *scale, max_scale);
+                current_scale = max_scale;
             }
             Value::Money(v) => {
                 is_money = true;
@@ -132,7 +140,7 @@ pub fn eval_aggregate_sum(
     } else if is_money {
         Ok(Value::Money(sum_i128))
     } else if is_decimal {
-        Ok(Value::Decimal((sum_f64 * 100.0) as i128, 2))
+        Ok(Value::Decimal(sum_i128, current_scale))
     } else {
         Ok(Value::BigInt(sum_i64))
     }

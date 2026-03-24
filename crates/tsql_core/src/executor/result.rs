@@ -2,9 +2,12 @@ use serde::Serialize;
 
 use crate::types::Value;
 
+use crate::types::DataType;
+
 #[derive(Debug, Clone)]
 pub struct QueryResult {
     pub columns: Vec<String>,
+    pub column_types: Vec<DataType>,
     pub rows: Vec<Vec<Value>>,
 }
 

@@ -44,14 +44,15 @@ pub fn parse_prelogin(data: &[u8]) -> io::Result<PreloginData> {
 
         let saved_pos = reader.pos();
 
-        if (offset as usize) + (length as usize) > data.len() {
+        let payload_offset = (offset as usize).saturating_sub(super::packet::HEADER_SIZE);
+        if payload_offset + (length as usize) > data.len() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "prelogin token data out of bounds",
             ));
         }
 
-        let token_data = &data[offset as usize..(offset as usize) + (length as usize)];
+        let token_data = &data[payload_offset..payload_offset + (length as usize)];
 
         match token {
             PRELOGIN_VERSION => {
@@ -117,11 +118,11 @@ pub fn build_prelogin_response(encryption: u8) -> Vec<u8> {
     // THREADID:  8..12   (4 bytes)
     // MARS:      12      (1 byte)
 
-    let version_offset = token_table_size + 0;
-    let enc_offset = token_table_size + 6;
-    let inst_offset = token_table_size + 7;
-    let thread_offset = token_table_size + 8;
-    let mars_offset = token_table_size + 12;
+    let version_offset = token_table_size + 0 + super::packet::HEADER_SIZE as u16;
+    let enc_offset = token_table_size + 6 + super::packet::HEADER_SIZE as u16;
+    let inst_offset = token_table_size + 7 + super::packet::HEADER_SIZE as u16;
+    let thread_offset = token_table_size + 8 + super::packet::HEADER_SIZE as u16;
+    let mars_offset = token_table_size + 12 + super::packet::HEADER_SIZE as u16;
 
     let mut b = PacketBuilder::with_capacity(26 + 13);
 

@@ -71,7 +71,12 @@ pub fn build_output_result(
     let mut rows = Vec::new();
 
     if inserted_rows.is_empty() && deleted_rows.is_empty() {
-        return Ok(Some(QueryResult { columns, rows }));
+        let n = columns.len();
+        return Ok(Some(QueryResult {
+            columns,
+            column_types: vec![crate::types::DataType::VarChar { max_len: 4000 }; n],
+            rows,
+        }));
     }
 
     if !inserted_rows.is_empty() && !deleted_rows.is_empty() {
@@ -86,7 +91,12 @@ pub fn build_output_result(
             }
             rows.push(row);
         }
-        return Ok(Some(QueryResult { columns, rows }));
+        let column_types = derive_column_types(&rows, columns.len());
+        return Ok(Some(QueryResult {
+            columns,
+            column_types,
+            rows,
+        }));
     }
 
     if !inserted_rows.is_empty() {
@@ -101,7 +111,12 @@ pub fn build_output_result(
             }
             rows.push(row);
         }
-        return Ok(Some(QueryResult { columns, rows }));
+        let column_types = derive_column_types(&rows, columns.len());
+        return Ok(Some(QueryResult {
+            columns,
+            column_types,
+            rows,
+        }));
     }
 
     for deleted in deleted_rows {
@@ -116,7 +131,12 @@ pub fn build_output_result(
         rows.push(row);
     }
 
-    Ok(Some(QueryResult { columns, rows }))
+    let column_types = derive_column_types(&rows, columns.len());
+    Ok(Some(QueryResult {
+        columns,
+        column_types,
+        rows,
+    }))
 }
 
 pub struct MergeOutputRow {
@@ -155,5 +175,22 @@ pub fn build_output_result_merge(
         rows.push(row);
     }
 
-    Ok(Some(QueryResult { columns, rows }))
+    let column_types = derive_column_types(&rows, columns.len());
+    Ok(Some(QueryResult {
+        columns,
+        column_types,
+        rows,
+    }))
+}
+
+fn derive_column_types(rows: &[Vec<Value>], num_cols: usize) -> Vec<crate::types::DataType> {
+    let mut column_types = Vec::with_capacity(num_cols);
+    if !rows.is_empty() {
+        for val in &rows[0] {
+            column_types.push(val.data_type().unwrap_or(crate::types::DataType::VarChar { max_len: 4000 }));
+        }
+    } else {
+        column_types = vec![crate::types::DataType::VarChar { max_len: 4000 }; num_cols];
+    }
+    column_types
 }

@@ -613,6 +613,8 @@ fn statement_kind(stmt: &Statement) -> &'static str {
         Statement::Update(_) => "UPDATE",
         Statement::Delete(_) => "DELETE",
         Statement::CreateTable(_) => "CREATE_TABLE",
+        Statement::CreateView(_) => "CREATE_VIEW",
+        Statement::DropView(_) => "DROP_VIEW",
         Statement::CreateIndex(_) => "CREATE_INDEX",
         Statement::DropTable(_) => "DROP_TABLE",
         Statement::AlterTable(_) => "ALTER_TABLE",
@@ -633,6 +635,8 @@ fn feature_tags_for_statement(stmt: &Statement) -> Vec<String> {
             tags.push("query".to_string())
         }
         Statement::CreateTable(_)
+        | Statement::CreateView(_)
+        | Statement::DropView(_)
         | Statement::AlterTable(_)
         | Statement::DropTable(_)
         | Statement::CreateSchema(_)
@@ -711,7 +715,13 @@ pub fn collect_write_tables(stmt: &Statement) -> std::collections::HashSet<Strin
         Statement::CreateTable(s) => {
             out.insert(normalize_object_name(&s.name));
         }
+        Statement::CreateView(s) => {
+            out.insert(normalize_object_name(&s.name));
+        }
         Statement::DropTable(s) => {
+            out.insert(normalize_object_name(&s.name));
+        }
+        Statement::DropView(s) => {
             out.insert(normalize_object_name(&s.name));
         }
         Statement::AlterTable(s) => {

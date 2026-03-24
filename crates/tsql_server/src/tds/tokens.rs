@@ -77,10 +77,11 @@ pub fn write_colmetadata(b: &mut PacketBuilder, columns: &[String], types: &[Typ
     }
 }
 
-pub fn write_row(b: &mut PacketBuilder, row: &[Value]) {
+pub fn write_row(b: &mut PacketBuilder, row: &[Value], types: &[TypeInfo]) {
     b.put_u8(ROW_TOKEN);
-    for value in row {
-        b.put_bytes(&value_to_wire_bytes(value));
+    for (i, value) in row.iter().enumerate() {
+        let ti = &types[i];
+        b.put_bytes(&value_to_wire_bytes(value, ti));
     }
 }
 
@@ -215,7 +216,7 @@ pub fn write_result_set(
     write_colmetadata(b, columns, types);
 
     for row in rows {
-        write_row(b, row);
+        write_row(b, row, types);
     }
 
     let status = if rows.is_empty() {
