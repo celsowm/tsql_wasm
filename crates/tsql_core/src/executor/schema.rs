@@ -7,7 +7,7 @@ use crate::catalog::{
     Catalog, CheckConstraintDef, ColumnDef, ForeignKeyDef, IdentityDef, TableDef,
 };
 use crate::error::DbError;
-use crate::storage::Storage;
+use crate::storage::{Storage, StoredRow};
 
 use super::type_mapping::data_type_spec_to_runtime;
 
@@ -177,7 +177,7 @@ impl<'a> SchemaExecutor<'a> {
 
                 // Add NULL values for the new column in existing rows
                 if let Ok(rows) = self.storage.get_rows(table_id) {
-                    let mut rows_vec = rows.to_vec();
+                    let mut rows_vec: Vec<StoredRow> = rows.into_iter().collect();
                     for row in rows_vec.iter_mut() {
                         row.values.push(crate::types::Value::Null);
                     }
@@ -198,7 +198,7 @@ impl<'a> SchemaExecutor<'a> {
 
                 // Remove the column values from existing rows
                 if let Ok(rows) = self.storage.get_rows(table_id) {
-                    let mut rows_vec = rows.to_vec();
+                    let mut rows_vec: Vec<StoredRow> = rows.into_iter().collect();
                     for row in rows_vec.iter_mut() {
                         if col_idx < row.values.len() {
                             row.values.remove(col_idx);

@@ -92,9 +92,9 @@ impl<'a> MutationExecutor<'a> {
 
         for &idx in &updated_indices {
             enforce_unique_on_update(&table, self.storage, table_id, &rows[idx], idx)?;
+            self.storage.update_row(table_id, idx, rows[idx].clone())?;
         }
 
-        self.storage.update_rows(table_id, rows)?;
         Ok(())
     }
 
@@ -256,9 +256,9 @@ impl<'a> MutationExecutor<'a> {
 
         for &idx in &updated_indices {
             enforce_unique_on_update(table, self.storage, table_id, &rows[idx], idx)?;
+            self.storage.update_row(table_id, idx, rows[idx].clone())?;
         }
 
-        self.storage.update_rows(table_id, rows.to_vec())?;
         Ok(())
     }
 }
