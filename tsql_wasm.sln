@@ -1,0 +1,29 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "clients", "clients", "{9123F88B-E531-3118-42D7-ED8CEF4BD00E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ado_test", "clients\ado_test\ado_test.csproj", "{758B4455-C71E-C26E-26A4-987E1C06EFBF}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{758B4455-C71E-C26E-26A4-987E1C06EFBF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{758B4455-C71E-C26E-26A4-987E1C06EFBF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{758B4455-C71E-C26E-26A4-987E1C06EFBF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{758B4455-C71E-C26E-26A4-987E1C06EFBF}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{758B4455-C71E-C26E-26A4-987E1C06EFBF} = {9123F88B-E531-3118-42D7-ED8CEF4BD00E}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {5174EDA0-9F87-489A-9C50-5F30979B0415}
+	EndGlobalSection
+EndGlobal

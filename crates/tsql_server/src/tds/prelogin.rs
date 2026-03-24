@@ -107,63 +107,57 @@ pub fn parse_prelogin(data: &[u8]) -> io::Result<PreloginData> {
 }
 
 pub fn build_prelogin_response(encryption: u8) -> Vec<u8> {
-    // Build the data section first to compute offsets
-    let mut data = Vec::with_capacity(32);
+    // 5 tokens * 5 bytes + 1 terminator = 26
+    let token_table_size: u16 = 26;
 
-    // VERSION data: 6 bytes (major, minor, build LE, sub_build LE)
-    let version_offset = 0u16;
-    data.push(16); // major = 16
-    data.push(0); // minor = 0
-    data.extend_from_slice(&0x1009u16.to_be_bytes()); // build = 4105
-    data.extend_from_slice(&1u16.to_be_bytes()); // sub_build = 1
+    // Data layout (offsets from start of data section):
+    // VERSION:   0..6   (6 bytes)
+    // ENCRYPTION: 6      (1 byte)
+    // INSTOPT:   7       (1 byte)
+    // THREADID:  8..12   (4 bytes)
+    // MARS:      12      (1 byte)
 
-    // ENCRYPTION data: 1 byte (match client's request, default to OFF)
-    let enc_offset = version_offset + 6;
-    data.push(encryption); // 0x00 = OFF (no TLS), 0x01 = ON
+    let version_offset = token_table_size + 0;
+    let enc_offset = token_table_size + 6;
+    let inst_offset = token_table_size + 7;
+    let thread_offset = token_table_size + 8;
+    let mars_offset = token_table_size + 12;
 
-    // INSTOPT data: 1 byte (null-terminated empty instance)
-    let inst_offset = enc_offset + 1;
-    data.push(0x00);
-
-    // THREADID data: 4 bytes (BE u32, per tiberius convention)
-    let thread_offset = inst_offset + 1;
-    data.extend_from_slice(&0u32.to_be_bytes());
-
-    // MARS data: 1 byte
-    let mars_offset = thread_offset + 4;
-    data.push(0x00); // MARS off
-
-    // Build the token table
-    let token_table_size = 5 * 5 + 1; // 5 tokens * 5 bytes + 1 terminator = 26
-
-    let mut b = PacketBuilder::with_capacity(token_table_size + data.len());
+    let mut b = PacketBuilder::with_capacity(26 + 13);
 
     // Token entries
     b.put_u8(PRELOGIN_VERSION);
-    b.put_u16_be(token_table_size as u16 + version_offset);
+    b.put_u16_be(version_offset);
     b.put_u16_be(6);
 
     b.put_u8(PRELOGIN_ENCRYPTION);
-    b.put_u16_be(token_table_size as u16 + enc_offset);
+    b.put_u16_be(enc_offset);
     b.put_u16_be(1);
 
     b.put_u8(PRELOGIN_INSTOPT);
-    b.put_u16_be(token_table_size as u16 + inst_offset);
+    b.put_u16_be(inst_offset);
     b.put_u16_be(1);
 
     b.put_u8(PRELOGIN_THREADID);
-    b.put_u16_be(token_table_size as u16 + thread_offset);
+    b.put_u16_be(thread_offset);
     b.put_u16_be(4);
 
     b.put_u8(PRELOGIN_MARS);
-    b.put_u16_be(token_table_size as u16 + mars_offset);
+    b.put_u16_be(mars_offset);
     b.put_u16_be(1);
 
     // Terminator
     b.put_u8(PRELOGIN_TERMINATOR);
 
     // Data section
-    b.put_bytes(&data);
+    b.put_u8(16); // major
+    b.put_u8(0);  // minor
+    b.put_u16_be(0x1009); // build = 4105
+    b.put_u16_be(1); // sub_build = 1
+    b.put_u8(encryption); // encryption level
+    b.put_u8(0x00); // instance (empty)
+    b.put_u32_be(0); // thread id
+    b.put_u8(0x00); // MARS off
 
     b.into_vec()
 }
