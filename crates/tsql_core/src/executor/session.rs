@@ -43,7 +43,7 @@ pub struct SessionRuntime<C, S> {
 impl<C, S> SessionRuntime<C, S>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static,
+    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     pub(crate) fn new() -> Self {
         Self {
@@ -82,7 +82,7 @@ pub struct SharedState<C, S> {
     pub commit_ts: u64,
     pub table_versions: HashMap<String, u64>,
     pub table_locks: LockTable,
-    pub durability: Box<dyn DurabilitySink<C, S>>,
+    pub durability: Box<dyn DurabilitySink<C>>,
     pub sessions: HashMap<SessionId, SessionRuntime<C, S>>,
     pub next_session_id: SessionId,
 }
@@ -90,7 +90,7 @@ pub struct SharedState<C, S> {
 impl<C, S> SharedState<C, S>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static,
+    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     pub fn with_initial(catalog: C, storage: S) -> Self {
         Self {

@@ -1,7 +1,7 @@
 use crate::ast::InsertStmt;
 use crate::catalog::{Catalog, TableDef};
 use crate::error::DbError;
-use crate::storage::{Storage, StoredRow};
+use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
 use super::super::context::ExecutionContext;
@@ -59,7 +59,7 @@ impl<'a> MutationExecutor<'a> {
         if let Some(select_stmt) = stmt.select_source {
             let query_result = super::super::query::QueryExecutor {
                 catalog: self.catalog as &dyn Catalog,
-                storage: self.storage as &dyn Storage,
+                storage: self.storage,
                 clock: self.clock,
             }
             .execute_select(*select_stmt, ctx)?;

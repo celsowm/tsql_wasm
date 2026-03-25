@@ -76,7 +76,7 @@ where
             }
             let checkpoint = super::durability::RecoveryCheckpoint {
                 catalog: workspace.catalog.clone(),
-                storage: workspace.storage.clone(),
+                storage_data: workspace.storage.get_checkpoint_data(),
                 commit_ts: next_commit_ts,
                 table_versions: next_table_versions.clone(),
             };

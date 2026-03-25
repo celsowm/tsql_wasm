@@ -13,6 +13,7 @@ pub use executor::engine::{
     CheckpointManager, Database, DatabaseInner, Engine, EngineInner, SessionId,
     SessionManager, SqlAnalyzer, StatementExecutor,
 };
+pub use executor::database::{PersistentDatabase, PersistentEngine};
 pub use executor::random::{RandomProvider, SeededRandom, ThreadRng};
 pub use executor::result::QueryResult;
 pub use executor::tooling::{

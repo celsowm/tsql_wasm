@@ -42,7 +42,10 @@ impl<'a> MutationExecutor<'a> {
             );
         }
 
-        for row in rows.iter_mut().filter(|r| !r.deleted) {
+        for (i, row) in rows.iter_mut().enumerate() {
+            if row.deleted {
+                continue;
+            }
             let joined = single_row_context(&table, row.clone());
             let matches = if let Some(selection) = &stmt.selection {
                 eval_predicate(
@@ -58,11 +61,10 @@ impl<'a> MutationExecutor<'a> {
             };
             if matches {
                 enforce_foreign_keys_on_delete(&table, self.catalog, self.storage, row)?;
-                row.deleted = true;
+                self.storage.delete_row(table_id, i)?;
             }
         }
 
-        self.storage.update_rows(table_id, rows)?;
         Ok(())
     }
 
@@ -203,13 +205,9 @@ impl<'a> MutationExecutor<'a> {
 
         for &idx in &delete_indices {
             enforce_foreign_keys_on_delete(table, self.catalog, self.storage, &rows[idx])?;
+            self.storage.delete_row(table_id, idx)?;
         }
 
-        for idx in delete_indices {
-            rows[idx].deleted = true;
-        }
-
-        self.storage.update_rows(table_id, rows.to_vec())?;
         Ok(())
     }
 }

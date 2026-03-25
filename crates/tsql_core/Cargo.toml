@@ -9,8 +9,10 @@ serde_json = "1"
 thiserror = "1"
 hex = "0.4"
 regex = "1.12.3"
+redb = "2.1"
 
 [dev-dependencies]
+tempfile = "3"
 tiberius = { version = "0.12", features = ["tokio", "tds73", "chrono"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tokio-util = { version = "0.7", features = ["compat"] }
