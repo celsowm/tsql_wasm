@@ -454,6 +454,7 @@ Core and integration tests covering:
 - Aggregates (COUNT, SUM, AVG, MIN, MAX with GROUP BY/HAVING)
 - Set operations (UNION, UNION ALL, INTERSECT, EXCEPT)
 - CTEs (single and multiple)
+- Window Functions (ROW_NUMBER, RANK, DENSE_RANK, NTILE, LAG, LEAD, and Aggregates with OVER)
 - Variables, IF/ELSE, WHILE loops, BREAK/CONTINUE/RETURN
 - `SELECT @var = ...` assignments
 - Temporary tables (`#temp`) and table variables (`DECLARE @t TABLE (...)`)

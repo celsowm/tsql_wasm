@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ObjectName {
     pub schema: Option<String>,
     pub name: String,
@@ -11,7 +11,7 @@ impl ObjectName {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TableRef {
     pub name: ObjectName,
     pub alias: Option<String>,
@@ -389,7 +389,7 @@ pub enum OutputSource {
     Deleted,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SelectStmt {
     pub from: Option<TableRef>,
     pub joins: Vec<JoinClause>,
@@ -405,14 +405,14 @@ pub struct SelectStmt {
     pub fetch: Option<Expr>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct JoinClause {
     pub join_type: JoinType,
     pub table: TableRef,
     pub on: Option<Expr>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum JoinType {
     Inner,
     Left,
@@ -421,31 +421,31 @@ pub enum JoinType {
     Cross,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ApplyClause {
     pub apply_type: ApplyType,
     pub subquery: SelectStmt,
     pub alias: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ApplyType {
     Cross,
     Outer,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SelectItem {
     pub expr: Expr,
     pub alias: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TopSpec {
     pub value: Expr,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct OrderByExpr {
     pub expr: Expr,
     pub asc: bool,
@@ -480,7 +480,7 @@ pub struct DeleteStmt {
     pub output: Option<Vec<OutputColumn>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Expr {
     Identifier(String),
     QualifiedIdentifier(Vec<String>),
@@ -555,13 +555,13 @@ Like {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct WhenClause {
     pub condition: Expr,
     pub result: Expr,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum WindowFunc {
     RowNumber,
     Rank,
@@ -569,30 +569,45 @@ pub enum WindowFunc {
     NTile,
     Lag,
     Lead,
+    FirstValue,
+    LastValue,
+    Aggregate(String),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum WindowFrame {
-    Rows(RowFrameBound),
-    Range(RowFrameBound),
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct WindowFrame {
+    pub units: WindowFrameUnits,
+    pub extent: WindowFrameExtent,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum RowFrameBound {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum WindowFrameUnits {
+    Rows,
+    Range,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum WindowFrameExtent {
+    Bound(WindowFrameBound),
+    Between(WindowFrameBound, WindowFrameBound),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum WindowFrameBound {
     UnboundedPreceding,
     Preceding(Option<i64>),
     CurrentRow,
     Following(Option<i64>),
-UnboundedFollowing,
+    UnboundedFollowing,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum UnaryOp {
     Negate,
     Not,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BinaryOp {
     Eq,
     NotEq,
@@ -609,7 +624,7 @@ pub enum BinaryOp {
     Modulo,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DataTypeSpec {
     Bit,
     TinyInt,
@@ -633,4 +648,3 @@ pub enum DataTypeSpec {
     UniqueIdentifier,
     SqlVariant,
 }
-

@@ -49,16 +49,6 @@ impl<'a> MutationExecutor<'a> {
                 inserted_rows_for_output.push(row);
             }
         } else if let Some(select_stmt) = stmt.select_source {
-            cols
-        } else {
-            table
-                .columns
-                .iter()
-                .filter(|c| c.computed_expr.is_none())
-                .map(|c| c.name.clone())
-                .collect::<Vec<_>>()
-        };
-
             let query_result = super::super::query::QueryExecutor {
                 catalog: self.catalog as &dyn Catalog,
                 storage: self.storage,
