@@ -235,11 +235,13 @@ fn bind_table_rows(
     if let Some(rows) = &bound.virtual_rows {
         return Ok(rows
             .iter()
-            .map(|row| {
+            .enumerate()
+            .map(|(i, row)| {
                 vec![super::model::ContextTable {
                     table: bound.table.clone(),
                     alias: bound.alias.clone(),
                     row: Some(row.clone()),
+                    storage_index: Some(i),
                 }]
             })
             .collect());
@@ -249,12 +251,14 @@ fn bind_table_rows(
 
     Ok(stored_rows
         .iter()
-        .filter(|r| !r.deleted)
-        .map(|row| {
+        .enumerate()
+        .filter(|(_, r)| !r.deleted)
+        .map(|(i, row)| {
             vec![super::model::ContextTable {
                 table: bound.table.clone(),
                 alias: bound.alias.clone(),
                 row: Some(row.clone()),
+                storage_index: Some(i),
             }]
         })
         .collect())

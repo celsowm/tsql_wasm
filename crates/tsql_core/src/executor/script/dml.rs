@@ -94,6 +94,7 @@ impl<'a> ScriptExecutor<'a> {
                     table: target_table.clone(),
                     alias: target_alias.clone(),
                     row: Some(target_rows[i].clone()),
+                    storage_index: Some(i),
                 }];
 
                 // Add source row context
@@ -141,6 +142,7 @@ impl<'a> ScriptExecutor<'a> {
                         values: source_row.clone(),
                         deleted: false,
                     }),
+                    storage_index: Some(s_idx),
                 });
 
                 let on_matches = super::super::evaluator::eval_predicate(
@@ -286,6 +288,7 @@ impl<'a> ScriptExecutor<'a> {
                     values: source_row.clone(),
                     deleted: false,
                 }),
+                storage_index: Some(s_idx),
             }];
 
             for when_clause in &stmt.when_clauses {

@@ -7,8 +7,10 @@ use crate::types::{DataType, Value};
 use super::super::context::ExecutionContext;
 use super::super::evaluator::eval_expr_to_type_constant;
 use super::super::model::single_row_context;
+use super::super::result::QueryResult;
 
 use super::MutationExecutor;
+use super::output::build_output_result;
 use super::validation::{
     enforce_checks_on_row, enforce_foreign_keys_on_insert, enforce_string_length,
     enforce_unique_on_insert,
@@ -19,7 +21,7 @@ impl<'a> MutationExecutor<'a> {
         &mut self,
         mut stmt: InsertStmt,
         ctx: &mut ExecutionContext,
-    ) -> Result<(), DbError> {
+    ) -> Result<Option<QueryResult>, DbError> {
         if let Some(mapped) = ctx.resolve_table_name(&stmt.table.name) {
             stmt.table.name = mapped;
             if stmt.table.schema.is_none() {
@@ -38,14 +40,15 @@ impl<'a> MutationExecutor<'a> {
             .clone();
 
         let table_id = table.id;
+        let mut inserted_rows_for_output = Vec::new();
 
         if stmt.default_values {
             let row = self.build_insert_row(&table, &[], vec![], ctx)?;
-            self.storage.insert_row(table_id, row)?;
-            return Ok(());
-        }
-
-        let insert_columns = if let Some(cols) = stmt.columns.clone() {
+            self.storage.insert_row(table_id, row.clone())?;
+            if stmt.output.is_some() {
+                inserted_rows_for_output.push(row);
+            }
+        } else if let Some(select_stmt) = stmt.select_source {
             cols
         } else {
             table
@@ -56,13 +59,23 @@ impl<'a> MutationExecutor<'a> {
                 .collect::<Vec<_>>()
         };
 
-        if let Some(select_stmt) = stmt.select_source {
             let query_result = super::super::query::QueryExecutor {
                 catalog: self.catalog as &dyn Catalog,
                 storage: self.storage,
                 clock: self.clock,
             }
             .execute_select(*select_stmt, ctx)?;
+
+            let insert_columns = if let Some(cols) = stmt.columns.clone() {
+                cols
+            } else {
+                table
+                    .columns
+                    .iter()
+                    .filter(|c| c.computed_expr.is_none())
+                    .map(|c| c.name.clone())
+                    .collect::<Vec<_>>()
+            };
 
             if insert_columns.len() != query_result.columns.len() {
                 return Err(DbError::Execution(format!(
@@ -110,20 +123,41 @@ impl<'a> MutationExecutor<'a> {
                     self.storage,
                     self.clock,
                 )?;
-                self.storage.insert_row(table_id, temp_row)?;
+                self.storage.insert_row(table_id, temp_row.clone())?;
+                if stmt.output.is_some() {
+                    inserted_rows_for_output.push(temp_row);
+                }
             }
-            return Ok(());
+        } else {
+            let insert_columns = if let Some(cols) = stmt.columns.clone() {
+                cols
+            } else {
+                table
+                    .columns
+                    .iter()
+                    .filter(|c| c.computed_expr.is_none())
+                    .map(|c| c.name.clone())
+                    .collect::<Vec<_>>()
+            };
+
+            for value_row in stmt.values {
+                let row = self.build_insert_row(&table, &insert_columns, value_row, ctx)?;
+                enforce_unique_on_insert(&table, self.storage, table_id, &row)?;
+                enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &row)?;
+                enforce_checks_on_row(&table, &row, ctx, self.catalog, self.storage, self.clock)?;
+                self.storage.insert_row(table_id, row.clone())?;
+                if stmt.output.is_some() {
+                    inserted_rows_for_output.push(row);
+                }
+            }
         }
 
-        for value_row in stmt.values {
-            let row = self.build_insert_row(&table, &insert_columns, value_row, ctx)?;
-            enforce_unique_on_insert(&table, self.storage, table_id, &row)?;
-            enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &row)?;
-            enforce_checks_on_row(&table, &row, ctx, self.catalog, self.storage, self.clock)?;
-            self.storage.insert_row(table_id, row)?;
+        if let Some(output) = stmt.output {
+            let inserted: Vec<&crate::storage::StoredRow> = inserted_rows_for_output.iter().collect();
+            return build_output_result(&output, &table, &inserted, &[]);
         }
 
-        Ok(())
+        Ok(None)
     }
 
     pub(crate) fn build_insert_row(

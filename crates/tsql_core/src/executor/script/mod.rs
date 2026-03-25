@@ -117,50 +117,12 @@ impl<'a> ScriptExecutor<'a> {
                 .drop_view(stmt)?;
                 Ok(None)
             }
-            Statement::Insert(stmt) => {
-                let has_output = stmt.output.is_some();
-                if !has_output {
-                    MutationExecutor {
-                        catalog: self.catalog,
-                        storage: self.storage,
-                        clock: self.clock,
-                    }
-                    .execute_insert_with_context(stmt, ctx)?;
-                    return Ok(None);
-                }
-
-                let schema = stmt.table.schema_or_dbo().to_string();
-                let table_name = stmt.table.name.clone();
-                let table = self
-                    .catalog
-                    .find_table(&schema, &table_name)
-                    .ok_or_else(|| {
-                        DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
-                    })?
-                    .clone();
-
-                let before_total = self.storage.get_rows(table.id)?.len();
-
-                MutationExecutor {
-                    catalog: self.catalog,
-                    storage: self.storage,
-                    clock: self.clock,
-                }
-                .execute_insert_with_context(stmt.clone(), ctx)?;
-
-                let after_rows = self.storage.get_rows(table.id)?;
-                let inserted: Vec<_> = after_rows[before_total..]
-                    .iter()
-                    .filter(|r| !r.deleted)
-                    .collect();
-
-                super::mutation::build_output_result(
-                    &stmt.output.unwrap(),
-                    &table,
-                    &inserted,
-                    &[],
-                )
+            Statement::Insert(stmt) => MutationExecutor {
+                catalog: self.catalog,
+                storage: self.storage,
+                clock: self.clock,
             }
+            .execute_insert_with_context(stmt, ctx),
             Statement::Select(stmt) => QueryExecutor {
                 catalog: self.catalog as &dyn Catalog,
                 storage: self.storage as &dyn Storage,
@@ -168,100 +130,18 @@ impl<'a> ScriptExecutor<'a> {
             }
             .execute_select(stmt, ctx)
             .map(Some),
-            Statement::Update(stmt) => {
-                let has_output = stmt.output.is_some();
-                if !has_output {
-                    MutationExecutor {
-                        catalog: self.catalog,
-                        storage: self.storage,
-                        clock: self.clock,
-                    }
-                    .execute_update_with_context(stmt, ctx)?;
-                    return Ok(None);
-                }
-
-                let schema = stmt.table.schema_or_dbo().to_string();
-                let table_name = stmt.table.name.clone();
-                let table = self
-                    .catalog
-                    .find_table(&schema, &table_name)
-                    .ok_or_else(|| {
-                        DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
-                    })?
-                    .clone();
-
-                let before_rows = self.storage.get_rows(table.id)?;
-
-                MutationExecutor {
-                    catalog: self.catalog,
-                    storage: self.storage,
-                    clock: self.clock,
-                }
-                .execute_update_with_context(stmt.clone(), ctx)?;
-
-                let after_rows = self.storage.get_rows(table.id)?;
-                let mut inserted = Vec::new();
-                let mut deleted = Vec::new();
-                for (before, after) in before_rows.iter().zip(after_rows.iter()) {
-                    if !before.deleted && !after.deleted && before.values != after.values {
-                        inserted.push(after);
-                        deleted.push(before);
-                    }
-                }
-
-                super::mutation::build_output_result(
-                    &stmt.output.unwrap(),
-                    &table,
-                    &inserted,
-                    &deleted,
-                )
+            Statement::Update(stmt) => MutationExecutor {
+                catalog: self.catalog,
+                storage: self.storage,
+                clock: self.clock,
             }
-            Statement::Delete(stmt) => {
-                let has_output = stmt.output.is_some();
-                if !has_output {
-                    MutationExecutor {
-                        catalog: self.catalog,
-                        storage: self.storage,
-                        clock: self.clock,
-                    }
-                    .execute_delete_with_context(stmt, ctx)?;
-                    return Ok(None);
-                }
-
-                let schema = stmt.table.schema_or_dbo().to_string();
-                let table_name = stmt.table.name.clone();
-                let table = self
-                    .catalog
-                    .find_table(&schema, &table_name)
-                    .ok_or_else(|| {
-                        DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
-                    })?
-                    .clone();
-
-                let before_rows = self.storage.get_rows(table.id)?;
-
-                MutationExecutor {
-                    catalog: self.catalog,
-                    storage: self.storage,
-                    clock: self.clock,
-                }
-                .execute_delete_with_context(stmt.clone(), ctx)?;
-
-                let after_rows = self.storage.get_rows(table.id)?;
-                let deleted: Vec<_> = before_rows
-                    .iter()
-                    .zip(after_rows.iter())
-                    .filter(|(before, after)| !before.deleted && after.deleted)
-                    .map(|(before, _)| before)
-                    .collect();
-
-                super::mutation::build_output_result(
-                    &stmt.output.unwrap(),
-                    &table,
-                    &[],
-                    &deleted,
-                )
+            .execute_update_with_context(stmt, ctx),
+            Statement::Delete(stmt) => MutationExecutor {
+                catalog: self.catalog,
+                storage: self.storage,
+                clock: self.clock,
             }
+            .execute_delete_with_context(stmt, ctx),
             Statement::TruncateTable(mut stmt) => {
                 if let Some(mapped) = ctx.resolve_table_name(&stmt.name.name) {
                     stmt.name.name = mapped;
