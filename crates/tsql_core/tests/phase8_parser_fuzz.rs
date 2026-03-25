@@ -252,7 +252,7 @@ fn test_phase8_parser_fuzz_boundary_conditions() {
         "SELECT ".to_string() + &"(".repeat(50) + "1" + &")".repeat(50),
 
         // Many UNIONs
-        (0..20).map(|_| "SELECT 1").collect::<Vec<_>>().join(" UNION "),
+        (0..50).map(|_| "SELECT 1").collect::<Vec<_>>().join(" UNION "),
 
         // Many ORs in WHERE
         "SELECT * FROM t WHERE ".to_string() + &(0..50).map(|i| format!("id = {}", i)).collect::<Vec<_>>().join(" OR "),

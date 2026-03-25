@@ -33,6 +33,7 @@ pub struct ExecutionContext<'a> {
     pub random_state: &'a mut u64,
     pub apply_row_stack: Vec<JoinedRow>,
     pub current_group: Option<super::model::Group>,
+    pub window_context: Option<HashMap<crate::ast::Expr, Value>>,
 }
 
 
@@ -67,6 +68,7 @@ impl<'a> ExecutionContext<'a> {
             random_state,
             apply_row_stack: vec![],
             current_group: None,
+            window_context: None,
         }
     }
 
@@ -90,6 +92,7 @@ impl<'a> ExecutionContext<'a> {
             random_state: self.random_state,
             apply_row_stack: self.apply_row_stack.clone(),
             current_group: self.current_group.clone(),
+            window_context: self.window_context.clone(),
         }
     }
 
@@ -113,6 +116,7 @@ impl<'a> ExecutionContext<'a> {
             random_state: self.random_state,
             apply_row_stack: self.apply_row_stack.clone(),
             current_group: self.current_group.clone(),
+            window_context: self.window_context.clone(),
         }
     }
 
@@ -140,6 +144,7 @@ impl<'a> ExecutionContext<'a> {
             random_state: self.random_state,
             apply_row_stack: self.apply_row_stack.clone(),
             current_group: self.current_group.clone(),
+            window_context: self.window_context.clone(),
         }
     }
 
@@ -254,5 +259,9 @@ impl<'a> ExecutionContext<'a> {
     pub fn next_table_var_id(&mut self) -> u64 {
         *self.table_var_counter += 1;
         *self.table_var_counter
+    }
+
+    pub fn get_window_value(&self, expr: &crate::ast::Expr) -> Option<Value> {
+        self.window_context.as_ref().and_then(|m| m.get(expr).cloned())
     }
 }

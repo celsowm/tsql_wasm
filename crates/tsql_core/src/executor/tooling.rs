@@ -307,6 +307,7 @@ fn format_expr(expr: &Expr) -> String {
             format!("{} {}IN (...)", format_expr(expr), not)
         }
         Expr::WindowFunction { func, partition_by, order_by, frame: _, .. } => {
+            let func_name_owned: String;
             let func_name = match func {
                 crate::ast::WindowFunc::RowNumber => "ROW_NUMBER()",
                 crate::ast::WindowFunc::Rank => "RANK()",
@@ -314,6 +315,12 @@ fn format_expr(expr: &Expr) -> String {
                 crate::ast::WindowFunc::NTile => "NTILE()",
                 crate::ast::WindowFunc::Lag => "LAG()",
                 crate::ast::WindowFunc::Lead => "LEAD()",
+                crate::ast::WindowFunc::FirstValue => "FIRST_VALUE()",
+                crate::ast::WindowFunc::LastValue => "LAST_VALUE()",
+                crate::ast::WindowFunc::Aggregate(name) => {
+                    func_name_owned = format!("{}()", name);
+                    &func_name_owned
+                }
             };
             let mut parts: Vec<String> = vec![func_name.to_string()];
             if !partition_by.is_empty() {

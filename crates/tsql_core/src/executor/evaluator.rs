@@ -174,9 +174,15 @@ pub fn eval_expr(
         } => eval_in_subquery(
             in_expr, subquery, *negated, row, ctx, catalog, storage, clock,
         ),
-        Expr::WindowFunction { .. } => Err(DbError::Execution(
-            "window functions must be executed via WindowExecutor".into(),
-        )),
+        Expr::WindowFunction { .. } => {
+            if let Some(val) = ctx.get_window_value(expr) {
+                Ok(val)
+            } else {
+                Err(DbError::Execution(
+                    "window function value not found in context".into(),
+                ))
+            }
+        }
     }
 }
 

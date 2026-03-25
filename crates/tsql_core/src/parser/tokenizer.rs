@@ -44,6 +44,11 @@ pub enum ExprToken {
     Desc,
     Rows,
     Range,
+    Unbounded,
+    Preceding,
+    Following,
+    Current,
+    Row,
 }
 
 pub fn tokenize_expr(input: &str) -> Result<Vec<ExprToken>, DbError> {
@@ -226,6 +231,11 @@ fn push_ident_token(out: &mut Vec<ExprToken>, ident: String) {
         "ASC" => out.push(ExprToken::By),
         "ROWS" => out.push(ExprToken::Rows),
         "RANGE" => out.push(ExprToken::Range),
+        "UNBOUNDED" => out.push(ExprToken::Unbounded),
+        "PRECEDING" => out.push(ExprToken::Preceding),
+        "FOLLOWING" => out.push(ExprToken::Following),
+        "CURRENT" => out.push(ExprToken::Current),
+        "ROW" => out.push(ExprToken::Row),
         _ => out.push(ExprToken::Identifier(ident)),
     }
 }
