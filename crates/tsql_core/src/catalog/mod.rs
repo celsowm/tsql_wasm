@@ -174,6 +174,8 @@ pub trait Catalog: std::fmt::Debug + Send + Sync {
     fn create_trigger(&mut self, trigger: TriggerDef) -> Result<(), DbError>;
     fn drop_trigger(&mut self, schema: &str, name: &str) -> Result<(), DbError>;
     fn find_triggers_for_table(&self, schema: &str, name: &str) -> Vec<&TriggerDef>;
+    fn get_views(&self) -> &[ViewDef];
+    fn get_triggers(&self) -> &[TriggerDef];
     fn as_any(&self) -> &dyn std::any::Any;
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
@@ -553,6 +555,14 @@ impl Catalog for CatalogImpl {
         self.triggers.iter().filter(|t| {
             t.table_schema.eq_ignore_ascii_case(schema) && t.table_name.eq_ignore_ascii_case(name)
         }).collect()
+    }
+
+    fn get_views(&self) -> &[ViewDef] {
+        &self.views
+    }
+
+    fn get_triggers(&self) -> &[TriggerDef] {
+        &self.triggers
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
