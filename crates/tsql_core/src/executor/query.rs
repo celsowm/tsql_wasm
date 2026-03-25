@@ -111,6 +111,71 @@ impl<'a> QueryExecutor<'a> {
             source_rows = filtered;
         }
 
+        self.execute_physical_plan_to_result(plan, source_rows, ctx)
+    }
+
+    pub fn execute_to_joined_rows(
+        &self,
+        stmt: SelectStmt,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Vec<JoinedRow>, DbError> {
+        let logical = build_logical_plan(&stmt)?;
+        let plan = build_physical_plan(
+            &stmt,
+            &logical,
+            self.catalog,
+            ctx,
+            |tref, cat, c| self.bind_table(tref, cat, c),
+        )?;
+
+        let mut source_rows =
+            execute_scan(&plan.base, ctx, self.catalog, self.storage, self.clock)?;
+
+        for join_plan in &plan.joins {
+            let right_rows =
+                execute_scan(&join_plan.right, ctx, self.catalog, self.storage, self.clock)?;
+            source_rows = apply_join(
+                source_rows,
+                right_rows,
+                join_plan.right.bound.clone(),
+                &join_plan.join,
+                ctx,
+                self.catalog,
+                self.storage,
+                self.clock,
+            )?;
+        }
+
+        for apply_clause in &plan.applies {
+            source_rows = self.execute_apply(source_rows, apply_clause, ctx)?;
+        }
+
+        if let Some(where_clause) = &plan.residual_filter {
+            let mut filtered = Vec::new();
+            for row in source_rows {
+                if eval_predicate(
+                    where_clause,
+                    &row,
+                    ctx,
+                    self.catalog,
+                    self.storage,
+                    self.clock,
+                )? {
+                    filtered.push(row);
+                }
+            }
+            source_rows = filtered;
+        }
+
+        Ok(source_rows)
+    }
+
+    fn execute_physical_plan_to_result(
+        &self,
+        plan: PhysicalPlan,
+        source_rows: Vec<JoinedRow>,
+        ctx: &mut ExecutionContext,
+    ) -> Result<super::result::QueryResult, DbError> {
         let has_aggregate = plan
             .projection
             .iter()
@@ -425,6 +490,7 @@ impl<'a> QueryExecutor<'a> {
                         table: null_table,
                         alias: apply.alias.clone(),
                         row: None,
+                        storage_index: None,
                     });
                     result_rows.push(combined);
                 }
@@ -456,7 +522,7 @@ impl<'a> QueryExecutor<'a> {
                     check_constraints: vec![], foreign_keys: vec![],
 
                 };
-                for sub_row_values in &sub_result.rows {
+                for (idx, sub_row_values) in sub_result.rows.iter().enumerate() {
                     let mut combined = left_row.clone();
                     combined.push(ContextTable {
                         table: apply_table.clone(),
@@ -465,6 +531,7 @@ impl<'a> QueryExecutor<'a> {
                             values: sub_row_values.clone(),
                             deleted: false,
                         }),
+                        storage_index: Some(idx),
                     });
                     result_rows.push(combined);
                 }

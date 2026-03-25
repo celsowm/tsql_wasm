@@ -78,6 +78,7 @@ fn apply_join_left(
                 table: right.table.clone(),
                 alias: right.alias.clone(),
                 row: None,
+                storage_index: None,
             });
             next_rows.push(candidate);
         }
@@ -121,6 +122,7 @@ fn apply_join_right(
                     table,
                     alias,
                     row: None,
+                    storage_index: None,
                 }];
                 candidate.extend(right_row.clone());
                 next_rows.push(candidate);
@@ -164,6 +166,7 @@ fn apply_join_full(
                 table: right.table.clone(),
                 alias: right.alias.clone(),
                 row: None,
+                storage_index: None,
             });
             next_rows.push(candidate);
         }
@@ -180,6 +183,7 @@ fn apply_join_full(
                     table: table.clone(),
                     alias: alias.clone(),
                     row: None,
+                    storage_index: None,
                 }];
                 candidate.extend(right_rows[ri].clone());
                 next_rows.push(candidate);

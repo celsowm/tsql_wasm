@@ -1,13 +1,14 @@
-use crate::ast::{FromClause, JoinType, UpdateStmt};
-use crate::catalog::TableDef;
+use std::collections::HashSet;
+
+use crate::ast::{SelectItem, SelectStmt, UpdateStmt};
 use crate::error::DbError;
-use crate::storage::StoredRow;
 
 use super::super::context::ExecutionContext;
-use super::super::evaluator::eval_predicate;
-use super::super::model::single_row_context;
+use super::super::query::QueryExecutor;
+use super::super::result::QueryResult;
 
 use super::MutationExecutor;
+use super::output::build_output_result;
 use super::validation::{
     apply_assignments, enforce_checks_on_row, enforce_foreign_keys_on_delete,
     enforce_foreign_keys_on_insert, enforce_unique_on_update, validate_row_against_table,
@@ -18,7 +19,7 @@ impl<'a> MutationExecutor<'a> {
         &mut self,
         mut stmt: UpdateStmt,
         ctx: &mut ExecutionContext,
-    ) -> Result<(), DbError> {
+    ) -> Result<Option<QueryResult>, DbError> {
         if let Some(mapped) = ctx.resolve_table_name(&stmt.table.name) {
             stmt.table.name = mapped;
             if stmt.table.schema.is_none() {
@@ -37,228 +38,91 @@ impl<'a> MutationExecutor<'a> {
             .clone();
 
         let table_id = table.id;
-        let mut rows = self.storage.get_rows(table_id)?;
 
-        if let Some(from_clause) = &stmt.from {
-            return self.execute_update_with_from(
-                &table, table_id, &mut rows, &stmt, from_clause, ctx,
-            );
-        }
+        let query_stmt = SelectStmt {
+            from: stmt.from.as_ref().and_then(|f| f.tables.get(0).cloned()).or_else(|| {
+                Some(crate::ast::TableRef {
+                    name: stmt.table.clone(),
+                    alias: None,
+                })
+            }),
+            joins: stmt.from.as_ref().map(|f| f.joins.clone()).unwrap_or_default(),
+            applies: vec![],
+            projection: vec![SelectItem {
+                expr: crate::ast::Expr::Wildcard,
+                alias: None,
+            }],
+            distinct: false,
+            top: None,
+            selection: stmt.selection.clone(),
+            group_by: vec![],
+            having: None,
+            order_by: vec![],
+            offset: None,
+            fetch: None,
+        };
 
-        let mut updated_indices = Vec::new();
-        for i in 0..rows.len() {
-            if rows[i].deleted {
-                continue;
-            }
-            let joined = single_row_context(&table, rows[i].clone());
-            let matches = if let Some(selection) = &stmt.selection {
-                eval_predicate(
-                    selection,
-                    &joined,
-                    ctx,
-                    self.catalog,
-                    self.storage,
-                    self.clock,
-                )?
-            } else {
-                true
-            };
+        let query_executor = QueryExecutor {
+            catalog: self.catalog,
+            storage: self.storage,
+            clock: self.clock,
+        };
 
-            if matches {
-                enforce_foreign_keys_on_delete(&table, self.catalog, self.storage, &rows[i])?;
-                apply_assignments(
-                    &table,
-                    &mut rows[i],
-                    &stmt.assignments,
-                    &joined,
-                    ctx,
-                    self.catalog,
-                    self.storage,
-                    self.clock,
-                )?;
-                validate_row_against_table(&table, &rows[i].values)?;
-                enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &rows[i])?;
-                enforce_checks_on_row(
-                    &table,
-                    &rows[i],
-                    ctx,
-                    self.catalog,
-                    self.storage,
-                    self.clock,
-                )?;
-                updated_indices.push(i);
-            }
-        }
+        let joined_rows = query_executor.execute_to_joined_rows(query_stmt, ctx)?;
 
-        for &idx in &updated_indices {
-            enforce_unique_on_update(&table, self.storage, table_id, &rows[idx], idx)?;
-            self.storage.update_row(table_id, idx, rows[idx].clone())?;
-        }
+        let mut updated_indices = HashSet::new();
+        let mut inserted_rows_for_output = Vec::new();
+        let mut deleted_rows_for_output = Vec::new();
 
-        Ok(())
-    }
+        for joined_row in joined_rows {
+            let target_ctx = joined_row
+                .iter()
+                .find(|ct| ct.table.id == table_id)
+                .ok_or_else(|| DbError::Execution("target table not found in join context".into()))?;
 
-    fn execute_update_with_from(
-        &mut self,
-        table: &TableDef,
-        table_id: u32,
-        rows: &mut Vec<StoredRow>,
-        stmt: &UpdateStmt,
-        from_clause: &FromClause,
-        ctx: &mut ExecutionContext,
-    ) -> Result<(), DbError> {
-        let mut updated_indices = Vec::new();
+            if let (Some(stored_row), Some(idx)) = (&target_ctx.row, target_ctx.storage_index) {
+                if !updated_indices.contains(&idx) {
+                    let mut new_row = stored_row.clone();
+                    enforce_foreign_keys_on_delete(&table, self.catalog, self.storage, stored_row)?;
+                    apply_assignments(
+                        &table,
+                        &mut new_row,
+                        &stmt.assignments,
+                        &joined_row,
+                        ctx,
+                        self.catalog,
+                        self.storage,
+                        self.clock,
+                    )?;
+                    validate_row_against_table(&table, &new_row.values)?;
+                    enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &new_row)?;
+                    enforce_checks_on_row(
+                        &table,
+                        &new_row,
+                        ctx,
+                        self.catalog,
+                        self.storage,
+                        self.clock,
+                    )?;
+                    enforce_unique_on_update(&table, self.storage, table_id, &new_row, idx)?;
 
-        for i in 0..rows.len() {
-            if rows[i].deleted {
-                continue;
-            }
+                    self.storage.update_row(table_id, idx, new_row.clone())?;
+                    updated_indices.insert(idx);
 
-            let mut combined_ctx: super::super::model::JoinedRow =
-                single_row_context(table, rows[i].clone());
-
-            let mut all_match = true;
-            for from_table_ref in &from_clause.tables {
-                let resolved_name = ctx
-                    .resolve_table_name(&from_table_ref.name.name)
-                    .unwrap_or_else(|| from_table_ref.name.name.clone());
-                let from_schema = from_table_ref.name.schema_or_dbo();
-                let from_table = self
-                    .catalog
-                    .find_table(from_schema, &resolved_name)
-                    .ok_or_else(|| {
-                        DbError::Semantic(format!(
-                            "table '{}.{}' not found",
-                            from_schema, resolved_name
-                        ))
-                    })?
-                    .clone();
-                let from_rows = self.storage.get_rows(from_table.id)?;
-                let non_deleted: Vec<_> = from_rows.iter().filter(|r| !r.deleted).collect();
-                if non_deleted.is_empty() {
-                    all_match = false;
-                    break;
-                }
-                let alias = from_table_ref
-                    .alias
-                    .clone()
-                    .unwrap_or_else(|| resolved_name.clone());
-                combined_ctx.push(super::super::model::ContextTable {
-                    table: from_table.clone(),
-                    alias: alias.clone(),
-                    row: Some(non_deleted[0].clone()),
-                });
-            }
-
-            if !all_match {
-                continue;
-            }
-
-            for join_clause in &from_clause.joins {
-                let resolved_name = ctx
-                    .resolve_table_name(&join_clause.table.name.name)
-                    .unwrap_or_else(|| join_clause.table.name.name.clone());
-                let join_schema = join_clause.table.name.schema_or_dbo();
-                let join_table = self
-                    .catalog
-                    .find_table(join_schema, &resolved_name)
-                    .ok_or_else(|| {
-                        DbError::Semantic(format!(
-                            "table '{}.{}' not found",
-                            join_schema, resolved_name
-                        ))
-                    })?
-                    .clone();
-                let join_rows = self.storage.get_rows(join_table.id)?;
-
-                let mut found_match = false;
-                let alias = join_clause
-                    .table
-                    .alias
-                    .clone()
-                    .unwrap_or_else(|| resolved_name.clone());
-                for join_row in join_rows.iter().filter(|r| !r.deleted) {
-                    let mut test_ctx = combined_ctx.clone();
-                    test_ctx.push(super::super::model::ContextTable {
-                        table: join_table.clone(),
-                        alias: alias.clone(),
-                        row: Some(join_row.clone()),
-                    });
-                    if let Some(ref on_expr) = join_clause.on {
-                        if eval_predicate(
-                            on_expr,
-                            &test_ctx,
-                            ctx,
-                            self.catalog,
-                            self.storage,
-                            self.clock,
-                        )? {
-                            combined_ctx = test_ctx;
-                            found_match = true;
-                            break;
-                        }
+                    if stmt.output.is_some() {
+                        inserted_rows_for_output.push(new_row);
+                        deleted_rows_for_output.push(stored_row.clone());
                     }
                 }
-                match join_clause.join_type {
-                    JoinType::Inner => {
-                        if !found_match {
-                            all_match = false;
-                            break;
-                        }
-                    }
-                    JoinType::Left => {}
-                    _ => {}
-                }
-            }
-
-            if !all_match {
-                continue;
-            }
-
-            let matches = if let Some(selection) = &stmt.selection {
-                eval_predicate(
-                    selection,
-                    &combined_ctx,
-                    ctx,
-                    self.catalog,
-                    self.storage,
-                    self.clock,
-                )?
-            } else {
-                true
-            };
-
-            if matches {
-                enforce_foreign_keys_on_delete(table, self.catalog, self.storage, &rows[i])?;
-                apply_assignments(
-                    table,
-                    &mut rows[i],
-                    &stmt.assignments,
-                    &combined_ctx,
-                    ctx,
-                    self.catalog,
-                    self.storage,
-                    self.clock,
-                )?;
-                validate_row_against_table(table, &rows[i].values)?;
-                enforce_foreign_keys_on_insert(table, self.catalog, self.storage, &rows[i])?;
-                enforce_checks_on_row(
-                    table,
-                    &rows[i],
-                    ctx,
-                    self.catalog,
-                    self.storage,
-                    self.clock,
-                )?;
-                updated_indices.push(i);
             }
         }
 
-        for &idx in &updated_indices {
-            enforce_unique_on_update(table, self.storage, table_id, &rows[idx], idx)?;
-            self.storage.update_row(table_id, idx, rows[idx].clone())?;
+        if let Some(output) = stmt.output {
+            let inserted: Vec<&crate::storage::StoredRow> = inserted_rows_for_output.iter().collect();
+            let deleted: Vec<&crate::storage::StoredRow> = deleted_rows_for_output.iter().collect();
+            return build_output_result(&output, &table, &inserted, &deleted);
         }
 
-        Ok(())
+        Ok(None)
     }
 }

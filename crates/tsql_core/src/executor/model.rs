@@ -20,6 +20,7 @@ pub struct ContextTable {
     pub table: TableDef,
     pub alias: String,
     pub row: Option<StoredRow>,
+    pub storage_index: Option<usize>,
 }
 
 pub type JoinedRow = Vec<ContextTable>;
@@ -29,5 +30,6 @@ pub(crate) fn single_row_context(table: &TableDef, row: StoredRow) -> JoinedRow 
         table: table.clone(),
         alias: table.name.clone(),
         row: Some(row),
+        storage_index: None,
     }]
 }

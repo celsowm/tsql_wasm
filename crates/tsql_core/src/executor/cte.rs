@@ -42,12 +42,14 @@ pub fn resolve_cte_table<'a>(
 pub fn cte_to_context_rows(cte: &CteTable, alias: &str) -> Vec<crate::executor::model::JoinedRow> {
     cte.rows
         .iter()
-        .filter(|r| !r.deleted)
-        .map(|row| {
+        .enumerate()
+        .filter(|(_, r)| !r.deleted)
+        .map(|(i, row)| {
             vec![crate::executor::model::ContextTable {
                 table: cte.table_def.clone(),
                 alias: alias.to_string(),
                 row: Some(row.clone()),
+                storage_index: Some(i),
             }]
         })
         .collect()
