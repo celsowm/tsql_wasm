@@ -7,6 +7,7 @@ use super::engine;
 use super::mutation::MutationExecutor;
 use super::query::QueryExecutor;
 use super::result::QueryResult;
+use super::model::Cursor;
 use super::schema::SchemaExecutor;
 use crate::ast::{DropTableStmt, ObjectName, Statement};
 use crate::catalog::{Catalog, RoutineDef, RoutineKind, TableDef};
@@ -117,12 +118,14 @@ impl<'a> ScriptExecutor<'a> {
                 .drop_view(stmt)?;
                 Ok(None)
             }
-            Statement::Insert(stmt) => MutationExecutor {
-                catalog: self.catalog,
-                storage: self.storage,
-                clock: self.clock,
+            Statement::Insert(stmt) => {
+                let mut mut_exec = MutationExecutor {
+                    catalog: self.catalog,
+                    storage: self.storage,
+                    clock: self.clock,
+                };
+                mut_exec.execute_insert_with_context(stmt, ctx)
             }
-            .execute_insert_with_context(stmt, ctx),
             Statement::Select(mut stmt) => {
                 let into_table = stmt.into_table.take();
                 let result = QueryExecutor {
@@ -186,18 +189,22 @@ impl<'a> ScriptExecutor<'a> {
 
                 Ok(Some(result))
             }
-            Statement::Update(stmt) => MutationExecutor {
-                catalog: self.catalog,
-                storage: self.storage,
-                clock: self.clock,
+            Statement::Update(stmt) => {
+                let mut mut_exec = MutationExecutor {
+                    catalog: self.catalog,
+                    storage: self.storage,
+                    clock: self.clock,
+                };
+                mut_exec.execute_update_with_context(stmt, ctx)
             }
-            .execute_update_with_context(stmt, ctx),
-            Statement::Delete(stmt) => MutationExecutor {
-                catalog: self.catalog,
-                storage: self.storage,
-                clock: self.clock,
+            Statement::Delete(stmt) => {
+                let mut mut_exec = MutationExecutor {
+                    catalog: self.catalog,
+                    storage: self.storage,
+                    clock: self.clock,
+                };
+                mut_exec.execute_delete_with_context(stmt, ctx)
             }
-            .execute_delete_with_context(stmt, ctx),
             Statement::TruncateTable(mut stmt) => {
                 if let Some(mapped) = ctx.resolve_table_name(&stmt.name.name) {
                     stmt.name.name = mapped;
@@ -498,6 +505,37 @@ impl<'a> ScriptExecutor<'a> {
                 }
             }
             Statement::Merge(stmt) => self.execute_merge(stmt, ctx),
+            Statement::Print(expr) => self.execute_print(expr, ctx),
+            Statement::DeclareCursor(stmt) => {
+                ctx.cursors.insert(stmt.name.clone(), Cursor {
+                    query: Some(stmt.query),
+                    query_result: QueryResult::default(),
+                    current_row: -1,
+                });
+                Ok(None)
+            }
+            Statement::OpenCursor(name) => self.execute_open_cursor(name, ctx),
+            Statement::FetchCursor(stmt) => self.execute_fetch_cursor(stmt, ctx),
+            Statement::CloseCursor(name) => self.execute_close_cursor(name, ctx),
+            Statement::DeallocateCursor(name) => self.execute_deallocate_cursor(name, ctx),
+            Statement::CreateTrigger(stmt) => {
+                let schema = stmt.name.schema_or_dbo().to_string();
+                self.catalog.create_trigger(crate::catalog::TriggerDef {
+                    schema,
+                    name: stmt.name.name,
+                    table_schema: stmt.table.schema_or_dbo().to_string(),
+                    table_name: stmt.table.name,
+                    events: stmt.events,
+                    is_instead_of: stmt.is_instead_of,
+                    body: stmt.body,
+                })?;
+                Ok(None)
+            }
+            Statement::DropTrigger(stmt) => {
+                let schema = stmt.name.schema_or_dbo().to_string();
+                self.catalog.drop_trigger(&schema, &stmt.name.name)?;
+                Ok(None)
+            }
         }
     }
 

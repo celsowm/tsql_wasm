@@ -1,95 +1,18 @@
-use crate::ast::{SelectAssignStmt, SelectStmt, SpExecuteSqlStmt, ExecProcedureStmt};
-use crate::catalog::{Catalog, RoutineKind};
+use crate::ast::{ExecProcedureStmt, SpExecuteSqlStmt};
+use crate::catalog::RoutineKind;
 use crate::error::DbError;
-use crate::storage::Storage;
+use crate::executor::context::ExecutionContext;
+use crate::executor::evaluator::eval_expr;
+use crate::executor::value_ops::coerce_value_to_type;
 use crate::types::Value;
-
-use super::super::context::ExecutionContext;
-use super::super::evaluator::eval_expr;
-use super::super::query::QueryExecutor;
-use super::super::result::QueryResult;
-use super::super::value_ops::coerce_value_to_type;
-use super::ScriptExecutor;
+use super::super::ScriptExecutor;
 
 impl<'a> ScriptExecutor<'a> {
-    pub(crate) fn execute_select_assign(
-        &mut self,
-        stmt: SelectAssignStmt,
-        ctx: &mut ExecutionContext,
-    ) -> Result<Option<QueryResult>, DbError> {
-        if stmt.targets.is_empty() {
-            return Ok(None);
-        }
-        if stmt.from.is_none() {
-            for t in stmt.targets {
-                let val = eval_expr(
-                    &t.expr,
-                    &[],
-                    ctx,
-                    self.catalog,
-                    self.storage,
-                    self.clock,
-                )?;
-                if let Some((ty, var)) = ctx.variables.get_mut(&t.variable) {
-                    *var = coerce_value_to_type(val, ty)?;
-                } else {
-                    return Err(DbError::Semantic(format!(
-                        "variable '{}' not declared",
-                        t.variable
-                    )));
-                }
-            }
-            return Ok(None);
-        }
-
-        let q = SelectStmt {
-            from: stmt.from,
-            joins: stmt.joins,
-            applies: vec![],
-            projection: stmt
-                .targets
-                .iter()
-                .map(|t| crate::ast::SelectItem {
-                    expr: t.expr.clone(),
-                    alias: None,
-                })
-                .collect(),
-            into_table: None,
-            distinct: false,
-            top: None,
-            selection: stmt.selection,
-            group_by: vec![],
-            having: None,
-            order_by: vec![],
-            offset: None,
-            fetch: None,
-        };
-        let result = QueryExecutor {
-            catalog: self.catalog as &dyn Catalog,
-            storage: self.storage as &dyn Storage,
-            clock: self.clock,
-        }
-        .execute_select(q, ctx)?;
-        if let Some(last) = result.rows.last() {
-            for (idx, t) in stmt.targets.iter().enumerate() {
-                if let Some((ty, var)) = ctx.variables.get_mut(&t.variable) {
-                    *var = coerce_value_to_type(last[idx].clone(), ty)?;
-                } else {
-                    return Err(DbError::Semantic(format!(
-                        "variable '{}' not declared",
-                        t.variable
-                    )));
-                }
-            }
-        }
-        Ok(None)
-    }
-
     pub(crate) fn execute_procedure(
         &mut self,
         stmt: ExecProcedureStmt,
         ctx: &mut ExecutionContext,
-    ) -> Result<Option<QueryResult>, DbError> {
+    ) -> Result<Option<crate::executor::result::QueryResult>, DbError> {
         let schema = stmt.name.schema_or_dbo().to_string();
         let Some(routine) = self.catalog.find_routine(&schema, &stmt.name.name).cloned() else {
             return Err(DbError::Semantic(format!(
@@ -118,7 +41,7 @@ impl<'a> ScriptExecutor<'a> {
                         self.storage,
                         self.clock,
                     )?;
-                    let ty = super::super::type_mapping::data_type_spec_to_runtime(&param.data_type);
+                    let ty = crate::executor::type_mapping::data_type_spec_to_runtime(&param.data_type);
                     let coerced = coerce_value_to_type(val, &ty)?;
                     ctx.variables.insert(param.name.clone(), (ty, coerced));
                     ctx.register_declared_var(&param.name);
@@ -137,7 +60,7 @@ impl<'a> ScriptExecutor<'a> {
                 self.storage,
                 self.clock,
             )?;
-            let ty = super::super::type_mapping::data_type_spec_to_runtime(&param.data_type);
+            let ty = crate::executor::type_mapping::data_type_spec_to_runtime(&param.data_type);
             let coerced = coerce_value_to_type(val, &ty)?;
             ctx.variables.insert(param.name.clone(), (ty, coerced));
             ctx.register_declared_var(&param.name);
@@ -172,7 +95,7 @@ impl<'a> ScriptExecutor<'a> {
         &mut self,
         stmt: SpExecuteSqlStmt,
         ctx: &mut ExecutionContext,
-    ) -> Result<Option<QueryResult>, DbError> {
+    ) -> Result<Option<crate::executor::result::QueryResult>, DbError> {
         let sql_val = eval_expr(
             &stmt.sql_expr,
             &[],
@@ -224,25 +147,5 @@ impl<'a> ScriptExecutor<'a> {
             }
         }
         exec_result
-    }
-
-    fn leave_scope_and_cleanup(&mut self, ctx: &mut ExecutionContext) -> Result<(), DbError> {
-        let dropped_physical = ctx.leave_scope_collect_table_vars();
-        for physical in dropped_physical {
-            if self.catalog.find_table("dbo", &physical).is_none() {
-                continue;
-            }
-            crate::executor::schema::SchemaExecutor {
-                catalog: self.catalog,
-                storage: self.storage,
-            }
-            .drop_table(crate::ast::DropTableStmt {
-                name: crate::ast::ObjectName {
-                    schema: Some("dbo".to_string()),
-                    name: physical,
-                },
-            })?;
-        }
-        Ok(())
     }
 }

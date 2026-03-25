@@ -121,6 +121,8 @@ impl<'a> MutationExecutor<'a> {
             self.storage.delete_row(table_id, idx)?;
         }
 
+        self.execute_triggers(&table, crate::ast::TriggerEvent::Delete, &[], &deleted_rows_for_output, ctx)?;
+
         if let Some(output) = stmt.output {
             let output_rows: Vec<&crate::storage::StoredRow> = deleted_rows_for_output.iter().collect();
             return build_output_result(&output, &table, &[], &output_rows);

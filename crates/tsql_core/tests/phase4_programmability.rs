@@ -7,7 +7,7 @@ fn exec(engine: &mut Engine, sql: &str) {
 
 fn exec_batch(engine: &mut Engine, sql: &str) {
     let stmts = parse_batch(sql).expect("parse batch failed");
-    engine.execute_batch(stmts).ok();
+    engine.execute_batch(stmts).expect("execute batch failed");
 }
 
 fn query(engine: &mut Engine, sql: &str) -> tsql_core::QueryResult {
@@ -27,7 +27,135 @@ fn query_batch(engine: &mut Engine, sql: &str) -> tsql_core::QueryResult {
     result.expect("expected result")
 }
 
-// ─── DECLARE and SET ───────────────────────────────────────────────────
+// ─── PRINT ─────────────────────────────────────────────────────────────
+
+#[test]
+fn test_print() {
+    let mut e = Engine::new();
+    let stmts = parse_batch("PRINT 'Hello World'; PRINT 123 + 456").unwrap();
+    e.execute_batch(stmts).unwrap();
+    assert_eq!(e.print_output(), vec!["Hello World".to_string(), "579".to_string()]);
+}
+
+// ─── Scalar UDF ────────────────────────────────────────────────────────
+
+#[test]
+fn test_multi_statement_udf() {
+    let mut e = Engine::new();
+    exec_batch(&mut e, "
+        CREATE FUNCTION dbo.Calculate(@a INT, @b INT)
+        RETURNS INT
+        AS
+        BEGIN
+            DECLARE @res INT;
+            SET @res = @a * 2 + @b;
+            RETURN @res;
+        END
+    ");
+    let r = query_batch(&mut e, "SELECT dbo.Calculate(10, 5) AS val");
+    assert_eq!(r.rows[0][0], Value::Int(25));
+}
+
+// ─── Cursors ───────────────────────────────────────────────────────────
+
+#[test]
+fn test_cursor_basic() {
+    let mut e = Engine::new();
+    exec_batch(&mut e, "
+        CREATE TABLE Items (Id INT, Name VARCHAR(50));
+        INSERT INTO Items VALUES (1, 'A'), (2, 'B'), (3, 'C');
+    ");
+
+    let r = query_batch(&mut e, "
+        DECLARE @id INT;
+        DECLARE @name VARCHAR(50);
+        DECLARE @concat VARCHAR(200) = '';
+
+        DECLARE cur CURSOR FOR SELECT Id, Name FROM Items ORDER BY Id;
+        OPEN cur;
+
+        FETCH NEXT FROM cur INTO @id, @name;
+        WHILE @@FETCH_STATUS = 0
+        BEGIN
+            SET @concat = @concat + @name;
+            FETCH NEXT FROM cur INTO @id, @name;
+        END
+
+        CLOSE cur;
+        DEALLOCATE cur;
+        SELECT @concat;
+    ");
+    assert_eq!(r.rows[0][0], Value::VarChar("ABC".to_string()));
+}
+
+// ─── Triggers ──────────────────────────────────────────────────────────
+
+#[test]
+fn test_trigger_after_insert() {
+    let mut e = Engine::new();
+    exec_batch(&mut e, "
+        CREATE TABLE Logs (Msg VARCHAR(100));
+        CREATE TABLE Data (Val INT);
+
+        CREATE TRIGGER tr_Data_Insert ON Data AFTER INSERT AS
+        BEGIN
+            INSERT INTO Logs SELECT 'Inserted ' + CAST(Val AS VARCHAR) FROM inserted;
+        END
+    ");
+
+    exec_batch(&mut e, "INSERT INTO Data VALUES (10), (20)");
+
+    let r = query_batch(&mut e, "SELECT Msg FROM Logs ORDER BY Msg");
+    assert_eq!(r.rows.len(), 2);
+    assert_eq!(r.rows[0][0], Value::VarChar("Inserted 10".to_string()));
+    assert_eq!(r.rows[1][0], Value::VarChar("Inserted 20".to_string()));
+}
+
+#[test]
+fn test_trigger_after_update() {
+    let mut e = Engine::new();
+    exec_batch(&mut e, "
+        CREATE TABLE Audit (OldVal INT, NewVal INT);
+        CREATE TABLE Data (Id INT, Val INT);
+        INSERT INTO Data VALUES (1, 100);
+
+        CREATE TRIGGER tr_Data_Update ON Data AFTER UPDATE AS
+        BEGIN
+            INSERT INTO Audit (OldVal, NewVal)
+            SELECT d.Val, i.Val FROM deleted d JOIN inserted i ON d.Id = i.Id;
+        END
+    ");
+
+    exec_batch(&mut e, "UPDATE Data SET Val = 200 WHERE Id = 1");
+
+    let r = query_batch(&mut e, "SELECT OldVal, NewVal FROM Audit");
+    assert_eq!(r.rows[0][0], Value::Int(100));
+    assert_eq!(r.rows[0][1], Value::Int(200));
+}
+
+#[test]
+fn test_trigger_after_delete() {
+    let mut e = Engine::new();
+    exec_batch(&mut e, "
+        CREATE TABLE Trash (Val INT);
+        CREATE TABLE Data (Val INT);
+        INSERT INTO Data VALUES (1), (2), (3);
+
+        CREATE TRIGGER tr_Data_Delete ON Data AFTER DELETE AS
+        BEGIN
+            INSERT INTO Trash SELECT Val FROM deleted;
+        END
+    ");
+
+    exec_batch(&mut e, "DELETE FROM Data WHERE Val > 1");
+
+    let r = query_batch(&mut e, "SELECT Val FROM Trash ORDER BY Val");
+    assert_eq!(r.rows.len(), 2);
+    assert_eq!(r.rows[0][0], Value::Int(2));
+    assert_eq!(r.rows[1][0], Value::Int(3));
+}
+
+// ─── Existing tests from phase4_programmability ────────────────────────
 
 #[test]
 fn test_declare_and_set() {
@@ -74,8 +202,6 @@ fn test_multiple_variables() {
     assert_eq!(r.rows[0][0], Value::BigInt(7));
 }
 
-// ─── IF / ELSE ─────────────────────────────────────────────────────────
-
 #[test]
 fn test_if_true() {
     let mut e = Engine::new();
@@ -112,8 +238,6 @@ fn test_if_else_chain() {
     assert_eq!(r.rows[0][0], Value::VarChar("yes".to_string()));
 }
 
-// ─── WHILE ─────────────────────────────────────────────────────────────
-
 #[test]
 fn test_while_sum() {
     let mut e = Engine::new();
@@ -133,8 +257,6 @@ fn test_while_sum() {
     assert_eq!(r.rows[0][0], Value::Int(55));
 }
 
-// ─── Batch execution ───────────────────────────────────────────────────
-
 #[test]
 fn test_semicolon_separated() {
     let mut e = Engine::new();
@@ -152,8 +274,6 @@ fn test_batch_with_select() {
     );
     assert_eq!(r.rows[0][0], Value::VarChar("hello".to_string()));
 }
-
-// ─── Variable in query ─────────────────────────────────────────────────
 
 #[test]
 fn test_variable_in_where() {
@@ -176,8 +296,6 @@ fn test_variable_concat() {
     let r = query_batch(&mut e, "DECLARE @first VARCHAR(50) = 'Hello'; DECLARE @second VARCHAR(50) = ' World'; SELECT @first + @second AS greeting");
     assert_eq!(r.rows[0][0], Value::VarChar("Hello World".to_string()));
 }
-
-// ─── BREAK / CONTINUE ───────────────────────────────────────────────────
 
 #[test]
 fn test_while_with_break() {

@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use super::cte::CteStorage;
-use super::model::JoinedRow;
+use super::model::{JoinedRow, Cursor};
 use crate::types::{DataType, Value};
 
 pub type Variables = std::collections::HashMap<String, (DataType, Value)>;
@@ -34,6 +34,9 @@ pub struct ExecutionContext<'a> {
     pub apply_row_stack: Vec<JoinedRow>,
     pub current_group: Option<super::model::Group>,
     pub window_context: Option<HashMap<crate::ast::Expr, Value>>,
+    pub print_output: &'a mut Vec<String>,
+    pub cursors: &'a mut HashMap<String, Cursor>,
+    pub fetch_status: &'a mut i32,
 }
 
 
@@ -48,6 +51,9 @@ impl<'a> ExecutionContext<'a> {
         ansi_nulls: bool,
         datefirst: i32,
         random_state: &'a mut u64,
+        cursors: &'a mut HashMap<String, Cursor>,
+        fetch_status: &'a mut i32,
+        print_output: &'a mut Vec<String>,
     ) -> Self {
         Self {
             variables,
@@ -69,6 +75,9 @@ impl<'a> ExecutionContext<'a> {
             apply_row_stack: vec![],
             current_group: None,
             window_context: None,
+            print_output,
+            cursors,
+            fetch_status,
         }
     }
 
@@ -93,6 +102,9 @@ impl<'a> ExecutionContext<'a> {
             apply_row_stack: self.apply_row_stack.clone(),
             current_group: self.current_group.clone(),
             window_context: self.window_context.clone(),
+            print_output: self.print_output,
+            cursors: self.cursors,
+            fetch_status: self.fetch_status,
         }
     }
 
@@ -117,6 +129,9 @@ impl<'a> ExecutionContext<'a> {
             apply_row_stack: self.apply_row_stack.clone(),
             current_group: self.current_group.clone(),
             window_context: self.window_context.clone(),
+            print_output: self.print_output,
+            cursors: self.cursors,
+            fetch_status: self.fetch_status,
         }
     }
 
@@ -145,6 +160,9 @@ impl<'a> ExecutionContext<'a> {
             apply_row_stack: self.apply_row_stack.clone(),
             current_group: self.current_group.clone(),
             window_context: self.window_context.clone(),
+            print_output: self.print_output,
+            cursors: self.cursors,
+            fetch_status: self.fetch_status,
         }
     }
 
@@ -218,21 +236,32 @@ impl<'a> ExecutionContext<'a> {
     }
 
     pub fn resolve_table_name(&self, logical: &str) -> Option<String> {
+        let upper = logical.to_uppercase();
+
+        // 1. Mapped names (temp tables #t)
+        if let Some(mapped) = self.temp_table_map.get(&upper) {
+            return Some(mapped.clone());
+        }
+
+        // 2. Table variables (@vars)
         if logical.starts_with('@') {
             for scope in self.table_vars.iter().rev() {
-                if let Some(name) = scope.get(&logical.to_uppercase()) {
+                if let Some(name) = scope.get(&upper) {
                     return Some(name.clone());
                 }
             }
-            if let Some(name) = self.session_table_var_map.get(&logical.to_uppercase()) {
+            if let Some(name) = self.session_table_var_map.get(&upper) {
                 return Some(name.clone());
             }
             return None;
         }
-        if logical.starts_with('#') {
-            return self.temp_table_map.get(&logical.to_uppercase()).cloned();
+
+        // 3. Fallback for regular tables
+        if !logical.starts_with('#') {
+            return Some(logical.to_string());
         }
-        Some(logical.to_string())
+
+        None
     }
 
     pub fn push_apply_row(&mut self, row: JoinedRow) {

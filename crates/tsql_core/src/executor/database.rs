@@ -208,6 +208,11 @@ impl Engine {
     pub fn trace_execute_sql(&self, sql: &str) -> Result<ExecutionTrace, DbError> {
         SqlAnalyzer::trace_execute_session_sql(&self.db, self.default_session, sql)
     }
+
+    pub fn print_output(&self) -> Vec<String> {
+        let guard = self.db.inner.lock().unwrap();
+        guard.sessions.get(&self.default_session).map(|s| s.print_output.clone()).unwrap_or_default()
+    }
 }
 
 impl Default for Database {
@@ -620,6 +625,9 @@ where
         session.options.ansi_nulls,
         session.options.datefirst,
         &mut session.random_state,
+        &mut session.cursors,
+        &mut session.fetch_status,
+        &mut session.print_output,
     );
     ctx.enter_scope();
 
@@ -697,6 +705,9 @@ where
         session.options.ansi_nulls,
         session.options.datefirst,
         &mut session.random_state,
+        &mut session.cursors,
+        &mut session.fetch_status,
+        &mut session.print_output,
     );
     ctx.enter_scope();
 
@@ -785,6 +796,9 @@ where
         session.options.ansi_nulls,
         session.options.datefirst,
         &mut session.random_state,
+        &mut session.cursors,
+        &mut session.fetch_status,
+        &mut session.print_output,
     );
 
     match execute_non_transaction_statement(

@@ -59,6 +59,47 @@ pub enum Statement {
     CreateView(CreateViewStmt),
     DropView(DropViewStmt),
     Merge(MergeStmt),
+    Print(Expr),
+    DeclareCursor(DeclareCursorStmt),
+    OpenCursor(String),
+    FetchCursor(FetchCursorStmt),
+    CloseCursor(String),
+    DeallocateCursor(String),
+    CreateTrigger(CreateTriggerStmt),
+    DropTrigger(DropTriggerStmt),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeclareCursorStmt {
+    pub name: String,
+    pub query: SelectStmt,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FetchCursorStmt {
+    pub name: String,
+    pub into: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateTriggerStmt {
+    pub name: ObjectName,
+    pub table: ObjectName,
+    pub events: Vec<TriggerEvent>,
+    pub is_instead_of: bool,
+    pub body: Vec<Statement>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TriggerEvent {
+    Insert,
+    Update,
+    Delete,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DropTriggerStmt {
+    pub name: ObjectName,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -224,6 +265,7 @@ pub struct DropProcedureStmt {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FunctionBody {
     ScalarReturn(Expr),
+    Scalar(Vec<Statement>),
     InlineTable(SelectStmt),
 }
 

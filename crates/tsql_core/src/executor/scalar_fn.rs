@@ -225,7 +225,7 @@ pub(crate) fn eval_function(
     } else if name.eq_ignore_ascii_case("@@ERROR") {
         Ok(Value::Int(0))
     } else if name.eq_ignore_ascii_case("@@FETCH_STATUS") {
-        Ok(Value::Int(-1))
+        Ok(Value::Int(*ctx.fetch_status))
     } else if name.eq_ignore_ascii_case("@@LANGUAGE") {
         Ok(Value::NVarChar("us_english".into()))
     } else if name.eq_ignore_ascii_case("@@TEXTSIZE") {
@@ -264,12 +264,6 @@ fn eval_user_scalar_function(
     let RoutineKind::Function { body, .. } = &routine.kind else {
         return Err(DbError::Execution(format!("'{}' is not a function", name)));
     };
-    let crate::ast::FunctionBody::ScalarReturn(expr) = body else {
-        return Err(DbError::Execution(format!(
-            "inline TVF '{}' cannot be used in scalar context",
-            name
-        )));
-    };
     if args.len() != routine.params.len() {
         return Err(DbError::Execution(format!(
             "function '{}' expected {} args, got {}",
@@ -287,7 +281,18 @@ fn eval_user_scalar_function(
         ctx.variables.insert(param.name.clone(), (ty, coerced));
         ctx.register_declared_var(&param.name);
     }
-    let out = eval_expr(expr, row, ctx, catalog, storage, clock);
+    let out = match body {
+        crate::ast::FunctionBody::ScalarReturn(expr) => {
+            eval_expr(expr, row, ctx, catalog, storage, clock)
+        }
+        crate::ast::FunctionBody::Scalar(stmts) => {
+            super::evaluator::eval_udf_body(stmts, ctx, catalog, storage, clock)
+        }
+        crate::ast::FunctionBody::InlineTable(_) => Err(DbError::Execution(format!(
+            "inline TVF '{}' cannot be used in scalar context",
+            name
+        ))),
+    };
     ctx.leave_scope();
     out
 }

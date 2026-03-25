@@ -1,0 +1,96 @@
+use crate::ast::FetchCursorStmt;
+use crate::error::DbError;
+use crate::executor::context::ExecutionContext;
+use crate::executor::query::QueryExecutor;
+use crate::executor::result::QueryResult;
+use crate::executor::value_ops::coerce_value_to_type;
+use crate::catalog::Catalog;
+use crate::storage::Storage;
+use super::super::ScriptExecutor;
+
+impl<'a> ScriptExecutor<'a> {
+    pub(crate) fn execute_open_cursor(
+        &mut self,
+        name: String,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<QueryResult>, DbError> {
+        let mut cursor = ctx.cursors.get(&name).cloned().ok_or_else(|| {
+            DbError::Semantic(format!("cursor '{}' not declared", name))
+        })?;
+        let query = cursor.query.clone().ok_or_else(|| {
+            DbError::Semantic(format!("cursor '{}' has no query", name))
+        })?;
+        let result = QueryExecutor {
+            catalog: self.catalog as &dyn Catalog,
+            storage: self.storage as &dyn Storage,
+            clock: self.clock,
+        }
+        .execute_select(query, ctx)?;
+        cursor.query_result = result;
+        cursor.current_row = -1;
+        ctx.cursors.insert(name, cursor);
+        Ok(None)
+    }
+
+    pub(crate) fn execute_close_cursor(
+        &mut self,
+        name: String,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<QueryResult>, DbError> {
+        let mut cursor = ctx.cursors.get(&name).cloned().ok_or_else(|| {
+            DbError::Semantic(format!("cursor '{}' not declared", name))
+        })?;
+        cursor.current_row = -1;
+        ctx.cursors.insert(name, cursor);
+        Ok(None)
+    }
+
+    pub(crate) fn execute_deallocate_cursor(
+        &mut self,
+        name: String,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<QueryResult>, DbError> {
+        ctx.cursors.remove(&name);
+        Ok(None)
+    }
+
+    pub(crate) fn execute_fetch_cursor(
+        &mut self,
+        stmt: FetchCursorStmt,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<QueryResult>, DbError> {
+        let mut cursor = ctx.cursors.get(&stmt.name).cloned().ok_or_else(|| {
+            DbError::Semantic(format!("cursor '{}' not declared", stmt.name))
+        })?;
+        cursor.current_row += 1;
+
+        if cursor.current_row >= 0 && cursor.current_row < cursor.query_result.rows.len() as i64 {
+            *ctx.fetch_status = 0;
+            if let Some(into_vars) = stmt.into {
+                let row = &cursor.query_result.rows[cursor.current_row as usize];
+                if into_vars.len() != row.len() {
+                    return Err(DbError::Execution(format!(
+                        "FETCH INTO expected {} variables, got {}",
+                        row.len(),
+                        into_vars.len()
+                    )));
+                }
+                for (idx, var_name) in into_vars.iter().enumerate() {
+                    if let Some((ty, var)) = ctx.variables.get_mut(var_name) {
+                        *var = coerce_value_to_type(row[idx].clone(), ty)?;
+                    } else {
+                        return Err(DbError::Semantic(format!(
+                            "variable '{}' not declared",
+                            var_name
+                        )));
+                    }
+                }
+            }
+        } else {
+            *ctx.fetch_status = -1;
+        }
+
+        ctx.cursors.insert(stmt.name, cursor);
+        Ok(None)
+    }
+}
