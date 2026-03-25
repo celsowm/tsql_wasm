@@ -33,3 +33,10 @@ pub(crate) fn single_row_context(table: &TableDef, row: StoredRow) -> JoinedRow 
         storage_index: None,
     }]
 }
+
+#[derive(Debug, Clone)]
+pub struct Cursor {
+    pub query: Option<crate::ast::SelectStmt>,
+    pub query_result: super::result::QueryResult,
+    pub current_row: i64,
+}

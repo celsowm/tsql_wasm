@@ -299,6 +299,26 @@ pub(crate) fn split_csv_top_level(input: &str) -> Vec<String> {
     out
 }
 
+pub(crate) fn find_matching_paren_index(input: &str, open_idx: usize) -> Option<usize> {
+    let chars: Vec<char> = input.chars().collect();
+    let mut depth = 0usize;
+    let mut in_string = false;
+    for (i, ch) in chars.iter().enumerate().skip(open_idx) {
+        match *ch {
+            '\'' => in_string = !in_string,
+            '(' if !in_string => depth += 1,
+            ')' if !in_string => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 pub(crate) fn tokenize_preserving_parens(input: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut buf = String::new();

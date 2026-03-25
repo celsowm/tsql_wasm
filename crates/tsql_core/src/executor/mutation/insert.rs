@@ -142,6 +142,8 @@ impl<'a> MutationExecutor<'a> {
             }
         }
 
+        self.execute_triggers(&table, crate::ast::TriggerEvent::Insert, &inserted_rows_for_output, &[], ctx)?;
+
         if let Some(output) = stmt.output {
             let inserted: Vec<&crate::storage::StoredRow> = inserted_rows_for_output.iter().collect();
             return build_output_result(&output, &table, &inserted, &[]);

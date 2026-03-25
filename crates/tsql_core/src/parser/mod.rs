@@ -142,6 +142,7 @@ fn is_statement_keyword_start(upper_chars: &[char], chars: &[char], start: usize
     let stmt_keywords = [
         "INSERT", "SELECT", "UPDATE", "DELETE", "SET", "DECLARE", "IF", "WHILE", "RETURN", "BREAK",
         "CONTINUE", "EXEC", "EXECUTE", "CREATE", "DROP", "BEGIN", "COMMIT", "ROLLBACK", "SAVE",
+        "PRINT", "OPEN", "FETCH", "CLOSE", "DEALLOCATE",
     ];
 
     for kw in &stmt_keywords {
@@ -256,7 +257,21 @@ pub fn parse_sql(sql: &str) -> Result<Statement, DbError> {
         return statements::parse_drop_function(trimmed);
     }
 
-    if upper.starts_with("CREATE TABLE ") {
+    if upper.starts_with("PRINT ") {
+        statements::parse_print(trimmed)
+    } else if upper.starts_with("OPEN ") {
+        statements::parse_open_cursor(trimmed)
+    } else if upper.starts_with("FETCH ") {
+        statements::parse_fetch_cursor(trimmed)
+    } else if upper.starts_with("CLOSE ") {
+        statements::parse_close_cursor(trimmed)
+    } else if upper.starts_with("DEALLOCATE ") {
+        statements::parse_deallocate_cursor(trimmed)
+    } else if upper.starts_with("CREATE TRIGGER ") {
+        statements::parse_create_trigger(trimmed)
+    } else if upper.starts_with("DROP TRIGGER ") {
+        statements::parse_drop_trigger(trimmed)
+    } else if upper.starts_with("CREATE TABLE ") {
         statements::parse_create_table(trimmed)
     } else if upper.starts_with("CREATE VIEW ") {
         statements::parse_create_view(trimmed)

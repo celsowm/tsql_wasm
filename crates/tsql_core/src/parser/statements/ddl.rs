@@ -484,6 +484,64 @@ pub(crate) fn parse_table_constraint(input: &str) -> Result<TableConstraintSpec,
     Err(DbError::Parse("unsupported table constraint".into()))
 }
 
+pub(crate) fn parse_create_trigger(sql: &str) -> Result<Statement, DbError> {
+    let after_prefix = sql["CREATE TRIGGER".len()..].trim();
+    let on_idx = find_keyword_top_level(after_prefix, "ON")
+        .ok_or_else(|| DbError::Parse("CREATE TRIGGER missing ON".into()))?;
+    let trigger_name = parse_object_name(after_prefix[..on_idx].trim());
+    let rest = &after_prefix[on_idx + "ON".len()..].trim();
+
+    let (is_instead_of, event_pos) = if let Some(pos) = find_keyword_top_level(rest, "INSTEAD OF") {
+        (true, pos + "INSTEAD OF".len())
+    } else if let Some(pos) = find_keyword_top_level(rest, "AFTER") {
+        (false, pos + "AFTER".len())
+    } else if let Some(pos) = find_keyword_top_level(rest, "FOR") {
+        (false, pos + "FOR".len())
+    } else {
+        return Err(DbError::Parse("CREATE TRIGGER expects AFTER, FOR, or INSTEAD OF".into()));
+    };
+
+    let table_name = parse_object_name(rest[..rest[..event_pos].rfind(|c: char| c.is_whitespace()).unwrap_or(0)].trim());
+    let after_event = &rest[event_pos..].trim();
+
+    let as_idx = find_keyword_top_level(after_event, "AS")
+        .ok_or_else(|| DbError::Parse("CREATE TRIGGER missing AS".into()))?;
+    let event_text = after_event[..as_idx].trim().to_uppercase();
+    let body_text = after_event[as_idx + "AS".len()..].trim();
+
+    let mut events = Vec::new();
+    for part in event_text.split(',') {
+        match part.trim() {
+            "INSERT" => events.push(TriggerEvent::Insert),
+            "UPDATE" => events.push(TriggerEvent::Update),
+            "DELETE" => events.push(TriggerEvent::Delete),
+            _ => return Err(DbError::Parse(format!("invalid trigger event: {}", part))),
+        }
+    }
+
+    let body_stmts = if body_text.to_uppercase().starts_with("BEGIN") {
+        match super::procedural::parse_begin_end(body_text)? {
+            Statement::BeginEnd(stmts) => stmts,
+            other => vec![other],
+        }
+    } else {
+        crate::parser::parse_batch(body_text)?
+    };
+
+    Ok(Statement::CreateTrigger(CreateTriggerStmt {
+        name: trigger_name,
+        table: table_name,
+        events,
+        is_instead_of,
+        body: body_stmts,
+    }))
+}
+
+pub(crate) fn parse_drop_trigger(sql: &str) -> Result<Statement, DbError> {
+    let name = parse_object_name(sql["DROP TRIGGER".len()..].trim());
+    Ok(Statement::DropTrigger(DropTriggerStmt { name }))
+}
+
 pub(crate) fn parse_data_type(input: &str) -> Result<DataTypeSpec, DbError> {
     let upper = input.to_uppercase();
     match upper.as_str() {

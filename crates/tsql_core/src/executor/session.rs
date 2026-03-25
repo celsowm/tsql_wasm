@@ -38,6 +38,9 @@ pub struct SessionRuntime<C, S> {
     pub(crate) workspace: Option<TxWorkspace<C, S>>,
     pub(crate) options: SessionOptions,
     pub(crate) random_state: u64,
+    pub(crate) cursors: HashMap<String, super::model::Cursor>,
+    pub(crate) fetch_status: i32,
+    pub(crate) print_output: Vec<String>,
 }
 
 impl<C, S> SessionRuntime<C, S>
@@ -59,6 +62,9 @@ where
             workspace: None,
             options: SessionOptions::default(),
             random_state: 1,
+            cursors: HashMap::new(),
+            fetch_status: -1,
+            print_output: Vec::new(),
         }
     }
 
@@ -73,6 +79,9 @@ where
         self.workspace = None;
         self.options = SessionOptions::default();
         self.random_state = 1;
+        self.cursors.clear();
+        self.fetch_status = -1;
+        self.print_output.clear();
     }
 }
 

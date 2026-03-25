@@ -1,10 +1,10 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::types::Value;
 
 use crate::types::DataType;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct QueryResult {
     pub columns: Vec<String>,
     pub column_types: Vec<DataType>,

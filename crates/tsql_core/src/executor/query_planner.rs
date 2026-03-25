@@ -190,6 +190,11 @@ pub fn bind_table(
         if tref.name.schema.is_none() {
             tref.name.schema = Some("dbo".to_string());
         }
+    } else {
+        // Fallback for regular tables that don't start with @ or #
+        if !tref.name.name.starts_with('@') && !tref.name.name.starts_with('#') {
+            // Keep original name
+        }
     }
     let schema = tref.name.schema_or_dbo();
     let name = &tref.name.name;

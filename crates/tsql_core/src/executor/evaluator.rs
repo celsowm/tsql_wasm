@@ -9,6 +9,7 @@ use super::context::ExecutionContext;
 use super::identifier::{resolve_identifier, resolve_qualified_identifier};
 use super::model::JoinedRow;
 use super::operators::{eval_binary, eval_unary};
+use super::script::ScriptExecutor;
 use super::predicates::{
     eval_between, eval_case, eval_exists, eval_in_list, eval_in_subquery, eval_like,
     eval_scalar_subquery,
@@ -52,6 +53,40 @@ pub(crate) fn eval_constant_expr(
 ) -> Result<Value, DbError> {
     let row: JoinedRow = vec![];
     eval_expr(expr, &row, ctx, catalog, storage, clock)
+}
+
+pub(crate) fn eval_udf_body(
+    stmts: &[crate::ast::Statement],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    let mut catalog_owned = if let Some(impl_ref) = catalog.as_any().downcast_ref::<crate::catalog::CatalogImpl>() {
+        Box::new(impl_ref.clone()) as Box<dyn Catalog>
+    } else {
+        return Err(DbError::Execution("UDF requires cloneable catalog".into()));
+    };
+
+    let mut storage_owned = if let Some(impl_ref) = storage.as_any().downcast_ref::<crate::storage::InMemoryStorage>() {
+        Box::new(impl_ref.clone()) as Box<dyn Storage>
+    } else if let Some(impl_ref) = storage.as_any().downcast_ref::<crate::storage::RedbStorage>() {
+        Box::new(impl_ref.clone()) as Box<dyn Storage>
+    } else {
+        return Err(DbError::Execution("UDF requires cloneable storage".into()));
+    };
+
+    let mut executor = ScriptExecutor {
+        catalog: catalog_owned.as_mut(),
+        storage: storage_owned.as_mut(),
+        clock,
+    };
+    match executor.execute_batch(stmts, ctx) {
+        Err(DbError::Return(Some(val))) => Ok(val),
+        Err(DbError::Return(None)) => Ok(Value::Null),
+        Ok(_) => Ok(Value::Null),
+        Err(e) => Err(e),
+    }
 }
 
 pub fn eval_expr(

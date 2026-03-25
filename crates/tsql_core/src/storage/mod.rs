@@ -31,6 +31,8 @@ pub trait Storage: std::fmt::Debug + Send + Sync {
 
     fn get_checkpoint_data(&self) -> StorageCheckpointData;
     fn restore_from_checkpoint(&mut self, data: StorageCheckpointData) -> Result<(), DbError>;
+    fn as_any(&self) -> &dyn std::any::Any;
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -109,5 +111,13 @@ impl Storage for InMemoryStorage {
         } else {
             Err(DbError::Storage("invalid checkpoint data for InMemoryStorage".into()))
         }
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 }
