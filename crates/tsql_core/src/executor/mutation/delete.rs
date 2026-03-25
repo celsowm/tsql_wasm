@@ -89,6 +89,8 @@ impl<'a> MutationExecutor<'a> {
 
         let joined_rows = query_executor.execute_to_joined_rows(query_stmt, ctx)?;
 
+        let has_triggers = !self.catalog.find_triggers_for_table(table.schema_or_dbo(), &table.name).is_empty();
+        let collect_rows = stmt.output.is_some() || has_triggers;
         let mut deleted_indices = HashSet::new();
         let mut deleted_rows_for_output = Vec::new();
 
@@ -107,7 +109,7 @@ impl<'a> MutationExecutor<'a> {
                 if !deleted_indices.contains(&idx) {
                     enforce_foreign_keys_on_delete(&table, self.catalog, self.storage, stored_row)?;
                     deleted_indices.insert(idx);
-                    if stmt.output.is_some() {
+                    if collect_rows {
                         deleted_rows_for_output.push(stored_row.clone());
                     }
                 }

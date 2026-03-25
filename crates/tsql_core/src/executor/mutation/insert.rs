@@ -40,12 +40,14 @@ impl<'a> MutationExecutor<'a> {
             .clone();
 
         let table_id = table.id;
+        let has_triggers = !self.catalog.find_triggers_for_table(table.schema_or_dbo(), &table.name).is_empty();
+        let collect_rows = stmt.output.is_some() || has_triggers;
         let mut inserted_rows_for_output = Vec::new();
 
         if stmt.default_values {
             let row = self.build_insert_row(&table, &[], vec![], ctx)?;
             self.storage.insert_row(table_id, row.clone())?;
-            if stmt.output.is_some() {
+            if collect_rows {
                 inserted_rows_for_output.push(row);
             }
         } else if let Some(select_stmt) = stmt.select_source {
@@ -114,7 +116,7 @@ impl<'a> MutationExecutor<'a> {
                     self.clock,
                 )?;
                 self.storage.insert_row(table_id, temp_row.clone())?;
-                if stmt.output.is_some() {
+                if collect_rows {
                     inserted_rows_for_output.push(temp_row);
                 }
             }
@@ -136,7 +138,7 @@ impl<'a> MutationExecutor<'a> {
                 enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &row)?;
                 enforce_checks_on_row(&table, &row, ctx, self.catalog, self.storage, self.clock)?;
                 self.storage.insert_row(table_id, row.clone())?;
-                if stmt.output.is_some() {
+                if collect_rows {
                     inserted_rows_for_output.push(row);
                 }
             }

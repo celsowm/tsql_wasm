@@ -256,11 +256,6 @@ impl<'a> ExecutionContext<'a> {
             return None;
         }
 
-        // 3. Fallback for regular tables
-        if !logical.starts_with('#') {
-            return Some(logical.to_string());
-        }
-
         None
     }
 
