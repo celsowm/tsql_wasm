@@ -248,7 +248,12 @@ pub(crate) fn parse_update(sql: &str) -> Result<Statement, DbError> {
 }
 
 pub(crate) fn parse_delete(sql: &str) -> Result<Statement, DbError> {
-    let after_delete = sql["DELETE FROM".len()..].trim();
+    let after_delete = if sql.to_uppercase().starts_with("DELETE FROM") {
+        &sql["DELETE FROM".len()..]
+    } else {
+        &sql["DELETE".len()..]
+    }
+    .trim();
     let _upper = after_delete.to_uppercase();
 
     // Check if there's OUTPUT clause

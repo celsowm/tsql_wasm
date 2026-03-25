@@ -31,6 +31,21 @@ impl<'a> QueryExecutor<'a> {
         stmt: SelectStmt,
         ctx: &mut ExecutionContext,
     ) -> Result<super::result::QueryResult, DbError> {
+        let into_table = stmt.into_table.clone();
+        let result = self.execute_select_internal(stmt, ctx)?;
+
+        if into_table.is_some() {
+            return Err(DbError::Execution("SELECT INTO is handled by ScriptExecutor".into()));
+        }
+
+        Ok(result)
+    }
+
+    fn execute_select_internal(
+        &self,
+        stmt: SelectStmt,
+        ctx: &mut ExecutionContext,
+    ) -> Result<super::result::QueryResult, DbError> {
         if stmt.from.is_none() {
             let source_rows = vec![vec![]];
             let has_aggregate = stmt

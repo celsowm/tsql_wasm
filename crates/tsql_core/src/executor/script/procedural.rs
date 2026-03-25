@@ -54,6 +54,7 @@ impl<'a> ScriptExecutor<'a> {
                     alias: None,
                 })
                 .collect(),
+            into_table: None,
             distinct: false,
             top: None,
             selection: stmt.selection,

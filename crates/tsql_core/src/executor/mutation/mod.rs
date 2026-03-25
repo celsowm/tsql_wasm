@@ -4,7 +4,7 @@ pub(crate) mod output;
 mod update;
 pub(crate) mod validation;
 
-pub(crate) use output::{build_output_result, build_output_result_merge, MergeOutputRow};
+pub(crate) use output::{build_output_result_merge, MergeOutputRow};
 
 use crate::catalog::Catalog;
 use crate::storage::Storage;

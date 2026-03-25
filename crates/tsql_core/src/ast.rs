@@ -395,6 +395,7 @@ pub struct SelectStmt {
     pub joins: Vec<JoinClause>,
     pub applies: Vec<ApplyClause>,
     pub projection: Vec<SelectItem>,
+    pub into_table: Option<ObjectName>,
     pub distinct: bool,
     pub top: Option<TopSpec>,
     pub selection: Option<Expr>,

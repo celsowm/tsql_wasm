@@ -44,8 +44,8 @@ pub(crate) fn enforce_string_length(
 
 pub(crate) fn enforce_foreign_keys_on_delete(
     table: &TableDef,
-    catalog: &dyn Catalog,
-    storage: &dyn Storage,
+    catalog: &mut dyn Catalog,
+    storage: &mut dyn Storage,
     deleted_row: &StoredRow,
 ) -> Result<(), DbError> {
     for other_table in catalog.get_tables() {
@@ -90,8 +90,8 @@ pub(crate) fn enforce_foreign_keys_on_delete(
 
 pub(crate) fn enforce_foreign_keys_on_insert(
     table: &TableDef,
-    catalog: &dyn Catalog,
-    storage: &dyn Storage,
+    catalog: &mut dyn Catalog,
+    storage: &mut dyn Storage,
     row: &StoredRow,
 ) -> Result<(), DbError> {
     for fk in &table.foreign_keys {
@@ -148,7 +148,7 @@ pub(crate) fn enforce_foreign_keys_on_insert(
 
 pub(crate) fn enforce_unique_on_insert(
     table: &TableDef,
-    storage: &dyn Storage,
+    storage: &mut dyn Storage,
     table_id: u32,
     new_row: &StoredRow,
 ) -> Result<(), DbError> {
@@ -176,7 +176,7 @@ pub(crate) fn enforce_unique_on_insert(
 
 pub(crate) fn enforce_unique_on_update(
     table: &TableDef,
-    storage: &dyn Storage,
+    storage: &mut dyn Storage,
     table_id: u32,
     updated_row: &StoredRow,
     updated_idx: usize,
@@ -212,8 +212,8 @@ pub(crate) fn apply_assignments(
     assignments: &[Assignment],
     joined: &super::super::model::JoinedRow,
     ctx: &mut ExecutionContext,
-    catalog: &dyn Catalog,
-    storage: &dyn Storage,
+    catalog: &mut dyn Catalog,
+    storage: &mut dyn Storage,
     clock: &dyn Clock,
 ) -> Result<(), DbError> {
     for assignment in assignments {
@@ -275,8 +275,8 @@ pub(crate) fn enforce_checks_on_row(
     table: &TableDef,
     row: &StoredRow,
     ctx: &mut ExecutionContext,
-    catalog: &dyn Catalog,
-    storage: &dyn Storage,
+    catalog: &mut dyn Catalog,
+    storage: &mut dyn Storage,
     clock: &dyn Clock,
 ) -> Result<(), DbError> {
     let joined = single_row_context(table, row.clone());

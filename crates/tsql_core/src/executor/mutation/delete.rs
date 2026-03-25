@@ -23,18 +23,39 @@ impl<'a> MutationExecutor<'a> {
                 stmt.table.schema = Some("dbo".to_string());
             }
         }
-        let schema = stmt.table.schema_or_dbo().to_string();
-        let table_name = stmt.table.name.clone();
-
-        let table = self
-            .catalog
-            .find_table(&schema, &table_name)
-            .ok_or_else(|| {
+        let table = if let Some(from) = &stmt.from {
+            let target_name = &stmt.table.name;
+            let mut found = None;
+            for tref in &from.tables {
+                let alias = tref.alias.as_ref().unwrap_or(&tref.name.name);
+                if alias.eq_ignore_ascii_case(target_name) {
+                    let schema = tref.name.schema_or_dbo();
+                    let t = self.catalog.find_table(schema, &tref.name.name).ok_or_else(|| {
+                        DbError::Semantic(format!("table '{}.{}' not found", schema, tref.name.name))
+                    })?;
+                    found = Some(t.clone());
+                    break;
+                }
+            }
+            if let Some(f) = found {
+                f
+            } else {
+                let schema = stmt.table.schema_or_dbo().to_string();
+                let table_name = stmt.table.name.clone();
+                self.catalog.find_table(&schema, &table_name).ok_or_else(|| {
+                    DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
+                })?.clone()
+            }
+        } else {
+            let schema = stmt.table.schema_or_dbo().to_string();
+            let table_name = stmt.table.name.clone();
+            self.catalog.find_table(&schema, &table_name).ok_or_else(|| {
                 DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
-            })?
-            .clone();
+            })?.clone()
+        };
 
         let table_id = table.id;
+        let target_alias = stmt.table.name.clone();
 
         let query_stmt = SelectStmt {
             from: stmt.from.as_ref().and_then(|f| f.tables.get(0).cloned()).or_else(|| {
@@ -49,6 +70,7 @@ impl<'a> MutationExecutor<'a> {
                 expr: crate::ast::Expr::Wildcard,
                 alias: None,
             }],
+            into_table: None,
             distinct: false,
             top: None,
             selection: stmt.selection.clone(),
@@ -73,7 +95,12 @@ impl<'a> MutationExecutor<'a> {
         for joined_row in joined_rows {
             let target_ctx = joined_row
                 .iter()
-                .find(|ct| ct.table.id == table_id)
+                .find(|ct| {
+                    ct.table.id == table_id && ct.alias.eq_ignore_ascii_case(&target_alias)
+                })
+                .or_else(|| {
+                    joined_row.iter().find(|ct| ct.table.id == table_id)
+                })
                 .ok_or_else(|| DbError::Execution("target table not found in join context".into()))?;
 
             if let (Some(stored_row), Some(idx)) = (&target_ctx.row, target_ctx.storage_index) {
