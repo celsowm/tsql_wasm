@@ -4,7 +4,7 @@ use crate::error::DbError;
 use crate::parser::expression::{parse_expr, parse_expr_with_subqueries};
 use crate::parser::statements::subquery_utils::{apply_subquery_map, extract_subqueries};
 use crate::parser::utils::{
-    find_keyword_top_level, parse_table_ref, split_csv_top_level, tokenize_preserving_parens,
+    find_keyword_top_level, parse_object_name, parse_table_ref, split_csv_top_level, tokenize_preserving_parens,
 };
 
 struct SelectClauseBounds {
@@ -60,18 +60,37 @@ pub(crate) fn parse_select(sql: &str) -> Result<Statement, DbError> {
 
     let (top, select_rest) = parse_optional_top(after_distinct)?;
 
+    let into_idx = find_keyword_top_level(select_rest, "INTO");
     let from_idx = find_keyword_top_level(select_rest, "FROM");
 
+    let (into_table, select_rest_no_into) = if let Some(idx) = into_idx {
+        if from_idx.is_none() || idx < from_idx.unwrap() {
+            let after_into = &select_rest[idx + "INTO".len()..].trim();
+            let end_of_into = find_keyword_top_level(after_into, "FROM").unwrap_or(after_into.len());
+            let into_name = after_into[..end_of_into].trim();
+            let name = parse_object_name(into_name);
+            let reconstructed = format!("{} {}", &select_rest[..idx], &after_into[end_of_into..]);
+            (Some(name), reconstructed)
+        } else {
+            (None, select_rest.to_string())
+        }
+    } else {
+        (None, select_rest.to_string())
+    };
+
+    let from_idx = find_keyword_top_level(&select_rest_no_into, "FROM");
+
     if from_idx.is_none() {
-        if let Some(stmt) = try_parse_select_assign_no_from(select_rest)? {
+        if let Some(stmt) = try_parse_select_assign_no_from(&select_rest_no_into)? {
             return Ok(stmt);
         }
-        let projection = parse_projection(select_rest.trim())?;
+        let projection = parse_projection(select_rest_no_into.trim())?;
         return Ok(Statement::Select(SelectStmt {
             from: None,
             joins: vec![],
             applies: vec![],
             projection,
+            into_table,
             distinct,
             top,
             selection: None,
@@ -84,8 +103,8 @@ pub(crate) fn parse_select(sql: &str) -> Result<Statement, DbError> {
     }
 
     let from_idx = from_idx.unwrap();
-    let projection_raw = select_rest[..from_idx].trim();
-    let tail = select_rest[from_idx + "FROM".len()..].trim();
+    let projection_raw = select_rest_no_into[..from_idx].trim();
+    let tail = select_rest_no_into[from_idx + "FROM".len()..].trim();
 
     if let Some(stmt) = try_parse_select_assign(projection_raw, tail)? {
         return Ok(stmt);
@@ -107,6 +126,7 @@ pub(crate) fn parse_select(sql: &str) -> Result<Statement, DbError> {
         joins,
         applies,
         projection,
+        into_table,
         distinct,
         top,
         selection,

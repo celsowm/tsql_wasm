@@ -278,7 +278,7 @@ pub fn parse_sql(sql: &str) -> Result<Statement, DbError> {
         statements::parse_select(trimmed)
     } else if upper.starts_with("UPDATE ") {
         statements::parse_update(trimmed)
-    } else if upper.starts_with("DELETE FROM ") {
+    } else if upper.starts_with("DELETE ") {
         statements::parse_delete(trimmed)
     } else if upper.starts_with("TRUNCATE TABLE ") {
         statements::parse_truncate_table(trimmed)

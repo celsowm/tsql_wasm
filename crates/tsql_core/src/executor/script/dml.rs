@@ -1,7 +1,5 @@
 use crate::ast::MergeStmt;
-use crate::catalog::Catalog;
 use crate::error::DbError;
-use crate::storage::Storage;
 use crate::types::Value;
 
 use super::super::context::ExecutionContext;
@@ -16,7 +14,6 @@ impl<'a> ScriptExecutor<'a> {
         stmt: MergeStmt,
         ctx: &mut ExecutionContext,
     ) -> Result<Option<QueryResult>, DbError> {
-        // Resolve target table
         let target_name = ctx
             .resolve_table_name(&stmt.target.name.name)
             .unwrap_or_else(|| stmt.target.name.name.clone());
@@ -62,12 +59,12 @@ impl<'a> ScriptExecutor<'a> {
                     .collect::<Vec<Vec<crate::types::Value>>>()
             }
             crate::ast::MergeSource::Subquery(select_stmt, _alias) => {
-                let result = QueryExecutor {
-                    catalog: self.catalog as &dyn Catalog,
-                    storage: self.storage as &dyn Storage,
+                let qe = QueryExecutor {
+                    catalog: self.catalog,
+                    storage: self.storage,
                     clock: self.clock,
-                }
-                .execute_select(select_stmt.clone(), ctx)?;
+                };
+                let result = qe.execute_select(select_stmt.clone(), ctx)?;
                 result.rows
             }
         };
@@ -78,8 +75,10 @@ impl<'a> ScriptExecutor<'a> {
             .clone()
             .unwrap_or_else(|| target_name.clone());
 
-        let mut target_rows = self.storage.get_rows(target_table.id)?;
-        let mut matched_used = vec![false; source_rows.len()];
+        let target_rows = self.storage.get_rows(target_table.id)?;
+        let mut source_matched_to_target = vec![false; source_rows.len()];
+        let mut target_row_matched = vec![false; target_rows.len()];
+        let mut updated_target_rows = target_rows.clone();
         let mut merge_output_rows: Vec<super::super::mutation::MergeOutputRow> = Vec::new();
 
         // Process target rows against source
@@ -145,7 +144,7 @@ impl<'a> ScriptExecutor<'a> {
                     storage_index: Some(s_idx),
                 });
 
-                let on_matches = super::super::evaluator::eval_predicate(
+                let on_matches_val = super::super::evaluator::eval_expr(
                     &stmt.on_condition,
                     &combined_ctx,
                     ctx,
@@ -154,11 +153,18 @@ impl<'a> ScriptExecutor<'a> {
                     self.clock,
                 )?;
 
+                let on_matches = match on_matches_val {
+                    Value::Bit(b) => b,
+                    Value::Null => false,
+                    _ => super::super::value_ops::truthy(&on_matches_val),
+                };
+
                 if !on_matches {
                     continue;
                 }
 
-                matched_used[s_idx] = true;
+                target_row_matched[i] = true;
+                source_matched_to_target[s_idx] = true;
 
                 // Apply WHEN MATCHED clauses
                 for when_clause in &stmt.when_clauses {
@@ -207,10 +213,10 @@ impl<'a> ScriptExecutor<'a> {
                                     }
                                     super::super::mutation::validation::enforce_foreign_keys_on_delete(&target_table, self.catalog, self.storage, &target_rows[i])?;
                                     super::super::mutation::validation::enforce_foreign_keys_on_insert(&target_table, self.catalog, self.storage, &temp_row)?;
-                                    target_rows[i] = temp_row;
+                                    updated_target_rows[i] = temp_row;
                                     if stmt.output.is_some() {
                                         merge_output_rows.push(super::super::mutation::MergeOutputRow {
-                                            inserted_values: Some(target_rows[i].values.clone()),
+                                            inserted_values: Some(updated_target_rows[i].values.clone()),
                                             deleted_values: Some(old_values),
                                         });
                                     }
@@ -223,7 +229,7 @@ impl<'a> ScriptExecutor<'a> {
                                             deleted_values: Some(target_rows[i].values.clone()),
                                         });
                                     }
-                                    target_rows[i].deleted = true;
+                                    updated_target_rows[i].deleted = true;
                                 }
                                 crate::ast::MergeAction::Insert { .. } => {
                                     return Err(DbError::Execution(
@@ -236,7 +242,97 @@ impl<'a> ScriptExecutor<'a> {
                         _ => {}
                     }
                 }
+                break; // Target row matched with source, don't look for more source matches for this target row
             }
+
+            if !target_row_matched[i] {
+                // WHEN NOT MATCHED BY SOURCE
+                let combined_ctx: super::super::model::JoinedRow = vec![super::super::model::ContextTable {
+                    table: target_table.clone(),
+                    alias: target_alias.clone(),
+                    row: Some(target_rows[i].clone()),
+                    storage_index: Some(i),
+                }];
+
+                for when_clause in &stmt.when_clauses {
+                    if matches!(when_clause.when, crate::ast::MergeWhen::NotMatchedBySource) {
+                        if let Some(cond) = &when_clause.condition {
+                            let cond_val = super::super::evaluator::eval_predicate(
+                                cond,
+                                &combined_ctx,
+                                ctx,
+                                self.catalog,
+                                self.storage,
+                                self.clock,
+                            )?;
+                            if !cond_val {
+                                continue;
+                            }
+                        }
+
+                        match &when_clause.action {
+                            crate::ast::MergeAction::Update { assignments } => {
+                                let old_values = target_rows[i].values.clone();
+                                let mut temp_row = target_rows[i].clone();
+                                for assign in assignments {
+                                    let col_idx = target_table
+                                        .columns
+                                        .iter()
+                                        .position(|c| {
+                                            c.name.eq_ignore_ascii_case(&assign.column)
+                                        })
+                                        .ok_or_else(|| {
+                                            DbError::Semantic(format!(
+                                                "column '{}' not found",
+                                                assign.column
+                                            ))
+                                        })?;
+                                    let val = eval_expr(
+                                        &assign.expr,
+                                        &combined_ctx,
+                                        ctx,
+                                        self.catalog,
+                                        self.storage,
+                                        self.clock,
+                                    )?;
+                                    temp_row.values[col_idx] = val;
+                                }
+                                super::super::mutation::validation::enforce_foreign_keys_on_delete(&target_table, self.catalog, self.storage, &target_rows[i])?;
+                                super::super::mutation::validation::enforce_foreign_keys_on_insert(&target_table, self.catalog, self.storage, &temp_row)?;
+                                updated_target_rows[i] = temp_row;
+                                if stmt.output.is_some() {
+                                    merge_output_rows.push(super::super::mutation::MergeOutputRow {
+                                        inserted_values: Some(updated_target_rows[i].values.clone()),
+                                        deleted_values: Some(old_values),
+                                    });
+                                }
+                            }
+                            crate::ast::MergeAction::Delete => {
+                                super::super::mutation::validation::enforce_foreign_keys_on_delete(&target_table, self.catalog, self.storage, &target_rows[i])?;
+                                if stmt.output.is_some() {
+                                    merge_output_rows.push(super::super::mutation::MergeOutputRow {
+                                        inserted_values: None,
+                                        deleted_values: Some(target_rows[i].values.clone()),
+                                    });
+                                }
+                                updated_target_rows[i].deleted = true;
+                            }
+                            _ => return Err(DbError::Execution("Invalid action for NOT MATCHED BY SOURCE".into())),
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Ensure all matched rows are updated in storage before NOT MATCHED
+        let final_matched_rows: Vec<crate::storage::StoredRow> = updated_target_rows
+            .into_iter()
+            .filter(|row| !row.deleted)
+            .collect();
+        self.storage.clear_table(target_table.id)?;
+        for row in final_matched_rows {
+            self.storage.insert_row(target_table.id, row)?;
         }
 
         // Process WHEN NOT MATCHED (source rows not matched to target)
@@ -277,7 +373,7 @@ impl<'a> ScriptExecutor<'a> {
         };
 
         for (s_idx, source_row) in source_rows.iter().enumerate() {
-            if matched_used[s_idx] {
+            if source_matched_to_target[s_idx] {
                 continue;
             }
 
@@ -359,7 +455,7 @@ impl<'a> ScriptExecutor<'a> {
                                 super::super::mutation::validation::enforce_foreign_keys_on_insert(&target_table, self.catalog, self.storage, &temp_row)?;
                                 if stmt.output.is_some() {
                                     merge_output_rows.push(super::super::mutation::MergeOutputRow {
-                                        inserted_values: Some(final_values),
+                                        inserted_values: Some(final_values.clone()),
                                         deleted_values: None,
                                     });
                                 }
@@ -378,7 +474,6 @@ impl<'a> ScriptExecutor<'a> {
             }
         }
 
-        self.storage.update_rows(target_table.id, target_rows)?;
 
         if let Some(ref output) = stmt.output {
             return super::super::mutation::build_output_result_merge(
