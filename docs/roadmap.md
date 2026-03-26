@@ -772,6 +772,52 @@ This roadmap intentionally targets the broad T-SQL reference surface, including 
 
 ## Implementation Log
 
+### 2026-03-25 — STRING_AGG, STRING_SPLIT, sys.foreign_keys ✅ COMPLETE
+
+**Test suite: 340+ tests passing**
+
+**Deliverables:**
+
+| Feature | Status | Test Count |
+|---------|--------|------------|
+| STRING_AGG() | ✅ Complete | 5 |
+| STRING_SPLIT() | ✅ Complete | 5 |
+| sys.foreign_keys | ✅ Complete | 4 |
+| INFORMATION_SCHEMA.PARAMETERS | ✅ Complete | (already implemented) |
+
+**Key implementation changes:**
+- Aggregates: Added STRING_AGG to is_aggregate_function() and dispatch_aggregate()
+- Aggregates: Added eval_aggregate_string_agg() for string concatenation with separator
+- Query: Added bind_builtin_tvf() for STRING_SPLIT(string, separator) in FROM clause
+- Metadata: Added SysForeignKeys virtual table in sys_tables.rs
+- Tests: Added string_agg.rs, string_split.rs, sys_foreign_keys.rs, info_schema_parameters.rs
+- Tests: Added update_delete_from.rs (4 tests), merge_statement.rs (4 tests) for DML enhancement
+
+### 2026-03-25 — Window Functions & APPLY Implementation ✅ COMPLETE
+
+**Test suite: 340+ tests passing**
+
+**Deliverables:**
+
+| Feature | Status | Test Count |
+|---------|--------|------------|
+| ROW_NUMBER() | ✅ Complete | 5 |
+| RANK() | ✅ Complete | 1 |
+| DENSE_RANK() | ✅ Complete | 1 |
+| NTILE(n) | ✅ Complete | 1 |
+| CROSS APPLY | ✅ Complete | 4 |
+| OUTER APPLY | ✅ Complete | 3 |
+
+**Total: 15 new tests passing**
+
+**Key implementation changes:**
+- AST: Added `Expr::WindowFunction` with `WindowFunc` enum (ROW_NUMBER, RANK, DENSE_RANK, NTILE)
+- AST: Added `WindowFrame`, `WindowFrameUnits`, `WindowFrameExtent`, `WindowFrameBound`
+- Parser: Added window function parsing in `parse_select_item` with PARTITION BY, ORDER BY, frame clauses
+- Executor: Added `WindowExecutor` for window function evaluation
+- Executor: Added CROSS/OUTER APPLY support in query execution
+- Tests: Added `phase9_window_functions.rs` and `cross_join_apply.rs`
+
 ### 2026-03-22 — R9 Release: Advanced DML 🚧 PARTIAL
 
 **Test suite: 340+ tests passing (0 failures, 0 warnings on lib)**

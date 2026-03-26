@@ -1,8 +1,8 @@
 # T-SQL Support Matrix (R9)
 
 **Engine Version:** R9 — Advanced DML  
-**Last Updated:** 2026-03-22  
-**Test Suite:** 329+ tests passing
+**Last Updated:** 2026-03-25  
+**Test Suite:** 340+ tests passing
 
 ## Support Status Legend
 
@@ -39,12 +39,12 @@
 | INSERT DEFAULT VALUES | ✅ Exact | |
 | INSERT ... OUTPUT | 🔶 Partial | Parser ready, needs multi-row refinement |
 | UPDATE | ✅ Exact | With WHERE clause |
-| UPDATE ... FROM | 🔶 Partial | Parser ready, executor needs alias resolution |
+| UPDATE ... FROM | 🔶 Partial | Tests added, executor needs alias resolution fix |
 | UPDATE ... OUTPUT | ⚠️ Near | INSERTED and DELETED pseudo-tables |
 | DELETE | ✅ Exact | With WHERE clause |
-| DELETE ... FROM | 🔶 Partial | Parser ready, executor needs alias resolution |
+| DELETE ... FROM | 🔶 Partial | Tests added, executor needs alias resolution fix |
 | DELETE ... OUTPUT | ⚠️ Near | DELETED pseudo-table |
-| MERGE | 🔶 Partial | Parser ready, executor needs refinement |
+| MERGE | 🔶 Partial | Tests added, basic upsert works |
 | SELECT ... OFFSET/FETCH | ⚠️ Near | Full T-SQL syntax: OFFSET n ROWS FETCH NEXT m ROWS ONLY |
 | SELECT | ✅ Exact | Full projection |
 | SELECT TOP N | ✅ Exact | |
@@ -72,9 +72,9 @@
 | UNION ALL | ✅ Exact | |
 | INTERSECT | ✅ Exact | |
 | EXCEPT | ✅ Exact | |
-| Window functions | ❌ Unsupported | ROW_NUMBER, etc. |
+| Window functions | ✅ Exact | ROW_NUMBER, RANK, DENSE_RANK, NTILE |
 | PIVOT/UNPIVOT | ❌ Unsupported | |
-| APPLY (CROSS/OUTER) | ❌ Unsupported | |
+| APPLY (CROSS/OUTER) | ✅ Exact | CROSS APPLY and OUTER APPLY |
 
 ## Data Types
 
@@ -96,6 +96,10 @@
 | DATETIME2 | ✅ Exact | |
 | UNIQUEIDENTIFIER | ✅ Exact | |
 | SQL_VARIANT | ✅ Exact | |
+| MONEY | ✅ Exact | |
+| SMALLMONEY | ✅ Exact | |
+| BINARY(n) | ✅ Exact | Fixed-length binary |
+| VARBINARY(n) | ✅ Exact | Variable-length binary |
 
 ## Operators & Expressions
 
@@ -188,8 +192,8 @@
 
 | Function | Status | Notes |
 |----------|--------|-------|
-| STRING_AGG() | ❌ Unsupported | |
-| STRING_SPLIT() | ❌ Unsupported | |
+| STRING_AGG() | ✅ Exact | With separator, no ORDER BY yet |
+| STRING_SPLIT() | ✅ Exact | Table-valued function |
 
 ## Session Options
 
@@ -232,11 +236,12 @@
 | INFORMATION_SCHEMA.COLUMNS | ✅ Exact | |
 | INFORMATION_SCHEMA.ROUTINES | ✅ Exact | |
 | INFORMATION_SCHEMA.TABLE_CONSTRAINTS | ✅ Exact | |
-| sys.foreign_keys | ❌ Unsupported | |
+| sys.foreign_keys | ✅ Exact | With referenced table info |
 | sys.key_constraints | ❌ Unsupported | |
 | sys.default_constraints | ❌ Unsupported | |
-| INFORMATION_SCHEMA.VIEWS | ❌ Unsupported | |
-| INFORMATION_SCHEMA.PARAMETERS | ❌ Unsupported | |
+| INFORMATION_SCHEMA.VIEWS | 📋 Stubbed | Parser only, returns empty |
+| INFORMATION_SCHEMA.PARAMETERS | ✅ Exact | Returns real procedure/function parameters |
+| INFORMATION_SCHEMA.ROUTINES | ✅ Exact | |
 
 ## Explain & Debugging
 
@@ -288,11 +293,9 @@
 6. **Connection pooling** not implemented (single-user embedded)
 7. **Multiple active result sets** not supported
 8. **Table-valued parameters** not supported
-9. **Window functions** not supported (ROW_NUMBER, RANK, etc.)
-10. **Triggers** not supported
-11. **Cursors** not supported
-12. **PIVOT/UNPIVOT** not supported
-13. **CROSS/OUTER APPLY** not supported
+9. **Triggers** not supported
+10. **Cursors** not supported
+11. **PIVOT/UNPIVOT** not supported
 
 ## R8 Exit Criteria Status
 

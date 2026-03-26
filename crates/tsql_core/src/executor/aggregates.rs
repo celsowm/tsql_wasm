@@ -13,7 +13,7 @@ pub use super::model::Group;
 pub fn is_aggregate_function(name: &str) -> bool {
     matches!(
         name.to_uppercase().as_str(),
-        "COUNT" | "SUM" | "AVG" | "MIN" | "MAX"
+        "COUNT" | "SUM" | "AVG" | "MIN" | "MAX" | "STRING_AGG"
     )
 }
 
@@ -34,6 +34,7 @@ pub fn dispatch_aggregate(
         "AVG" => Some(eval_aggregate_avg(args, group, ctx, catalog, storage, clock)),
         "MIN" => Some(eval_aggregate_min(args, group, ctx, catalog, storage, clock)),
         "MAX" => Some(eval_aggregate_max(args, group, ctx, catalog, storage, clock)),
+        "STRING_AGG" => Some(eval_aggregate_string_agg(args, group, ctx, catalog, storage, clock)),
         _ => None,
     }
 }
@@ -237,4 +238,42 @@ pub fn eval_aggregate_max(
         .into_iter()
         .max_by(compare_values)
         .unwrap_or(Value::Null))
+}
+
+pub fn eval_aggregate_string_agg(
+    args: &[Expr],
+    group: &Group,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() < 2 {
+        return Err(DbError::Execution("STRING_AGG requires at least 2 arguments: expression and separator".into()));
+    }
+
+    let expr = &args[0];
+    let separator_expr = &args[1];
+
+    let separator = eval_expr(separator_expr, &[], ctx, catalog, storage, clock)?;
+    let separator_str = match separator {
+        Value::VarChar(s) => s,
+        Value::NVarChar(s) => s,
+        Value::Char(s) => s,
+        Value::NChar(s) => s,
+        _ => return Err(DbError::Execution("STRING_AGG separator must be a string".into())),
+    };
+
+    let values = collect_group_values(expr, group, ctx, catalog, storage, clock);
+    if values.is_empty() {
+        return Ok(Value::Null);
+    }
+
+    let string_values: Vec<String> = values
+        .iter()
+        .map(|v| v.to_string_value())
+        .collect();
+
+    let result = string_values.join(&separator_str);
+    Ok(Value::VarChar(result))
 }

@@ -1,7 +1,7 @@
 mod expression;
 pub(crate) mod statements;
 mod tokenizer;
-mod utils;
+pub(crate) mod utils;
 
 use crate::ast::{SetOpKind, SetOpStmt, Statement};
 use crate::error::DbError;

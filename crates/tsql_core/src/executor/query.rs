@@ -290,6 +290,9 @@ impl<'a> QueryExecutor<'a> {
         catalog: &dyn Catalog,
         ctx: &mut ExecutionContext,
     ) -> Result<BoundTable, DbError> {
+        if let Some(bound_tvf) = self.bind_builtin_tvf(&tref, ctx)? {
+            return Ok(bound_tvf);
+        }
         if let Some(bound_tvf) = self.bind_inline_tvf(&tref, ctx)? {
             return Ok(bound_tvf);
         }
@@ -297,6 +300,88 @@ impl<'a> QueryExecutor<'a> {
             return Ok(bound_view);
         }
         planner_bind_table(tref, catalog, ctx)
+    }
+
+    fn bind_builtin_tvf(
+        &self,
+        tref: &crate::ast::TableRef,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Option<BoundTable>, DbError> {
+        let name = &tref.name.name;
+        let upper = name.to_uppercase();
+
+        if !upper.starts_with("STRING_SPLIT(") {
+            return Ok(None);
+        }
+
+        let inner = name
+            .strip_prefix("STRING_SPLIT(")
+            .and_then(|s| s.strip_suffix(')'))
+            .ok_or_else(|| DbError::Parse("STRING_SPLIT requires (string, separator)".into()))?;
+
+        let parts = crate::parser::utils::split_csv_top_level(inner);
+        if parts.len() != 2 {
+            return Err(DbError::Parse("STRING_SPLIT requires exactly 2 arguments".into()));
+        }
+
+        let string_expr = parse_expr_subquery_aware(&parts[0])?;
+        let separator_expr = parse_expr_subquery_aware(&parts[1])?;
+
+        let string_val = eval_expr(&string_expr, &[], ctx, self.catalog, self.storage, self.clock)?;
+        let separator_val = eval_expr(&separator_expr, &[], ctx, self.catalog, self.storage, self.clock)?;
+
+        let string_str = match &string_val {
+            Value::VarChar(s) => s.clone(),
+            Value::NVarChar(s) => s.clone(),
+            Value::Char(s) => s.clone(),
+            Value::NChar(s) => s.clone(),
+            _ => return Err(DbError::Execution("STRING_SPLIT first argument must be a string".into())),
+        };
+
+        let separator_str = match &separator_val {
+            Value::VarChar(s) => s.clone(),
+            Value::NVarChar(s) => s.clone(),
+            Value::Char(s) => s.clone(),
+            Value::NChar(s) => s.clone(),
+            _ => return Err(DbError::Execution("STRING_SPLIT second argument must be a string".into())),
+        };
+
+        let split_parts: Vec<&str> = string_str.split(&separator_str).collect();
+        let rows: Vec<StoredRow> = split_parts
+            .iter()
+            .map(|s| StoredRow {
+                values: vec![Value::VarChar(s.to_string())],
+                deleted: false,
+            })
+            .collect();
+
+        let table_def = crate::catalog::TableDef {
+            id: 0,
+            schema_id: 1,
+            name: "STRING_SPLIT".to_string(),
+            columns: vec![crate::catalog::ColumnDef {
+                id: 1,
+                name: "value".to_string(),
+                data_type: crate::types::DataType::VarChar { max_len: 4000 },
+                nullable: false,
+                primary_key: false,
+                unique: false,
+                identity: None,
+                default: None,
+                default_constraint_name: None,
+                check: None,
+                check_constraint_name: None,
+                computed_expr: None,
+            }],
+            check_constraints: vec![],
+            foreign_keys: vec![],
+        };
+
+        Ok(Some(BoundTable {
+            table: table_def,
+            alias: "STRING_SPLIT".to_string(),
+            virtual_rows: Some(rows),
+        }))
     }
 
     fn bind_view(

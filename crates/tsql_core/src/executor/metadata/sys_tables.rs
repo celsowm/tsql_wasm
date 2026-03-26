@@ -21,6 +21,8 @@ pub(crate) fn lookup(name: &str) -> Option<Box<dyn VirtualTable>> {
         Some(Box::new(SysCheckConstraints))
     } else if name.eq_ignore_ascii_case("routines") {
         Some(Box::new(SysRoutines))
+    } else if name.eq_ignore_ascii_case("foreign_keys") {
+        Some(Box::new(SysForeignKeys))
     } else {
         None
     }
@@ -34,6 +36,7 @@ struct SysIndexes;
 struct SysObjects;
 struct SysCheckConstraints;
 struct SysRoutines;
+struct SysForeignKeys;
 
 impl VirtualTable for SysSchemas {
     fn definition(&self) -> crate::catalog::TableDef {
@@ -292,6 +295,61 @@ impl VirtualTable for SysRoutines {
                 ],
                 deleted: false,
             });
+        }
+        rows
+    }
+}
+
+impl VirtualTable for SysForeignKeys {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "foreign_keys",
+            vec![
+                ("name", DataType::VarChar { max_len: 128 }, false),
+                ("object_id", DataType::Int, false),
+                ("parent_object_id", DataType::Int, false),
+                ("type", DataType::Char { len: 2 }, false),
+                ("type_desc", DataType::VarChar { max_len: 128 }, false),
+                ("create_date", DataType::DateTime, false),
+                ("modify_date", DataType::DateTime, false),
+                ("is_ms_shipped", DataType::Bit, false),
+                ("is_disabled", DataType::Bit, false),
+                ("delete_referential_action", DataType::TinyInt, false),
+                ("delete_referential_action_desc", DataType::VarChar { max_len: 128 }, false),
+                ("update_referential_action", DataType::TinyInt, false),
+                ("update_referential_action_desc", DataType::VarChar { max_len: 128 }, false),
+            ],
+        )
+    }
+
+    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+        let mut rows = Vec::new();
+        let mut object_id = 0;
+        
+        for table in catalog.get_tables() {
+            for fk in &table.foreign_keys {
+                object_id += 1;
+                let parent_id = table.id as i32;
+                
+                rows.push(StoredRow {
+                    values: vec![
+                        Value::VarChar(fk.name.clone()),
+                        Value::Int(object_id),
+                        Value::Int(parent_id),
+                        Value::Char("F".to_string()),
+                        Value::VarChar("FOREIGN_KEY_CONSTRAINT".to_string()),
+                        Value::DateTime("1970-01-01 00:00:00".to_string()),
+                        Value::DateTime("1970-01-01 00:00:00".to_string()),
+                        Value::Bit(false),
+                        Value::Bit(false),
+                        Value::TinyInt(0),
+                        Value::VarChar("NO_ACTION".to_string()),
+                        Value::TinyInt(0),
+                        Value::VarChar("NO_ACTION".to_string()),
+                    ],
+                    deleted: false,
+                });
+            }
         }
         rows
     }
