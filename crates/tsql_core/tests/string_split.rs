@@ -50,3 +50,45 @@ fn test_string_split_with_alias() {
     let r = query(&mut e, "SELECT s.value FROM STRING_SPLIT('a,b', ',') AS s");
     assert_eq!(r.rows.len(), 2);
 }
+
+#[test]
+fn test_string_split_ordinal_disabled() {
+    let mut e = Engine::new();
+
+    let r = query(&mut e, "SELECT value FROM STRING_SPLIT('a,b,c', ',', 0)");
+    assert_eq!(r.columns.len(), 1);
+    assert_eq!(r.columns[0], "value");
+    assert_eq!(r.rows.len(), 3);
+}
+
+#[test]
+fn test_string_split_ordinal_enabled() {
+    let mut e = Engine::new();
+
+    let r = query(&mut e, "SELECT value, ordinal FROM STRING_SPLIT('a,b,c', ',', 1)");
+    assert_eq!(r.columns.len(), 2);
+    assert_eq!(r.columns[0], "value");
+    assert_eq!(r.columns[1], "ordinal");
+    assert_eq!(r.rows.len(), 3);
+
+    assert_eq!(r.rows[0][0], tsql_core::types::Value::VarChar("a".into()));
+    assert_eq!(r.rows[0][1], tsql_core::types::Value::Int(1));
+
+    assert_eq!(r.rows[1][0], tsql_core::types::Value::VarChar("b".into()));
+    assert_eq!(r.rows[1][1], tsql_core::types::Value::Int(2));
+
+    assert_eq!(r.rows[2][0], tsql_core::types::Value::VarChar("c".into()));
+    assert_eq!(r.rows[2][1], tsql_core::types::Value::Int(3));
+}
+
+#[test]
+fn test_string_split_ordinal_only() {
+    let mut e = Engine::new();
+
+    let r = query(&mut e, "SELECT ordinal FROM STRING_SPLIT('x|y', '|', 1)");
+    assert_eq!(r.columns.len(), 1);
+    assert_eq!(r.columns[0], "ordinal");
+    assert_eq!(r.rows.len(), 2);
+    assert_eq!(r.rows[0][0], tsql_core::types::Value::Int(1));
+    assert_eq!(r.rows[1][0], tsql_core::types::Value::Int(2));
+}

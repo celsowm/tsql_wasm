@@ -317,15 +317,29 @@ impl<'a> QueryExecutor<'a> {
         let inner = name
             .strip_prefix("STRING_SPLIT(")
             .and_then(|s| s.strip_suffix(')'))
-            .ok_or_else(|| DbError::Parse("STRING_SPLIT requires (string, separator)".into()))?;
+            .ok_or_else(|| DbError::Parse("STRING_SPLIT requires (string, separator[, enable_ordinal])".into()))?;
 
         let parts = crate::parser::utils::split_csv_top_level(inner);
-        if parts.len() != 2 {
-            return Err(DbError::Parse("STRING_SPLIT requires exactly 2 arguments".into()));
+        if parts.len() < 2 || parts.len() > 3 {
+            return Err(DbError::Parse("STRING_SPLIT requires 2 or 3 arguments".into()));
         }
 
         let string_expr = parse_expr_subquery_aware(&parts[0])?;
         let separator_expr = parse_expr_subquery_aware(&parts[1])?;
+
+        let enable_ordinal = if parts.len() == 3 {
+            let ordinal_expr = parse_expr_subquery_aware(&parts[2])?;
+            match eval_expr(&ordinal_expr, &[], ctx, self.catalog, self.storage, self.clock)? {
+                Value::Int(v) => v != 0,
+                Value::BigInt(v) => v != 0,
+                Value::TinyInt(v) => v != 0,
+                Value::SmallInt(v) => v != 0,
+                Value::Bit(v) => v,
+                _ => return Err(DbError::Execution("STRING_SPLIT third argument (enable_ordinal) must be an integer".into())),
+            }
+        } else {
+            false
+        };
 
         let string_val = eval_expr(&string_expr, &[], ctx, self.catalog, self.storage, self.clock)?;
         let separator_val = eval_expr(&separator_expr, &[], ctx, self.catalog, self.storage, self.clock)?;
@@ -347,22 +361,27 @@ impl<'a> QueryExecutor<'a> {
         };
 
         let split_parts: Vec<&str> = string_str.split(&separator_str).collect();
-        let rows: Vec<StoredRow> = split_parts
-            .iter()
-            .map(|s| StoredRow {
-                values: vec![Value::VarChar(s.to_string())],
-                deleted: false,
-            })
-            .collect();
 
-        let table_def = crate::catalog::TableDef {
-            id: 0,
-            schema_id: 1,
-            name: "STRING_SPLIT".to_string(),
-            columns: vec![crate::catalog::ColumnDef {
-                id: 1,
-                name: "value".to_string(),
-                data_type: crate::types::DataType::VarChar { max_len: 4000 },
+        let mut columns = vec![crate::catalog::ColumnDef {
+            id: 1,
+            name: "value".to_string(),
+            data_type: crate::types::DataType::VarChar { max_len: 4000 },
+            nullable: false,
+            primary_key: false,
+            unique: false,
+            identity: None,
+            default: None,
+            default_constraint_name: None,
+            check: None,
+            check_constraint_name: None,
+            computed_expr: None,
+        }];
+
+        if enable_ordinal {
+            columns.push(crate::catalog::ColumnDef {
+                id: 2,
+                name: "ordinal".to_string(),
+                data_type: crate::types::DataType::Int,
                 nullable: false,
                 primary_key: false,
                 unique: false,
@@ -372,7 +391,29 @@ impl<'a> QueryExecutor<'a> {
                 check: None,
                 check_constraint_name: None,
                 computed_expr: None,
-            }],
+            });
+        }
+
+        let rows: Vec<StoredRow> = split_parts
+            .iter()
+            .enumerate()
+            .map(|(i, s)| {
+                let mut values = vec![Value::VarChar(s.to_string())];
+                if enable_ordinal {
+                    values.push(Value::Int((i + 1) as i32));
+                }
+                StoredRow {
+                    values,
+                    deleted: false,
+                }
+            })
+            .collect();
+
+        let table_def = crate::catalog::TableDef {
+            id: 0,
+            schema_id: 1,
+            name: "STRING_SPLIT".to_string(),
+            columns,
             check_constraints: vec![],
             foreign_keys: vec![],
         };
