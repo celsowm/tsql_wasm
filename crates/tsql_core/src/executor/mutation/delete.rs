@@ -71,6 +71,12 @@ impl<'a> MutationExecutor<'a> {
         let table_id = table.id;
         let target_alias = stmt.table.name.clone();
 
+        // Check for INSTEAD OF DELETE trigger
+        let instead_of_triggers = self.find_triggers(&table, crate::ast::TriggerEvent::Delete)
+            .into_iter()
+            .filter(|t| t.is_instead_of)
+            .collect::<Vec<_>>();
+
         let query_stmt = SelectStmt {
             from: stmt.from.as_ref().and_then(|f| f.tables.get(0).cloned()).or_else(|| {
                 Some(crate::ast::TableRef {
@@ -103,8 +109,52 @@ impl<'a> MutationExecutor<'a> {
 
         let joined_rows = query_executor.execute_to_joined_rows(query_stmt, ctx)?;
 
-        let has_triggers = !self.catalog.find_triggers_for_table(table.schema_or_dbo(), &table.name).is_empty();
-        let collect_rows = stmt.output.is_some() || has_triggers;
+        if !instead_of_triggers.is_empty() {
+            let mut deleted_rows = Vec::new();
+            let mut deleted_indices = HashSet::new();
+
+            for joined_row in joined_rows {
+                let target_ctx = joined_row
+                    .iter()
+                    .find(|ct| {
+                        ct.table.id == table_id && ct.alias.eq_ignore_ascii_case(&target_alias)
+                    })
+                    .or_else(|| joined_row.iter().find(|ct| ct.table.id == table_id))
+                    .ok_or_else(|| {
+                        DbError::Execution("target table not found in join context".into())
+                    })?;
+
+                if let (Some(stored_row), Some(idx)) = (&target_ctx.row, target_ctx.storage_index) {
+                    if !deleted_indices.contains(&idx) {
+                        deleted_rows.push(stored_row.clone());
+                        deleted_indices.insert(idx);
+                    }
+                }
+            }
+
+            self.execute_triggers(
+                &table,
+                crate::ast::TriggerEvent::Delete,
+                true,
+                &[],
+                &deleted_rows,
+                ctx,
+            )?;
+
+            if let Some(output) = stmt.output {
+                let output_rows: Vec<&crate::storage::StoredRow> = deleted_rows.iter().collect();
+                return build_output_result(&output, &table, &[], &output_rows);
+            }
+            return Ok(None);
+        }
+
+        let has_after_triggers = !self.find_triggers(&table, crate::ast::TriggerEvent::Delete)
+            .into_iter()
+            .filter(|t| !t.is_instead_of)
+            .collect::<Vec<_>>()
+            .is_empty();
+
+        let collect_rows = stmt.output.is_some() || has_after_triggers;
         let mut deleted_indices = HashSet::new();
         let mut deleted_rows_for_output = Vec::new();
 
@@ -137,7 +187,7 @@ impl<'a> MutationExecutor<'a> {
             self.storage.delete_row(table_id, idx)?;
         }
 
-        self.execute_triggers(&table, crate::ast::TriggerEvent::Delete, &[], &deleted_rows_for_output, ctx)?;
+        self.execute_triggers(&table, crate::ast::TriggerEvent::Delete, false, &[], &deleted_rows_for_output, ctx)?;
 
         if let Some(output) = stmt.output {
             let output_rows: Vec<&crate::storage::StoredRow> = deleted_rows_for_output.iter().collect();

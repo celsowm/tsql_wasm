@@ -37,6 +37,7 @@ pub struct ExecutionContext<'a> {
     pub print_output: &'a mut Vec<String>,
     pub cursors: &'a mut HashMap<String, Cursor>,
     pub fetch_status: &'a mut i32,
+    pub trigger_depth: usize,
 }
 
 
@@ -78,6 +79,7 @@ impl<'a> ExecutionContext<'a> {
             print_output,
             cursors,
             fetch_status,
+            trigger_depth: 0,
         }
     }
 
@@ -105,6 +107,7 @@ impl<'a> ExecutionContext<'a> {
             print_output: self.print_output,
             cursors: self.cursors,
             fetch_status: self.fetch_status,
+            trigger_depth: self.trigger_depth,
         }
     }
 
@@ -243,9 +246,12 @@ impl<'a> ExecutionContext<'a> {
     }
 
     pub fn resolve_table_name(&self, logical: &str) -> Option<String> {
-        let upper = logical.to_uppercase();
+        let mut upper = logical.to_uppercase();
+        if upper.starts_with("DBO.") {
+            upper = upper["DBO.".len()..].to_string();
+        }
 
-        // 1. Mapped names (temp tables #t)
+        // 1. Mapped names (temp tables #t and pseudo-tables like INSERTED)
         if let Some(mapped) = self.temp_table_map.get(&upper) {
             return Some(mapped.clone());
         }

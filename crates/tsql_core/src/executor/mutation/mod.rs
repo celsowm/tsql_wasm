@@ -18,10 +18,24 @@ pub(crate) struct MutationExecutor<'a> {
 }
 
 impl<'a> MutationExecutor<'a> {
+    fn find_triggers(
+        &self,
+        table: &crate::catalog::TableDef,
+        event: crate::ast::TriggerEvent,
+    ) -> Vec<crate::catalog::TriggerDef> {
+        self.catalog
+            .find_triggers_for_table(table.schema_or_dbo(), &table.name)
+            .into_iter()
+            .filter(|t| t.events.contains(&event))
+            .cloned()
+            .collect()
+    }
+
     fn execute_triggers(
         &mut self,
         table: &crate::catalog::TableDef,
         event: crate::ast::TriggerEvent,
+        is_instead_of: bool,
         inserted_rows: &[crate::storage::StoredRow],
         deleted_rows: &[crate::storage::StoredRow],
         ctx: &mut super::context::ExecutionContext,
@@ -33,9 +47,13 @@ impl<'a> MutationExecutor<'a> {
             .collect();
 
         for trigger in triggers {
-            if trigger.events.contains(&event) {
+            if trigger.events.contains(&event) && trigger.is_instead_of == is_instead_of {
+                if ctx.trigger_depth >= 16 {
+                    return Err(DbError::Execution("Maximum trigger nesting level (16) exceeded.".into()));
+                }
                 // Setup inserted/deleted pseudo-tables
                 let mut trigger_ctx = ctx.subquery();
+                trigger_ctx.trigger_depth += 1;
                 trigger_ctx.enter_scope();
 
                 let mut ins_physical = None;
