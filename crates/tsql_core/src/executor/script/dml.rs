@@ -163,10 +163,8 @@ impl<'a> ScriptExecutor<'a> {
                     continue;
                 }
 
-                target_row_matched[i] = true;
-                source_matched_to_target[s_idx] = true;
-
                 // Apply WHEN MATCHED clauses
+                let mut matched_action_taken = false;
                 for when_clause in &stmt.when_clauses {
                     match when_clause.when {
                         crate::ast::MergeWhen::Matched => {
@@ -183,6 +181,10 @@ impl<'a> ScriptExecutor<'a> {
                                     continue;
                                 }
                             }
+
+                            target_row_matched[i] = true;
+                            source_matched_to_target[s_idx] = true;
+                            matched_action_taken = true;
 
                             match &when_clause.action {
                                 crate::ast::MergeAction::Update { assignments } => {
@@ -242,7 +244,9 @@ impl<'a> ScriptExecutor<'a> {
                         _ => {}
                     }
                 }
-                break; // Target row matched with source, don't look for more source matches for this target row
+                if matched_action_taken {
+                    break; // Target row matched with source and action taken, don't look for more source matches for this target row
+                }
             }
 
             if !target_row_matched[i] {
@@ -269,6 +273,8 @@ impl<'a> ScriptExecutor<'a> {
                                 continue;
                             }
                         }
+
+                        target_row_matched[i] = true; // Mark it as "processed" by a clause
 
                         match &when_clause.action {
                             crate::ast::MergeAction::Update { assignments } => {
@@ -390,6 +396,20 @@ impl<'a> ScriptExecutor<'a> {
             for when_clause in &stmt.when_clauses {
                 match when_clause.when {
                     crate::ast::MergeWhen::NotMatched => {
+                        if let Some(cond) = &when_clause.condition {
+                            let cond_val = super::super::evaluator::eval_predicate(
+                                cond,
+                                &source_ctx,
+                                ctx,
+                                self.catalog,
+                                self.storage,
+                                self.clock,
+                            )?;
+                            if !cond_val {
+                                continue;
+                            }
+                        }
+                        source_matched_to_target[s_idx] = true; // Action taken for this source row
                         match &when_clause.action {
                             crate::ast::MergeAction::Insert { columns, values } => {
                                 let mut final_values =

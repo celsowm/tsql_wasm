@@ -40,6 +40,20 @@ impl<'a> MutationExecutor<'a> {
                     break;
                 }
             }
+            if found.is_none() {
+                for jcl in &from_clause.joins {
+                    let alias = jcl.table.alias.as_ref().unwrap_or(&jcl.table.name.name);
+                    if alias.eq_ignore_ascii_case(target_name) {
+                        let schema = jcl.table.name.schema_or_dbo();
+                        let t = self.catalog.find_table(schema, &jcl.table.name.name).ok_or_else(|| {
+                            DbError::Semantic(format!("table '{}.{}' not found", schema, jcl.table.name.name))
+                        })?;
+                        found = Some((t.clone(), jcl.table.name.name.clone()));
+                        break;
+                    }
+                }
+            }
+
             if let Some(f) = found {
                 f
             } else {

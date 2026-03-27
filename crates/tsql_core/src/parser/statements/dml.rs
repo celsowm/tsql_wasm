@@ -400,81 +400,17 @@ fn parse_values_groups(input: &str) -> Result<Vec<Vec<Expr>>, DbError> {
 }
 
 fn parse_update_from_clause(input: &str) -> Result<FromClause, DbError> {
-    // First check for explicit JOINs
-    let join_patterns = [
-        ("FULL OUTER JOIN", JoinType::Full),
-        ("FULL JOIN", JoinType::Full),
-        ("LEFT JOIN", JoinType::Left),
-        ("RIGHT JOIN", JoinType::Right),
-        ("INNER JOIN", JoinType::Inner),
-        ("JOIN", JoinType::Inner),
-    ];
+    // Reuse the sophisticated FROM parsing from select.rs
+    // But we need to map SelectStmt fields to FromClause fields.
+    // Since parse_from_source returns (TableRef, Vec<JoinClause>, Vec<ApplyClause>)
+    // and FromClause expects (Vec<TableRef>, Vec<JoinClause>), we'll adapt.
 
-    let _upper = input.to_uppercase();
-    let mut first_join_pos: Option<(usize, JoinType, usize)> = None;
-    for (pat, ty) in &join_patterns {
-        if let Some(idx) = find_keyword_top_level(input, pat) {
-            if first_join_pos.is_none() || idx < first_join_pos.as_ref().unwrap().0 {
-                first_join_pos = Some((idx, *ty, pat.len()));
-            }
-        }
-    }
+    let (base, joins, _applies) = super::select::parse_from_source_internal(input)?;
 
-    if let Some((idx, join_type, pat_len)) = first_join_pos {
-        // There are explicit JOINs
-        let base_source = input[..idx].trim();
-        let after_first_join = input[idx + pat_len..].trim();
-
-        // The base might have multiple tables separated by comma
-        let mut tables = Vec::new();
-        for part in split_csv_top_level(base_source) {
-            tables.push(parse_table_ref(part.trim())?);
-        }
-
-        let mut joins = Vec::new();
-        // Parse the first join
-        let on_idx = find_keyword_top_level(after_first_join, "ON")
-            .ok_or_else(|| DbError::Parse("JOIN missing ON".into()))?;
-        let join_table = parse_table_ref(after_first_join[..on_idx].trim())?;
-        let after_on = &after_first_join[on_idx + "ON".len()..];
-
-        // Find next join or end
-        let mut next_join: Option<(usize, JoinType, usize)> = None;
-        for (pat, ty) in &join_patterns {
-            if let Some(ni) = find_keyword_top_level(after_on, pat) {
-                if next_join.is_none() || ni < next_join.as_ref().unwrap().0 {
-                    next_join = Some((ni, *ty, pat.len()));
-                }
-            }
-        }
-
-        let on_expr_str = if let Some((ni, _, _)) = &next_join {
-            &after_on[..*ni]
-        } else {
-            after_on
-        };
-        let on_expr = parse_expr(on_expr_str.trim())?;
-        joins.push(JoinClause {
-            join_type,
-            table: join_table,
-            on: Some(on_expr),
-        });
-
-        // TODO: parse additional joins if present
-        let _ = next_join;
-
-        Ok(FromClause { tables, joins })
-    } else {
-        // No explicit JOINs - comma-separated tables (implicit CROSS JOIN)
-        let mut tables = Vec::new();
-        for part in split_csv_top_level(input) {
-            tables.push(parse_table_ref(part.trim())?);
-        }
-        Ok(FromClause {
-            tables,
-            joins: vec![],
-        })
-    }
+    Ok(FromClause {
+        tables: vec![base],
+        joins,
+    })
 }
 
 pub(crate) fn parse_merge(sql: &str) -> Result<Statement, DbError> {
@@ -549,32 +485,54 @@ pub(crate) fn parse_merge(sql: &str) -> Result<Statement, DbError> {
         let after_when = &remaining[when_idx_local + "WHEN".len()..].trim();
         let upper_when = after_when.to_uppercase();
 
-        let (when_kind, _after_when_kind, _matched_prefix_len) =
-            if upper_when.starts_with("NOT MATCHED BY SOURCE THEN") {
+        let after_current_when = &remaining[when_idx_local + "WHEN".len()..];
+
+        let (when_kind, condition, action_start) = {
+            let mut current_pos = 0;
+            while current_pos < after_current_when.len()
+                && after_current_when.as_bytes()[current_pos].is_ascii_whitespace()
+            {
+                current_pos += 1;
+            }
+
+            let upper_rest = after_current_when[current_pos..].to_uppercase();
+            let (kind, kind_len) = if upper_rest.starts_with("NOT MATCHED BY SOURCE") {
                 (
                     MergeWhen::NotMatchedBySource,
-                    after_when["NOT MATCHED BY SOURCE THEN".len()..].trim(),
-                    "NOT MATCHED BY SOURCE THEN".len(),
+                    "NOT MATCHED BY SOURCE".len(),
                 )
-            } else if upper_when.starts_with("NOT MATCHED THEN") {
-                (
-                    MergeWhen::NotMatched,
-                    after_when["NOT MATCHED THEN".len()..].trim(),
-                    "NOT MATCHED THEN".len(),
-                )
-            } else if upper_when.starts_with("MATCHED THEN") {
-                (
-                    MergeWhen::Matched,
-                    after_when["MATCHED THEN".len()..].trim(),
-                    "MATCHED THEN".len(),
-                )
+            } else if upper_rest.starts_with("NOT MATCHED") {
+                (MergeWhen::NotMatched, "NOT MATCHED".len())
+            } else if upper_rest.starts_with("MATCHED") {
+                (MergeWhen::Matched, "MATCHED".len())
             } else {
                 return Err(DbError::Parse("invalid WHEN clause in MERGE".into()));
             };
 
+            current_pos += kind_len;
+            while current_pos < after_current_when.len()
+                && after_current_when.as_bytes()[current_pos].is_ascii_whitespace()
+            {
+                current_pos += 1;
+            }
+
+            let upper_rest2 = after_current_when[current_pos..].to_uppercase();
+            let (cond, action_pos) = if upper_rest2.starts_with("AND ") {
+                let then_idx = find_keyword_top_level(&after_current_when[current_pos..], "THEN")
+                    .ok_or_else(|| DbError::Parse("MERGE WHEN clause missing THEN".into()))?;
+                let cond_str = after_current_when[current_pos + 4..current_pos + then_idx].trim();
+                (Some(parse_expr(cond_str)?), current_pos + then_idx + "THEN".len())
+            } else if upper_rest2.starts_with("THEN") {
+                (None, current_pos + "THEN".len())
+            } else {
+                return Err(DbError::Parse("MERGE WHEN clause missing THEN".into()));
+            };
+
+            (kind, cond, action_pos)
+        };
+
         // Find the end of this action (next WHEN or OUTPUT or end)
         // Search in the original remaining string after the current WHEN
-        let after_current_when = &remaining[when_idx_local + "WHEN".len()..];
         let next_when_in_action = find_keyword_top_level(after_current_when, "WHEN");
         let output_in_action = find_keyword_top_level(after_current_when, "OUTPUT");
 
@@ -582,14 +540,6 @@ pub(crate) fn parse_merge(sql: &str) -> Result<Statement, DbError> {
             .or(output_in_action)
             .unwrap_or(after_current_when.len());
 
-        // Strip the MATCHED/NOT MATCHED prefix from the action string
-        // after_current_when is untrimmed, so account for leading whitespace
-        let leading_ws: usize = after_current_when
-            .chars()
-            .take_while(|c| c.is_ascii_whitespace())
-            .map(|c| c.len_utf8())
-            .sum();
-        let action_start = leading_ws + _matched_prefix_len;
         let action_str = after_current_when[action_start..action_end_pos].trim();
         let action_upper = action_str.to_uppercase();
 
@@ -649,7 +599,7 @@ pub(crate) fn parse_merge(sql: &str) -> Result<Statement, DbError> {
 
         when_clauses.push(MergeWhenClause {
             when: when_kind,
-            condition: None,
+            condition,
             action,
         });
 
