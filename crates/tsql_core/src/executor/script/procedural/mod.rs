@@ -1,5 +1,6 @@
 pub(crate) mod assignment;
 pub(crate) mod cursor;
+pub(crate) mod raiserror;
 pub(crate) mod routine;
 pub(crate) mod print;
 

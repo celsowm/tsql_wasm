@@ -73,3 +73,25 @@ pub(crate) fn parse_begin_end(sql: &str) -> Result<Statement, DbError> {
     let body = super::parse_begin_end_body(sql)?;
     Ok(Statement::BeginEnd(body))
 }
+
+pub(crate) fn parse_raiserror(sql: &str) -> Result<Statement, DbError> {
+    let after = sql["RAISERROR".len()..].trim();
+    if !after.starts_with('(') || !after.ends_with(')') {
+        return Err(DbError::Parse("RAISERROR expects (message, severity, state)".into()));
+    }
+    let inner = &after[1..after.len() - 1];
+    let parts = crate::parser::utils::split_csv_top_level(inner);
+    if parts.len() < 3 {
+        return Err(DbError::Parse("RAISERROR expects at least 3 arguments".into()));
+    }
+
+    let message = crate::parser::expression::parse_expr(parts[0].trim())?;
+    let severity = crate::parser::expression::parse_expr(parts[1].trim())?;
+    let state = crate::parser::expression::parse_expr(parts[2].trim())?;
+
+    Ok(Statement::Raiserror(RaiserrorStmt {
+        message,
+        severity,
+        state,
+    }))
+}

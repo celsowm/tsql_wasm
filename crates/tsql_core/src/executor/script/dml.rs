@@ -537,11 +537,16 @@ impl<'a> ScriptExecutor<'a> {
         // For now, firing INSERT/DELETE triggers based on what happened is a good start.
 
         if let Some(ref output) = stmt.output {
-            return super::super::mutation::build_output_result_merge(
+            let result = super::super::mutation::build_output_result_merge(
                 output,
                 &target_table,
                 &merge_output_rows,
-            );
+            )?;
+            if let Some(ref target) = stmt.output_into {
+                mut_exec.insert_output_into(target, result.as_ref().unwrap(), ctx)?;
+                return Ok(None);
+            }
+            return Ok(result);
         }
 
         Ok(None)

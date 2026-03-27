@@ -170,7 +170,12 @@ impl<'a> MutationExecutor<'a> {
             if let Some(output) = stmt.output {
                 let inserted: Vec<&crate::storage::StoredRow> = inserted_rows.iter().collect();
                 let deleted: Vec<&crate::storage::StoredRow> = deleted_rows.iter().collect();
-                return build_output_result(&output, &table, &inserted, &deleted);
+                let result = build_output_result(&output, &table, &inserted, &deleted)?;
+                if let Some(target) = stmt.output_into {
+                    self.insert_output_into(&target, result.as_ref().unwrap(), ctx)?;
+                    return Ok(None);
+                }
+                return Ok(result);
             }
             return Ok(None);
         }
@@ -239,7 +244,12 @@ impl<'a> MutationExecutor<'a> {
         if let Some(output) = stmt.output {
             let inserted: Vec<&crate::storage::StoredRow> = inserted_rows_for_output.iter().collect();
             let deleted: Vec<&crate::storage::StoredRow> = deleted_rows_for_output.iter().collect();
-            return build_output_result(&output, &table, &inserted, &deleted);
+            let result = build_output_result(&output, &table, &inserted, &deleted)?;
+            if let Some(target) = stmt.output_into {
+                self.insert_output_into(&target, result.as_ref().unwrap(), ctx)?;
+                return Ok(None);
+            }
+            return Ok(result);
         }
 
         Ok(None)

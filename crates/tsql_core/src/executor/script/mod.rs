@@ -186,6 +186,7 @@ impl<'a> ScriptExecutor<'a> {
             }
             Statement::Merge(stmt) => self.execute_merge(stmt, ctx),
             Statement::Print(expr) => self.execute_print(expr, ctx),
+            Statement::Raiserror(stmt) => self.execute_raiserror(stmt, ctx),
             Statement::DeclareCursor(stmt) => {
                 ctx.cursors.insert(stmt.name.clone(), Cursor {
                     query: Some(stmt.query),

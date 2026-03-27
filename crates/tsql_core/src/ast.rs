@@ -67,6 +67,14 @@ pub enum Statement {
     DeallocateCursor(String),
     CreateTrigger(CreateTriggerStmt),
     DropTrigger(DropTriggerStmt),
+    Raiserror(RaiserrorStmt),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RaiserrorStmt {
+    pub message: Expr,
+    pub severity: Expr,
+    pub state: Expr,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,6 +117,7 @@ pub struct MergeStmt {
     pub on_condition: Expr,
     pub when_clauses: Vec<MergeWhenClause>,
     pub output: Option<Vec<OutputColumn>>,
+    pub output_into: Option<ObjectName>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -414,6 +423,7 @@ pub struct InsertStmt {
     pub default_values: bool,
     pub select_source: Option<Box<SelectStmt>>,
     pub output: Option<Vec<OutputColumn>>,
+    pub output_into: Option<ObjectName>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -501,6 +511,7 @@ pub struct UpdateStmt {
     pub selection: Option<Expr>,
     pub from: Option<FromClause>,
     pub output: Option<Vec<OutputColumn>>,
+    pub output_into: Option<ObjectName>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -521,6 +532,7 @@ pub struct DeleteStmt {
     pub selection: Option<Expr>,
     pub from: Option<FromClause>,
     pub output: Option<Vec<OutputColumn>>,
+    pub output_into: Option<ObjectName>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

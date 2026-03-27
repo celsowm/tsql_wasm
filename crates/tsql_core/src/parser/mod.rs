@@ -259,6 +259,8 @@ pub fn parse_sql(sql: &str) -> Result<Statement, DbError> {
 
     if upper.starts_with("PRINT ") {
         statements::parse_print(trimmed)
+    } else if upper.starts_with("RAISERROR") {
+        statements::parse_raiserror(trimmed)
     } else if upper.starts_with("OPEN ") {
         statements::parse_open_cursor(trimmed)
     } else if upper.starts_with("FETCH ") {

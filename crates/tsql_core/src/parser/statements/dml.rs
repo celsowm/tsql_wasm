@@ -5,9 +5,21 @@ use crate::parser::expression::parse_expr;
 use crate::parser::statements::subquery_utils::{apply_subquery_map, extract_subqueries};
 use crate::parser::utils::{find_keyword_top_level, parse_object_name, parse_table_ref, split_csv_top_level};
 
-fn parse_output_clause(input: &str) -> Result<Vec<OutputColumn>, DbError> {
+fn parse_output_clause(input: &str) -> Result<(Vec<OutputColumn>, Option<ObjectName>), DbError> {
+    let mut input_to_use = input;
+    let mut into_target = None;
+
+    if let Some(into_idx) = find_keyword_top_level(input, "INTO") {
+        let before_into = input[..into_idx].trim();
+        let after_into = input[into_idx + "INTO".len()..].trim();
+        let first_space = after_into.find(|c: char| c.is_whitespace()).unwrap_or(after_into.len());
+        let table_name = &after_into[..first_space];
+        into_target = Some(parse_object_name(table_name));
+        input_to_use = before_into;
+    }
+
     let mut columns = Vec::new();
-    for part in split_csv_top_level(input) {
+    for part in split_csv_top_level(input_to_use) {
         let trimmed = part.trim();
         let upper = trimmed.to_uppercase();
         let (source, rest) = if upper.starts_with("INSERTED.") {
@@ -58,11 +70,14 @@ fn parse_output_clause(input: &str) -> Result<Vec<OutputColumn>, DbError> {
             is_wildcard: false,
         });
     }
-    Ok(columns)
+    Ok((columns, into_target))
 }
 
 pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {
-    let after_into = sql["INSERT INTO".len()..].trim();
+    let mut after_into = sql["INSERT INTO".len()..].trim();
+    if after_into.to_uppercase().starts_with("INTO ") {
+        after_into = after_into[5..].trim();
+    }
     let upper = after_into.to_uppercase();
 
     if upper.ends_with("DEFAULT VALUES") {
@@ -74,6 +89,7 @@ pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {
             default_values: true,
             select_source: None,
             output: None,
+            output_into: None,
         }));
     }
 
@@ -81,7 +97,7 @@ pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {
     let output_idx = find_keyword_top_level(after_into, "OUTPUT");
 
     // Determine OUTPUT content
-    let (output, after_into_no_output) = if let Some(oi) = output_idx {
+    let (output, output_into, after_into_no_output) = if let Some(oi) = output_idx {
         // OUTPUT INSERTED.col1, DELETED.col1
         // The OUTPUT is between table/columns and VALUES/SELECT
         let after_output = &after_into[oi + "OUTPUT".len()..];
@@ -89,14 +105,14 @@ pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {
             .or_else(|| find_keyword_top_level(after_output, "SELECT"))
             .unwrap_or(after_output.len());
         let output_raw = &after_output[..end_idx];
-        let parsed_output = parse_output_clause(output_raw.trim())?;
+        let (parsed_output, into_target) = parse_output_clause(output_raw.trim())?;
         // Reconstruct: table part + VALUES/SELECT part (skipping OUTPUT columns)
         let before_output = &after_into[..oi];
         let after_output_cols = &after_output[end_idx..];
         let reconstructed = format!("{}{}", before_output, after_output_cols);
-        (Some(parsed_output), reconstructed)
+        (Some(parsed_output), into_target, reconstructed)
     } else {
-        (None, after_into.to_string())
+        (None, None, after_into.to_string())
     };
 
     let after_into_stripped = &after_into_no_output;
@@ -133,6 +149,7 @@ pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {
                     default_values: false,
                     select_source: Some(Box::new(sel)),
                     output,
+                    output_into,
                 }));
             } else {
                 return Err(DbError::Parse("expected SELECT in INSERT ... SELECT".into()));
@@ -171,6 +188,7 @@ pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {
         default_values: false,
         select_source: None,
         output,
+        output_into,
     }))
 }
 
@@ -185,20 +203,20 @@ pub(crate) fn parse_update(sql: &str) -> Result<Statement, DbError> {
     // Check for OUTPUT clause
     let output_idx = find_keyword_top_level(tail, "OUTPUT");
 
-    let (output, tail_stripped) = if let Some(oi) = output_idx {
+    let (output, output_into, tail_stripped) = if let Some(oi) = output_idx {
         let after_output = &tail[oi + "OUTPUT".len()..];
         let end_idx = find_keyword_top_level(after_output, "FROM")
             .or_else(|| find_keyword_top_level(after_output, "WHERE"))
             .unwrap_or(after_output.len());
         let output_raw = &after_output[..end_idx];
-        let parsed_output = parse_output_clause(output_raw.trim())?;
+        let (parsed_output, into_target) = parse_output_clause(output_raw.trim())?;
         // Reconstruct: assignments part + FROM/WHERE part (skipping OUTPUT columns)
         let before_output = &tail[..oi];
         let after_output_cols = &after_output[end_idx..];
         let reconstructed = format!("{}{}", before_output, after_output_cols);
-        (Some(parsed_output), reconstructed)
+        (Some(parsed_output), into_target, reconstructed)
     } else {
-        (None, tail.to_string())
+        (None, None, tail.to_string())
     };
 
     let tail_stripped = tail_stripped.as_str();
@@ -244,6 +262,7 @@ pub(crate) fn parse_update(sql: &str) -> Result<Statement, DbError> {
         selection,
         from: from_clause,
         output,
+        output_into,
     }))
 }
 
@@ -258,20 +277,20 @@ pub(crate) fn parse_delete(sql: &str) -> Result<Statement, DbError> {
 
     // Check if there's OUTPUT clause
     let output_idx = find_keyword_top_level(after_delete, "OUTPUT");
-    let (output, after_delete_stripped) = if let Some(oi) = output_idx {
+    let (output, output_into, after_delete_stripped) = if let Some(oi) = output_idx {
         let after_output = &after_delete[oi + "OUTPUT".len()..];
         let end_idx = find_keyword_top_level(after_output, "FROM")
             .or_else(|| find_keyword_top_level(after_output, "WHERE"))
             .unwrap_or(after_output.len());
         let output_raw = &after_output[..end_idx];
-        let parsed_output = parse_output_clause(output_raw.trim())?;
+        let (parsed_output, into_target) = parse_output_clause(output_raw.trim())?;
         // Reconstruct: table part + FROM/WHERE part (skipping OUTPUT columns)
         let before_output = &after_delete[..oi];
         let after_output_cols = &after_output[end_idx..];
         let reconstructed = format!("{}{}", before_output, after_output_cols);
-        (Some(parsed_output), reconstructed)
+        (Some(parsed_output), into_target, reconstructed)
     } else {
-        (None, after_delete.to_string())
+        (None, None, after_delete.to_string())
     };
 
     let after_delete_stripped = after_delete_stripped.as_str();
@@ -306,6 +325,7 @@ pub(crate) fn parse_delete(sql: &str) -> Result<Statement, DbError> {
             selection,
             from: Some(from_clause),
             output,
+            output_into,
         }));
     }
 
@@ -327,6 +347,7 @@ pub(crate) fn parse_delete(sql: &str) -> Result<Statement, DbError> {
         selection,
         from: None,
         output,
+        output_into,
     }))
 }
 
@@ -477,6 +498,7 @@ pub(crate) fn parse_merge(sql: &str) -> Result<Statement, DbError> {
     let mut when_clauses = Vec::new();
     let mut remaining = when_section;
     let mut output = None;
+    let mut output_into = None;
 
     loop {
         let Some(when_idx_local) = find_keyword_top_level(remaining, "WHEN") else {
@@ -617,7 +639,9 @@ pub(crate) fn parse_merge(sql: &str) -> Result<Statement, DbError> {
     // Check for OUTPUT
     if let Some(oi) = find_keyword_top_level(remaining, "OUTPUT") {
         let output_str = &remaining[oi + "OUTPUT".len()..].trim();
-        output = Some(parse_output_clause(output_str)?);
+        let (parsed_output, into_target) = parse_output_clause(output_str)?;
+        output = Some(parsed_output);
+        output_into = into_target;
     }
 
     Ok(Statement::Merge(MergeStmt {
@@ -626,5 +650,6 @@ pub(crate) fn parse_merge(sql: &str) -> Result<Statement, DbError> {
         on_condition,
         when_clauses,
         output,
+        output_into,
     }))
 }
