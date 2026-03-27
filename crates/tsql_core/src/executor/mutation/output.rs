@@ -9,7 +9,15 @@ use super::super::result::QueryResult;
 fn build_output_columns(output: &[OutputColumn]) -> Vec<String> {
     output
         .iter()
-        .map(|col| col.alias.clone().unwrap_or_else(|| col.column.clone()))
+        .map(|col| {
+            col.alias.clone().unwrap_or_else(|| {
+                let source_prefix = match col.source {
+                    OutputSource::Inserted => "INSERTED.",
+                    OutputSource::Deleted => "DELETED.",
+                };
+                format!("{}{}", source_prefix, col.column)
+            })
+        })
         .collect()
 }
 

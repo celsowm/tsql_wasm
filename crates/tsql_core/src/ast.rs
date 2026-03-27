@@ -536,6 +536,8 @@ pub struct UpdateStmt {
 pub struct FromClause {
     pub tables: Vec<TableRef>,
     pub joins: Vec<JoinClause>,
+    #[serde(default)]
+    pub applies: Vec<ApplyClause>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

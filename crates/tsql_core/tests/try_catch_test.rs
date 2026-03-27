@@ -13,10 +13,12 @@ fn test_try_catch_basic() {
             PRINT 'Caught: ' + ERROR_MESSAGE();
         END CATCH
     ";
-    engine.execute(batch).unwrap();
+    for stmt in tsql_core::parser::parse_batch(batch).unwrap() {
+        engine.execute(stmt).unwrap();
+    }
     let output = engine.print_output();
     assert_eq!(output.len(), 1);
-    assert_eq!(output[0], "Caught: Execution error: failed here");
+    assert_eq!(output[0], "Caught: execution error: failed here");
 }
 
 #[test]
@@ -31,7 +33,9 @@ fn test_try_catch_no_error() {
             PRINT 'Should not see this';
         END CATCH
     ";
-    engine.execute(batch).unwrap();
+    for stmt in tsql_core::parser::parse_batch(batch).unwrap() {
+        engine.execute(stmt).unwrap();
+    }
     let output = engine.print_output();
     assert_eq!(output.len(), 1);
     assert_eq!(output[0], "Success");
@@ -54,10 +58,12 @@ fn test_try_catch_nested() {
             PRINT 'Outer caught: ' + ERROR_MESSAGE();
         END CATCH
     ";
-    engine.execute(batch).unwrap();
+    for stmt in tsql_core::parser::parse_batch(batch).unwrap() {
+        engine.execute(stmt).unwrap();
+    }
     let output = engine.print_output();
     assert_eq!(output.len(), 1);
-    assert_eq!(output[0], "Outer caught: Execution error: Rethrown: Execution error: Inner error");
+    assert_eq!(output[0], "Outer caught: execution error: Rethrown: execution error: Inner error");
 }
 
 #[test]

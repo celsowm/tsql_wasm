@@ -32,8 +32,8 @@ where
     }
     
     match &val {
-        Value::Decimal(raw, scale) => {
-            let f = *raw as f64 / 10f64.powi(*scale as i32);
+        Value::Decimal(_, scale) => {
+            let f = value_to_f64(&val)?;
             let result = func(f);
             let result_raw = (result * 10f64.powi(*scale as i32)).round() as i128;
             Ok(Value::Decimal(result_raw, *scale))
@@ -45,23 +45,27 @@ where
         }
         Value::Int(v) => {
             let f = *v as f64;
-            let result = func(f) as i32;
-            Ok(Value::Int(result))
+            let result = func(f);
+            let raw = (result * 1000000.0).round() as i128;
+            Ok(Value::Decimal(raw, 6))
         }
         Value::BigInt(v) => {
             let f = *v as f64;
-            let result = func(f) as i64;
-            Ok(Value::BigInt(result))
+            let result = func(f);
+            let raw = (result * 1000000.0).round() as i128;
+            Ok(Value::Decimal(raw, 6))
         }
         Value::TinyInt(v) => {
             let f = *v as f64;
-            let result = func(f) as u8;
-            Ok(Value::TinyInt(result))
+            let result = func(f);
+            let raw = (result * 1000000.0).round() as i128;
+            Ok(Value::Decimal(raw, 6))
         }
         Value::SmallInt(v) => {
             let f = *v as f64;
-            let result = func(f) as i16;
-            Ok(Value::SmallInt(result))
+            let result = func(f);
+            let raw = (result * 1000000.0).round() as i128;
+            Ok(Value::Decimal(raw, 6))
         }
         _ => {
             let f = value_to_f64(&val)?;
@@ -234,7 +238,7 @@ pub(crate) fn eval_sign(
     }
 
     let f = value_to_f64(&val)?;
-    let result = if f > 0.0 {
+    let result: f64 = if f > 0.0 {
         1.0
     } else if f < 0.0 {
         -1.0

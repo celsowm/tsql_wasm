@@ -116,7 +116,7 @@ pub(crate) fn apply_dateadd(part: &str, num: i64, date_str: &str) -> Result<Stri
     };
 
     Ok(format!(
-        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}.000",
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
         ny, nm, nd, nh, nmi, ns
     ))
 }

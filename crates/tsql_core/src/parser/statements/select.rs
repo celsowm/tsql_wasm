@@ -254,8 +254,16 @@ pub(crate) fn parse_from_source_internal(input: &str) -> Result<(TableRef, Vec<J
     let mut rest = input.trim();
     let first_join = find_next_join_top_level(rest);
     let base = if let Some((idx, _, _)) = first_join {
-        parse_table_ref(rest[..idx].trim())?
+        let base_raw = rest[..idx].trim();
+        if base_raw.starts_with('(') {
+             // Subquery as base - not supported in TableRef
+             return Err(DbError::Parse("Subqueries as base table in FROM are not supported yet in this context".into()));
+        }
+        parse_table_ref(base_raw)?
     } else {
+        if rest.starts_with('(') {
+             return Err(DbError::Parse("Subqueries as base table in FROM are not supported yet in this context".into()));
+        }
         return Ok((parse_table_ref(rest)?, vec![], vec![]));
     };
 
@@ -379,7 +387,7 @@ fn find_matching_paren(input: &str) -> Option<usize> {
     None
 }
 
-fn find_next_join_top_level(input: &str) -> Option<(usize, JoinType, usize)> {
+pub(crate) fn find_next_join_top_level(input: &str) -> Option<(usize, JoinType, usize)> {
     let patterns: &[(&str, JoinType)] = &[
         ("FULL OUTER JOIN", JoinType::Full),
         ("FULL JOIN", JoinType::Full),

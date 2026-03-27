@@ -3,11 +3,12 @@ use tsql_core::Engine;
 #[test]
 fn test_cursor_extended_directions() {
     let mut engine = Engine::new();
-    engine.execute("CREATE TABLE dbo.Items (Id INT PRIMARY KEY, Val NVARCHAR(10))").unwrap();
-    engine.execute("INSERT INTO dbo.Items VALUES (1, 'A'), (2, 'B'), (3, 'C'), (4, 'D')").unwrap();
+    engine.exec("CREATE TABLE dbo.Items (Id INT PRIMARY KEY, Val NVARCHAR(10))").unwrap();
+    engine.exec("INSERT INTO dbo.Items VALUES (1, 'A'), (2, 'B'), (3, 'C'), (4, 'D')").unwrap();
 
     let batch = "
-        DECLARE @id INT, @val NVARCHAR(10);
+        DECLARE @id INT;
+        DECLARE @val NVARCHAR(10);
         DECLARE cur CURSOR FOR SELECT Id, Val FROM dbo.Items ORDER BY Id;
         OPEN cur;
 
@@ -38,7 +39,9 @@ fn test_cursor_extended_directions() {
         CLOSE cur;
         DEALLOCATE cur;
     ";
-    engine.execute(batch).unwrap();
+    for stmt in tsql_core::parser::parse_batch(batch).unwrap() {
+        engine.execute(stmt).unwrap();
+    }
     let output = engine.print_output();
     assert_eq!(output[0], "First: 1");
     assert_eq!(output[1], "Next: 2");
@@ -51,8 +54,8 @@ fn test_cursor_extended_directions() {
 #[test]
 fn test_cursor_boundaries() {
     let mut engine = Engine::new();
-    engine.execute("CREATE TABLE dbo.Items (Id INT PRIMARY KEY)").unwrap();
-    engine.execute("INSERT INTO dbo.Items VALUES (1), (2)").unwrap();
+    engine.exec("CREATE TABLE dbo.Items (Id INT PRIMARY KEY)").unwrap();
+    engine.exec("INSERT INTO dbo.Items VALUES (1), (2)").unwrap();
 
     let batch = "
         DECLARE @id INT;
@@ -68,7 +71,9 @@ fn test_cursor_boundaries() {
         CLOSE cur;
         DEALLOCATE cur;
     ";
-    engine.execute(batch).unwrap();
+    for stmt in tsql_core::parser::parse_batch(batch).unwrap() {
+        engine.execute(stmt).unwrap();
+    }
     let output = engine.print_output();
     assert_eq!(output[0], "Status OOB: -1");
     assert_eq!(output[1], "Status First: 0");
