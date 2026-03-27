@@ -93,7 +93,18 @@ pub struct DeclareCursorStmt {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FetchCursorStmt {
     pub name: String,
+    pub direction: FetchDirection,
     pub into: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum FetchDirection {
+    Next,
+    Prior,
+    First,
+    Last,
+    Absolute(Expr),
+    Relative(Expr),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

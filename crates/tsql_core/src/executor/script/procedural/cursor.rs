@@ -62,9 +62,41 @@ impl<'a> ScriptExecutor<'a> {
         let mut cursor = ctx.cursors.get(&stmt.name).cloned().ok_or_else(|| {
             DbError::Semantic(format!("cursor '{}' not declared", stmt.name))
         })?;
-        cursor.current_row += 1;
 
-        if cursor.current_row >= 0 && cursor.current_row < cursor.query_result.rows.len() as i64 {
+        let row_count = cursor.query_result.rows.len() as i64;
+
+        match stmt.direction {
+            crate::ast::FetchDirection::Next => {
+                cursor.current_row += 1;
+            }
+            crate::ast::FetchDirection::Prior => {
+                cursor.current_row -= 1;
+            }
+            crate::ast::FetchDirection::First => {
+                cursor.current_row = 0;
+            }
+            crate::ast::FetchDirection::Last => {
+                cursor.current_row = row_count - 1;
+            }
+            crate::ast::FetchDirection::Absolute(expr) => {
+                let val = super::super::super::evaluator::eval_expr(&expr, &[], ctx, self.catalog, self.storage, self.clock)?;
+                let n = val.to_int().unwrap_or(0) as i64;
+                if n > 0 {
+                    cursor.current_row = n - 1;
+                } else if n < 0 {
+                    cursor.current_row = row_count + n;
+                } else {
+                    cursor.current_row = -1; // Before first
+                }
+            }
+            crate::ast::FetchDirection::Relative(expr) => {
+                let val = super::super::super::evaluator::eval_expr(&expr, &[], ctx, self.catalog, self.storage, self.clock)?;
+                let n = val.to_int().unwrap_or(0) as i64;
+                cursor.current_row += n;
+            }
+        }
+
+        if cursor.current_row >= 0 && cursor.current_row < row_count {
             *ctx.fetch_status = 0;
             if let Some(into_vars) = stmt.into {
                 let row = &cursor.query_result.rows[cursor.current_row as usize];
@@ -88,6 +120,12 @@ impl<'a> ScriptExecutor<'a> {
             }
         } else {
             *ctx.fetch_status = -1;
+            // Adjust current_row to stay just outside boundaries for subsequent relative/next/prior
+            if cursor.current_row < 0 {
+                cursor.current_row = -1;
+            } else if cursor.current_row >= row_count {
+                cursor.current_row = row_count;
+            }
         }
 
         ctx.cursors.insert(stmt.name, cursor);
