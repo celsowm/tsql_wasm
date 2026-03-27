@@ -38,6 +38,7 @@ pub struct ExecutionContext<'a> {
     pub cursors: &'a mut HashMap<String, Cursor>,
     pub fetch_status: &'a mut i32,
     pub trigger_depth: usize,
+    pub last_error: Option<DbError>,
 }
 
 
@@ -80,6 +81,7 @@ impl<'a> ExecutionContext<'a> {
             cursors,
             fetch_status,
             trigger_depth: 0,
+            last_error: None,
         }
     }
 
@@ -108,6 +110,7 @@ impl<'a> ExecutionContext<'a> {
             cursors: self.cursors,
             fetch_status: self.fetch_status,
             trigger_depth: self.trigger_depth,
+            last_error: self.last_error.clone(),
         }
     }
 

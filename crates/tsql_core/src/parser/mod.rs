@@ -84,10 +84,16 @@ fn split_statements(sql: &str) -> Vec<String> {
                 let prev_ok = i == 0 || !chars[i - 1].is_ascii_alphanumeric();
                 let next_ok = i + 5 >= chars.len() || !chars[i + 5].is_ascii_alphanumeric();
                 if prev_ok && next_ok && !is_begin_transaction(&upper_chars, chars.len(), i + 5) {
-                    block_depth += 1;
-                    buf.extend(chars[i..i + 5].iter());
-                    i += 5;
-                    continue;
+                    // Check if it's BEGIN TRY
+                    let is_try = i + 9 <= upper_chars.len() && upper_chars[i..i + 9] == ['B', 'E', 'G', 'I', 'N', ' ', 'T', 'R', 'Y'];
+                    if is_try && block_depth == 0 && paren_depth == 0 {
+                        // Let parse_try_catch handle it as a single unit
+                    } else {
+                        block_depth += 1;
+                        buf.extend(chars[i..i + 5].iter());
+                        i += 5;
+                        continue;
+                    }
                 }
             }
 
@@ -95,6 +101,17 @@ fn split_statements(sql: &str) -> Vec<String> {
                 let prev_ok = i == 0 || !chars[i - 1].is_ascii_alphanumeric();
                 let next_ok = i + 3 >= chars.len() || !chars[i + 3].is_ascii_alphanumeric();
                 if prev_ok && next_ok {
+                    // Check if it's END CATCH
+                    let is_end_catch = i + 9 <= upper_chars.len() && upper_chars[i..i + 9] == ['E', 'N', 'D', ' ', 'C', 'A', 'T', 'C', 'H'];
+                    if is_end_catch && block_depth == 0 && paren_depth == 0 {
+                         // End of a TRY...CATCH block.
+                         buf.extend(chars[i..i + 9].iter());
+                         i += 9;
+                         out.push(buf.trim().to_string());
+                         buf.clear();
+                         continue;
+                    }
+
                     if block_depth > 0 {
                         block_depth -= 1;
                     }
@@ -217,6 +234,9 @@ pub fn parse_sql(sql: &str) -> Result<Statement, DbError> {
     }
     if upper.starts_with("IF ") {
         return statements::parse_if(trimmed);
+    }
+    if upper.starts_with("BEGIN TRY") {
+        return statements::parse_try_catch(trimmed);
     }
     if upper.starts_with("WHILE ") {
         return statements::parse_while(trimmed);

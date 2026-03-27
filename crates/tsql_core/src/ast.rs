@@ -68,6 +68,7 @@ pub enum Statement {
     CreateTrigger(CreateTriggerStmt),
     DropTrigger(DropTriggerStmt),
     Raiserror(RaiserrorStmt),
+    TryCatch(TryCatchStmt),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,6 +76,12 @@ pub struct RaiserrorStmt {
     pub message: Expr,
     pub severity: Expr,
     pub state: Expr,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TryCatchStmt {
+    pub try_body: Vec<Statement>,
+    pub catch_body: Vec<Statement>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
