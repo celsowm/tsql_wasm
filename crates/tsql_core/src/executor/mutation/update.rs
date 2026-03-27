@@ -40,6 +40,20 @@ impl<'a> MutationExecutor<'a> {
                     break;
                 }
             }
+            if found.is_none() {
+                for jcl in &from_clause.joins {
+                    let alias = jcl.table.alias.as_ref().unwrap_or(&jcl.table.name.name);
+                    if alias.eq_ignore_ascii_case(target_name) {
+                        let schema = jcl.table.name.schema_or_dbo();
+                        let t = self.catalog.find_table(schema, &jcl.table.name.name).ok_or_else(|| {
+                            DbError::Semantic(format!("table '{}.{}' not found", schema, jcl.table.name.name))
+                        })?;
+                        found = Some((t.clone(), jcl.table.name.name.clone()));
+                        break;
+                    }
+                }
+            }
+
             if let Some(f) = found {
                 f
             } else {
@@ -61,6 +75,12 @@ impl<'a> MutationExecutor<'a> {
 
         let table_id = table.id;
         let target_alias = stmt.table.name.clone();
+
+        // Check for INSTEAD OF UPDATE trigger
+        let instead_of_triggers = self.find_triggers(&table, crate::ast::TriggerEvent::Update)
+            .into_iter()
+            .filter(|t| t.is_instead_of)
+            .collect::<Vec<_>>();
 
         let query_stmt = SelectStmt {
             from: stmt.from.as_ref().and_then(|f| f.tables.get(0).cloned()).or_else(|| {
@@ -102,8 +122,71 @@ impl<'a> MutationExecutor<'a> {
 
         let joined_rows = query_executor.execute_to_joined_rows(query_stmt, ctx)?;
 
-        let has_triggers = !self.catalog.find_triggers_for_table(table.schema_or_dbo(), &table.name).is_empty();
-        let collect_rows = stmt.output.is_some() || has_triggers;
+        if !instead_of_triggers.is_empty() {
+            let mut inserted_rows = Vec::new();
+            let mut deleted_rows = Vec::new();
+            let mut updated_indices = HashSet::new();
+
+            for joined_row in joined_rows {
+                let target_ctx = joined_row
+                    .iter()
+                    .find(|ct| {
+                        ct.table.id == table_id && ct.alias.eq_ignore_ascii_case(&target_alias)
+                    })
+                    .or_else(|| joined_row.iter().find(|ct| ct.table.id == table_id))
+                    .ok_or_else(|| {
+                        DbError::Execution("target table not found in join context".into())
+                    })?;
+
+                if let (Some(stored_row), Some(idx)) = (&target_ctx.row, target_ctx.storage_index) {
+                    if !updated_indices.contains(&idx) {
+                        let mut new_row = stored_row.clone();
+                        apply_assignments(
+                            &table,
+                            &mut new_row,
+                            &stmt.assignments,
+                            &joined_row,
+                            ctx,
+                            self.catalog,
+                            self.storage,
+                            self.clock,
+                        )?;
+                        inserted_rows.push(new_row);
+                        deleted_rows.push(stored_row.clone());
+                        updated_indices.insert(idx);
+                    }
+                }
+            }
+
+            self.execute_triggers(
+                &table,
+                crate::ast::TriggerEvent::Update,
+                true,
+                &inserted_rows,
+                &deleted_rows,
+                ctx,
+            )?;
+
+            if let Some(output) = stmt.output {
+                let inserted: Vec<&crate::storage::StoredRow> = inserted_rows.iter().collect();
+                let deleted: Vec<&crate::storage::StoredRow> = deleted_rows.iter().collect();
+                let result = build_output_result(&output, &table, &inserted, &deleted)?;
+                if let Some(target) = stmt.output_into {
+                    self.insert_output_into(&target, result.as_ref().unwrap(), ctx)?;
+                    return Ok(None);
+                }
+                return Ok(result);
+            }
+            return Ok(None);
+        }
+
+        let has_after_triggers = !self.find_triggers(&table, crate::ast::TriggerEvent::Update)
+            .into_iter()
+            .filter(|t| !t.is_instead_of)
+            .collect::<Vec<_>>()
+            .is_empty();
+
+        let collect_rows = stmt.output.is_some() || has_after_triggers;
         let mut updated_indices = HashSet::new();
         let mut inserted_rows_for_output = Vec::new();
         let mut deleted_rows_for_output = Vec::new();
@@ -156,12 +239,17 @@ impl<'a> MutationExecutor<'a> {
             }
         }
 
-        self.execute_triggers(&table, crate::ast::TriggerEvent::Update, &inserted_rows_for_output, &deleted_rows_for_output, ctx)?;
+        self.execute_triggers(&table, crate::ast::TriggerEvent::Update, false, &inserted_rows_for_output, &deleted_rows_for_output, ctx)?;
 
         if let Some(output) = stmt.output {
             let inserted: Vec<&crate::storage::StoredRow> = inserted_rows_for_output.iter().collect();
             let deleted: Vec<&crate::storage::StoredRow> = deleted_rows_for_output.iter().collect();
-            return build_output_result(&output, &table, &inserted, &deleted);
+            let result = build_output_result(&output, &table, &inserted, &deleted)?;
+            if let Some(target) = stmt.output_into {
+                self.insert_output_into(&target, result.as_ref().unwrap(), ctx)?;
+                return Ok(None);
+            }
+            return Ok(result);
         }
 
         Ok(None)

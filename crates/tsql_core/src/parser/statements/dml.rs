@@ -5,9 +5,21 @@ use crate::parser::expression::parse_expr;
 use crate::parser::statements::subquery_utils::{apply_subquery_map, extract_subqueries};
 use crate::parser::utils::{find_keyword_top_level, parse_object_name, parse_table_ref, split_csv_top_level};
 
-fn parse_output_clause(input: &str) -> Result<Vec<OutputColumn>, DbError> {
+fn parse_output_clause(input: &str) -> Result<(Vec<OutputColumn>, Option<ObjectName>), DbError> {
+    let mut input_to_use = input;
+    let mut into_target = None;
+
+    if let Some(into_idx) = find_keyword_top_level(input, "INTO") {
+        let before_into = input[..into_idx].trim();
+        let after_into = input[into_idx + "INTO".len()..].trim();
+        let first_space = after_into.find(|c: char| c.is_whitespace()).unwrap_or(after_into.len());
+        let table_name = &after_into[..first_space];
+        into_target = Some(parse_object_name(table_name));
+        input_to_use = before_into;
+    }
+
     let mut columns = Vec::new();
-    for part in split_csv_top_level(input) {
+    for part in split_csv_top_level(input_to_use) {
         let trimmed = part.trim();
         let upper = trimmed.to_uppercase();
         let (source, rest) = if upper.starts_with("INSERTED.") {
@@ -58,11 +70,14 @@ fn parse_output_clause(input: &str) -> Result<Vec<OutputColumn>, DbError> {
             is_wildcard: false,
         });
     }
-    Ok(columns)
+    Ok((columns, into_target))
 }
 
 pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {
-    let after_into = sql["INSERT INTO".len()..].trim();
+    let mut after_into = sql["INSERT INTO".len()..].trim();
+    if after_into.to_uppercase().starts_with("INTO ") {
+        after_into = after_into[5..].trim();
+    }
     let upper = after_into.to_uppercase();
 
     if upper.ends_with("DEFAULT VALUES") {
@@ -74,6 +89,7 @@ pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {
             default_values: true,
             select_source: None,
             output: None,
+            output_into: None,
         }));
     }
 
@@ -81,7 +97,7 @@ pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {
     let output_idx = find_keyword_top_level(after_into, "OUTPUT");
 
     // Determine OUTPUT content
-    let (output, after_into_no_output) = if let Some(oi) = output_idx {
+    let (output, output_into, after_into_no_output) = if let Some(oi) = output_idx {
         // OUTPUT INSERTED.col1, DELETED.col1
         // The OUTPUT is between table/columns and VALUES/SELECT
         let after_output = &after_into[oi + "OUTPUT".len()..];
@@ -89,14 +105,14 @@ pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {
             .or_else(|| find_keyword_top_level(after_output, "SELECT"))
             .unwrap_or(after_output.len());
         let output_raw = &after_output[..end_idx];
-        let parsed_output = parse_output_clause(output_raw.trim())?;
+        let (parsed_output, into_target) = parse_output_clause(output_raw.trim())?;
         // Reconstruct: table part + VALUES/SELECT part (skipping OUTPUT columns)
         let before_output = &after_into[..oi];
         let after_output_cols = &after_output[end_idx..];
         let reconstructed = format!("{}{}", before_output, after_output_cols);
-        (Some(parsed_output), reconstructed)
+        (Some(parsed_output), into_target, reconstructed)
     } else {
-        (None, after_into.to_string())
+        (None, None, after_into.to_string())
     };
 
     let after_into_stripped = &after_into_no_output;
@@ -133,6 +149,7 @@ pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {
                     default_values: false,
                     select_source: Some(Box::new(sel)),
                     output,
+                    output_into,
                 }));
             } else {
                 return Err(DbError::Parse("expected SELECT in INSERT ... SELECT".into()));
@@ -171,6 +188,7 @@ pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {
         default_values: false,
         select_source: None,
         output,
+        output_into,
     }))
 }
 
@@ -185,20 +203,20 @@ pub(crate) fn parse_update(sql: &str) -> Result<Statement, DbError> {
     // Check for OUTPUT clause
     let output_idx = find_keyword_top_level(tail, "OUTPUT");
 
-    let (output, tail_stripped) = if let Some(oi) = output_idx {
+    let (output, output_into, tail_stripped) = if let Some(oi) = output_idx {
         let after_output = &tail[oi + "OUTPUT".len()..];
         let end_idx = find_keyword_top_level(after_output, "FROM")
             .or_else(|| find_keyword_top_level(after_output, "WHERE"))
             .unwrap_or(after_output.len());
         let output_raw = &after_output[..end_idx];
-        let parsed_output = parse_output_clause(output_raw.trim())?;
+        let (parsed_output, into_target) = parse_output_clause(output_raw.trim())?;
         // Reconstruct: assignments part + FROM/WHERE part (skipping OUTPUT columns)
         let before_output = &tail[..oi];
         let after_output_cols = &after_output[end_idx..];
         let reconstructed = format!("{}{}", before_output, after_output_cols);
-        (Some(parsed_output), reconstructed)
+        (Some(parsed_output), into_target, reconstructed)
     } else {
-        (None, tail.to_string())
+        (None, None, tail.to_string())
     };
 
     let tail_stripped = tail_stripped.as_str();
@@ -244,6 +262,7 @@ pub(crate) fn parse_update(sql: &str) -> Result<Statement, DbError> {
         selection,
         from: from_clause,
         output,
+        output_into,
     }))
 }
 
@@ -258,20 +277,20 @@ pub(crate) fn parse_delete(sql: &str) -> Result<Statement, DbError> {
 
     // Check if there's OUTPUT clause
     let output_idx = find_keyword_top_level(after_delete, "OUTPUT");
-    let (output, after_delete_stripped) = if let Some(oi) = output_idx {
+    let (output, output_into, after_delete_stripped) = if let Some(oi) = output_idx {
         let after_output = &after_delete[oi + "OUTPUT".len()..];
         let end_idx = find_keyword_top_level(after_output, "FROM")
             .or_else(|| find_keyword_top_level(after_output, "WHERE"))
             .unwrap_or(after_output.len());
         let output_raw = &after_output[..end_idx];
-        let parsed_output = parse_output_clause(output_raw.trim())?;
+        let (parsed_output, into_target) = parse_output_clause(output_raw.trim())?;
         // Reconstruct: table part + FROM/WHERE part (skipping OUTPUT columns)
         let before_output = &after_delete[..oi];
         let after_output_cols = &after_output[end_idx..];
         let reconstructed = format!("{}{}", before_output, after_output_cols);
-        (Some(parsed_output), reconstructed)
+        (Some(parsed_output), into_target, reconstructed)
     } else {
-        (None, after_delete.to_string())
+        (None, None, after_delete.to_string())
     };
 
     let after_delete_stripped = after_delete_stripped.as_str();
@@ -306,6 +325,7 @@ pub(crate) fn parse_delete(sql: &str) -> Result<Statement, DbError> {
             selection,
             from: Some(from_clause),
             output,
+            output_into,
         }));
     }
 
@@ -327,6 +347,7 @@ pub(crate) fn parse_delete(sql: &str) -> Result<Statement, DbError> {
         selection,
         from: None,
         output,
+        output_into,
     }))
 }
 
@@ -400,81 +421,17 @@ fn parse_values_groups(input: &str) -> Result<Vec<Vec<Expr>>, DbError> {
 }
 
 fn parse_update_from_clause(input: &str) -> Result<FromClause, DbError> {
-    // First check for explicit JOINs
-    let join_patterns = [
-        ("FULL OUTER JOIN", JoinType::Full),
-        ("FULL JOIN", JoinType::Full),
-        ("LEFT JOIN", JoinType::Left),
-        ("RIGHT JOIN", JoinType::Right),
-        ("INNER JOIN", JoinType::Inner),
-        ("JOIN", JoinType::Inner),
-    ];
+    // Reuse the sophisticated FROM parsing from select.rs
+    // But we need to map SelectStmt fields to FromClause fields.
+    // Since parse_from_source returns (TableRef, Vec<JoinClause>, Vec<ApplyClause>)
+    // and FromClause expects (Vec<TableRef>, Vec<JoinClause>), we'll adapt.
 
-    let _upper = input.to_uppercase();
-    let mut first_join_pos: Option<(usize, JoinType, usize)> = None;
-    for (pat, ty) in &join_patterns {
-        if let Some(idx) = find_keyword_top_level(input, pat) {
-            if first_join_pos.is_none() || idx < first_join_pos.as_ref().unwrap().0 {
-                first_join_pos = Some((idx, *ty, pat.len()));
-            }
-        }
-    }
+    let (base, joins, _applies) = super::select::parse_from_source_internal(input)?;
 
-    if let Some((idx, join_type, pat_len)) = first_join_pos {
-        // There are explicit JOINs
-        let base_source = input[..idx].trim();
-        let after_first_join = input[idx + pat_len..].trim();
-
-        // The base might have multiple tables separated by comma
-        let mut tables = Vec::new();
-        for part in split_csv_top_level(base_source) {
-            tables.push(parse_table_ref(part.trim())?);
-        }
-
-        let mut joins = Vec::new();
-        // Parse the first join
-        let on_idx = find_keyword_top_level(after_first_join, "ON")
-            .ok_or_else(|| DbError::Parse("JOIN missing ON".into()))?;
-        let join_table = parse_table_ref(after_first_join[..on_idx].trim())?;
-        let after_on = &after_first_join[on_idx + "ON".len()..];
-
-        // Find next join or end
-        let mut next_join: Option<(usize, JoinType, usize)> = None;
-        for (pat, ty) in &join_patterns {
-            if let Some(ni) = find_keyword_top_level(after_on, pat) {
-                if next_join.is_none() || ni < next_join.as_ref().unwrap().0 {
-                    next_join = Some((ni, *ty, pat.len()));
-                }
-            }
-        }
-
-        let on_expr_str = if let Some((ni, _, _)) = &next_join {
-            &after_on[..*ni]
-        } else {
-            after_on
-        };
-        let on_expr = parse_expr(on_expr_str.trim())?;
-        joins.push(JoinClause {
-            join_type,
-            table: join_table,
-            on: Some(on_expr),
-        });
-
-        // TODO: parse additional joins if present
-        let _ = next_join;
-
-        Ok(FromClause { tables, joins })
-    } else {
-        // No explicit JOINs - comma-separated tables (implicit CROSS JOIN)
-        let mut tables = Vec::new();
-        for part in split_csv_top_level(input) {
-            tables.push(parse_table_ref(part.trim())?);
-        }
-        Ok(FromClause {
-            tables,
-            joins: vec![],
-        })
-    }
+    Ok(FromClause {
+        tables: vec![base],
+        joins,
+    })
 }
 
 pub(crate) fn parse_merge(sql: &str) -> Result<Statement, DbError> {
@@ -541,6 +498,7 @@ pub(crate) fn parse_merge(sql: &str) -> Result<Statement, DbError> {
     let mut when_clauses = Vec::new();
     let mut remaining = when_section;
     let mut output = None;
+    let mut output_into = None;
 
     loop {
         let Some(when_idx_local) = find_keyword_top_level(remaining, "WHEN") else {
@@ -549,32 +507,54 @@ pub(crate) fn parse_merge(sql: &str) -> Result<Statement, DbError> {
         let after_when = &remaining[when_idx_local + "WHEN".len()..].trim();
         let upper_when = after_when.to_uppercase();
 
-        let (when_kind, _after_when_kind, _matched_prefix_len) =
-            if upper_when.starts_with("NOT MATCHED BY SOURCE THEN") {
+        let after_current_when = &remaining[when_idx_local + "WHEN".len()..];
+
+        let (when_kind, condition, action_start) = {
+            let mut current_pos = 0;
+            while current_pos < after_current_when.len()
+                && after_current_when.as_bytes()[current_pos].is_ascii_whitespace()
+            {
+                current_pos += 1;
+            }
+
+            let upper_rest = after_current_when[current_pos..].to_uppercase();
+            let (kind, kind_len) = if upper_rest.starts_with("NOT MATCHED BY SOURCE") {
                 (
                     MergeWhen::NotMatchedBySource,
-                    after_when["NOT MATCHED BY SOURCE THEN".len()..].trim(),
-                    "NOT MATCHED BY SOURCE THEN".len(),
+                    "NOT MATCHED BY SOURCE".len(),
                 )
-            } else if upper_when.starts_with("NOT MATCHED THEN") {
-                (
-                    MergeWhen::NotMatched,
-                    after_when["NOT MATCHED THEN".len()..].trim(),
-                    "NOT MATCHED THEN".len(),
-                )
-            } else if upper_when.starts_with("MATCHED THEN") {
-                (
-                    MergeWhen::Matched,
-                    after_when["MATCHED THEN".len()..].trim(),
-                    "MATCHED THEN".len(),
-                )
+            } else if upper_rest.starts_with("NOT MATCHED") {
+                (MergeWhen::NotMatched, "NOT MATCHED".len())
+            } else if upper_rest.starts_with("MATCHED") {
+                (MergeWhen::Matched, "MATCHED".len())
             } else {
                 return Err(DbError::Parse("invalid WHEN clause in MERGE".into()));
             };
 
+            current_pos += kind_len;
+            while current_pos < after_current_when.len()
+                && after_current_when.as_bytes()[current_pos].is_ascii_whitespace()
+            {
+                current_pos += 1;
+            }
+
+            let upper_rest2 = after_current_when[current_pos..].to_uppercase();
+            let (cond, action_pos) = if upper_rest2.starts_with("AND ") {
+                let then_idx = find_keyword_top_level(&after_current_when[current_pos..], "THEN")
+                    .ok_or_else(|| DbError::Parse("MERGE WHEN clause missing THEN".into()))?;
+                let cond_str = after_current_when[current_pos + 4..current_pos + then_idx].trim();
+                (Some(parse_expr(cond_str)?), current_pos + then_idx + "THEN".len())
+            } else if upper_rest2.starts_with("THEN") {
+                (None, current_pos + "THEN".len())
+            } else {
+                return Err(DbError::Parse("MERGE WHEN clause missing THEN".into()));
+            };
+
+            (kind, cond, action_pos)
+        };
+
         // Find the end of this action (next WHEN or OUTPUT or end)
         // Search in the original remaining string after the current WHEN
-        let after_current_when = &remaining[when_idx_local + "WHEN".len()..];
         let next_when_in_action = find_keyword_top_level(after_current_when, "WHEN");
         let output_in_action = find_keyword_top_level(after_current_when, "OUTPUT");
 
@@ -582,14 +562,6 @@ pub(crate) fn parse_merge(sql: &str) -> Result<Statement, DbError> {
             .or(output_in_action)
             .unwrap_or(after_current_when.len());
 
-        // Strip the MATCHED/NOT MATCHED prefix from the action string
-        // after_current_when is untrimmed, so account for leading whitespace
-        let leading_ws: usize = after_current_when
-            .chars()
-            .take_while(|c| c.is_ascii_whitespace())
-            .map(|c| c.len_utf8())
-            .sum();
-        let action_start = leading_ws + _matched_prefix_len;
         let action_str = after_current_when[action_start..action_end_pos].trim();
         let action_upper = action_str.to_uppercase();
 
@@ -649,7 +621,7 @@ pub(crate) fn parse_merge(sql: &str) -> Result<Statement, DbError> {
 
         when_clauses.push(MergeWhenClause {
             when: when_kind,
-            condition: None,
+            condition,
             action,
         });
 
@@ -667,7 +639,9 @@ pub(crate) fn parse_merge(sql: &str) -> Result<Statement, DbError> {
     // Check for OUTPUT
     if let Some(oi) = find_keyword_top_level(remaining, "OUTPUT") {
         let output_str = &remaining[oi + "OUTPUT".len()..].trim();
-        output = Some(parse_output_clause(output_str)?);
+        let (parsed_output, into_target) = parse_output_clause(output_str)?;
+        output = Some(parsed_output);
+        output_into = into_target;
     }
 
     Ok(Statement::Merge(MergeStmt {
@@ -676,5 +650,6 @@ pub(crate) fn parse_merge(sql: &str) -> Result<Statement, DbError> {
         on_condition,
         when_clauses,
         output,
+        output_into,
     }))
 }

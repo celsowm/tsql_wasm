@@ -28,6 +28,7 @@
 | CREATE VIEW | 📋 Stubbed | Parser only |
 | CREATE PROCEDURE | ✅ Exact | Subset with parameters and OUTPUT |
 | CREATE FUNCTION | ✅ Exact | Scalar UDF and inline TVF |
+| CREATE TRIGGER | ✅ Exact | AFTER and INSTEAD OF support |
 | TRUNCATE TABLE | ✅ Exact | |
 
 ## DML Statements
@@ -39,12 +40,12 @@
 | INSERT DEFAULT VALUES | ✅ Exact | |
 | INSERT ... OUTPUT | 🔶 Partial | Parser ready, needs multi-row refinement |
 | UPDATE | ✅ Exact | With WHERE clause |
-| UPDATE ... FROM | 🔶 Partial | Tests added, executor needs alias resolution fix |
+| UPDATE ... FROM | ✅ Exact | Supports multiple JOINs and alias resolution |
 | UPDATE ... OUTPUT | ⚠️ Near | INSERTED and DELETED pseudo-tables |
 | DELETE | ✅ Exact | With WHERE clause |
-| DELETE ... FROM | 🔶 Partial | Tests added, executor needs alias resolution fix |
+| DELETE ... FROM | ✅ Exact | Supports multiple JOINs and alias resolution |
 | DELETE ... OUTPUT | ⚠️ Near | DELETED pseudo-table |
-| MERGE | 🔶 Partial | Tests added, basic upsert works |
+| MERGE | ✅ Exact | Supports AND conditions, multiple WHEN clauses, and triggers |
 | SELECT ... OFFSET/FETCH | ⚠️ Near | Full T-SQL syntax: OFFSET n ROWS FETCH NEXT m ROWS ONLY |
 | SELECT | ✅ Exact | Full projection |
 | SELECT TOP N | ✅ Exact | |
@@ -280,8 +281,8 @@
 | Inline TVF | ✅ Exact | |
 | Stored procedures | ✅ Exact | Subset with parameters and OUTPUT |
 | Scalar UDF | ✅ Near | |
-| Triggers | ❌ Unsupported | |
-| Cursors | ❌ Unsupported | |
+| Triggers | ✅ Exact | AFTER and INSTEAD OF, recursive prevention (16 levels) |
+| Cursors | 🔶 Partial | Basic DECLARE, OPEN, FETCH NEXT, CLOSE, DEALLOCATE |
 
 ## Known Deviations
 
@@ -293,9 +294,7 @@
 6. **Connection pooling** not implemented (single-user embedded)
 7. **Multiple active result sets** not supported
 8. **Table-valued parameters** not supported
-9. **Triggers** not supported
-10. **Cursors** not supported
-11. **PIVOT/UNPIVOT** not supported
+9. **PIVOT/UNPIVOT** not supported
 
 ## R8 Exit Criteria Status
 

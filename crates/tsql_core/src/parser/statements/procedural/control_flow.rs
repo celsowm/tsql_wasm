@@ -73,3 +73,60 @@ pub(crate) fn parse_begin_end(sql: &str) -> Result<Statement, DbError> {
     let body = super::parse_begin_end_body(sql)?;
     Ok(Statement::BeginEnd(body))
 }
+
+pub(crate) fn parse_raiserror(sql: &str) -> Result<Statement, DbError> {
+    let after = sql["RAISERROR".len()..].trim();
+    if !after.starts_with('(') || !after.ends_with(')') {
+        return Err(DbError::Parse("RAISERROR expects (message, severity, state)".into()));
+    }
+    let inner = &after[1..after.len() - 1];
+    let parts = crate::parser::utils::split_csv_top_level(inner);
+    if parts.len() < 3 {
+        return Err(DbError::Parse("RAISERROR expects at least 3 arguments".into()));
+    }
+
+    let message = crate::parser::expression::parse_expr(parts[0].trim())?;
+    let severity = crate::parser::expression::parse_expr(parts[1].trim())?;
+    let state = crate::parser::expression::parse_expr(parts[2].trim())?;
+
+    Ok(Statement::Raiserror(RaiserrorStmt {
+        message,
+        severity,
+        state,
+    }))
+}
+
+pub(crate) fn parse_try_catch(sql: &str) -> Result<Statement, DbError> {
+    let upper = sql.to_uppercase();
+    if !upper.starts_with("BEGIN TRY") {
+        return Err(DbError::Parse("expected BEGIN TRY".into()));
+    }
+
+    let after_try = &sql["BEGIN TRY".len()..].trim();
+    let try_end_idx = super::find_matching_end(after_try)?;
+    let try_body_str = after_try[..try_end_idx].trim();
+    let try_body = crate::parser::parse_batch(try_body_str)?;
+
+    let rest = after_try[try_end_idx + 3..].trim(); // skip END
+    let upper_rest = rest.to_uppercase();
+    if !upper_rest.starts_with("BEGIN CATCH") {
+        return Err(DbError::Parse("expected BEGIN CATCH after END TRY".into()));
+    }
+
+    let after_catch = &rest["BEGIN CATCH".len()..].trim();
+    // find_matching_end handles nested BEGIN/END but might be tricky here because it expects matching END.
+    // However, CATCH block ends with END CATCH.
+    // Our split_statements ensures we have the whole block.
+    // Let's find the LAST "END CATCH" if there are nested blocks?
+    // Actually the input `sql` is the whole block "BEGIN TRY ... END CATCH".
+
+    let catch_end_idx = find_keyword_top_level(after_catch, "END CATCH")
+        .ok_or_else(|| DbError::Parse("missing END CATCH".into()))?;
+    let catch_body_str = after_catch[..catch_end_idx].trim();
+    let catch_body = crate::parser::parse_batch(catch_body_str)?;
+
+    Ok(Statement::TryCatch(TryCatchStmt {
+        try_body,
+        catch_body,
+    }))
+}

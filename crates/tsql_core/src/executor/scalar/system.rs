@@ -167,3 +167,39 @@ pub(crate) fn deterministic_rand(state: &mut u64) -> f64 {
     let bits = (*state >> 33) as u32;
     bits as f64 / (1u64 << 31) as f64
 }
+
+pub(crate) fn eval_error_message(
+    ctx: &ExecutionContext,
+) -> Result<Value, DbError> {
+    Ok(match &ctx.last_error {
+        Some(e) => Value::VarChar(e.to_string()),
+        None => Value::Null,
+    })
+}
+
+pub(crate) fn eval_error_number(
+    ctx: &ExecutionContext,
+) -> Result<Value, DbError> {
+    Ok(match &ctx.last_error {
+        Some(e) => Value::Int(e.code()),
+        None => Value::Null,
+    })
+}
+
+pub(crate) fn eval_error_severity(
+    ctx: &ExecutionContext,
+) -> Result<Value, DbError> {
+    Ok(match &ctx.last_error {
+        Some(e) => Value::Int(e.class() as i32),
+        None => Value::Null,
+    })
+}
+
+pub(crate) fn eval_error_state(
+    ctx: &ExecutionContext,
+) -> Result<Value, DbError> {
+    Ok(match &ctx.last_error {
+        Some(_) => Value::Int(1), // Default state
+        None => Value::Null,
+    })
+}

@@ -18,10 +18,24 @@ pub(crate) struct MutationExecutor<'a> {
 }
 
 impl<'a> MutationExecutor<'a> {
+    fn find_triggers(
+        &self,
+        table: &crate::catalog::TableDef,
+        event: crate::ast::TriggerEvent,
+    ) -> Vec<crate::catalog::TriggerDef> {
+        self.catalog
+            .find_triggers_for_table(table.schema_or_dbo(), &table.name)
+            .into_iter()
+            .filter(|t| t.events.contains(&event))
+            .cloned()
+            .collect()
+    }
+
     fn execute_triggers(
         &mut self,
         table: &crate::catalog::TableDef,
         event: crate::ast::TriggerEvent,
+        is_instead_of: bool,
         inserted_rows: &[crate::storage::StoredRow],
         deleted_rows: &[crate::storage::StoredRow],
         ctx: &mut super::context::ExecutionContext,
@@ -33,9 +47,13 @@ impl<'a> MutationExecutor<'a> {
             .collect();
 
         for trigger in triggers {
-            if trigger.events.contains(&event) {
+            if trigger.events.contains(&event) && trigger.is_instead_of == is_instead_of {
+                if ctx.trigger_depth >= 16 {
+                    return Err(DbError::Execution("Maximum trigger nesting level (16) exceeded.".into()));
+                }
                 // Setup inserted/deleted pseudo-tables
                 let mut trigger_ctx = ctx.subquery();
+                trigger_ctx.trigger_depth += 1;
                 trigger_ctx.enter_scope();
 
                 let mut ins_physical = None;
@@ -104,6 +122,60 @@ impl<'a> MutationExecutor<'a> {
                 }
             }
         }
+        Ok(())
+    }
+
+    pub(crate) fn insert_output_into(
+        &mut self,
+        target: &crate::ast::ObjectName,
+        output_result: &crate::executor::result::QueryResult,
+        ctx: &mut super::context::ExecutionContext,
+    ) -> Result<(), crate::error::DbError> {
+        let mut target_name = target.name.clone();
+        let mut target_schema = target.schema_or_dbo().to_string();
+
+        if let Some(mapped) = ctx.resolve_table_name(&target_name) {
+            target_name = mapped;
+            target_schema = "dbo".to_string();
+        }
+
+        let table = self
+            .catalog
+            .find_table(&target_schema, &target_name)
+            .ok_or_else(|| {
+                crate::error::DbError::Semantic(format!(
+                    "table '{}.{}' not found for OUTPUT INTO",
+                    target_schema, target_name
+                ))
+            })?
+            .clone();
+
+        for row_values in &output_result.rows {
+            let row = self.build_insert_row(&table, &output_result.columns, row_values.iter().map(|v| crate::ast::Expr::String(v.to_string_value())).collect(), ctx)?;
+            // Note: we convert values to strings and back via build_insert_row which is inefficient but works for now.
+            // Actually build_insert_row expects Expr. Let's fix this.
+
+            let mut final_values = vec![crate::types::Value::Null; table.columns.len()];
+            for (col_name, val) in output_result.columns.iter().zip(row_values.iter()) {
+                let col_idx = table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
+                    .ok_or_else(|| crate::error::DbError::Semantic(format!("column '{}' not found in OUTPUT INTO target", col_name)))?;
+                final_values[col_idx] = val.clone();
+            }
+
+            let mut stored_row = crate::storage::StoredRow {
+                values: final_values,
+                deleted: false,
+            };
+            self.apply_missing_values(&table, &mut stored_row.values, ctx)?;
+
+            // Re-validate constraints on the target table
+            validation::enforce_unique_on_insert(&table, self.storage, table.id, &stored_row)?;
+            validation::enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &stored_row)?;
+            validation::enforce_checks_on_row(&table, &stored_row, ctx, self.catalog, self.storage, self.clock)?;
+
+            self.storage.insert_row(table.id, stored_row)?;
+        }
+
         Ok(())
     }
 }

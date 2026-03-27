@@ -113,7 +113,7 @@ pub(crate) fn parse_select(sql: &str) -> Result<Statement, DbError> {
     let bounds = SelectClauseBounds::detect(tail);
     let source_end = bounds.first_boundary().unwrap_or(tail.len());
 
-    let (from, joins, applies) = parse_from_source(tail[..source_end].trim())?;
+    let (from, joins, applies) = parse_from_source_internal(tail[..source_end].trim())?;
     let selection = parse_where_clause(tail, &bounds)?;
     let group_by = parse_group_by_clause(tail, &bounds)?;
     let having = parse_having_clause(tail, &bounds)?;
@@ -161,7 +161,7 @@ fn try_parse_select_assign(projection_raw: &str, tail: &str) -> Result<Option<St
 
     let bounds = SelectClauseBounds::detect(tail);
     let source_end = bounds.first_boundary().unwrap_or(tail.len());
-    let (from, joins, _applies) = parse_from_source(tail[..source_end].trim())?;
+    let (from, joins, _applies) = parse_from_source_internal(tail[..source_end].trim())?;
     let selection = parse_where_clause(tail, &bounds)?;
 
     Ok(Some(Statement::SelectAssign(SelectAssignStmt {
@@ -250,7 +250,7 @@ fn parse_order_by_clause(
     parse_order_by(order_part[..end].trim())
 }
 
-fn parse_from_source(input: &str) -> Result<(TableRef, Vec<JoinClause>, Vec<ApplyClause>), DbError> {
+pub(crate) fn parse_from_source_internal(input: &str) -> Result<(TableRef, Vec<JoinClause>, Vec<ApplyClause>), DbError> {
     let mut rest = input.trim();
     let first_join = find_next_join_top_level(rest);
     let base = if let Some((idx, _, _)) = first_join {
