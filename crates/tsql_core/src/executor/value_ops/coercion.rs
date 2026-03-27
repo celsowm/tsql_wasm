@@ -79,7 +79,7 @@ fn coerce_int(v: i64, ty: &DataType) -> Result<Value, DbError> {
         DataType::BigInt => Ok(Value::BigInt(v)),
         DataType::Float => Ok(Value::Float((v as f64).to_bits())),
         DataType::Decimal { scale, .. } => {
-            let raw = v as i128 * 10i128.pow(*scale as i32);
+            let raw = v as i128 * 10i128.pow(*scale as u32);
             Ok(Value::Decimal(raw, *scale))
         }
         DataType::Money => Ok(Value::Money(v as i128 * 10000)),

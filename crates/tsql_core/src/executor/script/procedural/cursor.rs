@@ -80,7 +80,7 @@ impl<'a> ScriptExecutor<'a> {
             }
             crate::ast::FetchDirection::Absolute(expr) => {
                 let val = super::super::super::evaluator::eval_expr(&expr, &[], ctx, self.catalog, self.storage, self.clock)?;
-                let n = val.to_int().unwrap_or(0) as i64;
+                let n = val.to_integer_i64().unwrap_or(0);
                 if n > 0 {
                     cursor.current_row = n - 1;
                 } else if n < 0 {
@@ -91,7 +91,7 @@ impl<'a> ScriptExecutor<'a> {
             }
             crate::ast::FetchDirection::Relative(expr) => {
                 let val = super::super::super::evaluator::eval_expr(&expr, &[], ctx, self.catalog, self.storage, self.clock)?;
-                let n = val.to_int().unwrap_or(0) as i64;
+                let n = val.to_integer_i64().unwrap_or(0);
                 cursor.current_row += n;
             }
         }

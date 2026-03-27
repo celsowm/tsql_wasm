@@ -165,6 +165,9 @@ impl<'a> ScriptExecutor<'a> {
                     continue;
                 }
 
+                source_matched_to_target[s_idx] = true;
+                target_row_matched[i] = true;
+
                 // Apply WHEN MATCHED clauses
                 let mut matched_action_taken = false;
                 for when_clause in &stmt.when_clauses {
@@ -220,7 +223,7 @@ impl<'a> ScriptExecutor<'a> {
                                     updated_target_rows[i] = temp_row.clone();
                                     if stmt.output.is_some() {
                                         merge_output_rows.push(super::super::mutation::MergeOutputRow {
-                                            inserted_values: Some(updated_target_rows[i].values.clone()),
+                                            inserted_values: Some(temp_row.values.clone()),
                                             deleted_values: Some(old_values.clone()),
                                         });
                                     }
@@ -340,13 +343,11 @@ impl<'a> ScriptExecutor<'a> {
         }
 
         // Ensure all matched rows are updated in storage before NOT MATCHED
-        let final_matched_rows: Vec<crate::storage::StoredRow> = updated_target_rows
-            .into_iter()
-            .filter(|row| !row.deleted)
-            .collect();
         self.storage.clear_table(target_table.id)?;
-        for row in final_matched_rows {
-            self.storage.insert_row(target_table.id, row)?;
+        for row in updated_target_rows {
+            if !row.deleted {
+                self.storage.insert_row(target_table.id, row)?;
+            }
         }
 
         // Process WHEN NOT MATCHED (source rows not matched to target)

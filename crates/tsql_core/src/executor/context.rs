@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use super::cte::CteStorage;
 use super::model::{JoinedRow, Cursor};
 use crate::types::{DataType, Value};
+use crate::error::DbError;
 
 pub type Variables = std::collections::HashMap<String, (DataType, Value)>;
 
@@ -138,6 +139,8 @@ impl<'a> ExecutionContext<'a> {
             print_output: self.print_output,
             cursors: self.cursors,
             fetch_status: self.fetch_status,
+            trigger_depth: self.trigger_depth,
+            last_error: self.last_error.clone(),
         }
     }
 
@@ -169,6 +172,8 @@ impl<'a> ExecutionContext<'a> {
             print_output: self.print_output,
             cursors: self.cursors,
             fetch_status: self.fetch_status,
+            trigger_depth: self.trigger_depth,
+            last_error: self.last_error.clone(),
         }
     }
 

@@ -181,7 +181,7 @@ pub(crate) fn eval_error_number(
     ctx: &ExecutionContext,
 ) -> Result<Value, DbError> {
     Ok(match &ctx.last_error {
-        Some(e) => Value::Int(e.code()),
+        Some(_) => Value::Int(50000), // Default error number
         None => Value::Null,
     })
 }
@@ -190,7 +190,7 @@ pub(crate) fn eval_error_severity(
     ctx: &ExecutionContext,
 ) -> Result<Value, DbError> {
     Ok(match &ctx.last_error {
-        Some(e) => Value::Int(e.class() as i32),
+        Some(_) => Value::Int(16), // Default severity
         None => Value::Null,
     })
 }

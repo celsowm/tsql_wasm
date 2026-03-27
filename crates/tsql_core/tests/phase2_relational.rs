@@ -84,7 +84,7 @@ fn test_right_join_multi_table_left() {
     assert_eq!(r.rows.len(), 1);
     assert_eq!(r.rows[0][0], Value::Null); // t1.v1
     assert_eq!(r.rows[0][1], Value::Null); // t2.v2
-    assert_eq!(r.rows[0][2], Value::BigInt(30)); // t3.v3
+    assert_eq!(r.rows[0][2], Value::Int(30)); // t3.v3
 }
 
 // ─── DISTINCT ──────────────────────────────────────────────────────────

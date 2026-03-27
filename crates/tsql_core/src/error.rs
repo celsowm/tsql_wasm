@@ -9,7 +9,7 @@ pub enum ErrorClass {
     ControlFlow,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum DbError {
     #[error("parse error: {0}")]
     Parse(String),

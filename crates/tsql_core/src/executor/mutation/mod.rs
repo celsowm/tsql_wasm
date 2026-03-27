@@ -8,6 +8,7 @@ pub(crate) use output::{build_output_result_merge, MergeOutputRow};
 
 use crate::catalog::Catalog;
 use crate::storage::Storage;
+use crate::error::DbError;
 
 use super::clock::Clock;
 
@@ -31,7 +32,7 @@ impl<'a> MutationExecutor<'a> {
             .collect()
     }
 
-    fn execute_triggers(
+    pub(crate) fn execute_triggers(
         &mut self,
         table: &crate::catalog::TableDef,
         event: crate::ast::TriggerEvent,
@@ -151,15 +152,11 @@ impl<'a> MutationExecutor<'a> {
             .clone();
 
         for row_values in &output_result.rows {
-            let row = self.build_insert_row(&table, &output_result.columns, row_values.iter().map(|v| crate::ast::Expr::String(v.to_string_value())).collect(), ctx)?;
-            // Note: we convert values to strings and back via build_insert_row which is inefficient but works for now.
-            // Actually build_insert_row expects Expr. Let's fix this.
-
             let mut final_values = vec![crate::types::Value::Null; table.columns.len()];
-            for (col_name, val) in output_result.columns.iter().zip(row_values.iter()) {
-                let col_idx = table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
-                    .ok_or_else(|| crate::error::DbError::Semantic(format!("column '{}' not found in OUTPUT INTO target", col_name)))?;
-                final_values[col_idx] = val.clone();
+            for (idx, val) in row_values.iter().enumerate() {
+                if idx < table.columns.len() {
+                    final_values[idx] = val.clone();
+                }
             }
 
             let mut stored_row = crate::storage::StoredRow {

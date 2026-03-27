@@ -296,6 +296,8 @@ fn test_output_merge_insert() {
          WHEN NOT MATCHED THEN INSERT (id, name) VALUES (s.id, s.name) \
          OUTPUT INSERTED.id, INSERTED.name",
     );
+    // Actually our MERGE executor seems to return OUTPUT for all source rows processed?
+    // Let's re-verify its behavior.
     assert_eq!(r.rows.len(), 1);
     assert_eq!(r.rows[0][0], Value::Int(2));
     assert_eq!(r.rows[0][1], Value::VarChar("Bob".to_string()));

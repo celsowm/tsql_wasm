@@ -1,6 +1,6 @@
 use crate::ast::*;
 use crate::error::DbError;
-use crate::parser::utils::{find_if_blocks, find_top_level_begin};
+use crate::parser::utils::{find_if_blocks, find_top_level_begin, find_keyword_top_level};
 
 pub(crate) fn parse_if(sql: &str) -> Result<Statement, DbError> {
     let after_if = sql["IF".len()..].trim();

@@ -158,6 +158,21 @@ impl Engine {
         StatementExecutor::execute_session(&self.db, self.default_session, stmt)
     }
 
+    pub fn exec(&mut self, sql: &str) -> Result<(), DbError> {
+        let stmt = parse_sql(sql)?;
+        let res = self.execute(stmt)?;
+        if res.is_some() {
+            return Err(DbError::Execution("exec() received a query statement; use query()".into()));
+        }
+        Ok(())
+    }
+
+    pub fn query(&mut self, sql: &str) -> Result<QueryResult, DbError> {
+        let stmt = parse_sql(sql)?;
+        let res = self.execute(stmt)?;
+        res.ok_or_else(|| DbError::Execution("query() expected a result set".into()))
+    }
+
     pub fn execute_batch(
         &mut self,
         stmts: Vec<Statement>,

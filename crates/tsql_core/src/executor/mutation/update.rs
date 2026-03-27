@@ -31,11 +31,20 @@ impl<'a> MutationExecutor<'a> {
             let mut found = None;
             for tref in &from_clause.tables {
                 let alias = tref.alias.as_ref().unwrap_or(&tref.name.name);
-                if alias.eq_ignore_ascii_case(target_name) {
+                if alias.eq_ignore_ascii_case(target_name) || tref.name.name.eq_ignore_ascii_case(target_name) {
                     let schema = tref.name.schema_or_dbo();
-                    let t = self.catalog.find_table(schema, &tref.name.name).ok_or_else(|| {
-                        DbError::Semantic(format!("table '{}.{}' not found", schema, tref.name.name))
-                    })?;
+                    let t = match self.catalog.find_table(schema, &tref.name.name) {
+                        Some(t) => t,
+                        None => {
+                            if let Some(mapped) = ctx.resolve_table_name(&tref.name.name) {
+                                self.catalog.find_table("dbo", &mapped).ok_or_else(|| {
+                                    DbError::Semantic(format!("table '{}' not found", tref.name.name))
+                                })?
+                            } else {
+                                return Err(DbError::Semantic(format!("table '{}.{}' not found", schema, tref.name.name)));
+                            }
+                        }
+                    };
                     found = Some((t.clone(), tref.name.name.clone()));
                     break;
                 }
@@ -43,11 +52,20 @@ impl<'a> MutationExecutor<'a> {
             if found.is_none() {
                 for jcl in &from_clause.joins {
                     let alias = jcl.table.alias.as_ref().unwrap_or(&jcl.table.name.name);
-                    if alias.eq_ignore_ascii_case(target_name) {
+                    if alias.eq_ignore_ascii_case(target_name) || jcl.table.name.name.eq_ignore_ascii_case(target_name) {
                         let schema = jcl.table.name.schema_or_dbo();
-                        let t = self.catalog.find_table(schema, &jcl.table.name.name).ok_or_else(|| {
-                            DbError::Semantic(format!("table '{}.{}' not found", schema, jcl.table.name.name))
-                        })?;
+                        let t = match self.catalog.find_table(schema, &jcl.table.name.name) {
+                            Some(t) => t,
+                            None => {
+                                if let Some(mapped) = ctx.resolve_table_name(&jcl.table.name.name) {
+                                    self.catalog.find_table("dbo", &mapped).ok_or_else(|| {
+                                        DbError::Semantic(format!("table '{}' not found", jcl.table.name.name))
+                                    })?
+                                } else {
+                                    return Err(DbError::Semantic(format!("table '{}.{}' not found", schema, jcl.table.name.name)));
+                                }
+                            }
+                        };
                         found = Some((t.clone(), jcl.table.name.name.clone()));
                         break;
                     }
@@ -85,9 +103,16 @@ impl<'a> MutationExecutor<'a> {
         let query_stmt = SelectStmt {
             from: stmt.from.as_ref().and_then(|f| f.tables.get(0).cloned()).or_else(|| {
                 let name = if stmt.from.is_some() {
-                    crate::ast::ObjectName {
-                        schema: table.schema_or_dbo().to_string().into(),
-                        name: resolved_name,
+                    // This happens if the first table in FROM was a subquery (None in tables)
+                    // In that case, we might need a better strategy, but let's try
+                    // using the target table as base if no tables were found in FROM.
+                    if stmt.from.as_ref().map(|f| f.tables.is_empty()).unwrap_or(true) {
+                         stmt.table.clone()
+                    } else {
+                        crate::ast::ObjectName {
+                            schema: table.schema_or_dbo().to_string().into(),
+                            name: resolved_name,
+                        }
                     }
                 } else {
                     stmt.table.clone()
@@ -97,8 +122,23 @@ impl<'a> MutationExecutor<'a> {
                     alias: None,
                 })
             }),
-            joins: stmt.from.as_ref().map(|f| f.joins.clone()).unwrap_or_default(),
-            applies: vec![],
+            joins: {
+                let mut all_joins = Vec::new();
+                if let Some(from) = &stmt.from {
+                    // All but the first table in FROM are effectively joined (CROSS JOIN or as part of their own join chain)
+                    // This is a simplification. In T-SQL, "FROM t1, t2" is a cross join.
+                    for extra_table in from.tables.iter().skip(1) {
+                        all_joins.push(crate::ast::JoinClause {
+                            join_type: crate::ast::JoinType::Cross,
+                            table: extra_table.clone(),
+                            on: None,
+                        });
+                    }
+                    all_joins.extend(from.joins.clone());
+                }
+                all_joins
+            },
+            applies: stmt.from.as_ref().map(|f| f.applies.clone()).unwrap_or_default(),
             projection: vec![SelectItem {
                 expr: crate::ast::Expr::Wildcard,
                 alias: None,
