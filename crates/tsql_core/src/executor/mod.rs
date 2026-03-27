@@ -27,7 +27,7 @@ pub(crate) mod query_planner;
 pub mod random;
 pub mod regexp;
 pub mod result;
-pub(crate) mod scalar_fn;
+pub(crate) mod scalar;
 pub(crate) mod schema;
 pub(crate) mod script;
 pub mod session;

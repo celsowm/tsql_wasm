@@ -14,7 +14,7 @@ use super::predicates::{
     eval_between, eval_case, eval_exists, eval_in_list, eval_in_subquery, eval_like,
     eval_scalar_subquery,
 };
-use super::scalar_fn::eval_function;
+use super::scalar::eval_function;
 use super::type_mapping::data_type_spec_to_runtime;
 use super::value_ops::{coerce_value_to_type, truthy};
 

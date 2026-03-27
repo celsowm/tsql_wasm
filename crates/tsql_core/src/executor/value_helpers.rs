@@ -65,6 +65,24 @@ pub(crate) fn rescale_raw(raw: i128, from_scale: u8, to_scale: u8) -> i128 {
     }
 }
 
+pub(crate) fn pad_right(s: &str, len: usize) -> String {
+    if s.len() >= len {
+        s[..len].to_string()
+    } else {
+        format!("{:width$}", s, width = len)
+    }
+}
+
+pub(crate) fn pad_binary_right(data: &[u8], len: usize) -> Vec<u8> {
+    if data.len() >= len {
+        data[..len].to_vec()
+    } else {
+        let mut v = data.to_vec();
+        v.resize(len, 0);
+        v
+    }
+}
+
 pub(crate) fn value_to_f64(v: &Value) -> Result<f64, DbError> {
     match v {
         Value::Float(v) => Ok(f64::from_bits(*v)),
