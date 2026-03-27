@@ -217,7 +217,14 @@ impl<'a> ExecutionContext<'a> {
                 }
             }
         }
-        self.scope_identity_stack.pop();
+        // Preserve identity value when leaving scope (propagate to parent)
+        if let Some(val) = self.scope_identity_stack.pop() {
+            if let Some(last) = self.scope_identity_stack.last_mut() {
+                if val.is_some() {
+                    *last = val;
+                }
+            }
+        }
         dropped_physical
     }
 

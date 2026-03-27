@@ -189,23 +189,22 @@ pub fn eval_aggregate_avg(
     let n = values.len() as i128;
     match sum {
         Value::BigInt(v) => {
-            // result = (v * 10^6) / n
-            let raw = (v as i128 * 1_000_000) / n;
-            Ok(Value::Decimal(raw, 6))
+            let res = v / n as i64;
+            match first_val {
+                Value::TinyInt(_) => Ok(Value::TinyInt(res as u8)),
+                Value::SmallInt(_) => Ok(Value::SmallInt(res as i16)),
+                Value::Int(_) => Ok(Value::Int(res as i32)),
+                _ => Ok(Value::BigInt(res)),
+            }
         }
         Value::Decimal(v, s) => {
-            // We want result with scale 6.
-            // Result raw = (v * 10^6) / (n * 10^s) = (v * 10^(6-s)) / n
-            let raw = if s <= 6 {
-                (v * 10i128.pow((6 - s) as u32)) / n
-            } else {
-                v / (n * 10i128.pow((s - 6) as u32))
-            };
-            Ok(Value::Decimal(raw, 6))
+            Ok(Value::Decimal(v / n, s))
         }
         Value::Float(v) => {
             Ok(Value::Float((f64::from_bits(v) / n as f64).to_bits()))
         }
+        Value::Money(v) => Ok(Value::Money(v / n)),
+        Value::SmallMoney(v) => Ok(Value::SmallMoney((v as i128 / n) as i64)),
         _ => Ok(Value::Null),
     }
 }

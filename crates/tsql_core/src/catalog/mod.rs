@@ -198,9 +198,9 @@ impl CatalogImpl {
     pub fn new() -> Self {
         let mut c = Self {
             next_schema_id: 1,
-            next_table_id: 1,
+            next_table_id: 1234567890,
             next_column_id: 1,
-            next_index_id: 1,
+            next_index_id: 234567890,
             ..Default::default()
         };
         let dbo_id = c.alloc_schema_id();

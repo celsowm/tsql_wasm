@@ -400,7 +400,11 @@ impl<'a> ScriptExecutor<'a> {
                 )?;
                 let sql_str = sql_val.to_string_value();
                 let batch = crate::parser::parse_batch(&sql_str)?;
-                self.execute_batch(&batch, ctx)
+                
+                ctx.enter_scope();
+                let res = self.execute_batch(&batch, ctx);
+                self.cleanup_scope_table_vars(ctx)?;
+                res
             }
             Statement::ExecProcedure(stmt) => self.execute_procedure(stmt, ctx),
             Statement::SpExecuteSql(stmt) => self.execute_sp_executesql(stmt, ctx),
@@ -544,7 +548,6 @@ impl<'a> ScriptExecutor<'a> {
         stmts: &[Statement],
         ctx: &mut ExecutionContext,
     ) -> Result<Option<QueryResult>, DbError> {
-        ctx.enter_scope();
         let mut last_result = Ok(None);
         let mut early_err: Option<DbError> = None;
         for stmt in stmts {
@@ -562,7 +565,6 @@ impl<'a> ScriptExecutor<'a> {
                 }
             };
         }
-        self.cleanup_scope_table_vars(ctx)?;
         if let Some(err) = early_err {
             Err(err)
         } else {

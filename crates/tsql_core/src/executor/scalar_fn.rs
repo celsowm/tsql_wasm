@@ -761,10 +761,21 @@ pub(crate) fn eval_round(
 
     let multiplier = 10f64.powi(precision);
     let rounded = (f * multiplier).round() / multiplier;
-    let s = rounded.to_string();
-    // Strip trailing ".0" for whole numbers
-    let s = if s.ends_with(".0") { s[..s.len()-2].to_string() } else { s };
-    Ok(Value::VarChar(s))
+
+    match &val {
+        Value::Decimal(raw, scale) => {
+            let result_raw = (rounded * 10f64.powi(*scale as i32)).round() as i128;
+            Ok(Value::Decimal(result_raw, *scale))
+        }
+        Value::Float(_) => Ok(Value::Float(rounded.to_bits())),
+        Value::Int(_) => Ok(Value::Int(rounded as i32)),
+        Value::BigInt(_) => Ok(Value::BigInt(rounded as i64)),
+        Value::TinyInt(_) => Ok(Value::TinyInt(rounded as u8)),
+        Value::SmallInt(_) => Ok(Value::SmallInt(rounded as i16)),
+        Value::Money(_) => Ok(Value::Money((rounded * 10000.0).round() as i128)),
+        Value::SmallMoney(_) => Ok(Value::SmallMoney((rounded * 10000.0).round() as i64)),
+        _ => Ok(Value::Float(rounded.to_bits())),
+    }
 }
 
 pub(crate) fn eval_math_unary<F>(
@@ -787,12 +798,45 @@ where
     if val.is_null() {
         return Ok(Value::Null);
     }
-    let f = value_to_f64(&val)?;
-    let result = func(f);
-    let s = result.to_string();
-    // Strip trailing ".0" for whole numbers (e.g., "5.0" -> "5")
-    let s = if s.ends_with(".0") { s[..s.len()-2].to_string() } else { s };
-    Ok(Value::VarChar(s))
+    
+    match &val {
+        Value::Decimal(raw, scale) => {
+            let f = *raw as f64 / 10f64.powi(*scale as i32);
+            let result = func(f);
+            let result_raw = (result * 10f64.powi(*scale as i32)).round() as i128;
+            Ok(Value::Decimal(result_raw, *scale))
+        }
+        Value::Float(bits) => {
+            let f = f64::from_bits(*bits);
+            let result = func(f);
+            Ok(Value::Float(result.to_bits()))
+        }
+        Value::Int(v) => {
+            let f = *v as f64;
+            let result = func(f) as i32;
+            Ok(Value::Int(result))
+        }
+        Value::BigInt(v) => {
+            let f = *v as f64;
+            let result = func(f) as i64;
+            Ok(Value::BigInt(result))
+        }
+        Value::TinyInt(v) => {
+            let f = *v as f64;
+            let result = func(f) as u8;
+            Ok(Value::TinyInt(result))
+        }
+        Value::SmallInt(v) => {
+            let f = *v as f64;
+            let result = func(f) as i16;
+            Ok(Value::SmallInt(result))
+        }
+        _ => {
+            let f = value_to_f64(&val)?;
+            let result = func(f);
+            Ok(Value::Float(result.to_bits()))
+        }
+    }
 }
 
 pub(crate) fn eval_abs(
@@ -816,9 +860,12 @@ pub(crate) fn eval_abs(
         Value::Int(v) => Ok(Value::Int(v.abs())),
         Value::BigInt(v) => Ok(Value::BigInt(v.abs())),
         Value::Decimal(raw, scale) => Ok(Value::Decimal(raw.abs(), *scale)),
+        Value::Float(bits) => Ok(Value::Float((f64::from_bits(*bits).abs()).to_bits())),
+        Value::Money(v) => Ok(Value::Money(v.abs())),
+        Value::SmallMoney(v) => Ok(Value::SmallMoney(v.abs())),
         _ => {
             let f = value_to_f64(&val)?;
-            Ok(Value::VarChar(f.abs().to_string()))
+            Ok(Value::Float(f.abs().to_bits()))
         }
     }
 }

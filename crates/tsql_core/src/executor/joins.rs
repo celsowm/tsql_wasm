@@ -113,17 +113,13 @@ fn apply_join_right(
         }
 
         if !matched {
-            let left_table = rows
-                .first()
-                .and_then(|r| r.first())
-                .map(|ctx| (ctx.table.clone(), ctx.alias.clone()));
-            if let Some((table, alias)) = left_table {
-                let mut candidate = vec![ContextTable {
-                    table,
-                    alias,
+            if let Some(first_left) = rows.first() {
+                let mut candidate: JoinedRow = first_left.iter().map(|ctx| ContextTable {
+                    table: ctx.table.clone(),
+                    alias: ctx.alias.clone(),
                     row: None,
                     storage_index: None,
-                }];
+                }).collect();
                 candidate.extend(right_row.clone());
                 next_rows.push(candidate);
             }
@@ -172,19 +168,15 @@ fn apply_join_full(
         }
     }
 
-    let left_table = rows
-        .first()
-        .and_then(|r| r.first())
-        .map(|ctx| (ctx.table.clone(), ctx.alias.clone()));
     for (ri, matched) in matched_right.iter().enumerate() {
         if !matched {
-            if let Some((table, alias)) = &left_table {
-                let mut candidate = vec![ContextTable {
-                    table: table.clone(),
-                    alias: alias.clone(),
+            if let Some(first_left) = rows.first() {
+                let mut candidate: JoinedRow = first_left.iter().map(|ctx| ContextTable {
+                    table: ctx.table.clone(),
+                    alias: ctx.alias.clone(),
                     row: None,
                     storage_index: None,
-                }];
+                }).collect();
                 candidate.extend(right_rows[ri].clone());
                 next_rows.push(candidate);
             }

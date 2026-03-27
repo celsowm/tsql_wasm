@@ -65,6 +65,28 @@ fn test_full_outer_join() {
     assert_eq!(r.rows.len(), 5);
 }
 
+#[test]
+fn test_right_join_multi_table_left() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE t1 (id INT, v1 INT)");
+    exec(&mut e, "CREATE TABLE t2 (id INT, v2 INT)");
+    exec(&mut e, "CREATE TABLE t3 (id INT, v3 INT)");
+    
+    exec(&mut e, "INSERT INTO t1 VALUES (1, 10)");
+    exec(&mut e, "INSERT INTO t2 VALUES (1, 20)");
+    exec(&mut e, "INSERT INTO t3 VALUES (2, 30)"); // t3 has id 2, which is not in t1 or t2
+    
+    // Join t1 and t2 first, then RIGHT JOIN t3
+    // For id 2 from t3, both t1 and t2 should be NULL
+    let sql = "SELECT t1.v1, t2.v2, t3.v3 FROM t1 INNER JOIN t2 ON t1.id = t2.id RIGHT JOIN t3 ON t1.id = t3.id";
+    let r = query(&mut e, sql);
+    
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0][0], Value::Null); // t1.v1
+    assert_eq!(r.rows[0][1], Value::Null); // t2.v2
+    assert_eq!(r.rows[0][2], Value::BigInt(30)); // t3.v3
+}
+
 // ─── DISTINCT ──────────────────────────────────────────────────────────
 
 #[test]

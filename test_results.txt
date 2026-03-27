@@ -1,0 +1,27 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.24s
+     Running tests\sqlserver_aggregates.rs (target\debug\deps\sqlserver_aggregates-17f4a96d7cb20ad0.exe)
+
+running 5 tests
+test test_sum_aggregate_compare ... ok
+test test_count_star_compare ... ok
+test test_avg_aggregate_compare ... FAILED
+test test_min_max_aggregate_compare ... ok
+test test_group_by_aggregate_compare ... ok
+
+failures:
+
+---- test_avg_aggregate_compare stdout ----
+
+thread 'test_avg_aggregate_compare' (14428) panicked at crates\tsql_core\tests\sqlserver_aggregates.rs:167:5:
+assertion `left == right` failed
+  left: "20"
+ right: "20.000000"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    test_avg_aggregate_compare
+
+test result: FAILED. 4 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+error: test failed, to rerun pass `-p tsql_core --test sqlserver_aggregates`
