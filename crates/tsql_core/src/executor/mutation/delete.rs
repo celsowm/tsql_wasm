@@ -99,21 +99,13 @@ impl<'a> MutationExecutor<'a> {
 
         let query_stmt = SelectStmt {
             from: stmt.from.as_ref().and_then(|f| f.tables.get(0).cloned()).or_else(|| {
-                if stmt.from.is_some() && stmt.from.as_ref().map(|f| f.tables.is_empty()).unwrap_or(true) {
-                     Some(crate::ast::TableRef {
-                        name: crate::ast::TableName::Object(stmt.table.clone()),
-                        alias: None,
-                        pivot: None,
-                        unpivot: None,
-                    })
-                } else {
                     Some(crate::ast::TableRef {
                         name: crate::ast::TableName::Object(stmt.table.clone()),
                         alias: None,
                         pivot: None,
                         unpivot: None,
+                        hints: Vec::new(),
                     })
-                }
             }),
             joins: {
                 let mut all_joins = Vec::new();
@@ -136,7 +128,7 @@ impl<'a> MutationExecutor<'a> {
             }],
             into_table: None,
             distinct: false,
-            top: None,
+            top: stmt.top.clone(),
             selection: stmt.selection.clone(),
             group_by: vec![],
             having: None,

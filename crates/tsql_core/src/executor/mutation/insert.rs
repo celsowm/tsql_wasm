@@ -1,4 +1,4 @@
-use crate::ast::InsertStmt;
+use crate::ast::{InsertSource, InsertStmt};
 use crate::catalog::{Catalog, TableDef};
 use crate::error::DbError;
 use crate::storage::StoredRow;
@@ -48,78 +48,51 @@ impl<'a> MutationExecutor<'a> {
             .collect::<Vec<_>>();
 
         if !instead_of_triggers.is_empty() {
-            let mut inserted_rows = Vec::new();
-            if stmt.default_values {
-                let row = self.build_insert_row(&table, &[], vec![], ctx)?;
-                inserted_rows.push(row);
-            } else if let Some(select_stmt) = stmt.select_source {
-                let query_result = super::super::query::QueryExecutor {
-                    catalog: self.catalog as &dyn Catalog,
-                    storage: self.storage,
-                    clock: self.clock,
+            let inserted_rows = match &stmt.source {
+                InsertSource::DefaultValues => {
+                    let row = self.build_insert_row(&table, &[], vec![], ctx)?;
+                    vec![row]
                 }
-                .execute_select(*select_stmt, ctx)?;
-
-                let insert_columns = if let Some(cols) = stmt.columns.clone() {
-                    cols
-                } else {
-                    table
-                        .columns
-                        .iter()
-                        .filter(|c| c.computed_expr.is_none())
-                        .map(|c| c.name.clone())
-                        .collect::<Vec<_>>()
-                };
-
-                for row_values in query_result.rows {
-                    let mut final_values = vec![crate::types::Value::Null; table.columns.len()];
-                    for (input_col, val) in insert_columns.iter().zip(row_values.iter()) {
-                        let col_idx = table
-                            .columns
-                            .iter()
-                            .position(|c| c.name.eq_ignore_ascii_case(input_col))
-                            .ok_or_else(|| {
-                                DbError::Semantic(format!("column '{}' not found", input_col))
-                            })?;
-                        final_values[col_idx] = val.clone();
+                InsertSource::Select(select_stmt) => {
+                    let query_result = super::super::query::QueryExecutor {
+                        catalog: self.catalog as &dyn Catalog,
+                        storage: self.storage,
+                        clock: self.clock,
                     }
-                    let mut temp_row = crate::storage::StoredRow {
-                        values: final_values,
-                        deleted: false,
-                    };
-                    self.apply_missing_values(&table, &mut temp_row.values, ctx)?;
-                    inserted_rows.push(temp_row);
-                }
-            } else {
-                let insert_columns = if let Some(cols) = stmt.columns.clone() {
-                    cols
-                } else {
-                    table
-                        .columns
-                        .iter()
-                        .filter(|c| c.computed_expr.is_none())
-                        .map(|c| c.name.clone())
-                        .collect::<Vec<_>>()
-                };
+                    .execute_select(*select_stmt.clone(), ctx)?;
 
-                for value_row in stmt.values {
-                    let row = self.build_insert_row(&table, &insert_columns, value_row, ctx)?;
-                    inserted_rows.push(row);
+                    let insert_columns = self.get_insert_columns(&table, &stmt.columns);
+                    let mut rows = Vec::new();
+                    for row_values in query_result.rows {
+                        let row = self.build_row_from_values(&table, &insert_columns, row_values, ctx)?;
+                        rows.push(row);
+                    }
+                    rows
                 }
-            }
+                InsertSource::Values(values) => {
+                    let insert_columns = self.get_insert_columns(&table, &stmt.columns);
+                    let mut rows = Vec::new();
+                    for value_row in values {
+                        let row = self.build_insert_row(&table, &insert_columns, value_row.clone(), ctx)?;
+                        rows.push(row);
+                    }
+                    rows
+                }
+                InsertSource::Exec(_) => return Err(DbError::Execution("INSERT EXEC not supported in triggers yet".into())),
+            };
 
             self.execute_triggers(&table, crate::ast::TriggerEvent::Insert, true, &inserted_rows, &[], ctx)?;
 
             if let Some(output) = stmt.output {
                 let inserted: Vec<&crate::storage::StoredRow> = inserted_rows.iter().collect();
-            let result = build_output_result(&output, &table, &inserted, &[])?;
-            if let Some(target) = stmt.output_into {
-                self.insert_output_into(&target, result.as_ref().unwrap(), ctx)?;
-                return Ok(None);
+                let result = build_output_result(&output, &table, &inserted, &[])?;
+                if let Some(target) = stmt.output_into {
+                    self.insert_output_into(&target, result.as_ref().unwrap(), ctx)?;
+                    return Ok(None);
+                }
+                return Ok(result);
             }
-            return Ok(result);
-            }
-        return Ok(None);
+            return Ok(None);
         }
 
         let has_after_triggers = !self.find_triggers(&table, crate::ast::TriggerEvent::Insert)
@@ -131,102 +104,84 @@ impl<'a> MutationExecutor<'a> {
         let collect_rows = stmt.output.is_some() || has_after_triggers;
         let mut inserted_rows_for_output = Vec::new();
 
-        if stmt.default_values {
-            let row = self.build_insert_row(&table, &[], vec![], ctx)?;
-            self.storage.insert_row(table_id, row.clone())?;
-            if collect_rows {
-                inserted_rows_for_output.push(row);
-            }
-        } else if let Some(select_stmt) = stmt.select_source {
-            let query_result = super::super::query::QueryExecutor {
-                catalog: self.catalog as &dyn Catalog,
-                storage: self.storage,
-                clock: self.clock,
-            }
-            .execute_select(*select_stmt, ctx)?;
-
-            let insert_columns = if let Some(cols) = stmt.columns.clone() {
-                cols
-            } else {
-                table
-                    .columns
-                    .iter()
-                    .filter(|c| c.computed_expr.is_none())
-                    .map(|c| c.name.clone())
-                    .collect::<Vec<_>>()
-            };
-
-            if insert_columns.len() != query_result.columns.len() {
-                return Err(DbError::Execution(format!(
-                    "insert column count ({}) does not match select column count ({})",
-                    insert_columns.len(),
-                    query_result.columns.len()
-                )));
-            }
-
-            for row_values in query_result.rows {
-                let mut final_values = vec![crate::types::Value::Null; table.columns.len()];
-
-                for (input_col, val) in insert_columns.iter().zip(row_values.iter()) {
-                    let col_idx = table
-                        .columns
-                        .iter()
-                        .position(|c| c.name.eq_ignore_ascii_case(input_col))
-                        .ok_or_else(|| {
-                            DbError::Semantic(format!("column '{}' not found", input_col))
-                        })?;
-
-                    let col = &table.columns[col_idx];
-                    if col.computed_expr.is_some() {
-                        return Err(DbError::Execution(format!(
-                            "cannot insert explicit value for computed column '{}'",
-                            col.name
-                        )));
-                    }
-                    enforce_string_length(&col.data_type, val, &col.name)?;
-                    final_values[col_idx] = val.clone();
-                }
-
-                let mut temp_row = crate::storage::StoredRow {
-                    values: final_values.clone(),
-                    deleted: false,
-                };
-                self.apply_missing_values(&table, &mut temp_row.values, ctx)?;
-                enforce_unique_on_insert(&table, self.storage, table_id, &temp_row)?;
-                enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &temp_row)?;
-                enforce_checks_on_row(
-                    &table,
-                    &temp_row,
-                    ctx,
-                    self.catalog,
-                    self.storage,
-                    self.clock,
-                )?;
-                self.storage.insert_row(table_id, temp_row.clone())?;
-                if collect_rows {
-                    inserted_rows_for_output.push(temp_row);
-                }
-            }
-        } else {
-            let insert_columns = if let Some(cols) = stmt.columns.clone() {
-                cols
-            } else {
-                table
-                    .columns
-                    .iter()
-                    .filter(|c| c.computed_expr.is_none())
-                    .map(|c| c.name.clone())
-                    .collect::<Vec<_>>()
-            };
-
-            for value_row in stmt.values {
-                let row = self.build_insert_row(&table, &insert_columns, value_row, ctx)?;
-                enforce_unique_on_insert(&table, self.storage, table_id, &row)?;
-                enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &row)?;
-                enforce_checks_on_row(&table, &row, ctx, self.catalog, self.storage, self.clock)?;
+        match stmt.source {
+            InsertSource::DefaultValues => {
+                let row = self.build_insert_row(&table, &[], vec![], ctx)?;
                 self.storage.insert_row(table_id, row.clone())?;
                 if collect_rows {
                     inserted_rows_for_output.push(row);
+                }
+            }
+            InsertSource::Select(select_stmt) => {
+                let query_result = super::super::query::QueryExecutor {
+                    catalog: self.catalog as &dyn Catalog,
+                    storage: self.storage,
+                    clock: self.clock,
+                }
+                .execute_select(*select_stmt, ctx)?;
+
+                let insert_columns = self.get_insert_columns(&table, &stmt.columns);
+
+                if insert_columns.len() != query_result.columns.len() {
+                    return Err(DbError::Execution(format!(
+                        "insert column count ({}) does not match select column count ({})",
+                        insert_columns.len(),
+                        query_result.columns.len()
+                    )));
+                }
+
+                for row_values in query_result.rows {
+                    let temp_row = self.build_row_from_values(&table, &insert_columns, row_values, ctx)?;
+                    enforce_unique_on_insert(&table, self.storage, table_id, &temp_row)?;
+                    enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &temp_row)?;
+                    enforce_checks_on_row(&table, &temp_row, ctx, self.catalog, self.storage, self.clock)?;
+                    self.storage.insert_row(table_id, temp_row.clone())?;
+                    if collect_rows {
+                        inserted_rows_for_output.push(temp_row);
+                    }
+                }
+            }
+            InsertSource::Values(values) => {
+                let insert_columns = self.get_insert_columns(&table, &stmt.columns);
+
+                for value_row in values {
+                    let row = self.build_insert_row(&table, &insert_columns, value_row, ctx)?;
+                    enforce_unique_on_insert(&table, self.storage, table_id, &row)?;
+                    enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &row)?;
+                    enforce_checks_on_row(&table, &row, ctx, self.catalog, self.storage, self.clock)?;
+                    self.storage.insert_row(table_id, row.clone())?;
+                    if collect_rows {
+                        inserted_rows_for_output.push(row);
+                    }
+                }
+            }
+            InsertSource::Exec(exec_stmt) => {
+                let query_result = super::super::script::ScriptExecutor {
+                    catalog: self.catalog,
+                    storage: self.storage,
+                    clock: self.clock,
+                }
+                .execute(*exec_stmt, ctx)?
+                .ok_or_else(|| DbError::Execution("INSERT EXEC source returned no result".into()))?;
+
+                let insert_columns = self.get_insert_columns(&table, &stmt.columns);
+                if insert_columns.len() != query_result.columns.len() {
+                    return Err(DbError::Execution(format!(
+                        "insert column count ({}) does not match exec column count ({})",
+                        insert_columns.len(),
+                        query_result.columns.len()
+                    )));
+                }
+
+                for row_values in query_result.rows {
+                    let temp_row = self.build_row_from_values(&table, &insert_columns, row_values, ctx)?;
+                    enforce_unique_on_insert(&table, self.storage, table_id, &temp_row)?;
+                    enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &temp_row)?;
+                    enforce_checks_on_row(&table, &temp_row, ctx, self.catalog, self.storage, self.clock)?;
+                    self.storage.insert_row(table_id, temp_row.clone())?;
+                    if collect_rows {
+                        inserted_rows_for_output.push(temp_row);
+                    }
                 }
             }
         }
@@ -244,6 +199,54 @@ impl<'a> MutationExecutor<'a> {
         }
 
         Ok(None)
+    }
+
+    fn get_insert_columns(&self, table: &TableDef, stmt_columns: &Option<Vec<String>>) -> Vec<String> {
+        if let Some(cols) = stmt_columns.clone() {
+            cols
+        } else {
+            table
+                .columns
+                .iter()
+                .filter(|c| c.computed_expr.is_none())
+                .map(|c| c.name.clone())
+                .collect::<Vec<_>>()
+        }
+    }
+
+    fn build_row_from_values(
+        &mut self,
+        table: &TableDef,
+        insert_columns: &[String],
+        row_values: Vec<Value>,
+        ctx: &mut ExecutionContext,
+    ) -> Result<StoredRow, DbError> {
+        let mut final_values = vec![crate::types::Value::Null; table.columns.len()];
+        for (input_col, val) in insert_columns.iter().zip(row_values.iter()) {
+            let col_idx = table
+                .columns
+                .iter()
+                .position(|c| c.name.eq_ignore_ascii_case(input_col))
+                .ok_or_else(|| {
+                    DbError::Semantic(format!("column '{}' not found", input_col))
+                })?;
+
+            let col = &table.columns[col_idx];
+            if col.computed_expr.is_some() {
+                return Err(DbError::Execution(format!(
+                    "cannot insert explicit value for computed column '{}'",
+                    col.name
+                )));
+            }
+            enforce_string_length(&col.data_type, val, &col.name)?;
+            final_values[col_idx] = val.clone();
+        }
+        let mut temp_row = crate::storage::StoredRow {
+            values: final_values,
+            deleted: false,
+        };
+        self.apply_missing_values(table, &mut temp_row.values, ctx)?;
+        Ok(temp_row)
     }
 
     pub(crate) fn build_insert_row(

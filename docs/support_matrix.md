@@ -1,8 +1,8 @@
 # T-SQL Support Matrix (R9)
 
 **Engine Version:** R9 — Advanced DML  
-**Last Updated:** 2026-03-25  
-**Test Suite:** 340+ tests passing
+**Last Updated:** 2026-03-27
+**Test Suite:** 350+ tests passing
 
 ## Support Status Legend
 
@@ -37,12 +37,15 @@
 |---------|--------|-------|
 | INSERT INTO ... VALUES | ✅ Exact | Multi-row inserts |
 | INSERT INTO ... SELECT | ✅ Exact | Insert rows from query result |
+| INSERT INTO ... EXEC | ✅ Exact | **(New)** Insert rows from stored procedure results |
 | INSERT DEFAULT VALUES | ✅ Exact | |
 | INSERT ... OUTPUT | 🔶 Partial | Parser ready, needs multi-row refinement |
 | UPDATE | ✅ Exact | With WHERE clause |
+| UPDATE TOP (n) | ✅ Exact | **(New)** Limit updated rows |
 | UPDATE ... FROM | ✅ Exact | Supports multiple JOINs and alias resolution |
 | UPDATE ... OUTPUT | ⚠️ Near | INSERTED and DELETED pseudo-tables |
 | DELETE | ✅ Exact | With WHERE clause |
+| DELETE TOP (n) | ✅ Exact | **(New)** Limit deleted rows |
 | DELETE ... FROM | ✅ Exact | Supports multiple JOINs and alias resolution |
 | DELETE ... OUTPUT | ⚠️ Near | DELETED pseudo-table |
 | `MERGE` | ✅ Exact | Supports AND conditions, multiple WHEN clauses, and triggers |
@@ -62,6 +65,7 @@
 | RIGHT JOIN | ✅ Exact | |
 | FULL OUTER JOIN | ✅ Exact | |
 | CROSS JOIN | ✅ Exact | |
+| Table Hints | 🔶 Partial | **(New)** Supports WITH (NOLOCK, TABLOCK, etc.) in parser |
 | Subqueries (scalar) | ✅ Exact | In SELECT, WHERE |
 | Subqueries (IN) | ✅ Exact | |
 | Subqueries (EXISTS) | ✅ Exact | |
@@ -295,7 +299,7 @@
 6. **Connection pooling** not implemented (single-user embedded)
 7. **Multiple active result sets** not supported
 8. **Table-valued parameters** not supported
-9. **PIVOT/UNPIVOT** not supported
+9. **PIVOT/UNPIVOT** fully supported as of 2026-03-27
 
 ## R8 Exit Criteria Status
 
@@ -309,5 +313,5 @@
 - [x] Persistence and corruption testing
 - [x] Known differences catalog
 - [x] Semantic caveat list
-- [x] 314+ tests passing with 0 failures
-- [x] Support matrix updated for R7+R8 features
+- [x] 350+ tests passing with 0 failures
+- [x] Support matrix updated for R7+R8 and DML enhancements

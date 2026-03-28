@@ -13,6 +13,7 @@ pub use executor::database::{DatabaseInner, EngineInner, Database, PersistentDat
 pub use executor::database::{CheckpointManager, StatementExecutor, SqlAnalyzer};
 pub use executor::random::{RandomProvider, SeededRandom, ThreadRng};
 pub use executor::result::QueryResult;
+pub use executor::session::SessionManager;
 pub use executor::tooling::{
     CompatibilityEntry, CompatibilityIssue, CompatibilityReport, ExecutionTrace, ExplainOperator,
     ExplainPlan, SessionOptions, SourceSpan, StatementSlice, SupportStatus, TraceStatementEvent,

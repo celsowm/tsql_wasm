@@ -488,6 +488,9 @@ fn test_phase8_random_ctes() {
         assert!(parsed.is_ok(), "Multiple CTEs should parse");
 
         let result = engine.execute(parsed.unwrap());
+        if let Err(ref e) = result {
+            println!("CTE error: {:?}", e);
+        }
         assert!(result.is_ok(), "Multiple CTEs should execute");
     }
 }

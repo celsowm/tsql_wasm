@@ -264,17 +264,14 @@ impl<'a> ExecutionContext<'a> {
             return Some(mapped.clone());
         }
 
-        // 2. Table variables (@vars)
-        if logical.starts_with('@') {
-            for scope in self.table_vars.iter().rev() {
-                if let Some(name) = scope.get(&upper) {
-                    return Some(name.clone());
-                }
-            }
-            if let Some(name) = self.session_table_var_map.get(&upper) {
+        // 2. Scoped names (table variables @vars OR pseudo-tables like INSERTED)
+        for scope in self.table_vars.iter().rev() {
+            if let Some(name) = scope.get(&upper) {
                 return Some(name.clone());
             }
-            return None;
+        }
+        if let Some(name) = self.session_table_var_map.get(&upper) {
+            return Some(name.clone());
         }
 
         None
