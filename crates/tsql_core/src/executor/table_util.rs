@@ -21,18 +21,35 @@ pub(crate) fn collect_read_tables(stmt: &Statement) -> HashSet<String> {
             }
         }
         Statement::SetOp(s) => {
-            out.extend(collect_read_tables(&s.left));
-            out.extend(collect_read_tables(&s.right));
+            collect_tables_from_statement(&s.left, &mut out);
+            collect_tables_from_statement(&s.right, &mut out);
         }
-        Statement::WithCte(s) => {
-            for cte in &s.ctes {
-                collect_tables_from_select(&cte.query, &mut out);
+        Statement::WithCte(stmt) => {
+            for cte in &stmt.ctes {
+                collect_tables_from_statement(&cte.query, &mut out);
             }
-            out.extend(collect_read_tables(&s.body));
+            out.extend(collect_read_tables(&stmt.body));
         }
         _ => {}
     }
     out
+}
+
+fn collect_tables_from_statement(stmt: &Statement, out: &mut HashSet<String>) {
+    match stmt {
+        Statement::Select(s) => collect_tables_from_select(s, out),
+        Statement::SetOp(s) => {
+            collect_tables_from_statement(&s.left, out);
+            collect_tables_from_statement(&s.right, out);
+        }
+        Statement::WithCte(s) => {
+            for cte in &s.ctes {
+                collect_tables_from_statement(&cte.query, out);
+            }
+            collect_tables_from_statement(&s.body, out);
+        }
+        _ => {}
+    }
 }
 
 fn collect_tables_from_select(select: &SelectStmt, out: &mut HashSet<String>) {

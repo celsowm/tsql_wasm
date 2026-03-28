@@ -67,7 +67,7 @@ impl VirtualTable for SysObjects {
                     pk_uq_id += 1;
                 }
 
-                if let Some(default_expr) = &col.default {
+                if let Some(_default_expr) = &col.default {
                     let name = col.default_constraint_name.clone()
                         .unwrap_or_else(|| format!("DF_{}_{}", t.name, col.name));
                     rows.push(StoredRow {

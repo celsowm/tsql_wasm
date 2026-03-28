@@ -772,9 +772,9 @@ This roadmap intentionally targets the broad T-SQL reference surface, including 
 
 ## Implementation Log
 
-### 2026-03-27 — Relational Expansion: PIVOT & UNPIVOT ✅ COMPLETE
+### 2026-03-27 — Relational Expansion: PIVOT, UNPIVOT & Recursive CTEs ✅ COMPLETE
 
-**Test suite: 345+ tests passing**
+**Test suite: 350+ tests passing**
 
 **Deliverables:**
 
@@ -782,16 +782,16 @@ This roadmap intentionally targets the broad T-SQL reference surface, including 
 |---------|--------|------------|
 | PIVOT operator | ✅ Complete | 1 (complex) |
 | UNPIVOT operator | ✅ Complete | 1 (complex) |
+| Recursive CTEs | ✅ Complete | 2 (hierarchy, sequence) |
 | Subqueries in FROM | ✅ Complete | (relational) |
 | sys.key_constraints | ✅ Complete | 2 |
 | sys.default_constraints | ✅ Complete | 2 |
 
 **Key implementation changes:**
-- AST: Added `PivotSpec`, `UnpivotSpec` and updated `TableRef` to support them.
-- Parser: Implemented `PIVOT` and `UNPIVOT` clause parsing in `FROM` sources.
-- Planner: Updated logical and physical planners to handle transformation operators.
-- Executor: Implemented `execute_pivot` and `execute_unpivot` with implicit grouping logic matching MS SQL.
-- Metadata: Refactored `sys` module and added constraint views.
+- AST: Updated `WithCteStmt` and `CteDef` to support recursion and `UNION ALL`.
+- Parser: Support for `WITH RECURSIVE` and multi-statement CTE definitions.
+- Executor: Implemented iterative recursive CTE engine with MS SQL-compatible 100-level limit.
+- Refactoring: Split `query.rs` and `database.rs` into SOLID submodules.
 
 ### 2026-03-25 — STRING_AGG, STRING_SPLIT, sys.foreign_keys ✅ COMPLETE
 

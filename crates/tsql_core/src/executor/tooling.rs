@@ -693,18 +693,35 @@ pub fn collect_read_tables(stmt: &Statement) -> std::collections::HashSet<String
             }
         }
         Statement::SetOp(s) => {
-            out.extend(collect_read_tables(&s.left));
-            out.extend(collect_read_tables(&s.right));
+            collect_tables_from_statement(&s.left, &mut out);
+            collect_tables_from_statement(&s.right, &mut out);
         }
         Statement::WithCte(s) => {
             for cte in &s.ctes {
-                collect_tables_from_select(&cte.query, &mut out);
+                collect_tables_from_statement(&cte.query, &mut out);
             }
             out.extend(collect_read_tables(&s.body));
         }
         _ => {}
     }
     out
+}
+
+fn collect_tables_from_statement(stmt: &Statement, out: &mut std::collections::HashSet<String>) {
+    match stmt {
+        Statement::Select(s) => collect_tables_from_select(s, out),
+        Statement::SetOp(s) => {
+            collect_tables_from_statement(&s.left, out);
+            collect_tables_from_statement(&s.right, out);
+        }
+        Statement::WithCte(s) => {
+            for cte in &s.ctes {
+                collect_tables_from_statement(&cte.query, out);
+            }
+            collect_tables_from_statement(&s.body, out);
+        }
+        _ => {}
+    }
 }
 
 pub fn collect_write_tables(stmt: &Statement) -> std::collections::HashSet<String> {

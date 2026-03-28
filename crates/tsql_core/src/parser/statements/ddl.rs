@@ -170,8 +170,15 @@ pub(crate) fn parse_alter_table(sql: &str) -> Result<Statement, DbError> {
 
 pub(crate) fn parse_with_cte(sql: &str) -> Result<Statement, DbError> {
     let after_with = sql["WITH".len()..].trim();
+    let upper_after_with = after_with.to_uppercase();
+    
+    let (recursive, mut rest) = if upper_after_with.starts_with("RECURSIVE") {
+        (true, after_with["RECURSIVE".len()..].trim().to_string())
+    } else {
+        (false, after_with.to_string())
+    };
+
     let mut ctes = Vec::new();
-    let mut rest = after_with.to_string();
 
     loop {
         let name_end = rest
@@ -192,10 +199,7 @@ pub(crate) fn parse_with_cte(sql: &str) -> Result<Statement, DbError> {
         rest = rest[1..].trim().to_string();
 
         let (query_text, after_paren) = extract_paren_content(&rest)?;
-        let query = match crate::parser::statements::select::parse_select(&query_text)? {
-            Statement::Select(s) => s,
-            _ => return Err(DbError::Parse("CTE query must be a SELECT".into())),
-        };
+        let query = super::super::parse_sql(&query_text)?;
 
         ctes.push(CteDef {
             name: cte_name,
@@ -214,6 +218,7 @@ pub(crate) fn parse_with_cte(sql: &str) -> Result<Statement, DbError> {
     let body = super::super::parse_sql(&rest)?;
 
     Ok(Statement::WithCte(WithCteStmt {
+        recursive,
         ctes,
         body: Box::new(body),
     }))

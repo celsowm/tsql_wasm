@@ -66,7 +66,7 @@
 | Subqueries (IN) | ✅ Exact | |
 | Subqueries (EXISTS) | ✅ Exact | |
 | Correlated subqueries | ✅ Exact | |
-| CTE (WITH) | ✅ Exact | |
+| CTE (WITH) | ✅ Exact | Supports recursive and non-recursive |
 | GROUP BY | ✅ Exact | |
 | HAVING | ✅ Exact | |
 | ORDER BY | ✅ Exact | ASC, DESC |
@@ -75,7 +75,7 @@
 | INTERSECT | ✅ Exact | |
 | EXCEPT | ✅ Exact | |
 | Window functions | ✅ Exact | ROW_NUMBER, RANK, DENSE_RANK, NTILE |
-| PIVOT/UNPIVOT | ❌ Unsupported | |
+| PIVOT/UNPIVOT | ✅ Exact | Implicit grouping and relational transformation |
 | APPLY (CROSS/OUTER) | ✅ Exact | CROSS APPLY and OUTER APPLY |
 
 ## Data Types

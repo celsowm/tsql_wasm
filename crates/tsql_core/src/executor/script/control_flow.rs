@@ -1,4 +1,4 @@
-use crate::ast::{IfStmt, Statement, WhileStmt};
+use crate::ast::{IfStmt, WhileStmt};
 use crate::error::DbError;
 use crate::executor::context::ExecutionContext;
 use crate::executor::result::QueryResult;

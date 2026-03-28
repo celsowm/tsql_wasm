@@ -1,450 +1,32 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::ast::{DropTableStmt, IsolationLevel, ObjectName, Statement};
-use crate::catalog::{Catalog, CatalogImpl};
+use crate::catalog::Catalog;
 use crate::error::DbError;
 use crate::parser::{parse_batch, parse_sql};
-use crate::storage::{InMemoryStorage, Storage};
+use crate::storage::Storage;
 
-use super::clock::Clock;
-use super::context::ExecutionContext;
-use super::durability::{DurabilitySink, RecoveryCheckpoint};
-use super::journal::{Journal, JournalEvent};
-use super::locks::{LockTable, SessionId, TxWorkspace};
-use super::result::QueryResult;
-use super::schema::SchemaExecutor;
-use super::script::ScriptExecutor;
-use super::session::{SessionManager, SessionRuntime, SharedState};
-use super::table_util::{collect_write_tables, is_transaction_statement};
-use super::tooling::{
+use super::super::clock::Clock;
+use super::super::context::ExecutionContext;
+use super::super::journal::{Journal, JournalEvent};
+use super::super::locks::{SessionId, TxWorkspace};
+use super::super::result::QueryResult;
+use super::super::schema::SchemaExecutor;
+use super::super::script::ScriptExecutor;
+use super::super::session::{SessionRuntime, SharedState};
+use super::super::table_util::{collect_write_tables, is_transaction_statement};
+use super::super::tooling::{
     analyze_sql_batch, apply_set_option,
     collect_read_tables as collect_read_tables_tooling,
     collect_write_tables as collect_write_tables_tooling, explain_statement,
     split_sql_statements, statement_compat_warnings, CompatibilityReport, ExecutionTrace,
     ExplainPlan, SessionOptions, TraceStatementEvent,
 };
-use super::transaction::TransactionManager;
-use super::transaction_exec;
-
-pub trait CheckpointManager {
-    fn export_checkpoint(&self) -> Result<String, DbError>;
-    fn import_checkpoint(&self, payload: &str) -> Result<(), DbError>;
-}
-
-pub trait StatementExecutor {
-    fn execute_session(
-        &self,
-        session_id: SessionId,
-        stmt: Statement,
-    ) -> Result<Option<QueryResult>, DbError>;
-    fn execute_session_batch(
-        &self,
-        session_id: SessionId,
-        stmts: Vec<Statement>,
-    ) -> Result<Option<QueryResult>, DbError>;
-    fn execute_session_batch_sql(
-        &self,
-        session_id: SessionId,
-        sql: &str,
-    ) -> Result<Option<QueryResult>, DbError>;
-    /// Execute a batch and return ALL result sets (one per SELECT/statement).
-    fn execute_session_batch_sql_multi(
-        &self,
-        session_id: SessionId,
-        sql: &str,
-    ) -> Result<Vec<Option<QueryResult>>, DbError>;
-}
-
-pub trait SqlAnalyzer {
-    fn analyze_sql_batch(&self, sql: &str) -> CompatibilityReport;
-    fn explain_sql(&self, sql: &str) -> Result<ExplainPlan, DbError>;
-    fn trace_execute_session_sql(
-        &self,
-        session_id: SessionId,
-        sql: &str,
-    ) -> Result<ExecutionTrace, DbError>;
-    fn session_isolation_level(&self, session_id: SessionId) -> Result<IsolationLevel, DbError>;
-    fn transaction_is_active(&self, session_id: SessionId) -> Result<bool, DbError>;
-    fn session_options(&self, session_id: SessionId) -> Result<SessionOptions, DbError>;
-}
-
-#[derive(Clone)]
-pub struct DatabaseInner<C, S>
-where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
-{
-    pub inner: Arc<Mutex<SharedState<C, S>>>,
-}
-
-pub type Database = DatabaseInner<CatalogImpl, InMemoryStorage>;
-
-pub type Engine = EngineInner<CatalogImpl, InMemoryStorage>;
-
-pub type PersistentDatabase = DatabaseInner<CatalogImpl, crate::storage::RedbStorage>;
-
-pub type PersistentEngine = EngineInner<CatalogImpl, crate::storage::RedbStorage>;
-
-pub struct EngineInner<C, S>
-where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
-{
-    pub db: DatabaseInner<C, S>,
-    pub default_session: SessionId,
-}
-
-impl<C, S> std::fmt::Debug for EngineInner<C, S>
-where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Engine")
-            .field("default_session", &self.default_session)
-            .finish()
-    }
-}
-
-impl Default for Engine {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Engine {
-    pub fn new() -> Self {
-        let db = Database::new();
-        let default_session = db.create_session();
-        Self {
-            db,
-            default_session,
-        }
-    }
-
-    pub fn from_checkpoint(payload: &str) -> Result<Self, DbError> {
-        let db = Database::from_checkpoint(payload)?;
-        let default_session = db.create_session();
-        Ok(Self {
-            db,
-            default_session,
-        })
-    }
-
-    pub fn reset(&mut self) {
-        self.db.reset();
-    }
-
-    pub fn new_with_durability(
-        durability: Box<dyn DurabilitySink<CatalogImpl>>,
-    ) -> Self {
-        let db = Database::new_with_durability(durability);
-        let default_session = db.create_session();
-        Self {
-            db,
-            default_session,
-        }
-    }
-
-    pub fn database(&self) -> DatabaseInner<CatalogImpl, InMemoryStorage> {
-        self.db.clone()
-    }
-
-    pub fn execute(&mut self, stmt: Statement) -> Result<Option<QueryResult>, DbError> {
-        StatementExecutor::execute_session(&self.db, self.default_session, stmt)
-    }
-
-    pub fn exec(&mut self, sql: &str) -> Result<(), DbError> {
-        let stmt = parse_sql(sql)?;
-        let res = self.execute(stmt)?;
-        if res.is_some() {
-            return Err(DbError::Execution("exec() received a query statement; use query()".into()));
-        }
-        Ok(())
-    }
-
-    pub fn query(&mut self, sql: &str) -> Result<QueryResult, DbError> {
-        let stmt = parse_sql(sql)?;
-        let res = self.execute(stmt)?;
-        res.ok_or_else(|| DbError::Execution("query() expected a result set".into()))
-    }
-
-    pub fn execute_batch(
-        &mut self,
-        stmts: Vec<Statement>,
-    ) -> Result<Option<QueryResult>, DbError> {
-        StatementExecutor::execute_session_batch(&self.db, self.default_session, stmts)
-    }
-
-    pub fn set_journal(&mut self, journal: Box<dyn Journal>) {
-        let _ = SessionManager::set_session_journal(&self.db, self.default_session, journal);
-    }
-
-    pub fn set_durability_sink(
-        &mut self,
-        durability: Box<dyn DurabilitySink<CatalogImpl>>,
-    ) {
-        self.db.set_durability_sink(durability);
-    }
-
-    pub fn export_checkpoint(&self) -> Result<String, DbError> {
-        CheckpointManager::export_checkpoint(&self.db)
-    }
-
-    pub fn import_checkpoint(&mut self, payload: &str) -> Result<(), DbError> {
-        CheckpointManager::import_checkpoint(&self.db, payload)
-    }
-
-    pub fn session_isolation_level(&self) -> IsolationLevel {
-        SqlAnalyzer::session_isolation_level(&self.db, self.default_session)
-            .unwrap_or(IsolationLevel::ReadCommitted)
-    }
-
-    pub fn transaction_is_active(&self) -> bool {
-        SqlAnalyzer::transaction_is_active(&self.db, self.default_session).unwrap_or(false)
-    }
-
-    pub fn session_options(&self) -> SessionOptions {
-        SqlAnalyzer::session_options(&self.db, self.default_session).unwrap_or_default()
-    }
-
-    pub fn analyze_sql_batch(&self, sql: &str) -> CompatibilityReport {
-        SqlAnalyzer::analyze_sql_batch(&self.db, sql)
-    }
-
-    pub fn explain_sql(&self, sql: &str) -> Result<ExplainPlan, DbError> {
-        SqlAnalyzer::explain_sql(&self.db, sql)
-    }
-
-    pub fn trace_execute_sql(&self, sql: &str) -> Result<ExecutionTrace, DbError> {
-        SqlAnalyzer::trace_execute_session_sql(&self.db, self.default_session, sql)
-    }
-
-    pub fn print_output(&self) -> Vec<String> {
-        let guard = self.db.inner.lock().unwrap();
-        guard.sessions.get(&self.default_session).map(|s| s.print_output.clone()).unwrap_or_default()
-    }
-}
-
-impl Default for Database {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Database {
-    pub fn new() -> Self {
-        let state = SharedState::with_initial(CatalogImpl::new(), InMemoryStorage::default());
-        Self {
-            inner: Arc::new(Mutex::new(state)),
-        }
-    }
-}
-
-impl PersistentDatabase {
-    pub fn new_persistent(path: &std::path::Path) -> Result<Self, DbError> {
-        let storage = crate::storage::RedbStorage::new(path.join("data.redb"))?;
-        let durability = super::durability::FileDurability::new(path.join("catalog.json"))?;
-
-        let state = if let Some(checkpoint) = durability.latest_checkpoint() {
-            SharedState::from_checkpoint(checkpoint, Box::new(durability), storage)
-        } else {
-            let mut state = SharedState::with_initial(CatalogImpl::new(), storage);
-            state.durability = Box::new(durability);
-            state
-        };
-        Ok(Self {
-            inner: Arc::new(Mutex::new(state)),
-        })
-    }
-}
-
-impl<C, S> DatabaseInner<C, S>
-where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
-{
-    pub fn new_with_durability(
-        durability: Box<dyn DurabilitySink<C>>,
-    ) -> Self {
-        let state = if let Some(checkpoint) = durability.latest_checkpoint() {
-            SharedState::from_checkpoint(checkpoint, durability, S::default())
-        } else {
-            let mut state = SharedState::with_initial(C::default(), S::default());
-            state.durability = durability;
-            state
-        };
-        Self {
-            inner: Arc::new(Mutex::new(state)),
-        }
-    }
-
-    pub fn from_checkpoint(payload: &str) -> Result<Self, DbError> {
-        let checkpoint = RecoveryCheckpoint::<C>::from_json(payload)?;
-        let state = SharedState::from_checkpoint_internal(checkpoint);
-        Ok(Self {
-            inner: Arc::new(Mutex::new(state)),
-        })
-    }
-
-    pub fn reset(&self) {
-        let mut guard = self.inner.lock().expect("database mutex poisoned");
-        guard.catalog = C::default();
-        guard.storage = S::default();
-        guard.commit_ts = 0;
-        guard.table_versions.clear();
-        guard.table_locks.clear();
-        for session in guard.sessions.values_mut() {
-            session.reset();
-        }
-    }
-
-    pub fn set_durability_sink(
-        &self,
-        durability: Box<dyn DurabilitySink<C>>,
-    ) {
-        let mut guard = self.inner.lock().expect("database mutex poisoned");
-        guard.durability = durability;
-    }
-}
-
-impl<C, S> SharedState<C, S>
-where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
-{
-    pub fn from_checkpoint(
-        checkpoint: RecoveryCheckpoint<C>,
-        durability: Box<dyn DurabilitySink<C>>,
-        mut storage: S,
-    ) -> Self {
-        let _ = storage.restore_from_checkpoint(checkpoint.storage_data);
-        Self {
-            catalog: checkpoint.catalog,
-            storage,
-            commit_ts: checkpoint.commit_ts,
-            table_versions: checkpoint.table_versions,
-            table_locks: LockTable::new(),
-            durability,
-            sessions: HashMap::new(),
-            next_session_id: 1,
-        }
-    }
-
-    pub fn from_checkpoint_internal(checkpoint: RecoveryCheckpoint<C>) -> Self {
-        let mut storage = S::default();
-        let _ = storage.restore_from_checkpoint(checkpoint.storage_data);
-        Self {
-            catalog: checkpoint.catalog,
-            storage,
-            commit_ts: checkpoint.commit_ts,
-            table_versions: checkpoint.table_versions,
-            table_locks: LockTable::new(),
-            durability: Box::new(super::durability::NoopDurability::default()),
-            sessions: HashMap::new(),
-            next_session_id: 1,
-        }
-    }
-
-    pub fn apply_checkpoint(&mut self, checkpoint: RecoveryCheckpoint<C>) {
-        self.catalog = checkpoint.catalog;
-        let _ = self.storage.restore_from_checkpoint(checkpoint.storage_data);
-        self.commit_ts = checkpoint.commit_ts;
-        self.table_versions = checkpoint.table_versions;
-        self.table_locks.clear();
-        for session in self.sessions.values_mut() {
-            session.reset();
-        }
-    }
-
-    pub fn to_checkpoint(&self) -> RecoveryCheckpoint<C> {
-        RecoveryCheckpoint {
-            catalog: self.catalog.clone(),
-            storage_data: self.storage.get_checkpoint_data(),
-            commit_ts: self.commit_ts,
-            table_versions: self.table_versions.clone(),
-        }
-    }
-}
-
-impl<C, S> SessionManager for DatabaseInner<C, S>
-where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
-{
-    fn create_session(&self) -> SessionId {
-        let mut guard = self.inner.lock().expect("database mutex poisoned");
-        let id = guard.next_session_id;
-        guard.next_session_id += 1;
-        guard.sessions.insert(id, SessionRuntime::new());
-        id
-    }
-
-    fn close_session(&self, session_id: SessionId) -> Result<(), DbError> {
-        let mut guard = self.inner.lock().expect("database mutex poisoned");
-        guard.table_locks.release_all_for_session(session_id);
-        let removed = guard.sessions.remove(&session_id);
-        if removed.is_none() {
-            return Err(DbError::Execution(format!(
-                "session {} not found",
-                session_id
-            )));
-        }
-        Ok(())
-    }
-
-    fn set_session_journal(
-        &self,
-        session_id: SessionId,
-        journal: Box<dyn Journal>,
-    ) -> Result<(), DbError> {
-        let mut guard = self.inner.lock().expect("database mutex poisoned");
-        guard.with_session_mut(session_id, |_, session| {
-            session.journal = journal;
-            Ok(())
-        })
-    }
-}
-
-pub trait RandomSeed {
-    fn set_session_seed(&self, session_id: SessionId, seed: u64) -> Result<(), DbError>;
-}
-
-impl<C, S> RandomSeed for DatabaseInner<C, S>
-where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
-{
-    fn set_session_seed(&self, session_id: SessionId, seed: u64) -> Result<(), DbError> {
-        let mut guard = self.inner.lock().expect("database mutex poisoned");
-        guard.with_session_mut(session_id, |_, session| {
-            session.random_state = seed;
-            Ok(())
-        })
-    }
-}
-
-impl<C, S> CheckpointManager for DatabaseInner<C, S>
-where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
-{
-    fn export_checkpoint(&self) -> Result<String, DbError> {
-        let guard = self.inner.lock().expect("database mutex poisoned");
-        guard.to_checkpoint().to_json()
-    }
-
-    fn import_checkpoint(&self, payload: &str) -> Result<(), DbError> {
-        let checkpoint = RecoveryCheckpoint::<C>::from_json(payload)?;
-        let mut guard = self.inner.lock().expect("database mutex poisoned");
-        guard.apply_checkpoint(checkpoint);
-        Ok(())
-    }
-}
+use super::super::transaction::TransactionManager;
+use super::super::transaction_exec;
+use super::persistence::DatabaseInner;
+use super::{RandomSeed, SqlAnalyzer, StatementExecutor};
 
 impl<C, S> StatementExecutor for DatabaseInner<C, S>
 where
@@ -619,7 +201,21 @@ where
     }
 }
 
-fn execute_batch_statements<C, S>(
+impl<C, S> RandomSeed for DatabaseInner<C, S>
+where
+    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
+{
+    fn set_session_seed(&self, session_id: SessionId, seed: u64) -> Result<(), DbError> {
+        let mut guard = self.inner.lock().expect("database mutex poisoned");
+        guard.with_session_mut(session_id, |_, session| {
+            session.random_state = seed;
+            Ok(())
+        })
+    }
+}
+
+pub(crate) fn execute_batch_statements<C, S>(
     state: &mut SharedState<C, S>,
     session_id: SessionId,
     session: &mut SessionRuntime<C, S>,
@@ -699,7 +295,7 @@ where
     out
 }
 
-fn execute_batch_statements_multi<C, S>(
+pub(crate) fn execute_batch_statements_multi<C, S>(
     state: &mut SharedState<C, S>,
     session_id: SessionId,
     session: &mut SessionRuntime<C, S>,
@@ -738,7 +334,7 @@ where
             ) {
                 Ok(r) => results.push(r),
                 Err(e) => {
-                    cleanup_scope_table_vars(&mut state.catalog, &mut state.storage, &mut ctx)?;
+                    let _ = cleanup_scope_table_vars(&mut state.catalog, &mut state.storage, &mut ctx);
                     return Err(e);
                 }
             }
@@ -760,7 +356,7 @@ where
                     break;
                 }
                 Err(e) => {
-                    cleanup_scope_table_vars(&mut state.catalog, &mut state.storage, &mut ctx)?;
+                    let _ = cleanup_scope_table_vars(&mut state.catalog, &mut state.storage, &mut ctx);
                     return Err(e);
                 }
             }
@@ -780,7 +376,7 @@ where
     Ok(results)
 }
 
-fn execute_single_statement<C, S>(
+pub(crate) fn execute_single_statement<C, S>(
     state: &mut SharedState<C, S>,
     session_id: SessionId,
     session: &mut SessionRuntime<C, S>,
@@ -832,7 +428,7 @@ where
     }
 }
 
-fn execute_non_transaction_statement<C, S>(
+pub(crate) fn execute_non_transaction_statement<C, S>(
     state: &mut SharedState<C, S>,
     session_id: SessionId,
     tx_manager: &mut TransactionManager<C, S>,
@@ -946,9 +542,9 @@ where
     }
 }
 
-fn cleanup_scope_table_vars(
+pub(crate) fn cleanup_scope_table_vars(
     catalog: &mut dyn Catalog,
-    storage: &mut dyn crate::storage::Storage,
+    storage: &mut dyn Storage,
     ctx: &mut ExecutionContext,
 ) -> Result<(), DbError> {
     let dropped_physical = ctx.leave_scope_collect_table_vars();

@@ -387,6 +387,7 @@ pub struct DropViewStmt {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WithCteStmt {
+    pub recursive: bool,
     pub ctes: Vec<CteDef>,
     pub body: Box<Statement>,
 }
@@ -394,7 +395,7 @@ pub struct WithCteStmt {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CteDef {
     pub name: String,
-    pub query: SelectStmt,
+    pub query: Statement,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
