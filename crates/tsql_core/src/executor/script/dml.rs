@@ -15,8 +15,8 @@ impl<'a> ScriptExecutor<'a> {
         ctx: &mut ExecutionContext,
     ) -> Result<Option<QueryResult>, DbError> {
         let target_name = ctx
-            .resolve_table_name(&stmt.target.name.name)
-            .unwrap_or_else(|| stmt.target.name.name.clone());
+            .resolve_table_name(stmt.target.name.name())
+            .unwrap_or_else(|| stmt.target.name.name().to_string());
         let target_schema = stmt.target.name.schema_or_dbo();
         let target_table = self
             .catalog
@@ -33,8 +33,8 @@ impl<'a> ScriptExecutor<'a> {
         let source_rows = match &stmt.source {
             crate::ast::MergeSource::Table(source_ref) => {
                 let resolved = ctx
-                    .resolve_table_name(&source_ref.name.name)
-                    .unwrap_or_else(|| source_ref.name.name.clone());
+                    .resolve_table_name(source_ref.name.name())
+                    .unwrap_or_else(|| source_ref.name.name().to_string());
                 let source_schema = source_ref.name.schema_or_dbo();
                 let source_table = self
                     .catalog
@@ -101,7 +101,7 @@ impl<'a> ScriptExecutor<'a> {
                 // Add source row context
                 let source_alias = match &stmt.source {
                     crate::ast::MergeSource::Table(ref t) => {
-                        t.alias.clone().unwrap_or_else(|| t.name.name.clone())
+                        t.alias.clone().unwrap_or_else(|| t.name.name().to_string())
                     }
                     crate::ast::MergeSource::Subquery(_, ref alias) => {
                         alias.clone().unwrap_or_else(|| "source".to_string())
@@ -353,7 +353,7 @@ impl<'a> ScriptExecutor<'a> {
         // Process WHEN NOT MATCHED (source rows not matched to target)
         let source_alias = match &stmt.source {
             crate::ast::MergeSource::Table(ref t) => {
-                t.alias.clone().unwrap_or_else(|| t.name.name.clone())
+                t.alias.clone().unwrap_or_else(|| t.name.name().to_string())
             }
             crate::ast::MergeSource::Subquery(_, ref alias) => {
                 alias.clone().unwrap_or_else(|| "source".to_string())

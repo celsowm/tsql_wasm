@@ -255,15 +255,8 @@ pub(crate) fn parse_from_source_internal(input: &str) -> Result<(TableRef, Vec<J
     let first_join = find_next_join_top_level(rest);
     let base = if let Some((idx, _, _)) = first_join {
         let base_raw = rest[..idx].trim();
-        if base_raw.starts_with('(') {
-             // Subquery as base - not supported in TableRef
-             return Err(DbError::Parse("Subqueries as base table in FROM are not supported yet in this context".into()));
-        }
         parse_table_ref(base_raw)?
     } else {
-        if rest.starts_with('(') {
-             return Err(DbError::Parse("Subqueries as base table in FROM are not supported yet in this context".into()));
-        }
         return Ok((parse_table_ref(rest)?, vec![], vec![]));
     };
 

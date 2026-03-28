@@ -31,21 +31,149 @@ pub(crate) fn parse_object_name(input: &str) -> ObjectName {
 }
 
 pub(crate) fn parse_table_ref(input: &str) -> Result<TableRef, DbError> {
-    let tokens = tokenize_preserving_parens(input);
-    if tokens.is_empty() {
-        return Err(DbError::Parse("missing table reference".into()));
-    }
-
-    let name = parse_object_name(&tokens[0]);
-    let alias = if tokens.len() >= 3 && tokens[1].eq_ignore_ascii_case("AS") {
-        Some(tokens[2].trim_matches('[').trim_matches(']').to_string())
-    } else if tokens.len() >= 2 {
-        Some(tokens[1].trim_matches('[').trim_matches(']').to_string())
+    let mut trimmed = input.trim();
+    
+    let (name, mut rest) = if trimmed.starts_with('(') {
+        let close = find_matching_paren_index(trimmed, 0)
+            .ok_or_else(|| DbError::Parse("missing closing ')' for subquery in FROM".into()))?;
+        let subquery_sql = &trimmed[1..close];
+        let subquery_stmt = crate::parser::parse_sql(subquery_sql)?;
+        let subquery = match subquery_stmt {
+            crate::ast::Statement::Select(s) => s,
+            _ => return Err(DbError::Parse("subquery in FROM must be a SELECT".into())),
+        };
+        (crate::ast::TableName::Subquery(Box::new(subquery)), &trimmed[close+1..])
     } else {
-        None
+        let tokens = tokenize_preserving_parens(trimmed);
+        if tokens.is_empty() {
+            return Err(DbError::Parse("missing table reference".into()));
+        }
+        let obj_name = parse_object_name(&tokens[0]);
+        // Advance past the name token
+        let mut i = tokens[0].len();
+        while i < trimmed.len() && trimmed.as_bytes()[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        (crate::ast::TableName::Object(obj_name), &trimmed[i..])
     };
 
-    Ok(TableRef { name, alias })
+    let mut alias = None;
+    let mut pivot = None;
+    let mut unpivot = None;
+
+    let mut current = rest.trim();
+    while !current.is_empty() {
+        let upper = current.to_uppercase();
+        if upper.starts_with("PIVOT") && (upper.len() == 5 || upper.as_bytes()[5].is_ascii_whitespace() || upper.as_bytes()[5] == b'(') {
+            let pivot_content = &current["PIVOT".len()..].trim();
+            if !pivot_content.starts_with('(') {
+                return Err(DbError::Parse("PIVOT must be followed by '('".into()));
+            }
+            let close = find_matching_paren_index(pivot_content, 0)
+                .ok_or_else(|| DbError::Parse("PIVOT missing closing ')'".into()))?;
+            let inner = &pivot_content[1..close].trim();
+            pivot = Some(Box::new(parse_pivot_spec(inner)?));
+            current = &pivot_content[close+1..].trim();
+        } else if upper.starts_with("UNPIVOT") && (upper.len() == 7 || upper.as_bytes()[7].is_ascii_whitespace() || upper.as_bytes()[7] == b'(') {
+            let unpivot_content = &current["UNPIVOT".len()..].trim();
+            if !unpivot_content.starts_with('(') {
+                return Err(DbError::Parse("UNPIVOT must be followed by '('".into()));
+            }
+            let close = find_matching_paren_index(unpivot_content, 0)
+                .ok_or_else(|| DbError::Parse("UNPIVOT missing closing ')'".into()))?;
+            let inner = &unpivot_content[1..close].trim();
+            unpivot = Some(Box::new(parse_unpivot_spec(inner)?));
+            current = &unpivot_content[close+1..].trim();
+        } else if upper.starts_with("AS ") {
+            let after_as = current[3..].trim();
+            let end = after_as.find(|c: char| c.is_whitespace()).unwrap_or(after_as.len());
+            alias = Some(after_as[..end].trim_matches('[').trim_matches(']').to_string());
+            current = &after_as[end..].trim();
+        } else {
+            // Check if it's a join keyword or something else that should stop us
+            if upper.starts_with("JOIN") || upper.starts_with("INNER") || upper.starts_with("LEFT") || 
+               upper.starts_with("RIGHT") || upper.starts_with("FULL") || upper.starts_with("CROSS") ||
+               upper.starts_with("ON") || upper.starts_with("WHERE") || upper.starts_with("GROUP") ||
+               upper.starts_with("HAVING") || upper.starts_with("ORDER") {
+                break;
+            }
+            // Otherwise, it might be a plain alias
+            let end = current.find(|c: char| c.is_whitespace()).unwrap_or(current.len());
+            alias = Some(current[..end].trim_matches('[').trim_matches(']').to_string());
+            current = &current[end..].trim();
+        }
+    }
+
+    Ok(TableRef { name, alias, pivot, unpivot })
+}
+
+fn parse_pivot_spec(input: &str) -> Result<crate::ast::PivotSpec, DbError> {
+    // Expected: <agg_func>(<agg_col>) FOR <pivot_col> IN (<val1>, <val2>, ...)
+    let upper = input.to_uppercase();
+    let for_idx = find_keyword_top_level(&upper, "FOR")
+        .ok_or_else(|| DbError::Parse("PIVOT missing FOR".into()))?;
+    
+    let agg_part = input[..for_idx].trim();
+    let open_paren = agg_part.find('(').ok_or_else(|| DbError::Parse("PIVOT aggregate function must have '('".into()))?;
+    let close_paren = agg_part.rfind(')').ok_or_else(|| DbError::Parse("PIVOT aggregate function must have ')'".into()))?;
+    let agg_func = agg_part[..open_paren].trim().to_string();
+    let agg_col = agg_part[open_paren+1..close_paren].trim().to_string();
+
+    let rest = &input[for_idx + "FOR".len()..].trim();
+    let in_idx = find_keyword_top_level(&rest.to_uppercase(), "IN")
+        .ok_or_else(|| DbError::Parse("PIVOT missing IN".into()))?;
+    
+    let pivot_col = rest[..in_idx].trim().to_string();
+    let values_part = rest[in_idx + "IN".len()..].trim();
+    
+    if !values_part.starts_with('(') || !values_part.ends_with(')') {
+        return Err(DbError::Parse("PIVOT values must be in (...)".into()));
+    }
+    
+    let values_inner = &values_part[1..values_part.len()-1];
+    let pivot_values = split_csv_top_level(values_inner)
+        .into_iter()
+        .map(|v| v.trim().trim_matches('[').trim_matches(']').to_string())
+        .collect();
+
+    Ok(crate::ast::PivotSpec {
+        aggregate_func: agg_func,
+        aggregate_col: agg_col,
+        pivot_col,
+        pivot_values,
+    })
+}
+
+fn parse_unpivot_spec(input: &str) -> Result<crate::ast::UnpivotSpec, DbError> {
+    // Expected: <value_col> FOR <pivot_col> IN (<col1>, <col2>, ...)
+    let upper = input.to_uppercase();
+    let for_idx = find_keyword_top_level(&upper, "FOR")
+        .ok_or_else(|| DbError::Parse("UNPIVOT missing FOR".into()))?;
+    
+    let value_col = input[..for_idx].trim().to_string();
+    let rest = &input[for_idx + "FOR".len()..].trim();
+    
+    let in_idx = find_keyword_top_level(&rest.to_uppercase(), "IN")
+        .ok_or_else(|| DbError::Parse("UNPIVOT missing IN".into()))?;
+    
+    let pivot_col = rest[..in_idx].trim().to_string();
+    let cols_part = rest[in_idx + "IN".len()..].trim();
+    
+    if !cols_part.starts_with('(') || !cols_part.ends_with(')') {
+        return Err(DbError::Parse("UNPIVOT columns must be in (...)".into()));
+    }
+    
+    let cols_inner = &cols_part[1..cols_part.len()-1];
+    let column_list = split_csv_top_level(cols_inner)
+        .into_iter()
+        .map(|v| v.trim().trim_matches('[').trim_matches(']').to_string())
+        .collect();
+
+    Ok(crate::ast::UnpivotSpec {
+        value_col,
+        pivot_col,
+        column_list,
+    })
 }
 
 pub(crate) fn find_top_level_begin(input: &str) -> Option<usize> {

@@ -7,6 +7,16 @@ pub(crate) enum LogicalPlan {
     Scan {
         table: crate::ast::TableRef,
     },
+    Pivot {
+        input: Box<LogicalPlan>,
+        spec: crate::ast::PivotSpec,
+        alias: String,
+    },
+    Unpivot {
+        input: Box<LogicalPlan>,
+        spec: crate::ast::UnpivotSpec,
+        alias: String,
+    },
     Join {
         left: Box<LogicalPlan>,
         join: JoinClause,
@@ -62,6 +72,8 @@ pub(crate) struct PhysicalPlan {
     pub(crate) base: PhysicalScan,
     pub(crate) joins: Vec<PhysicalJoin>,
     pub(crate) applies: Vec<ApplyClause>,
+    pub(crate) pivots: Vec<PhysicalPivot>,
+    pub(crate) unpivots: Vec<PhysicalUnpivot>,
     pub(crate) residual_filter: Option<Expr>,
     pub(crate) projection: Vec<SelectItem>,
     pub(crate) group_by: Vec<Expr>,
@@ -73,4 +85,16 @@ pub(crate) struct PhysicalPlan {
     pub(crate) order_satisfied_by_scan: bool,
     pub(crate) offset: Option<Expr>,
     pub(crate) fetch: Option<Expr>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PhysicalPivot {
+    pub(crate) spec: crate::ast::PivotSpec,
+    pub(crate) alias: String,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PhysicalUnpivot {
+    pub(crate) spec: crate::ast::UnpivotSpec,
+    pub(crate) alias: String,
 }

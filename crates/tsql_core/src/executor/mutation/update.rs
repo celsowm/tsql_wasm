@@ -30,43 +30,45 @@ impl<'a> MutationExecutor<'a> {
             let target_name = &stmt.table.name;
             let mut found = None;
             for tref in &from_clause.tables {
-                let alias = tref.alias.as_ref().unwrap_or(&tref.name.name);
-                if alias.eq_ignore_ascii_case(target_name) || tref.name.name.eq_ignore_ascii_case(target_name) {
+                let tname = tref.name.name();
+                let alias = tref.alias.as_ref().map(|s| s.as_str()).unwrap_or(tname);
+                if alias.eq_ignore_ascii_case(target_name) || (!tref.name.is_subquery() && tname.eq_ignore_ascii_case(target_name)) {
                     let schema = tref.name.schema_or_dbo();
-                    let t = match self.catalog.find_table(schema, &tref.name.name) {
+                    let t = match self.catalog.find_table(schema, tname) {
                         Some(t) => t,
                         None => {
-                            if let Some(mapped) = ctx.resolve_table_name(&tref.name.name) {
+                            if let Some(mapped) = ctx.resolve_table_name(tname) {
                                 self.catalog.find_table("dbo", &mapped).ok_or_else(|| {
-                                    DbError::Semantic(format!("table '{}' not found", tref.name.name))
+                                    DbError::Semantic(format!("table '{}' not found", tname))
                                 })?
                             } else {
-                                return Err(DbError::Semantic(format!("table '{}.{}' not found", schema, tref.name.name)));
+                                return Err(DbError::Semantic(format!("table '{}.{}' not found", schema, tname)));
                             }
                         }
                     };
-                    found = Some((t.clone(), tref.name.name.clone()));
+                    found = Some((t.clone(), tname.to_string()));
                     break;
                 }
             }
             if found.is_none() {
                 for jcl in &from_clause.joins {
-                    let alias = jcl.table.alias.as_ref().unwrap_or(&jcl.table.name.name);
-                    if alias.eq_ignore_ascii_case(target_name) || jcl.table.name.name.eq_ignore_ascii_case(target_name) {
+                    let tname = jcl.table.name.name();
+                    let alias = jcl.table.alias.as_ref().map(|s| s.as_str()).unwrap_or(tname);
+                    if alias.eq_ignore_ascii_case(target_name) || (!jcl.table.name.is_subquery() && tname.eq_ignore_ascii_case(target_name)) {
                         let schema = jcl.table.name.schema_or_dbo();
-                        let t = match self.catalog.find_table(schema, &jcl.table.name.name) {
+                        let t = match self.catalog.find_table(schema, tname) {
                             Some(t) => t,
                             None => {
-                                if let Some(mapped) = ctx.resolve_table_name(&jcl.table.name.name) {
+                                if let Some(mapped) = ctx.resolve_table_name(tname) {
                                     self.catalog.find_table("dbo", &mapped).ok_or_else(|| {
-                                        DbError::Semantic(format!("table '{}' not found", jcl.table.name.name))
+                                        DbError::Semantic(format!("table '{}' not found", tname))
                                     })?
                                 } else {
-                                    return Err(DbError::Semantic(format!("table '{}.{}' not found", schema, jcl.table.name.name)));
+                                    return Err(DbError::Semantic(format!("table '{}.{}' not found", schema, tname)));
                                 }
                             }
                         };
-                        found = Some((t.clone(), jcl.table.name.name.clone()));
+                        found = Some((t.clone(), tname.to_string()));
                         break;
                     }
                 }
@@ -107,19 +109,21 @@ impl<'a> MutationExecutor<'a> {
                     // In that case, we might need a better strategy, but let's try
                     // using the target table as base if no tables were found in FROM.
                     if stmt.from.as_ref().map(|f| f.tables.is_empty()).unwrap_or(true) {
-                         stmt.table.clone()
+                         crate::ast::TableName::Object(stmt.table.clone())
                     } else {
-                        crate::ast::ObjectName {
+                        crate::ast::TableName::Object(crate::ast::ObjectName {
                             schema: table.schema_or_dbo().to_string().into(),
                             name: resolved_name,
-                        }
+                        })
                     }
                 } else {
-                    stmt.table.clone()
+                    crate::ast::TableName::Object(stmt.table.clone())
                 };
                 Some(crate::ast::TableRef {
                     name,
                     alias: None,
+                    pivot: None,
+                    unpivot: None,
                 })
             }),
             joins: {

@@ -1,4 +1,4 @@
-mod sys_tables;
+mod sys;
 mod info_schema_tables;
 mod info_schema_columns;
 mod info_schema_routines;
@@ -21,7 +21,7 @@ pub(crate) fn resolve_virtual_table(
     catalog: &dyn Catalog,
 ) -> Option<(TableDef, Vec<StoredRow>)> {
     let vt: Option<Box<dyn VirtualTable>> = if schema.eq_ignore_ascii_case("sys") {
-        sys_tables::lookup(name)
+        sys::lookup(name)
     } else if schema.eq_ignore_ascii_case("INFORMATION_SCHEMA") {
         info_schema_dispatch::lookup(name)
     } else {

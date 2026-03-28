@@ -18,13 +18,55 @@ pub fn build_logical_plan(stmt: &SelectStmt) -> Result<LogicalPlan, DbError> {
     let Some(from) = &stmt.from else {
         return Err(DbError::Execution("planner requires FROM source".into()));
     };
+    
     let mut plan = LogicalPlan::Scan {
         table: from.clone(),
     };
+
+    if let Some(pivot) = &from.pivot {
+        plan = LogicalPlan::Pivot {
+            input: Box::new(plan),
+            spec: *pivot.clone(),
+            alias: from.alias.clone().unwrap_or_else(|| "pivoted".to_string()),
+        };
+    }
+
+    if let Some(unpivot) = &from.unpivot {
+        plan = LogicalPlan::Unpivot {
+            input: Box::new(plan),
+            spec: *unpivot.clone(),
+            alias: from.alias.clone().unwrap_or_else(|| "unpivoted".to_string()),
+        };
+    }
+
     for join in &stmt.joins {
+        let mut right_plan = LogicalPlan::Scan {
+            table: join.table.clone(),
+        };
+        if let Some(pivot) = &join.table.pivot {
+            right_plan = LogicalPlan::Pivot {
+                input: Box::new(right_plan),
+                spec: *pivot.clone(),
+                alias: join.table.alias.clone().unwrap_or_else(|| "pivoted".to_string()),
+            };
+        }
+        if let Some(unpivot) = &join.table.unpivot {
+            right_plan = LogicalPlan::Unpivot {
+                input: Box::new(right_plan),
+                spec: *unpivot.clone(),
+                alias: join.table.alias.clone().unwrap_or_else(|| "unpivoted".to_string()),
+            };
+        }
+
+        // Note: Joining with a pivoted table is slightly different than LogicalPlan::Join currently models 
+        // if we want to preserve the join structure. For now let's just stick to standard join.
         plan = LogicalPlan::Join {
             left: Box::new(plan),
-            join: join.clone(),
+            join: crate::ast::JoinClause {
+                join_type: join.join_type,
+                table: join.table.clone(), // This is still used by bind_table_fn in physical plan
+                on: join.on.clone(),
+            },
         };
     }
     if let Some(selection) = &stmt.selection {
@@ -110,6 +152,31 @@ pub fn build_physical_plan(
         });
     }
 
+    let mut pivots = Vec::new();
+    let mut unpivots = Vec::new();
+    
+    fn collect_transformations(plan: &LogicalPlan, pivots: &mut Vec<super::planner::PhysicalPivot>, unpivots: &mut Vec<super::planner::PhysicalUnpivot>) {
+        match plan {
+            LogicalPlan::Pivot { input, spec, alias } => {
+                collect_transformations(input, pivots, unpivots);
+                pivots.push(super::planner::PhysicalPivot { spec: spec.clone(), alias: alias.clone() });
+            }
+            LogicalPlan::Unpivot { input, spec, alias } => {
+                collect_transformations(input, pivots, unpivots);
+                unpivots.push(super::planner::PhysicalUnpivot { spec: spec.clone(), alias: alias.clone() });
+            }
+            LogicalPlan::Filter { input, .. } => collect_transformations(input, pivots, unpivots),
+            LogicalPlan::Project { input, .. } => collect_transformations(input, pivots, unpivots),
+            LogicalPlan::Sort { input, .. } => collect_transformations(input, pivots, unpivots),
+            LogicalPlan::Top { input, .. } => collect_transformations(input, pivots, unpivots),
+            LogicalPlan::Aggregate { input, .. } => collect_transformations(input, pivots, unpivots),
+            LogicalPlan::Distinct { input } => collect_transformations(input, pivots, unpivots),
+            LogicalPlan::Join { left, .. } => collect_transformations(left, pivots, unpivots),
+            LogicalPlan::Scan { .. } => {}
+        }
+    }
+    collect_transformations(logical, &mut pivots, &mut unpivots);
+
     let required_columns = required_columns_from_logical(logical);
     let order_satisfied_by_scan = physical_joins.is_empty()
         && base_scan.pushed_predicate.is_none()
@@ -119,6 +186,8 @@ pub fn build_physical_plan(
         base: base_scan,
         joins: physical_joins,
         applies: stmt.applies.clone(),
+        pivots,
+        unpivots,
         residual_filter: residual,
         projection: stmt.projection.clone(),
         group_by: stmt.group_by.clone(),
@@ -184,24 +253,37 @@ pub fn bind_table(
     catalog: &dyn Catalog,
     ctx: &mut ExecutionContext,
 ) -> Result<BoundTable, DbError> {
+    match &tref.name {
+        crate::ast::TableName::Subquery(_) => {
+            // This should be handled by the caller (QueryExecutor) which has access to self
+            return Err(DbError::Execution("Subquery binding requires QueryExecutor context".into()));
+        }
+        _ => {}
+    }
+
     let mut tref = tref;
-    if let Some(mapped) = ctx.resolve_table_name(&tref.name.name) {
-        tref.name.name = mapped;
-        if tref.name.schema.is_none() {
-            tref.name.schema = Some("dbo".to_string());
+    if let Some(mapped) = ctx.resolve_table_name(tref.name.name()) {
+        match &mut tref.name {
+            crate::ast::TableName::Object(o) => {
+                o.name = mapped;
+                if o.schema.is_none() {
+                    o.schema = Some("dbo".to_string());
+                }
+            }
+            crate::ast::TableName::Subquery(_) => {}
         }
     } else {
         // Fallback for regular tables that don't start with @ or #
-        if !tref.name.name.starts_with('@') && !tref.name.name.starts_with('#') {
+        if !tref.name.name().starts_with('@') && !tref.name.name().starts_with('#') {
             // Keep original name
         }
     }
     let schema = tref.name.schema_or_dbo();
-    let name = &tref.name.name;
+    let name = tref.name.name();
 
     if let Some(cte) = resolve_cte_table(&ctx.ctes, schema, name) {
         return Ok(BoundTable {
-            alias: tref.alias.clone().unwrap_or_else(|| name.clone()),
+            alias: tref.alias.clone().unwrap_or_else(|| name.to_string()),
             table: cte.table_def.clone(),
             virtual_rows: None,
         });
@@ -209,7 +291,7 @@ pub fn bind_table(
 
     if let Some((table, rows)) = resolve_virtual_table(schema, name, catalog) {
         return Ok(BoundTable {
-            alias: tref.alias.clone().unwrap_or_else(|| name.clone()),
+            alias: tref.alias.clone().unwrap_or_else(|| name.to_string()),
             table,
             virtual_rows: Some(rows),
         });
@@ -455,12 +537,25 @@ fn required_columns_from_logical(plan: &LogicalPlan) -> Vec<String> {
                 out.insert(format!(
                     "{}.{}",
                     table.name.schema_or_dbo().to_uppercase(),
-                    table.name.name.to_uppercase()
+                    table.name.name().to_uppercase()
                 ));
+            }
+            LogicalPlan::Pivot { input, spec, .. } => {
+                collect(input, out);
+                out.insert(spec.aggregate_col.to_uppercase());
+                out.insert(spec.pivot_col.to_uppercase());
+            }
+            LogicalPlan::Unpivot { input, spec, .. } => {
+                collect(input, out);
+                out.insert(spec.value_col.to_uppercase());
+                out.insert(spec.pivot_col.to_uppercase());
+                for col in &spec.column_list {
+                    out.insert(col.to_uppercase());
+                }
             }
             LogicalPlan::Join { left, join } => {
                 collect(left, out);
-                out.insert(join.table.name.name.to_uppercase());
+                out.insert(join.table.name.name().to_uppercase());
             }
             LogicalPlan::Filter { input, predicate } => {
                 collect(input, out);

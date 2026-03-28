@@ -87,7 +87,7 @@ pub(crate) fn normalize_table_name(name: &ObjectName) -> String {
 }
 
 pub(crate) fn normalize_table_ref(table_ref: &TableRef) -> String {
-    table_ref.name.name.to_uppercase()
+    table_ref.name.name().to_uppercase()
 }
 
 pub(crate) fn is_transaction_statement(stmt: &Statement) -> bool {

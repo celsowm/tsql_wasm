@@ -772,6 +772,27 @@ This roadmap intentionally targets the broad T-SQL reference surface, including 
 
 ## Implementation Log
 
+### 2026-03-27 — Relational Expansion: PIVOT & UNPIVOT ✅ COMPLETE
+
+**Test suite: 345+ tests passing**
+
+**Deliverables:**
+
+| Feature | Status | Test Count |
+|---------|--------|------------|
+| PIVOT operator | ✅ Complete | 1 (complex) |
+| UNPIVOT operator | ✅ Complete | 1 (complex) |
+| Subqueries in FROM | ✅ Complete | (relational) |
+| sys.key_constraints | ✅ Complete | 2 |
+| sys.default_constraints | ✅ Complete | 2 |
+
+**Key implementation changes:**
+- AST: Added `PivotSpec`, `UnpivotSpec` and updated `TableRef` to support them.
+- Parser: Implemented `PIVOT` and `UNPIVOT` clause parsing in `FROM` sources.
+- Planner: Updated logical and physical planners to handle transformation operators.
+- Executor: Implemented `execute_pivot` and `execute_unpivot` with implicit grouping logic matching MS SQL.
+- Metadata: Refactored `sys` module and added constraint views.
+
 ### 2026-03-25 — STRING_AGG, STRING_SPLIT, sys.foreign_keys ✅ COMPLETE
 
 **Test suite: 340+ tests passing**

@@ -70,7 +70,7 @@ impl DataType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Value {
     Null,
     Bit(bool),
@@ -94,65 +94,6 @@ pub enum Value {
     DateTime2(String),
     UniqueIdentifier(String),
     SqlVariant(Box<Value>),
-}
-
-impl PartialEq for Value {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Value::Null, Value::Null) => true,
-            (Value::Float(a), Value::Float(b)) => {
-                let af = f64::from_bits(*a);
-                let bf = f64::from_bits(*b);
-                af == bf
-            }
-            (Value::Binary(a), Value::Binary(b)) => a == b,
-            (Value::VarBinary(a), Value::VarBinary(b)) => a == b,
-            (Value::Bit(a), Value::Bit(b)) => a == b,
-            (Value::TinyInt(a), Value::TinyInt(b)) => a == b,
-            (Value::SmallInt(a), Value::SmallInt(b)) => a == b,
-            (Value::Int(a), Value::Int(b)) => a == b,
-            (Value::BigInt(a), Value::BigInt(b)) => a == b,
-            (Value::Decimal(a1, a2), Value::Decimal(b1, b2)) => a1 == b1 && a2 == b2,
-            (Value::Money(a), Value::Money(b)) => a == b,
-            (Value::SmallMoney(a), Value::SmallMoney(b)) => a == b,
-            (Value::Char(a), Value::Char(b)) => a == b,
-            (Value::VarChar(a), Value::VarChar(b)) => a == b,
-            (Value::NChar(a), Value::NChar(b)) => a == b,
-            (Value::NVarChar(a), Value::NVarChar(b)) => a == b,
-            (Value::Date(a), Value::Date(b)) => a == b,
-            (Value::Time(a), Value::Time(b)) => a == b,
-            (Value::DateTime(a), Value::DateTime(b)) => a == b,
-            (Value::DateTime2(a), Value::DateTime2(b)) => a == b,
-            (Value::UniqueIdentifier(a), Value::UniqueIdentifier(b)) => a == b,
-            (Value::SqlVariant(a), Value::SqlVariant(b)) => a == b,
-            _ => false,
-        }
-    }
-}
-
-impl Eq for Value {}
-
-impl std::hash::Hash for Value {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        core::mem::discriminant(self).hash(state);
-        match self {
-            Value::Null => {}
-            Value::Bit(v) => v.hash(state),
-            Value::TinyInt(v) => v.hash(state),
-            Value::SmallInt(v) => v.hash(state),
-            Value::Int(v) => v.hash(state),
-            Value::BigInt(v) => v.hash(state),
-            Value::Float(v) => v.hash(state),
-            Value::Decimal(r, s) => { r.hash(state); s.hash(state); }
-            Value::Money(v) => v.hash(state),
-            Value::SmallMoney(v) => v.hash(state),
-            Value::Char(v) | Value::VarChar(v) | Value::NChar(v) | Value::NVarChar(v) => v.hash(state),
-            Value::Binary(v) | Value::VarBinary(v) => v.hash(state),
-            Value::Date(v) | Value::Time(v) | Value::DateTime(v) | Value::DateTime2(v) => v.hash(state),
-            Value::UniqueIdentifier(v) => v.hash(state),
-            Value::SqlVariant(v) => v.hash(state),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

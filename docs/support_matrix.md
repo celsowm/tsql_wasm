@@ -25,7 +25,7 @@
 | DROP TABLE | ✅ Exact | |
 | CREATE INDEX | ✅ Exact | Clustered and non-clustered |
 | DROP INDEX | ✅ Exact | |
-| CREATE VIEW | 📋 Stubbed | Parser only |
+| CREATE VIEW | ✅ Exact | Supported; resolved at query time in `QueryExecutor`. |
 | CREATE PROCEDURE | ✅ Exact | Subset with parameters and OUTPUT |
 | CREATE FUNCTION | ✅ Exact | Scalar UDF and inline TVF |
 | CREATE TRIGGER | ✅ Exact | AFTER and INSTEAD OF support |
@@ -45,12 +45,13 @@
 | DELETE | ✅ Exact | With WHERE clause |
 | DELETE ... FROM | ✅ Exact | Supports multiple JOINs and alias resolution |
 | DELETE ... OUTPUT | ⚠️ Near | DELETED pseudo-table |
-| MERGE | ✅ Exact | Supports AND conditions, multiple WHEN clauses, and triggers |
-| SELECT ... OFFSET/FETCH | ⚠️ Near | Full T-SQL syntax: OFFSET n ROWS FETCH NEXT m ROWS ONLY |
+| `MERGE` | ✅ Exact | Supports AND conditions, multiple WHEN clauses, and triggers |
+| `PIVOT / UNPIVOT` | ✅ Exact | Implicit grouping and relational transformation |
+| `SELECT ... OFFSET/FETCH` | ⚠️ Near | Full T-SQL syntax: OFFSET n ROWS FETCH NEXT m ROWS ONLY |
 | SELECT | ✅ Exact | Full projection |
 | SELECT TOP N | ✅ Exact | |
 | SELECT DISTINCT | ✅ Exact | |
-| SELECT INTO | 📋 Stubbed | |
+| SELECT INTO | ✅ Exact | Supported; creates table from query result. |
 
 ## Query Features
 
@@ -238,8 +239,8 @@
 | INFORMATION_SCHEMA.ROUTINES | ✅ Exact | |
 | INFORMATION_SCHEMA.TABLE_CONSTRAINTS | ✅ Exact | |
 | sys.foreign_keys | ✅ Exact | With referenced table info |
-| sys.key_constraints | ❌ Unsupported | |
-| sys.default_constraints | ❌ Unsupported | |
+| sys.key_constraints | ✅ Exact | |
+| sys.default_constraints | ✅ Exact | |
 | INFORMATION_SCHEMA.VIEWS | 📋 Stubbed | Parser only, returns empty |
 | INFORMATION_SCHEMA.PARAMETERS | ✅ Exact | Returns real procedure/function parameters |
 | INFORMATION_SCHEMA.ROUTINES | ✅ Exact | |
@@ -272,7 +273,7 @@
 | BREAK/CONTINUE | ✅ Exact | |
 | RETURN | ✅ Exact | |
 | RAISERROR | ✅ Exact | |
-| PRINT | 📋 Stubbed | |
+| PRINT | ✅ Exact | Captured in ExecutionContext.print_output |
 | EXEC (dynamic SQL) | ✅ Exact | |
 | EXEC (stored proc) | ✅ Exact | |
 | sp_executesql | ✅ Exact | With OUTPUT parameters |

@@ -27,18 +27,19 @@ impl<'a> MutationExecutor<'a> {
             let target_name = &stmt.table.name;
             let mut found = None;
             for tref in &from.tables {
-                let alias = tref.alias.as_ref().unwrap_or(&tref.name.name);
-                if alias.eq_ignore_ascii_case(target_name) || tref.name.name.eq_ignore_ascii_case(target_name) {
+                let tname = tref.name.name();
+                let alias = tref.alias.as_ref().map(|s| s.as_str()).unwrap_or(tname);
+                if alias.eq_ignore_ascii_case(target_name) || (!tref.name.is_subquery() && tname.eq_ignore_ascii_case(target_name)) {
                     let schema = tref.name.schema_or_dbo();
-                    let t = match self.catalog.find_table(schema, &tref.name.name) {
+                    let t = match self.catalog.find_table(schema, tname) {
                         Some(t) => t,
                         None => {
-                            if let Some(mapped) = ctx.resolve_table_name(&tref.name.name) {
+                            if let Some(mapped) = ctx.resolve_table_name(tname) {
                                 self.catalog.find_table("dbo", &mapped).ok_or_else(|| {
-                                    DbError::Semantic(format!("table '{}' not found", tref.name.name))
+                                    DbError::Semantic(format!("table '{}' not found", tname))
                                 })?
                             } else {
-                                return Err(DbError::Semantic(format!("table '{}.{}' not found", schema, tref.name.name)));
+                                return Err(DbError::Semantic(format!("table '{}.{}' not found", schema, tname)));
                             }
                         }
                     };
@@ -48,18 +49,19 @@ impl<'a> MutationExecutor<'a> {
             }
             if found.is_none() {
                 for jcl in &from.joins {
-                    let alias = jcl.table.alias.as_ref().unwrap_or(&jcl.table.name.name);
-                    if alias.eq_ignore_ascii_case(target_name) || jcl.table.name.name.eq_ignore_ascii_case(target_name) {
+                    let tname = jcl.table.name.name();
+                    let alias = jcl.table.alias.as_ref().map(|s| s.as_str()).unwrap_or(tname);
+                    if alias.eq_ignore_ascii_case(target_name) || (!jcl.table.name.is_subquery() && tname.eq_ignore_ascii_case(target_name)) {
                         let schema = jcl.table.name.schema_or_dbo();
-                        let t = match self.catalog.find_table(schema, &jcl.table.name.name) {
+                        let t = match self.catalog.find_table(schema, tname) {
                             Some(t) => t,
                             None => {
-                                if let Some(mapped) = ctx.resolve_table_name(&jcl.table.name.name) {
+                                if let Some(mapped) = ctx.resolve_table_name(tname) {
                                     self.catalog.find_table("dbo", &mapped).ok_or_else(|| {
-                                        DbError::Semantic(format!("table '{}' not found", jcl.table.name.name))
+                                        DbError::Semantic(format!("table '{}' not found", tname))
                                     })?
                                 } else {
-                                    return Err(DbError::Semantic(format!("table '{}.{}' not found", schema, jcl.table.name.name)));
+                                    return Err(DbError::Semantic(format!("table '{}.{}' not found", schema, tname)));
                                 }
                             }
                         };
@@ -99,13 +101,17 @@ impl<'a> MutationExecutor<'a> {
             from: stmt.from.as_ref().and_then(|f| f.tables.get(0).cloned()).or_else(|| {
                 if stmt.from.is_some() && stmt.from.as_ref().map(|f| f.tables.is_empty()).unwrap_or(true) {
                      Some(crate::ast::TableRef {
-                        name: stmt.table.clone(),
+                        name: crate::ast::TableName::Object(stmt.table.clone()),
                         alias: None,
+                        pivot: None,
+                        unpivot: None,
                     })
                 } else {
                     Some(crate::ast::TableRef {
-                        name: stmt.table.clone(),
+                        name: crate::ast::TableName::Object(stmt.table.clone()),
                         alias: None,
+                        pivot: None,
+                        unpivot: None,
                     })
                 }
             }),

@@ -192,7 +192,7 @@ pub fn analyze_sql_batch(sql: &str) -> CompatibilityReport {
     CompatibilityReport { entries }
 }
 
-fn format_data_type_spec(dt: &DataTypeSpec) -> String {
+pub(crate) fn format_data_type_spec(dt: &DataTypeSpec) -> String {
     match dt {
         DataTypeSpec::Bit => "BIT".to_string(),
         DataTypeSpec::TinyInt => "TINYINT".to_string(),
@@ -218,7 +218,7 @@ fn format_data_type_spec(dt: &DataTypeSpec) -> String {
     }
 }
 
-fn format_expr(expr: &Expr) -> String {
+pub(crate) fn format_expr(expr: &Expr) -> String {
     match expr {
         Expr::Identifier(name) => name.clone(),
         Expr::QualifiedIdentifier(parts) => parts.join("."),
@@ -752,7 +752,10 @@ fn collect_tables_from_select(stmt: &SelectStmt, out: &mut std::collections::Has
 }
 
 fn normalize_table_ref(table: &TableRef) -> String {
-    normalize_object_name(&table.name)
+    match &table.name {
+        crate::ast::TableName::Object(o) => normalize_object_name(o),
+        crate::ast::TableName::Subquery(_) => "(SUBQUERY)".to_string(),
+    }
 }
 
 fn normalize_object_name(name: &ObjectName) -> String {
