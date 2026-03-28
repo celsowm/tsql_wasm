@@ -105,9 +105,6 @@ impl<'a> MutationExecutor<'a> {
         let query_stmt = SelectStmt {
             from: stmt.from.as_ref().and_then(|f| f.tables.get(0).cloned()).or_else(|| {
                 let name = if stmt.from.is_some() {
-                    // This happens if the first table in FROM was a subquery (None in tables)
-                    // In that case, we might need a better strategy, but let's try
-                    // using the target table as base if no tables were found in FROM.
                     if stmt.from.as_ref().map(|f| f.tables.is_empty()).unwrap_or(true) {
                          crate::ast::TableName::Object(stmt.table.clone())
                     } else {
@@ -124,13 +121,12 @@ impl<'a> MutationExecutor<'a> {
                     alias: None,
                     pivot: None,
                     unpivot: None,
+                    hints: Vec::new(),
                 })
             }),
             joins: {
                 let mut all_joins = Vec::new();
                 if let Some(from) = &stmt.from {
-                    // All but the first table in FROM are effectively joined (CROSS JOIN or as part of their own join chain)
-                    // This is a simplification. In T-SQL, "FROM t1, t2" is a cross join.
                     for extra_table in from.tables.iter().skip(1) {
                         all_joins.push(crate::ast::JoinClause {
                             join_type: crate::ast::JoinType::Cross,
@@ -149,7 +145,7 @@ impl<'a> MutationExecutor<'a> {
             }],
             into_table: None,
             distinct: false,
-            top: None,
+            top: stmt.top.clone(),
             selection: stmt.selection.clone(),
             group_by: vec![],
             having: None,

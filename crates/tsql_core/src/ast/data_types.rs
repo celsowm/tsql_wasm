@@ -1,0 +1,26 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum DataTypeSpec {
+    Bit,
+    TinyInt,
+    SmallInt,
+    Int,
+    BigInt,
+    Float,
+    Decimal(u8, u8),
+    Money,
+    SmallMoney,
+    Char(u16),
+    VarChar(u16),
+    NChar(u16),
+    NVarChar(u16),
+    Binary(u16),
+    VarBinary(u16),
+    Date,
+    Time,
+    DateTime,
+    DateTime2,
+    UniqueIdentifier,
+    SqlVariant,
+}

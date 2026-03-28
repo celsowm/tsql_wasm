@@ -12,7 +12,7 @@ impl<'a> ScriptExecutor<'a> {
         stmt: WithCteStmt,
         ctx: &mut ExecutionContext,
     ) -> Result<Option<QueryResult>, DbError> {
-        let mut ctes = super::super::cte::CteStorage::new();
+        let old_ctes = ctx.ctes.clone();
 
         for cte_def in &stmt.ctes {
             if stmt.recursive {
@@ -63,12 +63,13 @@ impl<'a> ScriptExecutor<'a> {
                             
                             // Temporarily put only the working set into the CTE storage
                             // so the recursive member sees only the rows from the previous iteration
-                            ctes.insert(&cte_def.name, table_def.clone(), working_set.clone());
-                            let old_ctes = std::mem::replace(&mut ctx.ctes, ctes.clone());
+                            let mut iteration_ctes = old_ctes.clone();
+                            iteration_ctes.insert(&cte_def.name, table_def.clone(), working_set.clone());
+                            let prev_ctes = std::mem::replace(&mut ctx.ctes, iteration_ctes);
 
                             let step_result = self.execute(recursive_stmt.clone(), ctx)?;
                             
-                            ctx.ctes = old_ctes;
+                            ctx.ctes = prev_ctes;
 
                             let Some(res) = step_result else {
                                 break;
@@ -86,7 +87,7 @@ impl<'a> ScriptExecutor<'a> {
                             return Err(DbError::Execution(format!("The maximum recursion 100 has been exhausted before statement completion.")));
                         }
 
-                        ctes.insert(&cte_def.name, table_def, all_rows);
+                        ctx.ctes.insert(&cte_def.name, table_def, all_rows);
                     } else {
                         return Err(DbError::Execution("Recursive CTE must use UNION ALL".into()));
                     }
@@ -135,11 +136,12 @@ impl<'a> ScriptExecutor<'a> {
                     })
                     .collect();
 
-                ctes.insert(&cte_def.name, table_def, rows);
+                ctx.ctes.insert(&cte_def.name, table_def, rows);
             }
         }
 
-        ctx.ctes = ctes;
-        self.execute_batch(&[(*stmt.body).clone()], ctx)
+        let res = self.execute(*stmt.body, ctx);
+        ctx.ctes = old_ctes;
+        res
     }
 }

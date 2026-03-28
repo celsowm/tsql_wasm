@@ -57,13 +57,15 @@ impl<'a> MutationExecutor<'a> {
                 trigger_ctx.trigger_depth += 1;
                 trigger_ctx.enter_scope();
 
+                let dbo_schema_id = self.catalog.get_schema_id("dbo").unwrap_or(1);
+
                 let mut ins_physical = None;
                 if !inserted_rows.is_empty() {
                     let ins_name = format!("__inserted_{}", uuid::Uuid::new_v4().simple());
                     let table_id = self.catalog.alloc_table_id();
                     let ins_table = crate::catalog::TableDef {
                         id: table_id,
-                        schema_id: 1,
+                        schema_id: dbo_schema_id,
                         name: ins_name.clone(),
                         columns: table.columns.clone(),
                         check_constraints: vec![],
@@ -85,7 +87,7 @@ impl<'a> MutationExecutor<'a> {
                     let table_id = self.catalog.alloc_table_id();
                     let del_table = crate::catalog::TableDef {
                         id: table_id,
-                        schema_id: 1,
+                        schema_id: dbo_schema_id,
                         name: del_name.clone(),
                         columns: table.columns.clone(),
                         check_constraints: vec![],

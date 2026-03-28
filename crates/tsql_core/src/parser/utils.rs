@@ -31,9 +31,9 @@ pub(crate) fn parse_object_name(input: &str) -> ObjectName {
 }
 
 pub(crate) fn parse_table_ref(input: &str) -> Result<TableRef, DbError> {
-    let mut trimmed = input.trim();
+    let trimmed = input.trim();
     
-    let (name, mut rest) = if trimmed.starts_with('(') {
+    let (name, rest) = if trimmed.starts_with('(') {
         let close = find_matching_paren_index(trimmed, 0)
             .ok_or_else(|| DbError::Parse("missing closing ')' for subquery in FROM".into()))?;
         let subquery_sql = &trimmed[1..close];
@@ -49,7 +49,6 @@ pub(crate) fn parse_table_ref(input: &str) -> Result<TableRef, DbError> {
             return Err(DbError::Parse("missing table reference".into()));
         }
         let obj_name = parse_object_name(&tokens[0]);
-        // Advance past the name token
         let mut i = tokens[0].len();
         while i < trimmed.len() && trimmed.as_bytes()[i].is_ascii_whitespace() {
             i += 1;
@@ -60,6 +59,7 @@ pub(crate) fn parse_table_ref(input: &str) -> Result<TableRef, DbError> {
     let mut alias = None;
     let mut pivot = None;
     let mut unpivot = None;
+    let mut hints = Vec::new();
 
     let mut current = rest.trim();
     while !current.is_empty() {
@@ -84,6 +84,17 @@ pub(crate) fn parse_table_ref(input: &str) -> Result<TableRef, DbError> {
             let inner = &unpivot_content[1..close].trim();
             unpivot = Some(Box::new(parse_unpivot_spec(inner)?));
             current = &unpivot_content[close+1..].trim();
+        } else if upper.starts_with("WITH") && (upper.len() == 4 || upper.as_bytes()[4].is_ascii_whitespace() || upper.as_bytes()[4] == b'(') {
+            let after_with = current["WITH".len()..].trim();
+            if !after_with.starts_with('(') {
+                // Could be WITH CTE, break out
+                break;
+            }
+            let close = find_matching_paren_index(after_with, 0)
+                .ok_or_else(|| DbError::Parse("table hints missing closing ')'".into()))?;
+            let inner = &after_with[1..close];
+            hints = split_csv_top_level(inner);
+            current = &after_with[close+1..].trim();
         } else if upper.starts_with("AS ") {
             let after_as = current[3..].trim();
             let end = after_as.find(|c: char| c.is_whitespace()).unwrap_or(after_as.len());
@@ -104,11 +115,10 @@ pub(crate) fn parse_table_ref(input: &str) -> Result<TableRef, DbError> {
         }
     }
 
-    Ok(TableRef { name, alias, pivot, unpivot })
+    Ok(TableRef { name, alias, pivot, unpivot, hints })
 }
 
 fn parse_pivot_spec(input: &str) -> Result<crate::ast::PivotSpec, DbError> {
-    // Expected: <agg_func>(<agg_col>) FOR <pivot_col> IN (<val1>, <val2>, ...)
     let upper = input.to_uppercase();
     let for_idx = find_keyword_top_level(&upper, "FOR")
         .ok_or_else(|| DbError::Parse("PIVOT missing FOR".into()))?;
@@ -145,7 +155,6 @@ fn parse_pivot_spec(input: &str) -> Result<crate::ast::PivotSpec, DbError> {
 }
 
 fn parse_unpivot_spec(input: &str) -> Result<crate::ast::UnpivotSpec, DbError> {
-    // Expected: <value_col> FOR <pivot_col> IN (<col1>, <col2>, ...)
     let upper = input.to_uppercase();
     let for_idx = find_keyword_top_level(&upper, "FOR")
         .ok_or_else(|| DbError::Parse("UNPIVOT missing FOR".into()))?;

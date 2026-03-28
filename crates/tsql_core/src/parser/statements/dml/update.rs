@@ -5,11 +5,27 @@ use super::output::parse_output_clause;
 
 pub(crate) fn parse_update(sql: &str) -> Result<Statement, DbError> {
     let after_update = sql["UPDATE".len()..].trim();
-    let set_idx = find_keyword_top_level(after_update, "SET")
+
+    // Check for TOP
+    let (top, after_top) = if after_update.to_uppercase().starts_with("TOP") {
+        let after_top_kw = after_update["TOP".len()..].trim();
+        if !after_top_kw.starts_with('(') {
+            return Err(DbError::Parse("TOP must be followed by '(' in UPDATE".into()));
+        }
+        let close_idx = crate::parser::utils::find_matching_paren_index(after_top_kw, 0)
+            .ok_or_else(|| DbError::Parse("TOP missing closing ')'".into()))?;
+        let expr_raw = &after_top_kw[1..close_idx];
+        let top_expr = crate::parser::expression::parse_expr(expr_raw.trim())?;
+        (Some(TopSpec { value: top_expr }), after_top_kw[close_idx+1..].trim())
+    } else {
+        (None, after_update)
+    };
+
+    let set_idx = find_keyword_top_level(after_top, "SET")
         .ok_or_else(|| DbError::Parse("UPDATE missing SET".into()))?;
 
-    let table = parse_object_name(after_update[..set_idx].trim());
-    let tail = after_update[set_idx + "SET".len()..].trim();
+    let table = parse_object_name(after_top[..set_idx].trim());
+    let tail = after_top[set_idx + "SET".len()..].trim();
 
     // Check for OUTPUT clause
     let output_idx = find_keyword_top_level(tail, "OUTPUT");
@@ -70,6 +86,7 @@ pub(crate) fn parse_update(sql: &str) -> Result<Statement, DbError> {
     Ok(Statement::Update(UpdateStmt {
         table,
         assignments,
+        top,
         selection,
         from: from_clause,
         output,

@@ -5,10 +5,27 @@ use super::output::parse_output_clause;
 use super::update::parse_update_from_clause;
 
 pub(crate) fn parse_delete(sql: &str) -> Result<Statement, DbError> {
-    let after_delete = if sql.to_uppercase().starts_with("DELETE FROM") {
-        &sql["DELETE FROM".len()..]
+    let mut after_delete = &sql["DELETE".len()..].trim();
+
+    // Check for TOP
+    let (top, after_top) = if after_delete.to_uppercase().starts_with("TOP") {
+        let after_top_kw = after_delete["TOP".len()..].trim();
+        if !after_top_kw.starts_with('(') {
+            return Err(DbError::Parse("TOP must be followed by '(' in DELETE".into()));
+        }
+        let close_idx = crate::parser::utils::find_matching_paren_index(after_top_kw, 0)
+            .ok_or_else(|| DbError::Parse("TOP missing closing ')'".into()))?;
+        let expr_raw = &after_top_kw[1..close_idx];
+        let top_expr = crate::parser::expression::parse_expr(expr_raw.trim())?;
+        (Some(TopSpec { value: top_expr }), after_top_kw[close_idx+1..].trim())
     } else {
-        &sql["DELETE".len()..]
+        (None, *after_delete)
+    };
+
+    let after_delete = if after_top.to_uppercase().starts_with("FROM") {
+        &after_top["FROM".len()..]
+    } else {
+        after_top
     }
     .trim();
 
@@ -57,6 +74,7 @@ pub(crate) fn parse_delete(sql: &str) -> Result<Statement, DbError> {
 
         return Ok(Statement::Delete(DeleteStmt {
             table,
+            top,
             selection,
             from: Some(from_clause),
             output,
@@ -79,6 +97,7 @@ pub(crate) fn parse_delete(sql: &str) -> Result<Statement, DbError> {
 
     Ok(Statement::Delete(DeleteStmt {
         table,
+        top,
         selection,
         from: None,
         output,
