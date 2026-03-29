@@ -65,14 +65,20 @@ pub(crate) fn parse_update(sql: &str) -> Result<Statement, DbError> {
 
         let fc = parse_update_from_clause(from_source.trim())?;
         let selection = if !where_part.trim().is_empty() {
-            Some(crate::parser::expression::parse_expr(where_part.trim())?)
+            let (processed, subquery_map) = crate::parser::statements::subquery_utils::extract_subqueries(where_part.trim());
+            let mut expr = crate::parser::expression::parse_expr_with_subqueries(&processed, &subquery_map)?;
+            crate::parser::statements::subquery_utils::apply_subquery_map(&mut expr, &subquery_map);
+            Some(expr)
         } else {
             None
         };
         (assignments_part.trim(), selection, Some(fc))
     } else if let Some(idx) = where_idx {
         let assignments_raw = &tail_stripped[..idx];
-        let selection = crate::parser::expression::parse_expr(tail_stripped[idx + "WHERE".len()..].trim())?;
+        let where_str = tail_stripped[idx + "WHERE".len()..].trim();
+        let (processed, subquery_map) = crate::parser::statements::subquery_utils::extract_subqueries(where_str);
+        let mut selection = crate::parser::expression::parse_expr_with_subqueries(&processed, &subquery_map)?;
+        crate::parser::statements::subquery_utils::apply_subquery_map(&mut selection, &subquery_map);
         (assignments_raw.trim(), Some(selection), None)
     } else {
         (tail_stripped, None, None)

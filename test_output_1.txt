@@ -1,0 +1,991 @@
+   Compiling tsql_core v0.1.0 (C:\Users\celso\Documents\projetos\tsql_wasm\crates\tsql_core)
+warning: value assigned to `right_plan` is never read
+  --> crates\tsql_core\src\executor\query_planner.rs:54:13
+   |
+54 |             right_plan = LogicalPlan::Unpivot {
+   |             ^^^^^^^^^^
+   |
+   = help: maybe it is overwritten before being read?
+   = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `required_columns` is never read
+  --> crates\tsql_core\src\executor\planner.rs:84:16
+   |
+71 | pub(crate) struct PhysicalPlan {
+   |                   ------------ field in this struct
+...
+84 |     pub(crate) required_columns: Vec<String>,
+   |                ^^^^^^^^^^^^^^^^
+   |
+   = note: `PhysicalPlan` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `tsql_core` (lib test) generated 2 warnings
+warning: `tsql_core` (lib) generated 2 warnings (2 duplicates)
+warning: unused import: `types::Value`
+ --> crates\tsql_core\tests\sys_foreign_keys.rs:1:28
+  |
+1 | use tsql_core::{parse_sql, types::Value, Engine};
+  |                            ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `tsql_core` (test "sys_foreign_keys") generated 1 warning (run `cargo fix --test "sys_foreign_keys" -p tsql_core` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 39s
+     Running unittests src\lib.rs (target\debug\deps\tsql_core-656416de38cbd44d.exe)
+
+running 13 tests
+test executor::json::tests::test_is_json ... ok
+test executor::json::tests::test_json_value_simple ... ok
+test executor::fuzzy::tests::test_jaro_winkler_distance ... ok
+test executor::json::tests::test_json_modify ... ok
+test executor::fuzzy::tests::test_jaro_winkler_similarity ... ok
+test executor::fuzzy::tests::test_edit_distance ... ok
+test executor::fuzzy::tests::test_edit_distance_similarity ... ok
+test executor::json::tests::test_json_query_array ... ok
+test executor::regexp::tests::test_regexp_count ... ok
+test executor::regexp::tests::test_regexp_replace ... ok
+test executor::regexp::tests::test_regexp_like_case_insensitive ... ok
+test executor::regexp::tests::test_regexp_like ... ok
+test executor::regexp::tests::test_regexp_substr ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\builtins_and_aggregates.rs (target\debug\deps\builtins_and_aggregates-bd77eadc816cb3d8.exe)
+
+running 24 tests
+test test_coalesce_all_null ... ok
+test test_coalesce_returns_first_non_null ... ok
+test test_datediff_month ... ok
+test test_datediff_hour ... ok
+test test_datediff_day ... ok
+test test_dateadd_day ... ok
+test test_dateadd_year ... ok
+test test_dateadd_month ... ok
+test test_dateadd_hour ... ok
+test test_datediff_year ... ok
+test test_avg_aggregate ... ok
+test test_coalesce_with_column ... ok
+test test_count_group_by ... ok
+test test_len_null ... ok
+test test_substring_basic ... ok
+test test_len_trims_trailing_spaces ... ok
+test test_isnull_with_new_types ... ok
+test test_having_basic ... ok
+test test_substring_from_start ... ok
+test test_min_max_aggregate ... ok
+test test_three_valued_logic_and ... ok
+test test_sum_group_by ... ok
+test test_sum_aggregate ... ok
+test test_three_valued_logic_or ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\cross_join_apply.rs (target\debug\deps\cross_join_apply-0907e2200e0b8de8.exe)
+
+running 8 tests
+test test_cross_join_empty_table ... ok
+test test_cross_join_single_row ... ok
+test test_cross_join_basic ... ok
+test test_outer_apply_all_match ... ok
+test test_outer_apply_multiple_rows ... ok
+test test_outer_apply_basic ... ok
+test test_cross_apply_basic ... ok
+test test_cross_apply_no_match_excluded ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\cursor_extended_test.rs (target\debug\deps\cursor_extended_test-c88907da1d3c2abb.exe)
+
+running 2 tests
+test test_cursor_boundaries ... ok
+test test_cursor_extended_directions ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\ddl_advanced.rs (target\debug\deps\ddl_advanced-0e8c3211c25306b0.exe)
+
+running 4 tests
+test test_unique_constraint_enforcement ... ok
+test test_unique_allows_nulls ... ok
+test test_create_and_drop_schema ... ok
+test test_drop_table ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\dml_enhanced_test.rs (target\debug\deps\dml_enhanced_test-87f4b8362ffccf3d.exe)
+
+running 4 tests
+test dml_enhanced_tests::test_table_hints ... ok
+test dml_enhanced_tests::test_insert_exec ... ok
+test dml_enhanced_tests::test_delete_top ... ok
+test dml_enhanced_tests::test_update_top ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\example.rs (target\debug\deps\example-4c12d5b80c4309c6.exe)
+
+running 1 test
+test test_example_basic ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\info_schema_parameters.rs (target\debug\deps\info_schema_parameters-1cdaa3472ad485f2.exe)
+
+running 3 tests
+test test_info_schema_parameters_empty ... ok
+test test_info_schema_parameters_procedure ... ok
+test test_info_schema_parameters_function ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\information_schema.rs (target\debug\deps\information_schema-3f3dfeb4f1bec2b1.exe)
+
+running 22 tests
+test test_constraint_table_usage ... ok
+test test_check_constraints ... ok
+test test_parameters ... ok
+test test_columns_datetime_precision ... ok
+test test_columns_collation ... ok
+test test_constraint_column_usage ... ok
+test test_columns_numeric_precision ... ok
+test test_columns_full_columns ... ok
+test test_key_column_usage_pk ... ok
+test test_empty_views_queryable ... ok
+test test_columns_char_max_length ... ok
+test test_referential_constraints ... ok
+test test_routines_function ... ok
+test test_schemata_default ... ok
+test test_schemata_with_custom_schema ... ok
+test test_routines_procedure ... ok
+test test_table_constraints_check ... ok
+test test_table_constraints_fk ... ok
+test test_tables_has_catalog ... ok
+test test_table_constraints_pk ... ok
+test test_tables_includes_views ... ok
+test test_views ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\integration.rs (target\debug\deps\integration-a075246bae979096.exe)
+
+running 7 tests
+test test_identity ... ok
+test test_default_values ... ok
+test test_order_by ... ok
+test test_group_by ... ok
+test test_join ... ok
+test test_top ... ok
+test test_basic_flow ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\merge_statement.rs (target\debug\deps\merge_statement-dc5af3fcaa6e0938.exe)
+
+running 1 test
+test test_merge_basic_matched ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\new_types.rs (target\debug\deps\new_types-fc8433e02d3eadab.exe)
+
+running 34 tests
+test test_binary_declare ... ok
+test test_binary_cast_from_string ... ok
+test test_binary_to_string ... ok
+test test_convert_new_types ... ok
+test test_cast_to_new_types ... ok
+test test_decimal_cast ... ok
+test test_float_cast ... ok
+test test_date_type ... ok
+test test_float_comparison ... ok
+test test_float_negate ... ok
+test test_binary_comparison ... ok
+test test_decimal_basic ... ok
+test test_binary_basic ... ok
+test test_datetime2_type ... ok
+test test_char_basic ... ok
+test test_binary_zero_padded ... ok
+test test_float_arithmetic ... ok
+test test_float_basic ... ok
+test test_money_arithmetic ... ok
+test test_money_cast ... ok
+test test_float_sum_avg ... ok
+test test_money_to_string ... ok
+test test_money_basic ... ok
+test test_money_comparison ... ok
+test test_real_type ... ok
+test test_nchar_basic ... ok
+test test_smallmoney_basic ... ok
+test test_smallint_basic ... ok
+test test_time_type ... ok
+test test_string_length_enforcement ... ok
+test test_tinyint_overflow ... ok
+test test_uniqueidentifier_type ... ok
+test test_tinyint_basic ... ok
+test test_varbinary_basic ... ok
+
+test result: ok. 34 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\persistence_redb.rs (target\debug\deps\persistence_redb-97c39f61ae468436.exe)
+
+running 2 tests
+test test_redb_persistence_roundtrip ... ok
+test test_redb_persistence_update_delete ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.69s
+
+     Running tests\phase1_expressions.rs (target\debug\deps\phase1_expressions-baafe2fd2c2caf88.exe)
+
+running 50 tests
+test test_between ... ok
+test test_arithmetic_column_expression ... ok
+test test_arithmetic_modulo ... ok
+test test_arithmetic_null_propagation ... ok
+test test_arithmetic_multiply ... ok
+test test_arithmetic_add ... ok
+test test_between_in_case ... ok
+test test_arithmetic_divide ... ok
+test test_arithmetic_divide_by_zero_returns_null ... ok
+test test_arithmetic_subtract ... ok
+test test_arithmetic_precedence_paren ... ok
+test test_abs ... ok
+test test_case_in_where ... ok
+test test_case_else_null ... ok
+test test_between_with_expression ... ok
+test test_convert_datetime_null ... ok
+test test_case_simple ... ok
+test test_convert_datetime_to_varchar_style0 ... ok
+test test_charindex_not_found ... ok
+test test_charindex ... ok
+test test_case_searched ... ok
+test test_convert_datetime_to_varchar_style103 ... ok
+test test_convert_datetime_to_varchar_style101 ... ok
+test test_convert_datetime_to_varchar_style112 ... ok
+test test_convert_datetime_to_varchar_style126 ... ok
+test test_convert_datetime_to_varchar_style120 ... ok
+test test_convert_style_alias ... ok
+test test_current_timestamp ... ok
+test test_convert_varchar_to_int ... ok
+test test_convert_int_to_varchar ... ok
+test test_in_list ... ok
+test test_double_negate ... ok
+test test_convert_without_style ... ok
+test test_in_with_arithmetic ... ok
+test test_in_with_strings ... ok
+test test_like_percent ... ok
+test test_ltrim_rtrim ... ok
+test test_like_contains ... ok
+test test_like_underscore ... ok
+test test_lower ... ok
+test test_not_between ... ok
+test test_trim ... ok
+test test_not_in_list ... ok
+test test_not_like ... ok
+test test_unary_not ... ok
+test test_string_concat ... ok
+test test_replace ... ok
+test test_unary_negate ... ok
+test test_string_concat_columns ... ok
+test test_upper ... ok
+
+test result: ok. 50 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\phase2_relational.rs (target\debug\deps\phase2_relational-3b75762ff556d298.exe)
+
+running 16 tests
+test test_distinct_in_subquery ... ok
+test test_distinct_with_nulls ... ok
+test test_distinct_multiple_columns ... ok
+test test_cte_basic ... ok
+test test_inner_join_still_works ... ok
+test test_left_join_still_works ... ok
+test test_right_join_basic ... ok
+test test_multiple_ctes ... ok
+test test_cte_with_join ... ok
+test test_except ... ok
+test test_intersect ... ok
+test test_full_outer_join ... ok
+test test_right_join_multi_table_left ... ok
+test test_union ... ok
+test test_union_all ... ok
+test test_right_join_unmatched_right ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\phase3_ddl.rs (target\debug\deps\phase3_ddl-d784368515d6ea2a.exe)
+
+running 5 tests
+test test_alter_table_add_column ... ok
+test test_alter_table_drop_column ... ok
+test test_truncate_then_reuse ... ok
+test test_alter_table_add_column_then_insert ... ok
+test test_truncate_table ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\phase3_errors_rowcount.rs (target\debug\deps\phase3_errors_rowcount-04550865ea7554d1.exe)
+
+running 3 tests
+test test_error_taxonomy_codes ... ok
+test test_batch_stops_on_first_error ... ok
+test test_select_row_count_json_semantics ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\phase3_indexes_constraints.rs (target\debug\deps\phase3_indexes_constraints-85a77a9594b3cefb.exe)
+
+running 6 tests
+test test_named_check_constraint_column_level ... ok
+test test_named_check_constraint_table_level ... ok
+test test_drop_table_removes_index_metadata ... ok
+test test_named_default_constraint_table_level ... ok
+test test_indexed_predicate_and_order_semantics ... ok
+test test_create_and_drop_index_catalog_only ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\phase3_metadata.rs (target\debug\deps\phase3_metadata-c50ddd44606915a4.exe)
+
+running 4 tests
+test test_columnproperty_basic ... ok
+test test_object_id_and_sys_indexes ... ok
+test test_sys_schemas_and_tables ... ok
+test test_sys_columns_and_information_schema ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\phase3_semantics.rs (target\debug\deps\phase3_semantics-f8e759dd28935b50.exe)
+
+running 8 tests
+test test_mixed_date_datetime_comparison ... ok
+test test_string_truncation_error ... ok
+test test_overflow_error_tinyint ... ok
+test test_computed_column_cannot_be_inserted_directly ... ok
+test test_invalid_numeric_conversion_error ... ok
+test test_computed_column_insert_and_select ... ok
+test test_mixed_numeric_string_comparison ... ok
+test test_computed_column_recomputes_on_update ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\phase3_sql_variant.rs (target\debug\deps\phase3_sql_variant-0d96e564687c96b7.exe)
+
+running 3 tests
+test test_sql_variant_variable_and_cast ... ok
+test test_sql_variant_in_sys_types ... ok
+test test_sql_variant_column_roundtrip ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\phase4_programmability.rs (target\debug\deps\phase4_programmability-a3889c9dc9f6dfa7.exe)
+
+running 26 tests
+test test_print ... ok
+test test_declare_with_default ... ok
+test test_if_else_chain ... ok
+test test_multiple_variables ... ok
+test test_if_true ... ok
+test test_multi_statement_udf ... ok
+test test_declare_string ... ok
+test test_declare_and_set ... ok
+test test_batch_with_select ... ok
+test test_set_arithmetic ... ok
+test test_return_with_value ... ok
+test test_continue_skip_insert ... ok
+test test_nested_while_break_inner ... ok
+test test_semicolon_separated ... ok
+test test_return_early ... ok
+test test_return_value ... ok
+test test_variable_concat ... ok
+test test_cursor_basic ... ok
+test test_variable_in_where ... ok
+test test_while_sum ... ok
+test test_while_loop ... ok
+test test_trigger_after_delete ... ok
+test test_trigger_after_insert ... ok
+test test_while_with_break ... ok
+test test_trigger_after_update ... ok
+test test_while_with_continue ... ok
+
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\phase4_programmability_closure.rs (target\debug\deps\phase4_programmability_closure-28e854509c0d77ba.exe)
+
+running 11 tests
+test test_scalar_udf_in_select ... ok
+test test_procedure_with_output_param ... ok
+test test_sp_executesql_output ... ok
+test test_select_var_assign_no_from ... ok
+test test_identity_functions ... ok
+test test_temp_table_isolated_between_engines ... ok
+test test_table_variable_physical_cleanup_on_scope_exit ... ok
+test test_table_variable_basic ... ok
+test test_temp_table_persists_in_session ... ok
+test test_select_var_assign_from_last_row_wins ... ok
+test test_inline_tvf_in_from ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\phase5_concurrency_mvcc.rs (target\debug\deps\phase5_concurrency_mvcc-95daf0c650bd27a6.exe)
+
+running 5 tests
+test test_phase5_multisession_dirty_read_blocked_even_read_uncommitted ... ok
+test test_phase5_mvcc_conflict_matrix_lost_update_and_write_skew ... ok
+test test_phase5_multisession_nonrepeatable_read_matrix ... ok
+test test_phase5_multisession_phantom_read_matrix ... ok
+test test_phase5_mvcc_write_skew_matrix ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\phase5_locking_recovery.rs (target\debug\deps\phase5_locking_recovery-a5e45fadf15dfa62.exe)
+
+running 4 tests
+test test_phase5_lock_release_on_savepoint_rollback ... ok
+test test_phase5_recovery_excludes_uncommitted_workspace_state ... ok
+test test_phase5_recovery_checkpoint_roundtrip ... ok
+test test_phase5_recovery_savepoint_rollback_then_commit ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\phase5_transactions.rs (target\debug\deps\phase5_transactions-93dba9426e749094.exe)
+
+running 10 tests
+test test_phase5_parser_transaction_statements ... ok
+test test_phase5_rollback_unknown_savepoint_errors ... ok
+test test_phase5_nested_begin_transaction_not_supported ... ok
+test test_phase5_set_isolation_level_session_and_tx ... ok
+test test_phase5_rollback_without_active_transaction_errors ... ok
+test test_phase5_commit_without_active_transaction_errors ... ok
+test test_phase5_begin_rollback_discards_changes ... ok
+test test_phase5_execute_batch_with_transaction_keywords ... ok
+test test_phase5_savepoint_rollback_restores_partial_state ... ok
+test test_phase5_begin_commit_persists_changes ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\phase6_deterministic_seed.rs (target\debug\deps\phase6_deterministic_seed-89f801994e349bb0.exe)
+
+running 6 tests
+test test_newid_basic ... ok
+test test_rand_basic ... ok
+test test_deterministic_seed_rand ... ok
+test test_different_seeds_produce_different_values ... ok
+test test_deterministic_seed_newid ... ok
+test test_multiple_calls_sequential ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\phase6_set_options_runtime.rs (target\debug\deps\phase6_set_options_runtime-f7cca41eb46bf8db.exe)
+
+running 15 tests
+test test_ansi_nulls_off_null_not_equals_null ... ok
+test test_ansi_nulls_on_null_equals_null ... ok
+test test_ansi_nulls_on_null_not_equals_null ... ok
+test test_ansi_nulls_off_null_equals_null ... ok
+test test_ansi_nulls_on_between_with_null ... ok
+test test_ansi_nulls_off_null_equals_value ... ok
+test test_ansi_nulls_on_null_equals_value ... ok
+test test_datefirst_monday ... ok
+test test_ansi_nulls_on_in_list_with_null ... ok
+test test_ansi_nulls_session_isolation ... ok
+test test_datefirst_default ... ok
+test test_datefirst_sunday ... ok
+test test_datename_month ... ok
+test test_datename_weekday ... ok
+test test_ansi_nulls_affects_where_clause ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\phase6_tooling.rs (target\debug\deps\phase6_tooling-49ff3de6e89d9d93.exe)
+
+running 13 tests
+test test_phase6_parser_set_options ... ok
+test test_phase6_set_option_ast_values ... ok
+test test_phase6_compatibility_report_spans_status_and_warnings ... ok
+test test_phase6_explain_order_by_direction ... ok
+test test_phase6_explain_project_columns ... ok
+test test_phase6_explain_group_by_having ... ok
+test test_phase6_explain_filter_detail ... ok
+test test_phase6_explain_plan_shape ... ok
+test test_phase6_explain_update_with_set ... ok
+test test_phase6_explain_join_detail ... ok
+test test_phase6_trace_respects_nocount ... ok
+test test_phase6_xact_abort_rolls_back_transaction ... ok
+test test_phase6_metadata_routines_and_constraints_views ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\phase8_compatibility_scorecard.rs (target\debug\deps\phase8_compatibility_scorecard-08b1edc60b18441b.exe)
+
+running 9 tests
+test test_phase8_unsupported_detection ... ok
+test test_phase8_fuzzy_coverage ... ok
+test test_phase8_json_coverage ... ok
+test test_phase8_regex_coverage ... ok
+test test_phase8_compatibility_report ... ok
+test test_phase8_explain_coverage ... ok
+test test_phase8_compatibility_scorecard ... ok
+test test_phase8_metadata_coverage ... ok
+test test_phase8_feature_coverage ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\phase8_expression_differential.rs (target\debug\deps\phase8_expression_differential-64278c6104ce71ec.exe)
+
+running 8 tests
+test test_phase8_expression_type_conversion ... ok
+test test_phase8_expression_null_handling ... ok
+test test_phase8_expression_arithmetic ... ok
+test test_phase8_expression_date_functions ... ok
+test test_phase8_expression_logical ... ok
+test test_phase8_expression_comparison ... ok
+test test_phase8_expression_string_functions ... ok
+test test_phase8_expression_aggregates ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\phase8_parser_fuzz.rs (target\debug\deps\phase8_parser_fuzz-8dfe1b3a4d6cb275.exe)
+
+running 5 tests
+test test_phase8_parser_error_messages ... ok
+test test_phase8_parser_batch_fuzz ... ok
+test test_phase8_parser_fuzz_mutations ... ok
+test test_phase8_parser_fuzz_malformed_input ... ok
+test test_phase8_parser_fuzz_boundary_conditions ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\phase8_performance.rs (target\debug\deps\phase8_performance-5f214a61cf6a17e2.exe)
+
+running 11 tests
+test test_phase8_perf_multi_session ... ok
+test test_phase8_perf_batch ... ok
+test test_phase8_perf_transaction ... ok
+test test_phase8_perf_parse_speed ... ok
+test test_phase8_perf_memory ... ok
+test test_phase8_perf_insert_throughput ... ok
+test test_phase8_perf_complex_query ... ok
+test test_phase8_perf_select_speed ... ok
+test test_phase8_perf_filtered_select ... ok
+test test_phase8_perf_aggregates ... ok
+test test_phase8_perf_join ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.73s
+
+     Running tests\phase8_persistence.rs (target\debug\deps\phase8_persistence-ea94a55391e7d5b4.exe)
+
+running 12 tests
+test test_phase8_persistence_drop_cleanup ... ok
+test test_phase8_persistence_transaction_rollback ... ok
+test test_phase8_persistence_isolation ... ok
+test test_phase8_persistence_temp_table ... ok
+test test_phase8_persistence_constraint_recovery ... ok
+test test_phase8_persistence_checkpoint_roundtrip ... ok
+test test_phase8_persistence_deterministic ... ok
+test test_phase8_persistence_error_recovery ... ok
+test test_phase8_persistence_transaction_commit ... ok
+test test_phase8_persistence_index ... ok
+test test_phase8_persistence_data_consistency ... ok
+test test_phase8_persistence_truncate ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests\phase8_random_query.rs (target\debug\deps\phase8_random_query-a4db9af0f152b817.exe)
+
+running 8 tests
+test test_phase8_query_consistency ... ok
+test test_phase8_random_expressions ... ok
+test test_phase8_random_ctes ... ok
+test test_phase8_random_where_clauses ... ok
+test test_phase8_random_joins ... ok
+test test_phase8_random_queries ... ok
+test test_phase8_random_aggregates ... ok
+test test_phase8_random_subqueries ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests\phase9_dml_advanced.rs (target\debug\deps\phase9_dml_advanced-0e5b62898e609c93.exe)
+
+running 23 tests
+test test_output_insert_multi_row ... ok
+test test_output_insert_identity ... ok
+test test_offset_beyond_results ... ok
+test test_offset_only ... ok
+test test_offset_zero ... ok
+test test_offset_fetch_full_syntax ... ok
+test test_output_delete_multiple_rows ... ok
+test test_output_delete_wildcard ... ok
+test test_insert_select_basic ... ok
+test test_insert_select_with_columns ... ok
+test test_output_delete ... ok
+test test_insert_select_identity_preserved ... ok
+test test_output_insert_values ... ok
+test test_output_insert_wildcard ... ok
+test test_output_insert_select ... ok
+test test_output_merge_delete ... ok
+test test_output_merge_insert ... ok
+test test_output_merge_wildcard ... ok
+test test_output_merge_update ... ok
+test test_output_update ... ok
+test test_output_merge_mixed ... ok
+test test_output_update_multiple_rows ... ok
+test test_output_update_wildcard ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\phase9_window_functions.rs (target\debug\deps\phase9_window_functions-f5e67f745a37b86d.exe)
+
+running 10 tests
+test test_dense_rank ... ok
+test test_ntile ... ok
+test test_lead ... ok
+test test_row_number_basic ... ok
+test test_rank ... ok
+test test_window_frames ... ok
+test test_lag ... ok
+test test_row_number_partition ... ok
+test test_first_last_value ... ok
+test test_window_aggregates ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\procedural_output_test.rs (target\debug\deps\procedural_output_test-fb13d481495fdae9.exe)
+
+running 3 tests
+test test_raiserror_severity ... ok
+test test_insert_output ... ok
+test test_update_output_into ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\r7_current_date.rs (target\debug\deps\r7_current_date-c1092a99862b344a.exe)
+
+running 4 tests
+test test_current_date_not_null ... ok
+test test_current_date_returns_date ... ok
+test test_current_date_format ... ok
+test test_current_date_in_insert ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\r7_fuzzy_matching.rs (target\debug\deps\r7_fuzzy_matching-a7d862db46b212d0.exe)
+
+running 12 tests
+test test_jaro_winkler_distance_identical ... ok
+test test_edit_distance_empty ... ok
+test test_jaro_winkler_similarity_identical ... ok
+test test_edit_distance_similarity_different ... ok
+test test_edit_distance_deletions ... ok
+test test_edit_distance_insertions ... ok
+test test_edit_distance_substitutions ... ok
+test test_edit_distance_identical ... ok
+test test_jaro_winkler_similarity_similar ... ok
+test test_edit_distance_similarity_identical ... ok
+test test_fuzzy_join ... ok
+test test_fuzzy_in_where ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\r7_json_functions.rs (target\debug\deps\r7_json_functions-f477fbaa9104e635.exe)
+
+running 16 tests
+test test_json_array_length_not_array ... ok
+test test_json_array_length_empty ... ok
+test test_json_query_array ... ok
+test test_json_keys_not_object ... ok
+test test_isjson_valid ... ok
+test test_json_array_length ... ok
+test test_isjson_invalid ... ok
+test test_json_query_object ... ok
+test test_json_modify_simple ... ok
+test test_json_keys_object ... ok
+test test_json_value_from_table ... ok
+test test_json_value_nested ... ok
+test test_json_in_where ... ok
+test test_json_value_not_found ... ok
+test test_json_value_object ... ok
+test test_json_value_number ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\r7_regexp_functions.rs (target\debug\deps\r7_regexp_functions-ab3edd2c205ea14f.exe)
+
+running 16 tests
+test test_regexp_count_with_pos ... ok
+test test_regexp_count ... ok
+test test_regexp_like_false ... ok
+test test_regexp_like_true ... ok
+test test_regexp_like_case_insensitive ... ok
+test test_regexp_replace_in_update ... ok
+test test_unistr_unicode ... ok
+test test_unistr_basic ... ok
+test test_regexp_instr_basic ... ok
+test test_regexp_replace ... ok
+test test_regexp_substr_basic ... ok
+test test_regexp_replace_all ... ok
+test test_regexp_instr_end ... ok
+test test_regexp_substr_not_found ... ok
+test test_regexp_substr_with_pos ... ok
+test test_regexp_in_where ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\sqlserver_aggregates.rs (target\debug\deps\sqlserver_aggregates-17f4a96d7cb20ad0.exe)
+
+running 5 tests
+test test_avg_aggregate_compare ... ignored
+test test_count_star_compare ... ignored
+test test_group_by_aggregate_compare ... ignored
+test test_min_max_aggregate_compare ... ignored
+test test_sum_aggregate_compare ... ignored
+
+test result: ok. 0 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\sqlserver_conversion.rs (target\debug\deps\sqlserver_conversion-0bd269b6bd3f82d8.exe)
+
+running 4 tests
+test test_cast_decimal_compare ... ignored
+test test_cast_int_varchar_compare ... ignored
+test test_cast_varchar_int_compare ... ignored
+test test_convert_date_style_compare ... ignored
+
+test result: ok. 0 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\sqlserver_cte.rs (target\debug\deps\sqlserver_cte-445e3b596a006cde.exe)
+
+running 2 tests
+test test_cte_join_compare ... ignored
+test test_cte_simple_compare ... ignored
+
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\sqlserver_dates.rs (target\debug\deps\sqlserver_dates-ca0346dda4d7905e.exe)
+
+running 3 tests
+test test_dateadd_compare ... ignored
+test test_datediff_compare ... ignored
+test test_year_month_day_compare ... ignored
+
+test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\sqlserver_dml.rs (target\debug\deps\sqlserver_dml-d0c23df1563e8883.exe)
+
+running 7 tests
+test test_delete_all_compare ... ignored
+test test_delete_compare ... ignored
+test test_insert_multi_row_compare ... ignored
+test test_insert_null_compare ... ignored
+test test_insert_single_row_compare ... ignored
+test test_update_compare ... ignored
+test test_update_multiple_compare ... ignored
+
+test result: ok. 0 passed; 0 failed; 7 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\sqlserver_identity.rs (target\debug\deps\sqlserver_identity-4d9589c529691ffc.exe)
+
+running 3 tests
+test test_identity_basic_compare ... ignored
+test test_identity_seed_increment_compare ... ignored
+test test_scope_identity_compare ... ignored
+
+test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\sqlserver_joins.rs (target\debug\deps\sqlserver_joins-48b0759df591b7f5.exe)
+
+running 3 tests
+test test_full_outer_join_compare ... ignored
+test test_left_outer_join_compare ... ignored
+test test_right_outer_join_compare ... ignored
+
+test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\sqlserver_math.rs (target\debug\deps\sqlserver_math-f7ada09eed1d930c.exe)
+
+running 7 tests
+test test_abs_compare ... ignored
+test test_ceiling_compare ... ignored
+test test_floor_compare ... ignored
+test test_power_compare ... ignored
+test test_round_compare ... ignored
+test test_sign_compare ... ignored
+test test_sqrt_compare ... ignored
+
+test result: ok. 0 passed; 0 failed; 7 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\sqlserver_metadata.rs (target\debug\deps\sqlserver_metadata-92416492f12aaaef.exe)
+
+running 5 tests
+test test_info_schema_columns_compare ... ignored
+test test_info_schema_tables_compare ... ignored
+test test_object_id_compare ... ignored
+test test_sys_columns_compare ... ignored
+test test_sys_tables_compare ... ignored
+
+test result: ok. 0 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\sqlserver_misc.rs (target\debug\deps\sqlserver_misc-1c0c7f3d6d2d1ee2.exe)
+
+running 4 tests
+test test_case_searched_compare ... ignored
+test test_case_simple_compare ... ignored
+test test_having_compare ... ignored
+test test_top_compare ... ignored
+
+test result: ok. 0 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\sqlserver_null.rs (target\debug\deps\sqlserver_null-55242bb2cd9276fa.exe)
+
+running 4 tests
+test test_coalesce_null_compare ... ignored
+test test_isnull_null_compare ... ignored
+test test_null_is_not_null_compare ... ignored
+test test_null_is_null_compare ... ignored
+
+test result: ok. 0 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\sqlserver_pagination.rs (target\debug\deps\sqlserver_pagination-263c036cd0854993.exe)
+
+running 2 tests
+test test_offset_fetch_compare ... ignored
+test test_offset_only_compare ... ignored
+
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\sqlserver_patterns.rs (target\debug\deps\sqlserver_patterns-6d11cff0da98fbf3.exe)
+
+running 4 tests
+test test_between_compare ... ignored
+test test_in_list_compare ... ignored
+test test_like_pattern_compare ... ignored
+test test_like_underscore_compare ... ignored
+
+test result: ok. 0 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\sqlserver_set_ops.rs (target\debug\deps\sqlserver_set_ops-43795027255bef88.exe)
+
+running 5 tests
+test test_distinct_compare ... ignored
+test test_except_compare ... ignored
+test test_intersect_compare ... ignored
+test test_union_all_compare ... ignored
+test test_union_compare ... ignored
+
+test result: ok. 0 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\sqlserver_strings.rs (target\debug\deps\sqlserver_strings-b7754932e6ff56dc.exe)
+
+running 11 tests
+test test_charindex_compare ... ignored
+test test_left_string_compare ... ignored
+test test_len_compare ... ignored
+test test_lower_compare ... ignored
+test test_ltrim_compare ... ignored
+test test_replace_compare ... ignored
+test test_right_string_compare ... ignored
+test test_rtrim_compare ... ignored
+test test_substring_compare ... ignored
+test test_trim_compare ... ignored
+test test_upper_compare ... ignored
+
+test result: ok. 0 passed; 0 failed; 11 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\sqlserver_subqueries.rs (target\debug\deps\sqlserver_subqueries-f2f8b449daf204f7.exe)
+
+running 3 tests
+test test_subquery_exists_compare ... ignored
+test test_subquery_in_compare ... ignored
+test test_subquery_scalar_compare ... ignored
+
+test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\string_agg.rs (target\debug\deps\string_agg-2ce149379c38a4e2.exe)
+
+running 5 tests
+test test_string_agg_null_values_skipped ... ok
+test test_string_agg_different_separators ... ok
+test test_string_agg_empty_group_returns_null ... ok
+test test_string_agg_basic ... ok
+test test_string_agg_with_group_by ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\string_split.rs (target\debug\deps\string_split-b8db02704b43e974.exe)
+
+running 8 tests
+test test_string_split_multi_char_separator ... ok
+test test_string_split_no_match ... ok
+test test_string_split_ordinal_only ... ok
+test test_string_split_with_alias ... ok
+test test_string_split_comma_separator ... ok
+test test_string_split_pipe_separator ... ok
+test test_string_split_ordinal_enabled ... ok
+test test_string_split_ordinal_disabled ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\subqueries.rs (target\debug\deps\subqueries-45451540db3d013c.exe)
+
+running 25 tests
+test test_avg_is_numeric ... ok
+test test_in_subquery_empty_result ... ok
+test test_exists_correlated ... ok
+test test_in_subquery_multiple_values ... ok
+test test_in_subquery ... ok
+test test_exists_empty_result ... ok
+test test_correlated_in ... ok
+test test_not_exists_correlated ... ok
+test test_exists_non_correlated ... ok
+test test_correlated_exists ... ok
+test test_correlated_scalar_subquery ... ok
+test test_multiple_subqueries_in_where ... ok
+test test_scalar_subquery_select ... ok
+test test_not_exists_non_correlated_false ... ok
+test test_not_in_subquery ... ok
+test test_scalar_subquery_in_where ... ok
+test test_scalar_subquery_returns_null_when_empty ... ok
+test test_subquery_with_greater_than ... ok
+test test_scalar_subquery_with_count ... ok
+test test_scalar_subquery_with_min ... ok
+test test_subquery_in_projection_with_correlated ... ok
+test test_subquery_in_select_without_from ... ok
+test test_subquery_with_equals ... ok
+test test_subquery_with_join ... ok
+test test_subquery_with_less_than ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests\sys_foreign_keys.rs (target\debug\deps\sys_foreign_keys-56c01374832ff845.exe)
+
+running 2 tests
+test test_sys_foreign_keys_empty ... ok
+test test_sys_foreign_keys_viewable ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\trigger_test.rs (target\debug\deps\trigger_test-e6eb3bd8eb31c5c8.exe)
+
+running 5 tests
+test test_qualified_inserted_reference ... ok
+test test_instead_of_insert_trigger ... FAILED
+test test_after_insert_trigger ... ok
+test test_after_update_trigger ... ok
+test test_recursive_trigger_prevention ... ok
+
+failures:
+
+---- test_instead_of_insert_trigger stdout ----
+
+thread 'test_instead_of_insert_trigger' (13496) panicked at crates\tsql_core\tests\trigger_test.rs:84:5:
+assertion `left == right` failed
+  left: "Hello"
+ right: "Hello_mod"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    test_instead_of_insert_trigger
+
+test result: FAILED. 4 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p tsql_core --test trigger_test`

@@ -5,7 +5,7 @@ use super::output::parse_output_clause;
 use super::update::parse_update_from_clause;
 
 pub(crate) fn parse_delete(sql: &str) -> Result<Statement, DbError> {
-    let mut after_delete = &sql["DELETE".len()..].trim();
+    let after_delete = &sql["DELETE".len()..].trim();
 
     // Check for TOP
     let (top, after_top) = if after_delete.to_uppercase().starts_with("TOP") {
@@ -67,7 +67,10 @@ pub(crate) fn parse_delete(sql: &str) -> Result<Statement, DbError> {
 
         let from_clause = parse_update_from_clause(from_source.trim())?;
         let selection = if !where_part.trim().is_empty() {
-            Some(crate::parser::expression::parse_expr(where_part.trim())?)
+            let (processed, subquery_map) = crate::parser::statements::subquery_utils::extract_subqueries(where_part.trim());
+            let mut expr = crate::parser::expression::parse_expr_with_subqueries(&processed, &subquery_map)?;
+            crate::parser::statements::subquery_utils::apply_subquery_map(&mut expr, &subquery_map);
+            Some(expr)
         } else {
             None
         };
@@ -92,7 +95,13 @@ pub(crate) fn parse_delete(sql: &str) -> Result<Statement, DbError> {
     };
 
     let selection = where_idx
-        .map(|idx| crate::parser::expression::parse_expr(after_delete_stripped[idx + "WHERE".len()..].trim()))
+        .map(|idx| {
+            let where_str = after_delete_stripped[idx + "WHERE".len()..].trim();
+            let (processed, subquery_map) = crate::parser::statements::subquery_utils::extract_subqueries(where_str);
+            let mut expr = crate::parser::expression::parse_expr_with_subqueries(&processed, &subquery_map)?;
+            crate::parser::statements::subquery_utils::apply_subquery_map(&mut expr, &subquery_map);
+            Ok(expr)
+        })
         .transpose()?;
 
     Ok(Statement::Delete(DeleteStmt {

@@ -81,6 +81,7 @@ pub(crate) struct PhysicalPlan {
     pub(crate) distinct: bool,
     pub(crate) order_by: Vec<OrderByExpr>,
     pub(crate) top: Option<TopSpec>,
+    #[allow(dead_code)]
     pub(crate) required_columns: Vec<String>,
     pub(crate) order_satisfied_by_scan: bool,
     pub(crate) offset: Option<Expr>,

@@ -55,6 +55,9 @@ impl<'a> MutationExecutor<'a> {
                 // Setup inserted/deleted pseudo-tables
                 let mut trigger_ctx = ctx.subquery();
                 trigger_ctx.trigger_depth += 1;
+                if is_instead_of {
+                    trigger_ctx.skip_instead_of = true;
+                }
                 trigger_ctx.enter_scope();
 
                 let dbo_schema_id = self.catalog.get_schema_id("dbo").unwrap_or(1);

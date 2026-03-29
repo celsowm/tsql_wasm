@@ -97,10 +97,14 @@ impl<'a> MutationExecutor<'a> {
         let target_alias = stmt.table.name.clone();
 
         // Check for INSTEAD OF UPDATE trigger
-        let instead_of_triggers = self.find_triggers(&table, crate::ast::TriggerEvent::Update)
-            .into_iter()
-            .filter(|t| t.is_instead_of)
-            .collect::<Vec<_>>();
+        let instead_of_triggers = if ctx.skip_instead_of {
+            vec![]
+        } else {
+            self.find_triggers(&table, crate::ast::TriggerEvent::Update)
+                .into_iter()
+                .filter(|t| t.is_instead_of)
+                .collect::<Vec<_>>()
+        };
 
         let query_stmt = SelectStmt {
             from: stmt.from.as_ref().and_then(|f| f.tables.get(0).cloned()).or_else(|| {

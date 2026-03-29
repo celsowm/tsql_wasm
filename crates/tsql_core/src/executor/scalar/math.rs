@@ -128,7 +128,7 @@ pub(crate) fn eval_round(
     let rounded = (f * multiplier).round() / multiplier;
 
     match &val {
-        Value::Decimal(raw, scale) => {
+        Value::Decimal(_raw, scale) => {
             let result_raw = (rounded * 10f64.powi(*scale as i32)).round() as i128;
             Ok(Value::Decimal(result_raw, *scale))
         }

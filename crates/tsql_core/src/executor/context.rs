@@ -39,6 +39,7 @@ pub struct ExecutionContext<'a> {
     pub cursors: &'a mut HashMap<String, Cursor>,
     pub fetch_status: &'a mut i32,
     pub trigger_depth: usize,
+    pub skip_instead_of: bool,
     pub last_error: Option<DbError>,
 }
 
@@ -82,6 +83,7 @@ impl<'a> ExecutionContext<'a> {
             cursors,
             fetch_status,
             trigger_depth: 0,
+            skip_instead_of: false,
             last_error: None,
         }
     }
@@ -91,7 +93,7 @@ impl<'a> ExecutionContext<'a> {
             variables: self.variables,
             outer_row: self.outer_row.clone(),
             depth: self.depth + 1,
-            ctes: CteStorage::new(),
+            ctes: self.ctes.clone(),
             loop_depth: self.loop_depth,
             pending_control: RefCell::new(None),
             session_last_identity: self.session_last_identity,
@@ -111,6 +113,7 @@ impl<'a> ExecutionContext<'a> {
             cursors: self.cursors,
             fetch_status: self.fetch_status,
             trigger_depth: self.trigger_depth,
+            skip_instead_of: self.skip_instead_of,
             last_error: self.last_error.clone(),
         }
     }
@@ -120,7 +123,7 @@ impl<'a> ExecutionContext<'a> {
             variables: self.variables,
             outer_row: Some(row),
             depth: self.depth + 1,
-            ctes: CteStorage::new(),
+            ctes: self.ctes.clone(),
             loop_depth: self.loop_depth,
             pending_control: RefCell::new(None),
             session_last_identity: self.session_last_identity,
@@ -140,6 +143,7 @@ impl<'a> ExecutionContext<'a> {
             cursors: self.cursors,
             fetch_status: self.fetch_status,
             trigger_depth: self.trigger_depth,
+            skip_instead_of: self.skip_instead_of,
             last_error: self.last_error.clone(),
         }
     }
@@ -153,7 +157,7 @@ impl<'a> ExecutionContext<'a> {
             variables: self.variables,
             outer_row: Some(outer_row),
             depth: self.depth + 1,
-            ctes: CteStorage::new(),
+            ctes: self.ctes.clone(),
             loop_depth: self.loop_depth,
             pending_control: RefCell::new(None),
             session_last_identity: self.session_last_identity,
@@ -173,6 +177,7 @@ impl<'a> ExecutionContext<'a> {
             cursors: self.cursors,
             fetch_status: self.fetch_status,
             trigger_depth: self.trigger_depth,
+            skip_instead_of: self.skip_instead_of,
             last_error: self.last_error.clone(),
         }
     }

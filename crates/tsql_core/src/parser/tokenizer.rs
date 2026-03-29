@@ -228,7 +228,7 @@ fn push_ident_token(out: &mut Vec<ExprToken>, ident: String) {
         "ORDER" => out.push(ExprToken::Order),
         "BY" => out.push(ExprToken::By),
         "DESC" => out.push(ExprToken::Desc),
-        "ASC" => out.push(ExprToken::By),
+        "ASC" => out.push(ExprToken::Identifier(ident)),
         "ROWS" => out.push(ExprToken::Rows),
         "RANGE" => out.push(ExprToken::Range),
         "UNBOUNDED" => out.push(ExprToken::Unbounded),

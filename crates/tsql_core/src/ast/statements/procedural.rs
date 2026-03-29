@@ -3,7 +3,6 @@ use crate::ast::ObjectName;
 use crate::ast::expressions::Expr;
 use crate::ast::data_types::DataTypeSpec;
 use crate::ast::statements::query::SelectStmt;
-use crate::ast::statements::dml::Assignment;
 use crate::ast::common::TableRef;
 use crate::ast::statements::ddl::{ColumnSpec, TableConstraintSpec};
 

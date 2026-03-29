@@ -10,7 +10,7 @@ use super::tds::packet::{
     self, PacketBuilder, ATTENTION, RPC, SQL_BATCH, TABULAR_RESULT, TDS7_LOGIN,
     TDS7_PRELOGIN,
 };
-use super::tds::prelogin::{build_prelogin_response, parse_prelogin, ENCRYPT_NOT_SUP, ENCRYPT_ON, ENCRYPT_REQUIRED};
+use super::tds::prelogin::{build_prelogin_response, parse_prelogin, ENCRYPT_NOT_SUP, ENCRYPT_OFF, ENCRYPT_ON, ENCRYPT_REQUIRED};
 use super::tds::rpc::{build_param_preamble, parse_rpc};
 use super::tds::tokens;
 use super::tls;
@@ -53,10 +53,16 @@ impl TdsSession {
                 let prelogin = parse_prelogin(&data).map_err(|e| e.to_string())?;
                 log::debug!("PRELOGIN: version={:?}, encryption={}", prelogin.version, prelogin.encryption);
 
+                // When TLS is disabled, respond based on client's request:
+                // - If client requested ENCRYPT_ON/REQUIRED, respond with ENCRYPT_NOT_SUP
+                // - If client requested ENCRYPT_OFF, respond with ENCRYPT_OFF
+                // This maintains compatibility with various TDS clients
                 let server_encrypt = if self.config.tls_enabled {
                     ENCRYPT_ON
-                } else {
+                } else if prelogin.encryption == ENCRYPT_ON || prelogin.encryption == ENCRYPT_REQUIRED {
                     ENCRYPT_NOT_SUP
+                } else {
+                    ENCRYPT_OFF
                 };
 
                 needs_tls_upgrade = self.config.tls_enabled

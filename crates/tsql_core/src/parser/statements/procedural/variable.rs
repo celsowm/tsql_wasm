@@ -59,7 +59,10 @@ pub(crate) fn parse_declare(sql: &str) -> Result<Statement, DbError> {
 
     let default = if after_type.trim_start().starts_with('=') {
         let expr_str = after_type.trim_start()[1..].trim();
-        Some(crate::parser::expression::parse_expr(expr_str)?)
+        let (processed, subquery_map) = crate::parser::statements::subquery_utils::extract_subqueries(expr_str);
+        let mut expr = crate::parser::expression::parse_expr_with_subqueries(&processed, &subquery_map)?;
+        crate::parser::statements::subquery_utils::apply_subquery_map(&mut expr, &subquery_map);
+        Some(expr)
     } else {
         None
     };

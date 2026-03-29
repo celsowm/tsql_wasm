@@ -40,6 +40,7 @@ pub fn build_logical_plan(stmt: &SelectStmt) -> Result<LogicalPlan, DbError> {
     }
 
     for join in &stmt.joins {
+        #[allow(unused_assignments)]
         let mut right_plan = LogicalPlan::Scan {
             table: join.table.clone(),
         };
@@ -49,8 +50,7 @@ pub fn build_logical_plan(stmt: &SelectStmt) -> Result<LogicalPlan, DbError> {
                 spec: *pivot.clone(),
                 alias: join.table.alias.clone().unwrap_or_else(|| "pivoted".to_string()),
             };
-        }
-        if let Some(unpivot) = &join.table.unpivot {
+        } else if let Some(unpivot) = &join.table.unpivot {
             right_plan = LogicalPlan::Unpivot {
                 input: Box::new(right_plan),
                 spec: *unpivot.clone(),

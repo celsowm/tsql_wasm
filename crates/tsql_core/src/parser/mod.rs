@@ -63,6 +63,7 @@ fn split_statements(sql: &str) -> Vec<String> {
     let mut buf = String::new();
     let mut paren_depth = 0usize;
     let mut block_depth = 0usize;
+    let mut in_try_catch = false;
     let mut in_string = false;
     let upper = sql.to_uppercase();
     let chars: Vec<char> = sql.chars().collect();
@@ -88,6 +89,7 @@ fn split_statements(sql: &str) -> Vec<String> {
                     let is_try = i + 9 <= upper_chars.len() && upper_chars[i..i + 9] == ['B', 'E', 'G', 'I', 'N', ' ', 'T', 'R', 'Y'];
                     if is_try && block_depth == 0 && paren_depth == 0 {
                         // Let parse_try_catch handle it as a single unit
+                        in_try_catch = true;
                     } else {
                         block_depth += 1;
                         buf.extend(chars[i..i + 5].iter());
@@ -109,6 +111,16 @@ fn split_statements(sql: &str) -> Vec<String> {
                          i += 9;
                          out.push(buf.trim().to_string());
                          buf.clear();
+                         in_try_catch = false;
+                         continue;
+                    }
+                    
+                    // Check if it's END TRY - skip over it without splitting
+                    let is_end_try = i + 7 <= upper_chars.len() && upper_chars[i..i + 7] == ['E', 'N', 'D', ' ', 'T', 'R', 'Y'];
+                    if is_end_try && block_depth == 0 && paren_depth == 0 {
+                         // Skip END TRY, continue scanning for BEGIN CATCH
+                         buf.extend(chars[i..i + 7].iter());
+                         i += 7;
                          continue;
                     }
 
@@ -137,7 +149,7 @@ fn split_statements(sql: &str) -> Vec<String> {
                 paren_depth += 1;
             } else if ch == ')' {
                 paren_depth = paren_depth.saturating_sub(1);
-            } else if ch == ';' && paren_depth == 0 && block_depth == 0 {
+            } else if ch == ';' && paren_depth == 0 && block_depth == 0 && !in_try_catch {
                 out.push(buf.trim().to_string());
                 buf.clear();
                 i += 1;
@@ -181,6 +193,13 @@ fn is_statement_keyword_start(upper_chars: &[char], chars: &[char], start: usize
 pub fn parse_sql(sql: &str) -> Result<Statement, DbError> {
     let trimmed = sql.trim().trim_end_matches(';').trim();
 
+    let upper = trimmed.to_uppercase();
+
+    // Parse WITH CTE before set operations so the CTE body is kept together
+    if upper.starts_with("WITH ") {
+        return statements::parse_with_cte(trimmed);
+    }
+
     if let Some((left_sql, op_kind, right_sql)) = find_set_operation(trimmed) {
         let left = parse_sql(left_sql)?;
         let right = parse_sql(right_sql)?;
@@ -190,8 +209,6 @@ pub fn parse_sql(sql: &str) -> Result<Statement, DbError> {
             right: Box::new(right),
         }));
     }
-
-    let upper = trimmed.to_uppercase();
 
     if upper.starts_with("BEGIN TRANSACTION")
         || upper.starts_with("BEGIN TRAN ")
@@ -216,10 +233,6 @@ pub fn parse_sql(sql: &str) -> Result<Statement, DbError> {
     }
     if upper.starts_with("SET TRANSACTION ISOLATION LEVEL") {
         return statements::parse_set_transaction_isolation(trimmed);
-    }
-
-    if upper.starts_with("WITH ") {
-        return statements::parse_with_cte(trimmed);
     }
 
     if upper.starts_with("MERGE ") || upper.starts_with("MERGE INTO ") {

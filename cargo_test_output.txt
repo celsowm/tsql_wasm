@@ -1,0 +1,76 @@
+   Compiling tsql_core v0.1.0 (C:\Users\celso\Documents\projetos\tsql_wasm\crates\tsql_core)
+   Compiling tokio-rustls v0.26.4
+warning: unused import: `crate::ast::statements::dml::Assignment`
+ --> crates\tsql_core\src\ast\statements\procedural.rs:6:5
+  |
+6 | use crate::ast::statements::dml::Assignment;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `ValueCategory` and `categorize`
+ --> crates\tsql_core\src\executor\value_ops\mod.rs:6:38
+  |
+6 | pub use comparison::{compare_values, categorize, truthy, value_key, ValueCategory};
+  |                                      ^^^^^^^^^^                     ^^^^^^^^^^^^^
+
+warning: unused imports: `format_datetime` and `normalize_datetime_string`
+ --> crates\tsql_core\src\executor\value_ops\mod.rs:7:42
+  |
+7 | pub use formatting::{convert_with_style, normalize_datetime_string, format_datetime};
+  |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^
+
+warning: value assigned to `right_plan` is never read
+  --> crates\tsql_core\src\executor\query_planner.rs:54:13
+   |
+54 |             right_plan = LogicalPlan::Unpivot {
+   |             ^^^^^^^^^^
+   |
+   = help: maybe it is overwritten before being read?
+   = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `raw`
+   --> crates\tsql_core\src\executor\scalar\math.rs:131:24
+    |
+131 |         Value::Decimal(raw, scale) => {
+    |                        ^^^ help: if this is intentional, prefix it with an underscore: `_raw`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+ --> crates\tsql_core\src\parser\statements\dml\delete.rs:8:9
+  |
+8 |     let mut after_delete = &sql["DELETE".len()..].trim();
+  |         ----^^^^^^^^^^^^
+  |         |
+  |         help: remove this `mut`
+  |
+  = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `required_columns` is never read
+  --> crates\tsql_core\src\executor\planner.rs:84:16
+   |
+71 | pub(crate) struct PhysicalPlan {
+   |                   ------------ field in this struct
+...
+84 |     pub(crate) required_columns: Vec<String>,
+   |                ^^^^^^^^^^^^^^^^
+   |
+   = note: `PhysicalPlan` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling tsql_server v0.1.0 (C:\Users\celso\Documents\projetos\tsql_wasm\crates\tsql_server)
+warning: `tsql_core` (lib test) generated 7 warnings (6 duplicates)
+error[E0432]: unresolved import `tsql_core::SessionId`
+ --> crates\tsql_server\src\session.rs:5:27
+  |
+5 | use tsql_core::{Database, SessionId, SessionManager, StatementExecutor};
+  |                           ^^^^^^^^^ no `SessionId` in the root
+  |
+  = help: consider importing this type alias instead:
+          tsql_core::executor::locks::SessionId
+
+For more information about this error, try `rustc --explain E0432`.
+error: could not compile `tsql_server` (lib) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+warning: `tsql_core` (lib) generated 7 warnings (1 duplicate) (run `cargo fix --lib -p tsql_core` to apply 5 suggestions)

@@ -42,10 +42,14 @@ impl<'a> MutationExecutor<'a> {
         let table_id = table.id;
 
         // Check for INSTEAD OF INSERT trigger
-        let instead_of_triggers = self.find_triggers(&table, crate::ast::TriggerEvent::Insert)
-            .into_iter()
-            .filter(|t| t.is_instead_of)
-            .collect::<Vec<_>>();
+        let instead_of_triggers = if ctx.skip_instead_of {
+            vec![]
+        } else {
+            self.find_triggers(&table, crate::ast::TriggerEvent::Insert)
+                .into_iter()
+                .filter(|t| t.is_instead_of)
+                .collect::<Vec<_>>()
+        };
 
         if !instead_of_triggers.is_empty() {
             let inserted_rows = match &stmt.source {

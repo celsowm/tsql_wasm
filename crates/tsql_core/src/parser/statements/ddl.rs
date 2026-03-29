@@ -496,17 +496,17 @@ pub(crate) fn parse_create_trigger(sql: &str) -> Result<Statement, DbError> {
     let trigger_name = parse_object_name(after_prefix[..on_idx].trim());
     let rest = &after_prefix[on_idx + "ON".len()..].trim();
 
-    let (is_instead_of, event_pos) = if let Some(pos) = find_keyword_top_level(rest, "INSTEAD OF") {
-        (true, pos + "INSTEAD OF".len())
+    let (is_instead_of, table_name_end_pos, event_pos) = if let Some(pos) = find_keyword_top_level(rest, "INSTEAD OF") {
+        (true, pos, pos + "INSTEAD OF".len())
     } else if let Some(pos) = find_keyword_top_level(rest, "AFTER") {
-        (false, pos + "AFTER".len())
+        (false, pos, pos + "AFTER".len())
     } else if let Some(pos) = find_keyword_top_level(rest, "FOR") {
-        (false, pos + "FOR".len())
+        (false, pos, pos + "FOR".len())
     } else {
         return Err(DbError::Parse("CREATE TRIGGER expects AFTER, FOR, or INSTEAD OF".into()));
     };
 
-    let table_name = parse_object_name(rest[..rest[..event_pos].rfind(|c: char| c.is_whitespace()).unwrap_or(0)].trim());
+    let table_name = parse_object_name(rest[..table_name_end_pos].trim());
     let after_event = &rest[event_pos..].trim();
 
     let as_idx = find_keyword_top_level(after_event, "AS")
