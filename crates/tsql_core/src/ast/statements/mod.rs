@@ -63,6 +63,7 @@ pub enum Statement {
     DropTrigger(DropTriggerStmt),
     Raiserror(RaiserrorStmt),
     TryCatch(TryCatchStmt),
+    SetIdentityInsert(SetIdentityInsertStmt),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -82,6 +83,7 @@ pub enum SessionOption {
     XactAbort,
     DateFirst,
     Language,
+    DateFormat,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -97,4 +99,10 @@ pub struct RoutineParam {
     pub data_type: DataTypeSpec,
     pub is_output: bool,
     pub default: Option<Expr>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetIdentityInsertStmt {
+    pub table: crate::ast::ObjectName,
+    pub on: bool,
 }

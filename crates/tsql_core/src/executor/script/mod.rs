@@ -98,6 +98,9 @@ impl<'a> ScriptExecutor<'a> {
             Statement::SetOption(_) => Err(DbError::Execution(
                 "SET option statements are handled at engine level".into(),
             )),
+            Statement::SetIdentityInsert(_) => Err(DbError::Execution(
+                "SET IDENTITY_INSERT is handled at engine level".into(),
+            )),
             Statement::If(stmt) => self.execute_if(stmt, ctx),
             Statement::BeginEnd(stmts) => self.execute_batch(&stmts, ctx),
             Statement::While(stmt) => self.execute_while(stmt, ctx),

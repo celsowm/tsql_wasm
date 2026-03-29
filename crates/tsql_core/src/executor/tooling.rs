@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 
 use crate::ast::{BinaryOp, DataTypeSpec, Expr, JoinClause, JoinType, ObjectName, SelectItem, SelectStmt, SessionOption, SessionOptionValue, SetOptionStmt, Statement, TableRef, UnaryOp};
@@ -11,6 +13,9 @@ pub struct SessionOptions {
     pub xact_abort: bool,
     pub datefirst: i32,
     pub language: String,
+    pub dateformat: String,
+    #[serde(skip)]
+    pub identity_insert: HashSet<String>,
 }
 
 impl Default for SessionOptions {
@@ -22,6 +27,8 @@ impl Default for SessionOptions {
             xact_abort: false,
             datefirst: 7,
             language: "us_english".to_string(),
+            dateformat: "mdy".to_string(),
+            identity_insert: HashSet::new(),
         }
     }
 }
@@ -110,7 +117,7 @@ pub struct SetOptionApply {
     pub warnings: Vec<String>,
 }
 
-pub fn apply_set_option(stmt: &SetOptionStmt, options: &mut SessionOptions) -> SetOptionApply {
+pub fn apply_set_option(stmt: &SetOptionStmt, options: &mut SessionOptions) -> Result<SetOptionApply, crate::error::DbError> {
     let mut warnings = Vec::new();
     match (&stmt.option, &stmt.value) {
         (SessionOption::AnsiNulls, SessionOptionValue::Bool(v)) => {
@@ -126,13 +133,12 @@ pub fn apply_set_option(stmt: &SetOptionStmt, options: &mut SessionOptions) -> S
             options.xact_abort = *v;
         }
         (SessionOption::DateFirst, SessionOptionValue::Int(v)) => {
-            options.datefirst = *v;
             if !(1..=7).contains(v) {
-                warnings.push(format!(
-                    "SET DATEFIRST {} is outside SQL Server range 1..7",
-                    v
+                return Err(crate::error::DbError::Execution(
+                    format!("The DATEFIRST value {} is outside the range of allowed values (1-7).", v)
                 ));
             }
+            options.datefirst = *v;
         }
         (SessionOption::Language, SessionOptionValue::Text(v)) => {
             options.language = v.clone();
@@ -143,11 +149,14 @@ pub fn apply_set_option(stmt: &SetOptionStmt, options: &mut SessionOptions) -> S
                 ));
             }
         }
+        (SessionOption::DateFormat, SessionOptionValue::Text(v)) => {
+            options.dateformat = v.to_lowercase();
+        }
         _ => {
             warnings.push("SET option value type mismatch; statement accepted with no state change".to_string());
         }
     }
-    SetOptionApply { warnings }
+    Ok(SetOptionApply { warnings })
 }
 
 pub fn analyze_sql_batch(sql: &str) -> CompatibilityReport {

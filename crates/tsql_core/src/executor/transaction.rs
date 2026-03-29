@@ -83,6 +83,7 @@ pub struct TransactionManager<C, S> {
     pub active: Option<TxState<C, S>>,
     pub session_isolation_level: IsolationLevel,
     pub commit_ts: u64,
+    pub depth: u32,
 }
 
 impl<C, S> Default for TransactionManager<C, S> {
@@ -91,6 +92,7 @@ impl<C, S> Default for TransactionManager<C, S> {
             active: None,
             session_isolation_level: IsolationLevel::default(),
             commit_ts: 0,
+            depth: 0,
         }
     }
 }
@@ -112,32 +114,36 @@ where
         storage: &S,
         explicit_name: Option<String>,
     ) -> Result<Option<String>, DbError> {
-        if self.active.is_some() {
-            return Err(DbError::Execution(
-                "transaction already active; nested BEGIN TRANSACTION is not supported".into(),
-            ));
+        if self.depth == 0 {
+            let tx = TxState::new(
+                self.session_isolation_level,
+                catalog.clone(),
+                storage.clone(),
+                self.commit_ts,
+            );
+            self.active = Some(tx);
         }
-        let tx = TxState::new(
-            self.session_isolation_level,
-            catalog.clone(),
-            storage.clone(),
-            self.commit_ts,
-        );
-        self.active = Some(tx);
+        self.depth += 1;
         Ok(explicit_name)
     }
 
     pub fn commit(&mut self) -> Result<(), DbError> {
-        let Some(tx) = self.active.take() else {
+        if self.depth == 0 {
             return Err(DbError::Execution(
                 "COMMIT without active transaction".into(),
             ));
-        };
+        }
+        self.depth -= 1;
+        if self.depth > 0 {
+            return Ok(());
+        }
+        let tx = self.active.take().expect("active tx must exist at depth > 0");
         if tx.isolation_level == IsolationLevel::Snapshot
             && !tx.write_set.is_empty()
             && tx.snapshot_ts != self.commit_ts
         {
             self.active = Some(tx);
+            self.depth = 1;
             return Err(DbError::Execution(
                 "snapshot write conflict detected during COMMIT".into(),
             ));
@@ -181,6 +187,7 @@ where
         *catalog = tx.begin_catalog.clone();
         *storage = tx.begin_storage.clone();
         self.active = None;
+        self.depth = 0;
         Ok(())
     }
 

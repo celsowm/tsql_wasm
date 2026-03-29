@@ -4,7 +4,7 @@ use serde::Serialize;
 use crate::ast::{DropTableStmt, IsolationLevel, ObjectName, Statement};
 use crate::catalog::Catalog;
 use crate::error::DbError;
-use crate::parser::{parse_batch, parse_sql};
+use crate::parser::{parse_batch_with_quoted_ident, parse_sql};
 use crate::storage::Storage;
 
 use super::super::clock::Clock;
@@ -60,7 +60,13 @@ where
         session_id: SessionId,
         sql: &str,
     ) -> Result<Option<QueryResult>, DbError> {
-        let stmts = parse_batch(sql)?;
+        let mut guard = self.inner.lock().expect("database mutex poisoned");
+        let quoted_ident = guard.with_session_mut(session_id, |_state, session| {
+            Ok(session.options.quoted_identifier)
+        })?;
+        drop(guard);
+        
+        let stmts = parse_batch_with_quoted_ident(sql, quoted_ident)?;
         self.execute_session_batch(session_id, stmts)
     }
 
@@ -68,7 +74,13 @@ where
         &self,
         session_id: SessionId,
         sql: &str) -> Result<Vec<Option<QueryResult>>, DbError> {
-        let stmts = parse_batch(sql)?;
+        let mut guard = self.inner.lock().expect("database mutex poisoned");
+        let quoted_ident = guard.with_session_mut(session_id, |_state, session| {
+            Ok(session.options.quoted_identifier)
+        })?;
+        drop(guard);
+        
+        let stmts = parse_batch_with_quoted_ident(sql, quoted_ident)?;
         let mut guard = self.inner.lock().expect("database mutex poisoned");
         guard.with_session_mut(session_id, |state, session| {
             execute_batch_statements_multi(state, session_id, session, stmts)
@@ -177,6 +189,7 @@ where
                     }
                 }
                 Err(err) => {
+                    let err_str: String = err.to_string();
                     events.push(TraceStatementEvent {
                         index: slice.index,
                         sql: slice.sql,
@@ -184,7 +197,7 @@ where
                         span: slice.span,
                         status: "unsupported".to_string(),
                         warnings: Vec::new(),
-                        error: Some(err.to_string()),
+                        error: Some(err_str),
                         row_count: None,
                         read_tables: Vec::new(),
                         write_tables: Vec::new(),
@@ -243,6 +256,8 @@ where
     ctx.enter_scope();
 
     for stmt in stmts {
+        ctx.trancount = session.tx_manager.depth;
+        ctx.identity_insert = session.options.identity_insert.clone();
         if is_transaction_statement(&stmt) {
             match transaction_exec::execute_transaction_statement(
                 state,
@@ -323,6 +338,8 @@ where
     ctx.enter_scope();
 
     for stmt in stmts {
+        ctx.trancount = session.tx_manager.depth;
+        ctx.identity_insert = session.options.identity_insert.clone();
         if is_transaction_statement(&stmt) {
             match transaction_exec::execute_transaction_statement(
                 state,
@@ -411,6 +428,8 @@ where
         &mut session.fetch_status,
         &mut session.print_output,
     );
+    ctx.trancount = session.tx_manager.depth;
+    ctx.identity_insert = session.options.identity_insert.clone();
 
     match execute_non_transaction_statement(
         state,
@@ -444,11 +463,21 @@ where
     S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     if let Statement::SetOption(opt) = &stmt {
-        let apply = apply_set_option(opt, session_options);
+        let apply = apply_set_option(opt, session_options)?;
         ctx.ansi_nulls = session_options.ansi_nulls;
         ctx.datefirst = session_options.datefirst;
         for warn in apply.warnings {
             journal.record(JournalEvent::Info { message: warn });
+        }
+        return Ok(None);
+    }
+
+    if let Statement::SetIdentityInsert(ref id_stmt) = stmt {
+        let table_name = id_stmt.table.name.to_uppercase();
+        if id_stmt.on {
+            session_options.identity_insert.insert(table_name);
+        } else {
+            session_options.identity_insert.remove(&table_name);
         }
         return Ok(None);
     }

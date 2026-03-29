@@ -4,7 +4,7 @@ use serde::Serialize;
 use crate::ast::{IsolationLevel, Statement};
 use crate::catalog::{Catalog, CatalogImpl};
 use crate::error::DbError;
-use crate::parser::parse_sql;
+use crate::parser::parse_sql_with_quoted_ident;
 use crate::storage::{InMemoryStorage, Storage};
 
 use super::super::durability::DurabilitySink;
@@ -86,7 +86,8 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
     }
 
     pub fn exec(&mut self, sql: &str) -> Result<(), DbError> {
-        let stmt = parse_sql(sql)?;
+        let quoted_ident = self.session_options().quoted_identifier;
+        let stmt = parse_sql_with_quoted_ident(sql, quoted_ident)?;
         let res = self.execute(stmt)?;
         if res.is_some() {
             return Err(DbError::Execution("exec() received a query statement; use query()".into()));
@@ -95,7 +96,8 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
     }
 
     pub fn query(&mut self, sql: &str) -> Result<QueryResult, DbError> {
-        let stmt = parse_sql(sql)?;
+        let quoted_ident = self.session_options().quoted_identifier;
+        let stmt = parse_sql_with_quoted_ident(sql, quoted_ident)?;
         let res = self.execute(stmt)?;
         res.ok_or_else(|| DbError::Execution("query() expected a result set".into()))
     }

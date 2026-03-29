@@ -163,6 +163,15 @@ pub(crate) fn parse_alter_table(sql: &str) -> Result<Statement, DbError> {
     if let Some(add_idx) = find_keyword_top_level(after_table, "ADD") {
         let table_name = after_table[..add_idx].trim();
         let col_def = after_table[add_idx + "ADD".len()..].trim();
+        
+        if col_def.to_uppercase().starts_with("CONSTRAINT") {
+            let constraint = parse_table_constraint(col_def)?;
+            return Ok(Statement::AlterTable(AlterTableStmt {
+                table: parse_object_name(table_name),
+                action: AlterTableAction::AddConstraint(constraint),
+            }));
+        }
+        
         let column = parse_column_spec(col_def)?;
         return Ok(Statement::AlterTable(AlterTableStmt {
             table: parse_object_name(table_name),
@@ -179,8 +188,17 @@ pub(crate) fn parse_alter_table(sql: &str) -> Result<Statement, DbError> {
         }));
     }
 
+    if let Some(drop_idx) = find_keyword_top_level(after_table, "DROP CONSTRAINT") {
+        let table_name = after_table[..drop_idx].trim();
+        let constraint_name = after_table[drop_idx + "DROP CONSTRAINT".len()..].trim();
+        return Ok(Statement::AlterTable(AlterTableStmt {
+            table: parse_object_name(table_name),
+            action: AlterTableAction::DropConstraint(constraint_name.to_string()),
+        }));
+    }
+
     Err(DbError::Parse(
-        "ALTER TABLE only supports ADD column and DROP COLUMN".into(),
+        "ALTER TABLE only supports ADD column, ADD CONSTRAINT, DROP COLUMN, and DROP CONSTRAINT".into(),
     ))
 }
 
@@ -423,10 +441,20 @@ pub(crate) fn parse_column_spec(input: &str) -> Result<ColumnSpec, DbError> {
                         .into_iter()
                         .map(|s| s.trim().trim_matches('[').trim_matches(']').to_string())
                         .collect();
-                    foreign_key = Some(crate::ast::ForeignKeyRef { referenced_table: ref_table, referenced_columns: ref_cols });
+                    foreign_key = Some(crate::ast::ForeignKeyRef {
+                        referenced_table: ref_table,
+                        referenced_columns: ref_cols,
+                        on_delete: None,
+                        on_update: None,
+                    });
                 } else {
                     let ref_table = parse_object_name(ref_str);
-                    foreign_key = Some(crate::ast::ForeignKeyRef { referenced_table: ref_table, referenced_columns: vec![] });
+                    foreign_key = Some(crate::ast::ForeignKeyRef {
+                        referenced_table: ref_table,
+                        referenced_columns: vec![],
+                        on_delete: None,
+                        on_update: None,
+                    });
                 }
                 i += 2;
             }
@@ -512,7 +540,7 @@ pub(crate) fn parse_table_constraint(input: &str) -> Result<TableConstraintSpec,
         return Ok(TableConstraintSpec::Unique { name, columns });
     }
     if tokens[2].eq_ignore_ascii_case("FOREIGN") {
-        // CONSTRAINT name FOREIGN KEY (cols) REFERENCES table(ref_cols)
+        // CONSTRAINT name FOREIGN KEY (cols) REFERENCES table(ref_cols) [ON DELETE action] [ON UPDATE action]
         if tokens.len() < 7 || !tokens[3].eq_ignore_ascii_case("KEY") {
             return Err(DbError::Parse("expected KEY after FOREIGN".into()));
         }
@@ -539,11 +567,48 @@ pub(crate) fn parse_table_constraint(input: &str) -> Result<TableConstraintSpec,
             .map(|s| s.trim().trim_matches('[').trim_matches(']').to_string())
             .collect();
 
+        let mut on_delete: Option<crate::ast::ReferentialAction> = None;
+        let mut on_update: Option<crate::ast::ReferentialAction> = None;
+
+        let mut i = 7;
+        while i < tokens.len() {
+            if tokens[i].eq_ignore_ascii_case("ON") && i + 1 < tokens.len() {
+                if tokens[i + 1].eq_ignore_ascii_case("DELETE") {
+                    if i + 2 < tokens.len() {
+                        let action_token = if i + 3 < tokens.len() && 
+                            (tokens[i + 2].eq_ignore_ascii_case("NO") || tokens[i + 2].eq_ignore_ascii_case("SET")) {
+                            format!("{} {}", tokens[i + 2], tokens[i + 3])
+                        } else {
+                            tokens[i + 2].clone()
+                        };
+                        on_delete = Some(parse_referential_action(&action_token)?);
+                        i += if action_token.contains(' ') { 5 } else { 3 };
+                        continue;
+                    }
+                } else if tokens[i + 1].eq_ignore_ascii_case("UPDATE") {
+                    if i + 2 < tokens.len() {
+                        let action_token = if i + 3 < tokens.len() && 
+                            (tokens[i + 2].eq_ignore_ascii_case("NO") || tokens[i + 2].eq_ignore_ascii_case("SET")) {
+                            format!("{} {}", tokens[i + 2], tokens[i + 3])
+                        } else {
+                            tokens[i + 2].clone()
+                        };
+                        on_update = Some(parse_referential_action(&action_token)?);
+                        i += if action_token.contains(' ') { 5 } else { 3 };
+                        continue;
+                    }
+                }
+            }
+            i += 1;
+        }
+
         return Ok(TableConstraintSpec::ForeignKey {
             name,
             columns,
             referenced_table,
             referenced_columns,
+            on_delete,
+            on_update,
         });
     }
     Err(DbError::Parse("unsupported table constraint".into()))
@@ -693,4 +758,17 @@ fn parse_parameterized_data_type(upper: &str) -> Result<DataTypeSpec, DbError> {
     }
 
     Err(DbError::Parse(format!("unsupported data type '{}'", upper)))
+}
+
+fn parse_referential_action(token: &str) -> Result<crate::ast::ReferentialAction, DbError> {
+    match token.to_uppercase().as_str() {
+        "CASCADE" => Ok(crate::ast::ReferentialAction::Cascade),
+        "SET_NULL" | "SET NULL" => Ok(crate::ast::ReferentialAction::SetNull),
+        "SET_DEFAULT" | "SET DEFAULT" => Ok(crate::ast::ReferentialAction::SetDefault),
+        "NO_ACTION" | "NO ACTION" => Ok(crate::ast::ReferentialAction::NoAction),
+        _ => Err(DbError::Parse(format!(
+            "invalid referential action '{}'",
+            token
+        ))),
+    }
 }

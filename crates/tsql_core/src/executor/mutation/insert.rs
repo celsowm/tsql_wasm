@@ -82,7 +82,23 @@ impl<'a> MutationExecutor<'a> {
                     }
                     rows
                 }
-                InsertSource::Exec(_) => return Err(DbError::Execution("INSERT EXEC not supported in triggers yet".into())),
+                InsertSource::Exec(exec_stmt) => {
+                    let query_result = super::super::script::ScriptExecutor {
+                        catalog: self.catalog,
+                        storage: self.storage,
+                        clock: self.clock,
+                    }
+                    .execute(*exec_stmt.clone(), ctx)?
+                    .ok_or_else(|| DbError::Execution("INSERT EXEC source returned no result".into()))?;
+
+                    let insert_columns = self.get_insert_columns(&table, &stmt.columns);
+                    let mut rows = Vec::new();
+                    for row_values in query_result.rows {
+                        let row = self.build_row_from_values(&table, &insert_columns, row_values, ctx)?;
+                        rows.push(row);
+                    }
+                    rows
+                }
             };
 
             self.execute_triggers(&table, crate::ast::TriggerEvent::Insert, true, &inserted_rows, &[], ctx)?;
@@ -347,6 +363,14 @@ impl<'a> MutationExecutor<'a> {
                     return Err(DbError::Execution(format!(
                         "column '{}' does not allow NULL",
                         col.name
+                    )));
+                }
+            } else if col.identity.is_some() {
+                let table_upper = table.name.to_uppercase();
+                if !ctx.identity_insert.contains(&table_upper) {
+                    return Err(DbError::Execution(format!(
+                        "Cannot insert explicit value for identity column '{}' in table '{}' when IDENTITY_INSERT is set to OFF.",
+                        col.name, table.name
                     )));
                 }
             }

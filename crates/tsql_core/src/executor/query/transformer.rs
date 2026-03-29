@@ -114,6 +114,7 @@ pub(crate) fn execute_pivot(
                             }
                         }
                     }
+                    if pv == Value::Null { return false; }
                     pv.to_string_value().eq_ignore_ascii_case(val_str)
                 })
                 .collect::<Vec<_>>().iter().cloned().cloned().collect();
@@ -205,6 +206,20 @@ fn apply_aggregate_to_values(func: &str, values: Vec<Value>, ansi_nulls: bool) -
                 }
             }
             Ok(max.unwrap_or(Value::Null))
+        }
+        "COUNT_BIG" => Ok(Value::BigInt(values.iter().filter(|v| !v.is_null()).count() as i64)),
+        "STRING_AGG" => {
+            let mut result = String::new();
+            let mut first = true;
+            for v in values {
+                if v.is_null() { continue; }
+                if !first {
+                    result.push(',');
+                }
+                result.push_str(&v.to_string_value());
+                first = false;
+            }
+            Ok(Value::NVarChar(result))
         }
         _ => Err(DbError::Execution(format!("Aggregate function {} not supported in PIVOT yet", func))),
     }

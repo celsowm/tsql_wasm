@@ -176,6 +176,10 @@ pub(crate) fn parse_set(sql: &str) -> Result<Statement, DbError> {
     let after_set = sql["SET".len()..].trim();
     let upper = after_set.to_uppercase();
 
+    if upper.starts_with("IDENTITY_INSERT ") {
+        return parse_set_identity_insert(after_set);
+    }
+
     if !after_set.contains('=') {
         return parse_set_option(after_set, &upper);
     }
@@ -230,6 +234,15 @@ fn parse_set_option(raw: &str, upper: &str) -> Result<Statement, DbError> {
                 value: crate::ast::SessionOptionValue::Text(rest.to_string()),
             })
         }
+        "DATEFORMAT" => {
+            if rest.is_empty() {
+                return Err(DbError::Parse("SET DATEFORMAT requires a value".into()));
+            }
+            Statement::SetOption(crate::ast::SetOptionStmt {
+                option: crate::ast::SessionOption::DateFormat,
+                value: crate::ast::SessionOptionValue::Text(rest.to_string()),
+            })
+        }
         _ => {
             return Err(DbError::Parse(format!(
                 "unsupported SET option '{}'",
@@ -253,6 +266,7 @@ fn parse_set_bool_option(option: crate::ast::SessionOption, rest: &str) -> Resul
                 crate::ast::SessionOption::XactAbort => "XACT_ABORT",
                 crate::ast::SessionOption::DateFirst => "DATEFIRST",
                 crate::ast::SessionOption::Language => "LANGUAGE",
+                crate::ast::SessionOption::DateFormat => "DATEFORMAT",
             };
             return Err(DbError::Parse(format!(
                 "SET {} expects ON|OFF",
@@ -264,4 +278,26 @@ fn parse_set_bool_option(option: crate::ast::SessionOption, rest: &str) -> Resul
         option,
         value: crate::ast::SessionOptionValue::Bool(on),
     }))
+}
+
+fn parse_set_identity_insert(raw: &str) -> Result<Statement, DbError> {
+    let rest = raw["IDENTITY_INSERT".len()..].trim();
+    let mut parts = rest.rsplitn(2, |c: char| c.is_whitespace());
+    let on_off = parts
+        .next()
+        .ok_or_else(|| DbError::Parse("SET IDENTITY_INSERT requires table name and ON/OFF".into()))?
+        .to_uppercase();
+    let table_str = parts
+        .next()
+        .ok_or_else(|| DbError::Parse("SET IDENTITY_INSERT requires table name".into()))?
+        .trim();
+
+    let on = match on_off.as_str() {
+        "ON" => true,
+        "OFF" => false,
+        _ => return Err(DbError::Parse("SET IDENTITY_INSERT expects ON or OFF".into())),
+    };
+
+    let table = crate::parser::utils::parse_object_name(table_str);
+    Ok(Statement::SetIdentityInsert(crate::ast::SetIdentityInsertStmt { table, on }))
 }

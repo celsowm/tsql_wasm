@@ -454,13 +454,14 @@ fn test_phase8_unsupported_detection() {
 
     // Test unsupported features - these should fail to parse
     let unsupported = vec![
-        "SELECT ROW_NUMBER() OVER (ORDER BY id) FROM t",
+        "SELECT PIVOT(SUM(qty) FOR product IN ([A], [B])) AS pvt FROM sales",
+        "CREATE TABLE t (id INT PRIMARY KEY) WITH (DATA_COMPRESSION = PAGE)",
     ];
 
     for sql in unsupported {
         let report = engine.analyze_sql_batch(sql);
         assert_eq!(report.entries.len(), 1);
-        // ROW_NUMBER should be unsupported or at least partial
+        // These features should be unsupported or at least partial
         // (some features may parse but not execute)
     }
 }

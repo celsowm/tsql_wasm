@@ -42,6 +42,30 @@ fn test_phase6_set_option_ast_values() {
 }
 
 #[test]
+fn test_phase6_set_datefirst_out_of_range_error() {
+    let mut engine = Engine::new();
+    let err = engine
+        .execute(parse_sql("SET DATEFIRST 9").unwrap())
+        .unwrap_err();
+    assert!(err.to_string().contains("DATEFIRST"));
+    assert!(err.to_string().contains("outside the range"));
+    assert!(err.to_string().contains("1-7"));
+    
+    let err2 = engine
+        .execute(parse_sql("SET DATEFIRST 0").unwrap())
+        .unwrap_err();
+    assert!(err2.to_string().contains("DATEFIRST"));
+    
+    let err3 = engine
+        .execute(parse_sql("SET DATEFIRST 8").unwrap())
+        .unwrap_err();
+    assert!(err3.to_string().contains("DATEFIRST"));
+    
+    exec(&mut engine, "SET DATEFIRST 1");
+    exec(&mut engine, "SET DATEFIRST 7");
+}
+
+#[test]
 fn test_phase6_xact_abort_rolls_back_transaction() {
     let mut engine = Engine::new();
     exec(
@@ -65,16 +89,14 @@ fn test_phase6_xact_abort_rolls_back_transaction() {
 fn test_phase6_compatibility_report_spans_status_and_warnings() {
     let engine = Engine::new();
     let report = engine.analyze_sql_batch(
-        "SET DATEFIRST 9;\nSET LANGUAGE portuguese;\nSELECT 1 AS x;\nFOO BAR;",
+        "SET LANGUAGE portuguese;\nSELECT 1 AS x;\nFOO BAR;",
     );
-    assert_eq!(report.entries.len(), 4);
+    assert_eq!(report.entries.len(), 3);
     assert_eq!(report.entries[0].status, SupportStatus::Partial);
-    assert_eq!(report.entries[1].status, SupportStatus::Partial);
-    assert_eq!(report.entries[2].status, SupportStatus::Supported);
-    assert_eq!(report.entries[3].status, SupportStatus::Unsupported);
+    assert_eq!(report.entries[1].status, SupportStatus::Supported);
+    assert_eq!(report.entries[2].status, SupportStatus::Unsupported);
     assert_eq!(report.entries[0].span.start_line, 1);
-    assert_eq!(report.entries[1].span.start_line, 2);
-    assert_eq!(report.entries[3].span.start_line, 4);
+    assert_eq!(report.entries[2].span.start_line, 3);
 }
 
 #[test]
@@ -215,4 +237,28 @@ fn test_phase6_metadata_routines_and_constraints_views() {
         "SELECT name FROM sys.routines WHERE name = 'bump'",
     );
     assert_eq!(r3.rows.len(), 1);
+}
+
+#[test]
+fn test_phase6_quoted_identifier_on() {
+    let mut engine = Engine::new();
+    exec(&mut engine, "CREATE TABLE dbo.t (id INT NOT NULL PRIMARY KEY, name VARCHAR(50))");
+    exec(&mut engine, "INSERT INTO dbo.t (id, name) VALUES (1, 'test')");
+    
+    let rows = query(&mut engine, "SELECT id FROM dbo.t WHERE name = 'test'");
+    assert_eq!(rows.rows.len(), 1);
+    
+    let rows2 = query(&mut engine, "SELECT \"id\" FROM dbo.t WHERE \"name\" = 'test'");
+    assert_eq!(rows2.rows.len(), 1);
+}
+
+#[test]
+fn test_phase6_quoted_identifier_off() {
+    let mut engine = Engine::new();
+    exec(&mut engine, "SET QUOTED_IDENTIFIER OFF");
+    exec(&mut engine, "CREATE TABLE dbo.t2 (id INT NOT NULL PRIMARY KEY, name VARCHAR(50))");
+    exec(&mut engine, "INSERT INTO dbo.t2 (id, name) VALUES (1, 'test')");
+    
+    let rows = query(&mut engine, "SELECT id FROM dbo.t2 WHERE name = 'test'");
+    assert_eq!(rows.rows.len(), 1);
 }

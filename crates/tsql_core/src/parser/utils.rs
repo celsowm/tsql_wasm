@@ -11,10 +11,10 @@ fn is_alphanumeric(b: u8) -> bool {
 }
 
 pub(crate) fn parse_object_name(input: &str) -> ObjectName {
-    let cleaned = input.trim().trim_matches('[').trim_matches(']');
+    let cleaned = input.trim().trim_matches('[').trim_matches(']').trim_matches('"');
     let parts = cleaned
         .split('.')
-        .map(|s| s.trim().trim_matches('[').trim_matches(']').to_string())
+        .map(|s| s.trim().trim_matches('[').trim_matches(']').trim_matches('"').to_string())
         .collect::<Vec<_>>();
 
     if parts.len() == 2 {

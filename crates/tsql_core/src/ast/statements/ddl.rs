@@ -54,6 +54,8 @@ pub struct AlterTableStmt {
 pub enum AlterTableAction {
     AddColumn(ColumnSpec),
     DropColumn(String),
+    AddConstraint(TableConstraintSpec),
+    DropConstraint(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,10 +85,20 @@ pub struct ColumnSpec {
     pub foreign_key: Option<ForeignKeyRef>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ReferentialAction {
+    NoAction,
+    Cascade,
+    SetNull,
+    SetDefault,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ForeignKeyRef {
     pub referenced_table: ObjectName,
     pub referenced_columns: Vec<String>,
+    pub on_delete: Option<ReferentialAction>,
+    pub on_update: Option<ReferentialAction>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,6 +117,8 @@ pub enum TableConstraintSpec {
         columns: Vec<String>,
         referenced_table: ObjectName,
         referenced_columns: Vec<String>,
+        on_delete: Option<ReferentialAction>,
+        on_update: Option<ReferentialAction>,
     },
     PrimaryKey {
         name: String,

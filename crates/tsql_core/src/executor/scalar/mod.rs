@@ -136,7 +136,7 @@ pub(crate) fn eval_function(
         "@@SERVERNAME" => Ok(Value::NVarChar("localhost".into())),
         "@@SERVICENAME" => Ok(Value::NVarChar("MSSQLSERVER".into())),
         "@@SPID" => Ok(Value::SmallInt(1)),
-        "@@TRANCOUNT" => Ok(Value::Int(0)),
+        "@@TRANCOUNT" => Ok(Value::Int(ctx.trancount as i32)),
         "@@ERROR" => Ok(Value::Int(0)),
         "@@FETCH_STATUS" => Ok(Value::Int(*ctx.fetch_status)),
         "@@LANGUAGE" => Ok(Value::NVarChar("us_english".into())),

@@ -9,7 +9,7 @@ fn test_phase5_parser_transaction_statements() {
     ));
     assert!(matches!(
         parse_sql("COMMIT TRANSACTION").unwrap(),
-        Statement::CommitTransaction
+        Statement::CommitTransaction(_)
     ));
     assert!(matches!(
         parse_sql("ROLLBACK TRANSACTION sp1").unwrap(),
@@ -116,15 +116,140 @@ fn test_phase5_rollback_without_active_transaction_errors() {
 }
 
 #[test]
-fn test_phase5_nested_begin_transaction_not_supported() {
+fn test_phase5_nested_begin_transaction_supported() {
     let mut engine = Engine::new();
     engine
         .execute(parse_sql("BEGIN TRANSACTION").unwrap())
         .unwrap();
-    let err = engine
+    engine
         .execute(parse_sql("BEGIN TRANSACTION").unwrap())
-        .unwrap_err();
-    assert!(err.to_string().contains("nested BEGIN TRANSACTION"));
+        .unwrap();
+    engine.execute(parse_sql("COMMIT").unwrap()).unwrap();
+    engine.execute(parse_sql("COMMIT").unwrap()).unwrap();
+}
+
+#[test]
+fn test_phase5_trancount_reflects_depth() {
+    let mut engine = Engine::new();
+
+    let result = engine
+        .execute(parse_sql("SELECT @@TRANCOUNT").unwrap())
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.rows, vec![vec![Value::Int(0)]]);
+
+    engine
+        .execute(parse_sql("BEGIN TRANSACTION").unwrap())
+        .unwrap();
+    let result = engine
+        .execute(parse_sql("SELECT @@TRANCOUNT").unwrap())
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.rows, vec![vec![Value::Int(1)]]);
+
+    engine
+        .execute(parse_sql("BEGIN TRANSACTION").unwrap())
+        .unwrap();
+    let result = engine
+        .execute(parse_sql("SELECT @@TRANCOUNT").unwrap())
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.rows, vec![vec![Value::Int(2)]]);
+
+    engine.execute(parse_sql("COMMIT").unwrap()).unwrap();
+    let result = engine
+        .execute(parse_sql("SELECT @@TRANCOUNT").unwrap())
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.rows, vec![vec![Value::Int(1)]]);
+
+    engine.execute(parse_sql("COMMIT").unwrap()).unwrap();
+    let result = engine
+        .execute(parse_sql("SELECT @@TRANCOUNT").unwrap())
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.rows, vec![vec![Value::Int(0)]]);
+}
+
+#[test]
+fn test_phase5_nested_commit_only_outermost_persists() {
+    let mut engine = Engine::new();
+    engine
+        .execute(parse_sql("CREATE TABLE t (id INT NOT NULL PRIMARY KEY)").unwrap())
+        .unwrap();
+
+    engine
+        .execute(parse_sql("BEGIN TRANSACTION").unwrap())
+        .unwrap();
+    engine
+        .execute(parse_sql("INSERT INTO t (id) VALUES (1)").unwrap())
+        .unwrap();
+
+    engine
+        .execute(parse_sql("BEGIN TRANSACTION").unwrap())
+        .unwrap();
+    engine
+        .execute(parse_sql("INSERT INTO t (id) VALUES (2)").unwrap())
+        .unwrap();
+    engine.execute(parse_sql("COMMIT").unwrap()).unwrap();
+
+    engine.execute(parse_sql("COMMIT").unwrap()).unwrap();
+
+    let result = engine
+        .execute(parse_sql("SELECT id FROM t ORDER BY id").unwrap())
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.rows, vec![vec![Value::Int(1)], vec![Value::Int(2)]]);
+}
+
+#[test]
+fn test_phase5_nested_rollback_rolls_back_all() {
+    let mut engine = Engine::new();
+    engine
+        .execute(parse_sql("CREATE TABLE t (id INT NOT NULL PRIMARY KEY)").unwrap())
+        .unwrap();
+
+    engine
+        .execute(parse_sql("BEGIN TRANSACTION").unwrap())
+        .unwrap();
+    engine
+        .execute(parse_sql("INSERT INTO t (id) VALUES (1)").unwrap())
+        .unwrap();
+
+    engine
+        .execute(parse_sql("BEGIN TRANSACTION").unwrap())
+        .unwrap();
+    engine
+        .execute(parse_sql("INSERT INTO t (id) VALUES (2)").unwrap())
+        .unwrap();
+    engine.execute(parse_sql("ROLLBACK").unwrap()).unwrap();
+
+    let result = engine
+        .execute(parse_sql("SELECT id FROM t").unwrap())
+        .unwrap()
+        .unwrap();
+    assert!(result.rows.is_empty());
+}
+
+#[test]
+fn test_phase5_trancount_in_batch() {
+    let mut engine = Engine::new();
+
+    engine.execute(parse_sql("BEGIN TRANSACTION").unwrap()).unwrap();
+    let r = engine.execute(parse_sql("SELECT @@TRANCOUNT").unwrap()).unwrap().unwrap();
+    assert_eq!(r.rows[0][0], Value::Int(1));
+
+    engine.execute(parse_sql("BEGIN TRANSACTION").unwrap()).unwrap();
+    let r = engine.execute(parse_sql("SELECT @@TRANCOUNT").unwrap()).unwrap().unwrap();
+    assert_eq!(r.rows[0][0], Value::Int(2));
+
+    engine.execute(parse_sql("COMMIT").unwrap()).unwrap();
+    let r = engine.execute(parse_sql("SELECT @@TRANCOUNT").unwrap()).unwrap().unwrap();
+    assert_eq!(r.rows[0][0], Value::Int(1));
+
+    engine.execute(parse_sql("COMMIT").unwrap()).unwrap();
+    let r = engine.execute(parse_sql("SELECT @@TRANCOUNT").unwrap()).unwrap().unwrap();
+    assert_eq!(r.rows[0][0], Value::Int(0));
 }
 
 #[test]

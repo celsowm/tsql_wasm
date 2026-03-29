@@ -36,6 +36,14 @@ impl<'a> SchemaExecutor<'a> {
         }
 
         let table_id = self.catalog.alloc_table_id();
+
+        let mut column_fks: Vec<(String, crate::ast::ForeignKeyRef)> = Vec::new();
+        for spec in &stmt.columns {
+            if let Some(fk) = &spec.foreign_key {
+                column_fks.push((spec.name.clone(), fk.clone()));
+            }
+        }
+
         let columns = stmt
             .columns
             .into_iter()
@@ -53,6 +61,17 @@ impl<'a> SchemaExecutor<'a> {
             foreign_keys: vec![],
         };
 
+        for (col_name, fk_ref) in column_fks {
+            table_fks.push(ForeignKeyDef {
+                name: format!("FK__{}__{}", table.name, col_name),
+                columns: vec![col_name],
+                referenced_table: fk_ref.referenced_table,
+                referenced_columns: fk_ref.referenced_columns,
+                on_delete: fk_ref.on_delete.unwrap_or(crate::ast::ReferentialAction::NoAction),
+                on_update: fk_ref.on_update.unwrap_or(crate::ast::ReferentialAction::NoAction),
+            });
+        }
+
         for tc in stmt.table_constraints {
             match tc {
                 TableConstraintSpec::Default { name, column, expr } => {
@@ -69,16 +88,50 @@ impl<'a> SchemaExecutor<'a> {
                 TableConstraintSpec::Check { name, expr } => {
                     table_checks.push(CheckConstraintDef { name, expr });
                 }
-                TableConstraintSpec::ForeignKey { name, columns, referenced_table, referenced_columns } => {
+                TableConstraintSpec::ForeignKey { name, columns, referenced_table, referenced_columns, on_delete, on_update } => {
                     table_fks.push(ForeignKeyDef {
                         name,
                         columns,
                         referenced_table,
                         referenced_columns,
+                        on_delete: on_delete.unwrap_or(crate::ast::ReferentialAction::NoAction),
+                        on_update: on_update.unwrap_or(crate::ast::ReferentialAction::NoAction),
                     });
                 }
-                TableConstraintSpec::PrimaryKey { .. } => {}
-                TableConstraintSpec::Unique { .. } => {}
+                TableConstraintSpec::PrimaryKey { name: _, columns } => {
+                    for col_name in &columns {
+                        let col = table
+                            .columns
+                            .iter_mut()
+                            .find(|c| c.name.eq_ignore_ascii_case(col_name))
+                            .ok_or_else(|| {
+                                DbError::Semantic(format!("column '{}' not found", col_name))
+                            })?;
+                        col.primary_key = true;
+                        col.nullable = false;
+                    }
+                    if columns.len() == 1 {
+                        if let Some(col) = table
+                            .columns
+                            .iter_mut()
+                            .find(|c| c.name.eq_ignore_ascii_case(&columns[0]))
+                        {
+                            col.unique = true;
+                        }
+                    }
+                }
+                TableConstraintSpec::Unique { name: _, columns } => {
+                    for col_name in &columns {
+                        let col = table
+                            .columns
+                            .iter_mut()
+                            .find(|c| c.name.eq_ignore_ascii_case(col_name))
+                            .ok_or_else(|| {
+                                DbError::Semantic(format!("column '{}' not found", col_name))
+                            })?;
+                        col.unique = true;
+                    }
+                }
             }
         }
         table.check_constraints = table_checks;
@@ -207,6 +260,87 @@ impl<'a> SchemaExecutor<'a> {
                         }
                     }
                     self.storage.update_rows(table_id, rows_vec)?;
+                }
+            }
+            AlterTableAction::AddConstraint(constraint) => {
+                let table_mut = self
+                    .catalog
+                    .find_table_mut(&schema_name, &stmt.table.name)
+                    .ok_or_else(|| DbError::Semantic(format!("table '{}.{}' not found", schema_name, stmt.table.name)))?;
+                
+                match constraint {
+                    TableConstraintSpec::Check { name, expr } => {
+                        table_mut.check_constraints.push(CheckConstraintDef { name, expr });
+                    }
+                    TableConstraintSpec::ForeignKey { name, columns, referenced_table, referenced_columns, on_delete, on_update } => {
+                        table_mut.foreign_keys.push(ForeignKeyDef {
+                            name,
+                            columns,
+                            referenced_table,
+                            referenced_columns,
+                            on_delete: on_delete.unwrap_or(crate::ast::ReferentialAction::NoAction),
+                            on_update: on_update.unwrap_or(crate::ast::ReferentialAction::NoAction),
+                        });
+                    }
+                    TableConstraintSpec::PrimaryKey { name: _, columns } => {
+                        for col_name in &columns {
+                            let col = table_mut
+                                .columns
+                                .iter_mut()
+                                .find(|c| c.name.eq_ignore_ascii_case(col_name))
+                                .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", col_name)))?;
+                            col.primary_key = true;
+                            col.nullable = false;
+                        }
+                        if columns.len() == 1 {
+                            if let Some(col) = table_mut
+                                .columns
+                                .iter_mut()
+                                .find(|c| c.name.eq_ignore_ascii_case(&columns[0]))
+                            {
+                                col.unique = true;
+                            }
+                        }
+                    }
+                    TableConstraintSpec::Unique { name: _, columns } => {
+                        for col_name in &columns {
+                            let col = table_mut
+                                .columns
+                                .iter_mut()
+                                .find(|c| c.name.eq_ignore_ascii_case(col_name))
+                                .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", col_name)))?;
+                            col.unique = true;
+                        }
+                    }
+                    TableConstraintSpec::Default { name, column, expr } => {
+                        let col = table_mut
+                            .columns
+                            .iter_mut()
+                            .find(|c| c.name.eq_ignore_ascii_case(&column))
+                            .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", column)))?;
+                        col.default = Some(expr);
+                        col.default_constraint_name = Some(name);
+                    }
+                }
+            }
+            AlterTableAction::DropConstraint(constraint_name) => {
+                let table_mut = self
+                    .catalog
+                    .find_table_mut(&schema_name, &stmt.table.name)
+                    .ok_or_else(|| DbError::Semantic(format!("table '{}.{}' not found", schema_name, stmt.table.name)))?;
+                
+                // Try to remove from check constraints
+                let removed = table_mut.check_constraints.iter().position(|c| c.name.eq_ignore_ascii_case(&constraint_name));
+                if let Some(pos) = removed {
+                    table_mut.check_constraints.remove(pos);
+                } else {
+                    // Try to remove from foreign keys
+                    let removed = table_mut.foreign_keys.iter().position(|fk| fk.name.eq_ignore_ascii_case(&constraint_name));
+                    if let Some(pos) = removed {
+                        table_mut.foreign_keys.remove(pos);
+                    } else {
+                        return Err(DbError::Semantic(format!("constraint '{}' not found", constraint_name)));
+                    }
                 }
             }
         }

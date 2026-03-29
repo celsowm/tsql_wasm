@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::cte::CteStorage;
 use super::model::{JoinedRow, Cursor};
@@ -41,6 +41,8 @@ pub struct ExecutionContext<'a> {
     pub trigger_depth: usize,
     pub skip_instead_of: bool,
     pub last_error: Option<DbError>,
+    pub trancount: u32,
+    pub identity_insert: HashSet<String>,
 }
 
 
@@ -85,6 +87,8 @@ impl<'a> ExecutionContext<'a> {
             trigger_depth: 0,
             skip_instead_of: false,
             last_error: None,
+            trancount: 0,
+            identity_insert: HashSet::new(),
         }
     }
 
@@ -115,6 +119,8 @@ impl<'a> ExecutionContext<'a> {
             trigger_depth: self.trigger_depth,
             skip_instead_of: self.skip_instead_of,
             last_error: self.last_error.clone(),
+            trancount: self.trancount,
+            identity_insert: self.identity_insert.clone(),
         }
     }
 
@@ -145,6 +151,8 @@ impl<'a> ExecutionContext<'a> {
             trigger_depth: self.trigger_depth,
             skip_instead_of: self.skip_instead_of,
             last_error: self.last_error.clone(),
+            trancount: self.trancount,
+            identity_insert: self.identity_insert.clone(),
         }
     }
 
@@ -179,6 +187,8 @@ impl<'a> ExecutionContext<'a> {
             trigger_depth: self.trigger_depth,
             skip_instead_of: self.skip_instead_of,
             last_error: self.last_error.clone(),
+            trancount: self.trancount,
+            identity_insert: self.identity_insert.clone(),
         }
     }
 

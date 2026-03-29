@@ -12,4 +12,6 @@ pub use statements::query::*;
 pub use statements::procedural::*;
 pub use statements::{
     Statement, IsolationLevel, SessionOption, SessionOptionValue, RoutineParam,
+    SetIdentityInsertStmt,
 };
+pub use statements::ddl::ReferentialAction;

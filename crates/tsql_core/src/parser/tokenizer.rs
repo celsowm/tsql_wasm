@@ -54,6 +54,10 @@ pub enum ExprToken {
 }
 
 pub fn tokenize_expr(input: &str) -> Result<Vec<ExprToken>, DbError> {
+    tokenize_expr_with_quoted_ident(input, true)
+}
+
+pub fn tokenize_expr_with_quoted_ident(input: &str, quoted_identifier: bool) -> Result<Vec<ExprToken>, DbError> {
     let chars = input.chars().collect::<Vec<_>>();
     let mut i = 0usize;
     let mut out = Vec::new();
@@ -66,6 +70,31 @@ pub fn tokenize_expr(input: &str) -> Result<Vec<ExprToken>, DbError> {
         }
 
         match ch {
+            '"' => {
+                if quoted_identifier {
+                    let start = i + 1;
+                    i += 1;
+                    while i < chars.len() && chars[i] != '"' {
+                        i += 1;
+                    }
+                    if i >= chars.len() {
+                        return Err(DbError::Parse("unterminated quoted identifier".into()));
+                    }
+                    out.push(ExprToken::Identifier(chars[start..i].iter().collect()));
+                    i += 1;
+                } else {
+                    let start = i + 1;
+                    i += 1;
+                    while i < chars.len() && chars[i] != '"' {
+                        i += 1;
+                    }
+                    if i >= chars.len() {
+                        return Err(DbError::Parse("unterminated string literal".into()));
+                    }
+                    out.push(ExprToken::String(chars[start..i].iter().collect()));
+                    i += 1;
+                }
+            }
             '(' => {
                 out.push(ExprToken::LParen);
                 i += 1;

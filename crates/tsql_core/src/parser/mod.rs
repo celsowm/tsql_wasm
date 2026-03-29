@@ -7,16 +7,26 @@ use crate::ast::{SetOpKind, SetOpStmt, Statement};
 use crate::error::DbError;
 
 pub use expression::parse_expr;
+pub use expression::parse_expr_with_quoted_ident;
 
 pub fn parse_expr_subquery_aware(input: &str) -> Result<crate::ast::Expr, DbError> {
+    parse_expr_subquery_aware_with_quoted_ident(input, true)
+}
+
+pub fn parse_expr_subquery_aware_with_quoted_ident(input: &str, quoted_identifier: bool) -> Result<crate::ast::Expr, DbError> {
     let (processed, subquery_map) = statements::extract_subqueries(input);
-    let mut expr = expression::parse_expr_with_subqueries(&processed, &subquery_map)?;
+    let mut expr = expression::parse_expr_with_subqueries_and_quoted_ident(&processed, &subquery_map, quoted_identifier)?;
     statements::apply_subquery_map(&mut expr, &subquery_map);
     Ok(expr)
 }
 
 pub fn parse_batch(sql: &str) -> Result<Vec<Statement>, DbError> {
-    let stripped = strip_comments(sql);
+    parse_batch_with_quoted_ident(sql, true)
+}
+
+pub fn parse_batch_with_quoted_ident(sql: &str, quoted_identifier: bool) -> Result<Vec<Statement>, DbError> {
+    let processed_sql = preprocess_sql_for_quoted_ident(sql, quoted_identifier);
+    let stripped = strip_comments(&processed_sql);
     let trimmed = stripped.trim();
     if trimmed.is_empty() {
         return Ok(vec![]);
@@ -27,7 +37,7 @@ pub fn parse_batch(sql: &str) -> Result<Vec<Statement>, DbError> {
     for part in &parts {
         let s = part.trim();
         if !s.is_empty() {
-            statements.push(parse_sql(s)?);
+            statements.push(parse_sql_with_quoted_ident(s, quoted_identifier)?);
         }
     }
     Ok(statements)
@@ -191,7 +201,70 @@ fn is_statement_keyword_start(upper_chars: &[char], chars: &[char], start: usize
 }
 
 pub fn parse_sql(sql: &str) -> Result<Statement, DbError> {
-    let trimmed = sql.trim().trim_end_matches(';').trim();
+    parse_sql_with_quoted_ident(sql, true)
+}
+
+fn preprocess_sql_for_quoted_ident(sql: &str, quoted_identifier: bool) -> String {
+    if quoted_identifier {
+        return sql.to_string();
+    }
+    
+    let mut result = String::new();
+    let mut in_string = false;
+    let mut in_bracket = false;
+    let chars: Vec<char> = sql.chars().collect();
+    let mut i = 0;
+    
+    while i < chars.len() {
+        let ch = chars[i];
+        
+        if ch == '\'' && !in_bracket {
+            in_string = !in_string;
+            result.push(ch);
+            i += 1;
+            continue;
+        }
+        
+        if ch == '[' && !in_string {
+            in_bracket = true;
+            result.push(ch);
+            i += 1;
+            continue;
+        }
+        
+        if ch == ']' && in_bracket {
+            in_bracket = false;
+            result.push(ch);
+            i += 1;
+            continue;
+        }
+        
+        if ch == '"' && !in_string && !in_bracket {
+            let start = i + 1;
+            let mut end = start;
+            while end < chars.len() && chars[end] != '"' {
+                end += 1;
+            }
+            if end < chars.len() {
+                let quoted_text: String = chars[start..end].iter().collect();
+                result.push('\'');
+                result.push_str(&quoted_text);
+                result.push('\'');
+                i = end + 1;
+                continue;
+            }
+        }
+        
+        result.push(ch);
+        i += 1;
+    }
+    
+    result
+}
+
+pub fn parse_sql_with_quoted_ident(sql: &str, quoted_identifier: bool) -> Result<Statement, DbError> {
+    let processed_sql = preprocess_sql_for_quoted_ident(sql, quoted_identifier);
+    let trimmed = processed_sql.trim().trim_end_matches(';').trim();
 
     let upper = trimmed.to_uppercase();
 

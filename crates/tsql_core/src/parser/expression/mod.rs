@@ -7,11 +7,15 @@ mod primary;
 mod special;
 mod window;
 
-use super::tokenizer::tokenize_expr;
+use super::tokenizer::tokenize_expr_with_quoted_ident;
 pub(crate) use super::tokenizer::ExprToken;
 
 pub fn parse_expr(input: &str) -> Result<Expr, DbError> {
-    let tokens = tokenize_expr(input)?;
+    parse_expr_with_quoted_ident(input, true)
+}
+
+pub fn parse_expr_with_quoted_ident(input: &str, quoted_identifier: bool) -> Result<Expr, DbError> {
+    let tokens = tokenize_expr_with_quoted_ident(input, quoted_identifier)?;
     let mut parser = ExprParser {
         tokens,
         pos: 0,
@@ -31,7 +35,15 @@ pub fn parse_expr_with_subqueries(
     input: &str,
     subquery_map: &HashMap<String, SelectStmt>,
 ) -> Result<Expr, DbError> {
-    let tokens = tokenize_expr(input)?;
+    parse_expr_with_subqueries_and_quoted_ident(input, subquery_map, true)
+}
+
+pub fn parse_expr_with_subqueries_and_quoted_ident(
+    input: &str,
+    subquery_map: &HashMap<String, SelectStmt>,
+    quoted_identifier: bool,
+) -> Result<Expr, DbError> {
+    let tokens = tokenize_expr_with_quoted_ident(input, quoted_identifier)?;
     let mut parser = ExprParser {
         tokens,
         pos: 0,

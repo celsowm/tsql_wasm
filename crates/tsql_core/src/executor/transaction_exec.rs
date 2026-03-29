@@ -29,25 +29,36 @@ where
 {
     match stmt {
         Statement::BeginTransaction(name) => {
-            let workspace_catalog = state.catalog.clone();
-            let workspace_storage = state.storage.clone();
-            tx_manager.commit_ts = state.commit_ts;
-            let begin_name = tx_manager.begin(&workspace_catalog, &workspace_storage, name)?;
-            *workspace_slot = Some(TxWorkspace {
-                catalog: workspace_catalog,
-                storage: workspace_storage,
-                base_table_versions: state.table_versions.clone(),
-                read_tables: HashSet::new(),
-                write_tables: HashSet::new(),
-                acquired_locks: Vec::new(),
-            });
-            journal.record(JournalEvent::Begin {
-                isolation_level: tx_manager.session_isolation_level,
-                name: begin_name,
-            });
+            if tx_manager.depth == 0 {
+                let workspace_catalog = state.catalog.clone();
+                let workspace_storage = state.storage.clone();
+                tx_manager.commit_ts = state.commit_ts;
+                tx_manager.begin(&workspace_catalog, &workspace_storage, name.clone())?;
+                *workspace_slot = Some(TxWorkspace {
+                    catalog: workspace_catalog,
+                    storage: workspace_storage,
+                    base_table_versions: state.table_versions.clone(),
+                    read_tables: HashSet::new(),
+                    write_tables: HashSet::new(),
+                    acquired_locks: Vec::new(),
+                });
+                journal.record(JournalEvent::Begin {
+                    isolation_level: tx_manager.session_isolation_level,
+                    name,
+                });
+            } else {
+                tx_manager.depth += 1;
+            }
             Ok(None)
         }
         Statement::CommitTransaction(_) => {
+            if tx_manager.depth == 0 {
+                return Err(DbError::Execution("COMMIT without active transaction".into()));
+            }
+            tx_manager.depth -= 1;
+            if tx_manager.depth > 0 {
+                return Ok(None);
+            }
             let tx = tx_manager
                 .active
                 .as_ref()
@@ -166,6 +177,7 @@ where
     state.table_locks.release_workspace_locks(session_id, workspace_slot, 0);
     *workspace_slot = None;
     tx_manager.active = None;
+    tx_manager.depth = 0;
     tx_manager.commit_ts = state.commit_ts;
     journal.record(JournalEvent::Rollback { savepoint: None });
 }

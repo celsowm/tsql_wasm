@@ -16,6 +16,8 @@ pub struct ForeignKeyDef {
     pub columns: Vec<String>,
     pub referenced_table: crate::ast::ObjectName,
     pub referenced_columns: Vec<String>,
+    pub on_delete: crate::ast::ReferentialAction,
+    pub on_update: crate::ast::ReferentialAction,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

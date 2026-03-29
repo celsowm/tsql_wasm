@@ -11,7 +11,7 @@ use super::MutationExecutor;
 use super::output::build_output_result;
 use super::validation::{
     apply_assignments, enforce_checks_on_row, enforce_foreign_keys_on_delete,
-    enforce_foreign_keys_on_insert, enforce_unique_on_update, validate_row_against_table,
+    enforce_foreign_keys_on_insert, enforce_foreign_keys_on_update, enforce_unique_on_update, validate_row_against_table,
 };
 
 impl<'a> MutationExecutor<'a> {
@@ -260,6 +260,7 @@ impl<'a> MutationExecutor<'a> {
                         self.storage,
                         self.clock,
                     )?;
+                    enforce_foreign_keys_on_update(&table, self.catalog, self.storage, stored_row, &new_row)?;
                     validate_row_against_table(&table, &new_row.values)?;
                     enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &new_row)?;
                     enforce_checks_on_row(
