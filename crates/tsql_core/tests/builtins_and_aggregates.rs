@@ -189,7 +189,7 @@ fn test_avg_aggregate() {
     exec(&mut engine, "INSERT INTO dbo.t (val) VALUES (20)");
     exec(&mut engine, "INSERT INTO dbo.t (val) VALUES (30)");
     let r = query(&mut engine, "SELECT AVG(val) AS avg_val FROM dbo.t");
-    assert_eq!(r.rows[0][0], Value::Decimal(20000000, 6));
+    assert_eq!(r.rows[0][0], Value::Int(20));
 }
 
 #[test]

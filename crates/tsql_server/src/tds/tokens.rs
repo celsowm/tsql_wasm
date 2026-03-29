@@ -59,17 +59,14 @@ pub fn write_colmetadata(b: &mut PacketBuilder, columns: &[String], types: &[Typ
             b.put_bytes(collation);
         }
 
-        // Scale for time types
-        if let Some(scale) = ti.scale {
-            b.put_u8(scale);
-        }
-
-        // Precision for decimal
+        // TYPE_INFO tail:
+        // - DECIMAL/NUMERIC: precision + scale
+        // - TIME/DATETIME2: scale
         if let Some(precision) = ti.precision {
             b.put_u8(precision);
-            if let Some(scale) = ti.scale {
-                b.put_u8(scale);
-            }
+            b.put_u8(ti.scale.unwrap_or(0));
+        } else if let Some(scale) = ti.scale {
+            b.put_u8(scale);
         }
 
         // Column name: B_VARCHAR (UTF-16LE)

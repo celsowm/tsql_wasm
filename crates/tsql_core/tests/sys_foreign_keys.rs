@@ -1,4 +1,4 @@
-use tsql_core::{parse_sql, types::Value, Engine};
+use tsql_core::{parse_sql, Engine};
 
 fn exec(engine: &mut Engine, sql: &str) {
     let stmt = parse_sql(sql).expect(&format!("parse failed: {}", sql));

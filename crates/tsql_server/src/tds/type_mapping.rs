@@ -80,14 +80,18 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
             precision: None,
             flags: 0x0001,
         },
-        Value::Decimal(_, scale) => TypeInfo {
-            tds_type: DECIMALNTYPE,
-            length_prefix: vec![0x11],
-            collation: None,
-            scale: Some(*scale),
-            precision: Some(38),
-            flags: 0x0001,
-        },
+        Value::Decimal(_, scale) => {
+            let precision = 38;
+            let len = 17;
+            TypeInfo {
+                tds_type: NUMERICNTYPE,
+                length_prefix: vec![len],
+                collation: None,
+                scale: Some(*scale),
+                precision: Some(precision),
+                flags: 0x0001,
+            }
+        }
         Value::Money(_) => TypeInfo {
             tds_type: MONEYNTYPE,
             length_prefix: vec![0x08],
@@ -242,7 +246,7 @@ pub fn value_to_wire_bytes(value: &Value, ti: &TypeInfo) -> Vec<u8> {
             }
             buf
         }
-        DECIMALNTYPE | NUMERICNTYPE => {
+        NUMERICNTYPE | DECIMALNTYPE => {
             let len = ti.length_prefix[0];
             let mut buf = vec![len];
             let raw = match value {
@@ -252,15 +256,13 @@ pub fn value_to_wire_bytes(value: &Value, ti: &TypeInfo) -> Vec<u8> {
             let negative = raw < 0;
             let abs_val = raw.abs() as u128;
             buf.push(if negative { 0x00 } else { 0x01 });
-            let limbs = [
-                (abs_val & 0xFFFFFFFF) as u32,
-                ((abs_val >> 32) & 0xFFFFFFFF) as u32,
-                ((abs_val >> 64) & 0xFFFFFFFF) as u32,
-                ((abs_val >> 96) & 0xFFFFFFFF) as u32,
-            ];
-            for limb in &limbs {
+            let limb_count = (len - 1) / 4;
+            for i in 0..limb_count {
+                let shift = (i as u32) * 32;
+                let limb = ((abs_val >> shift) & 0xFFFFFFFF) as u32;
                 buf.extend_from_slice(&limb.to_le_bytes());
             }
+            log::info!("Decimal raw={}, bytes={:02X?}", raw, buf);
             buf
         }
         MONEYNTYPE => {
@@ -511,14 +513,25 @@ pub fn runtime_type_to_tds(ty: &tsql_core::types::DataType) -> TypeInfo {
             precision: None,
             flags: 0x0001,
         },
-        tsql_core::types::DataType::Decimal { precision, scale } => TypeInfo {
-            tds_type: DECIMALNTYPE,
-            length_prefix: vec![0x11],
-            collation: None,
-            scale: Some(*scale),
-            precision: Some(*precision),
-            flags: 0x0001,
-        },
+        tsql_core::types::DataType::Decimal { precision, scale } => {
+            let len = if *precision <= 9 {
+                5
+            } else if *precision <= 19 {
+                9
+            } else if *precision <= 28 {
+                13
+            } else {
+                17
+            };
+            TypeInfo {
+                tds_type: NUMERICNTYPE,
+                length_prefix: vec![len],
+                collation: None,
+                scale: Some(*scale),
+                precision: Some(*precision),
+                flags: 0x0001,
+            }
+        }
         tsql_core::types::DataType::Money => TypeInfo {
             tds_type: MONEYNTYPE,
             length_prefix: vec![0x08],

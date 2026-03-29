@@ -25,6 +25,9 @@ fn row_to_strings(row: &Row) -> Vec<String> {
             if let Ok(Some(v)) = row.try_get::<f64, _>(i) {
                 return v.to_string();
             }
+            if let Ok(Some(v)) = row.try_get::<tiberius::numeric::Numeric, _>(i) {
+                return v.to_string();
+            }
             if let Ok(Some(v)) = row.try_get::<bool, _>(i) {
                 return if v { "1".to_string() } else { "0".to_string() };
             }
@@ -129,7 +132,6 @@ async fn exec_sql(
 }
 
 #[tokio::test]
-#[ignore = "TDS handshake incompatibility with tiberius 0.12 - needs TLS setup"]
 async fn test_prelogin_and_login() {
     let port = start_server().await;
     eprintln!("Server started on port {}", port);
@@ -150,7 +152,6 @@ async fn test_prelogin_and_login() {
 }
 
 #[tokio::test]
-#[ignore = "TDS handshake incompatibility with tiberius 0.12"]
 async fn test_select_string() {
     let port = start_server().await;
     let mut client = connect(port).await;
@@ -163,7 +164,6 @@ async fn test_select_string() {
 }
 
 #[tokio::test]
-#[ignore = "TDS handshake incompatibility with tiberius 0.12"]
 async fn test_select_multiple_columns() {
     let port = start_server().await;
     let mut client = connect(port).await;
@@ -178,7 +178,6 @@ async fn test_select_multiple_columns() {
 }
 
 #[tokio::test]
-#[ignore = "TDS handshake incompatibility with tiberius 0.12"]
 async fn test_create_table_and_insert() {
     let port = start_server().await;
     let mut client = connect(port).await;
@@ -205,7 +204,6 @@ async fn test_create_table_and_insert() {
 }
 
 #[tokio::test]
-#[ignore = "TDS handshake incompatibility with tiberius 0.12"]
 async fn test_join() {
     let port = start_server().await;
     let mut client = connect(port).await;
@@ -242,7 +240,6 @@ async fn test_join() {
 }
 
 #[tokio::test]
-#[ignore = "TDS handshake incompatibility with tiberius 0.12"]
 async fn test_error_handling() {
     let port = start_server().await;
     let mut client = connect(port).await;
@@ -261,7 +258,6 @@ async fn test_error_handling() {
 }
 
 #[tokio::test]
-#[ignore = "TDS handshake incompatibility with tiberius 0.12"]
 async fn test_identity() {
     let port = start_server().await;
     let mut client = connect(port).await;
@@ -284,7 +280,6 @@ async fn test_identity() {
 }
 
 #[tokio::test]
-#[ignore = "TDS handshake incompatibility with tiberius 0.12"]
 async fn test_auth_reject() {
     let config = ServerConfig {
         host: "127.0.0.1".to_string(),
@@ -328,7 +323,6 @@ async fn test_auth_reject() {
 }
 
 #[tokio::test]
-#[ignore = "TDS handshake incompatibility with tiberius 0.12"]
 async fn test_auth_accept() {
     let config = ServerConfig {
         host: "127.0.0.1".to_string(),
@@ -376,7 +370,6 @@ async fn test_auth_accept() {
 }
 
 #[tokio::test]
-#[ignore = "TDS handshake incompatibility with tiberius 0.12"]
 async fn test_playground_tables() {
     let _ = env_logger::builder().is_test(true).try_init();
 
@@ -437,4 +430,33 @@ async fn test_playground_tables() {
     // Test vMonthlySales view
     let (_, rows) = query_sql(&mut client, "SELECT SaleYear, SaleMonth, TotalRevenue FROM dbo.vMonthlySales").await;
     assert!(rows.len() > 0);
+}
+#[tokio::test]
+async fn test_decimal_select() {
+    let _ = env_logger::builder().is_test(true).try_init();
+    let config = ServerConfig {
+        host: "127.0.0.1".to_string(),
+        port: 0,
+        auth: None,
+        database: "master".to_string(),
+        packet_size: 4096,
+        tls_enabled: false,
+        tls_cert_path: None,
+        tls_key_path: None,
+    };
+    let db = tsql_core::Database::new();
+    let mut server = TdsServer::new_with_database(db, config);
+    let addr = server.bind().await.unwrap();
+    let port = addr.port();
+    tokio::spawn(async move {
+        server.run().await.unwrap();
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    let mut client = connect(port).await;
+    let (_, rows) = query_sql(&mut client, "SELECT CAST(123.45 AS DECIMAL(10,2)) as val").await;
+    assert_eq!(rows[0][0], "123.45");
+
+    let (_, rows) = query_sql(&mut client, "SELECT CAST(123.45 AS DECIMAL(18,2)) as val").await;
+    assert_eq!(rows[0][0], "123.45");
 }

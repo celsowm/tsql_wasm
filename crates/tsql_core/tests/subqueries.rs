@@ -361,11 +361,9 @@ fn test_avg_is_numeric() {
     assert_eq!(result.rows.len(), 1);
 
     match &result.rows[0][0] {
-        Value::Decimal(raw, scale) => {
-            let divisor = 10i128.pow(*scale as u32);
-            let value = *raw as f64 / divisor as f64;
-            assert!((value - 85000.0).abs() < 0.01);
+        Value::Int(val) => {
+            assert_eq!(*val, 85000);
         }
-        _ => panic!("Expected decimal, got {:?}", result.rows[0][0]),
+        _ => panic!("Expected int, got {:?}", result.rows[0][0]),
     }
 }

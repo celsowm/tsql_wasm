@@ -303,6 +303,7 @@ impl TdsSession {
                     match result {
                         Some(query_result) if !query_result.columns.is_empty() => {
                             let mut types = Vec::new();
+                            log::debug!("Result set: columns={}, types={}", query_result.columns.len(), query_result.column_types.len());
                             for ct in &query_result.column_types {
                                 types.push(crate::tds::type_mapping::runtime_type_to_tds(ct));
                             }

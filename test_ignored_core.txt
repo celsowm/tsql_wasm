@@ -1,0 +1,330 @@
+warning: value assigned to `right_plan` is never read
+  --> crates\tsql_core\src\executor\query_planner.rs:48:13
+   |
+48 |             right_plan = LogicalPlan::Pivot {
+   |             ^^^^^^^^^^
+   |
+   = help: maybe it is overwritten before being read?
+   = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `right_plan` is never read
+  --> crates\tsql_core\src\executor\query_planner.rs:54:13
+   |
+54 |             right_plan = LogicalPlan::Unpivot {
+   |             ^^^^^^^^^^
+   |
+   = help: maybe it is overwritten before being read?
+
+warning: `tsql_core` (lib) generated 2 warnings
+   Compiling tsql_core v0.1.0 (C:\Users\celso\Documents\projetos\tsql_wasm\crates\tsql_core)
+warning: unused import: `types::Value`
+ --> crates\tsql_core\tests\sys_foreign_keys.rs:1:28
+  |
+1 | use tsql_core::{parse_sql, types::Value, Engine};
+  |                            ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `tsql_core` (test "sys_foreign_keys") generated 1 warning (run `cargo fix --test "sys_foreign_keys" -p tsql_core` to apply 1 suggestion)
+warning: `tsql_core` (lib test) generated 2 warnings (2 duplicates)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3m 13s
+     Running unittests src\lib.rs (target\debug\deps\tsql_core-656416de38cbd44d.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+     Running tests\builtins_and_aggregates.rs (target\debug\deps\builtins_and_aggregates-bd77eadc816cb3d8.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 24 filtered out; finished in 0.00s
+
+     Running tests\cross_join_apply.rs (target\debug\deps\cross_join_apply-0907e2200e0b8de8.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests\cursor_extended_test.rs (target\debug\deps\cursor_extended_test-c88907da1d3c2abb.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests\ddl_advanced.rs (target\debug\deps\ddl_advanced-0e8c3211c25306b0.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests\dml_enhanced_test.rs (target\debug\deps\dml_enhanced_test-87f4b8362ffccf3d.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests\example.rs (target\debug\deps\example-4c12d5b80c4309c6.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests\info_schema_parameters.rs (target\debug\deps\info_schema_parameters-1cdaa3472ad485f2.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests\information_schema.rs (target\debug\deps\information_schema-3f3dfeb4f1bec2b1.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.00s
+
+     Running tests\integration.rs (target\debug\deps\integration-a075246bae979096.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+
+     Running tests\merge_statement.rs (target\debug\deps\merge_statement-dc5af3fcaa6e0938.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+
+     Running tests\new_types.rs (target\debug\deps\new_types-fc8433e02d3eadab.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 34 filtered out; finished in 0.00s
+
+     Running tests\persistence_redb.rs (target\debug\deps\persistence_redb-97c39f61ae468436.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+
+     Running tests\phase1_expressions.rs (target\debug\deps\phase1_expressions-baafe2fd2c2caf88.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 50 filtered out; finished in 0.00s
+
+     Running tests\phase2_relational.rs (target\debug\deps\phase2_relational-3b75762ff556d298.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 16 filtered out; finished in 0.00s
+
+     Running tests\phase3_ddl.rs (target\debug\deps\phase3_ddl-d784368515d6ea2a.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests\phase3_errors_rowcount.rs (target\debug\deps\phase3_errors_rowcount-04550865ea7554d1.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests\phase3_indexes_constraints.rs (target\debug\deps\phase3_indexes_constraints-85a77a9594b3cefb.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests\phase3_metadata.rs (target\debug\deps\phase3_metadata-c50ddd44606915a4.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests\phase3_semantics.rs (target\debug\deps\phase3_semantics-f8e759dd28935b50.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests\phase3_sql_variant.rs (target\debug\deps\phase3_sql_variant-0d96e564687c96b7.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests\phase4_programmability.rs (target\debug\deps\phase4_programmability-a3889c9dc9f6dfa7.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 26 filtered out; finished in 0.00s
+
+     Running tests\phase4_programmability_closure.rs (target\debug\deps\phase4_programmability_closure-28e854509c0d77ba.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+     Running tests\phase5_concurrency_mvcc.rs (target\debug\deps\phase5_concurrency_mvcc-95daf0c650bd27a6.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests\phase5_locking_recovery.rs (target\debug\deps\phase5_locking_recovery-a5e45fadf15dfa62.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests\phase5_transactions.rs (target\debug\deps\phase5_transactions-93dba9426e749094.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests\phase6_deterministic_seed.rs (target\debug\deps\phase6_deterministic_seed-89f801994e349bb0.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+
+     Running tests\phase6_set_options_runtime.rs (target\debug\deps\phase6_set_options_runtime-f7cca41eb46bf8db.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 15 filtered out; finished in 0.00s
+
+     Running tests\phase6_tooling.rs (target\debug\deps\phase6_tooling-49ff3de6e89d9d93.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+
+     Running tests\phase8_compatibility_scorecard.rs (target\debug\deps\phase8_compatibility_scorecard-08b1edc60b18441b.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.00s
+
+     Running tests\phase8_expression_differential.rs (target\debug\deps\phase8_expression_differential-64278c6104ce71ec.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests\phase8_parser_fuzz.rs (target\debug\deps\phase8_parser_fuzz-8dfe1b3a4d6cb275.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+
+     Running tests\phase8_performance.rs (target\debug\deps\phase8_performance-5f214a61cf6a17e2.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+
+     Running tests\phase8_persistence.rs (target\debug\deps\phase8_persistence-ea94a55391e7d5b4.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+
+     Running tests\phase8_random_query.rs (target\debug\deps\phase8_random_query-a4db9af0f152b817.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s
+
+     Running tests\phase9_dml_advanced.rs (target\debug\deps\phase9_dml_advanced-0e5b62898e609c93.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.00s
+
+     Running tests\phase9_window_functions.rs (target\debug\deps\phase9_window_functions-f5e67f745a37b86d.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 0.00s
+
+     Running tests\procedural_output_test.rs (target\debug\deps\procedural_output_test-fb13d481495fdae9.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+     Running tests\r7_current_date.rs (target\debug\deps\r7_current_date-c1092a99862b344a.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests\r7_fuzzy_matching.rs (target\debug\deps\r7_fuzzy_matching-a7d862db46b212d0.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+
+     Running tests\r7_json_functions.rs (target\debug\deps\r7_json_functions-f477fbaa9104e635.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 16 filtered out; finished in 0.00s
+
+     Running tests\r7_regexp_functions.rs (target\debug\deps\r7_regexp_functions-ab3edd2c205ea14f.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 16 filtered out; finished in 0.00s
+
+     Running tests\sqlserver_aggregates.rs (target\debug\deps\sqlserver_aggregates-17f4a96d7cb20ad0.exe)
+
+running 5 tests
+test test_avg_aggregate_compare ... FAILED
+test test_count_star_compare ... FAILED
+test test_group_by_aggregate_compare ... FAILED
+test test_min_max_aggregate_compare ... FAILED
+test test_sum_aggregate_compare ... FAILED
+
+failures:
+
+---- test_avg_aggregate_compare stdout ----
+
+thread 'test_avg_aggregate_compare' (21556) panicked at crates\tsql_core\tests\sqlserver_aggregates.rs:20:10:
+Falha ao conectar no SQL Server: Os { code: 10061, kind: ConnectionRefused, message: "Nenhuma conex├úo p├┤de ser feita porque a m├íquina de destino as recusou ativamente." }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- test_count_star_compare stdout ----
+
+thread 'test_count_star_compare' (16500) panicked at crates\tsql_core\tests\sqlserver_aggregates.rs:20:10:
+Falha ao conectar no SQL Server: Os { code: 10061, kind: ConnectionRefused, message: "Nenhuma conex├úo p├┤de ser feita porque a m├íquina de destino as recusou ativamente." }
+
+---- test_group_by_aggregate_compare stdout ----
+
+thread 'test_group_by_aggregate_compare' (400) panicked at crates\tsql_core\tests\sqlserver_aggregates.rs:20:10:
+Falha ao conectar no SQL Server: Os { code: 10061, kind: ConnectionRefused, message: "Nenhuma conex├úo p├┤de ser feita porque a m├íquina de destino as recusou ativamente." }
+
+---- test_min_max_aggregate_compare stdout ----
+
+thread 'test_min_max_aggregate_compare' (412) panicked at crates\tsql_core\tests\sqlserver_aggregates.rs:20:10:
+Falha ao conectar no SQL Server: Os { code: 10061, kind: ConnectionRefused, message: "Nenhuma conex├úo p├┤de ser feita porque a m├íquina de destino as recusou ativamente." }
+
+---- test_sum_aggregate_compare stdout ----
+
+thread 'test_sum_aggregate_compare' (7480) panicked at crates\tsql_core\tests\sqlserver_aggregates.rs:20:10:
+Falha ao conectar no SQL Server: Os { code: 10061, kind: ConnectionRefused, message: "Nenhuma conex├úo p├┤de ser feita porque a m├íquina de destino as recusou ativamente." }
+
+
+failures:
+    test_avg_aggregate_compare
+    test_count_star_compare
+    test_group_by_aggregate_compare
+    test_min_max_aggregate_compare
+    test_sum_aggregate_compare
+
+test result: FAILED. 0 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20.46s
+
+error: test failed, to rerun pass `-p tsql_core --test sqlserver_aggregates`

@@ -12,7 +12,7 @@ SELECT
     c.FirstName,
     c.LastName,
     COUNT(o.OrderId) AS TotalOrders,
-    COALESCE(SUM(o.TotalAmount), 0) AS TotalSpent
+    CAST(COALESCE(SUM(o.TotalAmount), 0) AS DECIMAL(18,2)) AS TotalSpent
 FROM dbo.Customers c
 LEFT JOIN dbo.Orders o ON c.CustomerId = o.CustomerId
 GROUP BY c.CustomerId, c.FirstName, c.LastName;
@@ -72,8 +72,8 @@ SELECT
     YEAR(OrderDate) AS SaleYear,
     MONTH(OrderDate) AS SaleMonth,
     COUNT(OrderId) AS TotalOrders,
-    SUM(TotalAmount) AS TotalRevenue,
-    AVG(TotalAmount) AS AvgOrderValue
+    CAST(SUM(TotalAmount) AS DECIMAL(18,2)) AS TotalRevenue,
+    CAST(AVG(TotalAmount) AS DECIMAL(18,2)) AS AvgOrderValue
 FROM dbo.Orders
 GROUP BY YEAR(OrderDate), MONTH(OrderDate);
 "#,
