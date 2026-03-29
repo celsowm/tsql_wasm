@@ -23,6 +23,7 @@ use super::super::tooling::{
     split_sql_statements, statement_compat_warnings, CompatibilityReport, ExecutionTrace,
     ExplainPlan, SessionOptions, TraceStatementEvent,
 };
+use super::super::dirty_buffer;
 use super::super::transaction::TransactionManager;
 use super::super::transaction_exec;
 use super::persistence::DatabaseInner;
@@ -488,10 +489,11 @@ where
             .as_ref()
             .map(|tx| tx.isolation_level)
             .unwrap_or(IsolationLevel::ReadCommitted);
-        let read_from_shared = matches!(
-            isolation_level,
-            IsolationLevel::ReadCommitted | IsolationLevel::ReadUncommitted
-        ) && matches!(stmt, Statement::Select(_));
+        let is_select = matches!(stmt, Statement::Select(_));
+        let read_committed_from_shared =
+            isolation_level == IsolationLevel::ReadCommitted && is_select;
+        let read_uncommitted_dirty =
+            isolation_level == IsolationLevel::ReadUncommitted && is_select;
 
         state.table_locks.acquire_statement_locks(
             session_id,
@@ -500,23 +502,34 @@ where
             &stmt,
         )?;
 
-        let mut script = if read_from_shared {
-            ScriptExecutor {
+        let out = if read_uncommitted_dirty {
+            // READ UNCOMMITTED: build a merged view with dirty writes from all sessions
+            let (mut dirty_catalog, mut dirty_storage) =
+                dirty_buffer::build_dirty_read_storage(state, session_id, workspace_slot);
+            let mut script = ScriptExecutor {
+                catalog: &mut dirty_catalog,
+                storage: &mut dirty_storage,
+                clock,
+            };
+            script.execute(stmt.clone(), ctx)
+        } else if read_committed_from_shared {
+            let mut script = ScriptExecutor {
                 catalog: &mut state.catalog,
                 storage: &mut state.storage,
                 clock,
-            }
+            };
+            script.execute(stmt.clone(), ctx)
         } else {
             let workspace = workspace_slot.as_mut().ok_or_else(|| {
                 DbError::Execution("internal error: missing transaction workspace".into())
             })?;
-            ScriptExecutor {
+            let mut script = ScriptExecutor {
                 catalog: &mut workspace.catalog,
                 storage: &mut workspace.storage,
                 clock,
-            }
+            };
+            script.execute(stmt.clone(), ctx)
         };
-        let out = script.execute(stmt.clone(), ctx);
         if out.is_ok() {
             transaction_exec::register_read_tables(workspace_slot, &stmt);
             transaction_exec::register_workspace_write_tables(workspace_slot, &stmt);
