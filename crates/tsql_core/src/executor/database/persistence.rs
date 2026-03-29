@@ -122,6 +122,7 @@ where
             durability,
             sessions: HashMap::new(),
             next_session_id: 1,
+            dirty_buffer: std::sync::Arc::new(std::cell::RefCell::new(super::super::dirty_buffer::DirtyBuffer::new())),
         }
     }
 
@@ -137,6 +138,7 @@ where
             durability: Box::new(super::super::durability::NoopDurability::default()),
             sessions: HashMap::new(),
             next_session_id: 1,
+            dirty_buffer: std::sync::Arc::new(std::cell::RefCell::new(super::super::dirty_buffer::DirtyBuffer::new())),
         }
     }
 

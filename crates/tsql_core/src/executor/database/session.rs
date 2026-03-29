@@ -253,6 +253,8 @@ where
         &mut session.cursors,
         &mut session.fetch_status,
         &mut session.print_output,
+        if session.tx_manager.active.is_some() { Some(state.dirty_buffer.clone()) } else { None },
+        session_id,
     );
     ctx.enter_scope();
 
@@ -335,6 +337,8 @@ where
         &mut session.cursors,
         &mut session.fetch_status,
         &mut session.print_output,
+        if session.tx_manager.active.is_some() { Some(state.dirty_buffer.clone()) } else { None },
+        session_id,
     );
     ctx.enter_scope();
 
@@ -428,6 +432,8 @@ where
         &mut session.cursors,
         &mut session.fetch_status,
         &mut session.print_output,
+        if session.tx_manager.active.is_some() { Some(state.dirty_buffer.clone()) } else { None },
+        session_id,
     );
     ctx.trancount = session.tx_manager.depth;
     ctx.identity_insert = session.options.identity_insert.clone();
@@ -483,17 +489,18 @@ where
         return Ok(None);
     }
 
+    let isolation_level = tx_manager
+        .active
+        .as_ref()
+        .map(|tx| tx.isolation_level)
+        .unwrap_or(tx_manager.session_isolation_level);
+    let is_select = matches!(stmt, Statement::Select(_));
+    let read_uncommitted_dirty =
+        isolation_level == IsolationLevel::ReadUncommitted && is_select;
+
     if tx_manager.active.is_some() {
-        let isolation_level = tx_manager
-            .active
-            .as_ref()
-            .map(|tx| tx.isolation_level)
-            .unwrap_or(IsolationLevel::ReadCommitted);
-        let is_select = matches!(stmt, Statement::Select(_));
         let read_committed_from_shared =
             isolation_level == IsolationLevel::ReadCommitted && is_select;
-        let read_uncommitted_dirty =
-            isolation_level == IsolationLevel::ReadUncommitted && is_select;
 
         state.table_locks.acquire_statement_locks(
             session_id,
@@ -547,6 +554,17 @@ where
         }
         out
     } else {
+        if read_uncommitted_dirty {
+            let (mut dirty_catalog, mut dirty_storage) =
+                dirty_buffer::build_dirty_read_storage(state, session_id, workspace_slot);
+            let mut script = ScriptExecutor {
+                catalog: &mut dirty_catalog,
+                storage: &mut dirty_storage,
+                clock,
+            };
+            return script.execute(stmt, ctx);
+        }
+
         let written_tables = collect_write_tables(&stmt);
         if written_tables.is_empty() {
             let mut script = ScriptExecutor {

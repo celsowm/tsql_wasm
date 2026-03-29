@@ -128,6 +128,7 @@ impl<'a> MutationExecutor<'a> {
             InsertSource::DefaultValues => {
                 let row = self.build_insert_row(&table, &[], vec![], ctx)?;
                 self.storage.insert_row(table_id, row.clone())?;
+                self.push_dirty_insert(ctx, &table.name, &row);
                 if collect_rows {
                     inserted_rows_for_output.push(row);
                 }
@@ -156,6 +157,7 @@ impl<'a> MutationExecutor<'a> {
                     enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &temp_row)?;
                     enforce_checks_on_row(&table, &temp_row, ctx, self.catalog, self.storage, self.clock)?;
                     self.storage.insert_row(table_id, temp_row.clone())?;
+                    self.push_dirty_insert(ctx, &table.name, &temp_row);
                     if collect_rows {
                         inserted_rows_for_output.push(temp_row);
                     }
@@ -170,6 +172,7 @@ impl<'a> MutationExecutor<'a> {
                     enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &row)?;
                     enforce_checks_on_row(&table, &row, ctx, self.catalog, self.storage, self.clock)?;
                     self.storage.insert_row(table_id, row.clone())?;
+                    self.push_dirty_insert(ctx, &table.name, &row);
                     if collect_rows {
                         inserted_rows_for_output.push(row);
                     }
@@ -199,6 +202,7 @@ impl<'a> MutationExecutor<'a> {
                     enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &temp_row)?;
                     enforce_checks_on_row(&table, &temp_row, ctx, self.catalog, self.storage, self.clock)?;
                     self.storage.insert_row(table_id, temp_row.clone())?;
+                    self.push_dirty_insert(ctx, &table.name, &temp_row);
                     if collect_rows {
                         inserted_rows_for_output.push(temp_row);
                     }

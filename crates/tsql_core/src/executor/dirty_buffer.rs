@@ -1,15 +1,46 @@
+use std::collections::HashMap;
 use crate::catalog::Catalog;
-use crate::storage::Storage;
+use crate::storage::{Storage, StoredRow};
 
 use super::locks::SessionId;
 use super::session::SharedState;
 
+#[derive(Debug, Clone)]
+pub enum DirtyOp {
+    Insert { row: StoredRow },
+    Update { row_index: usize, new_row: StoredRow },
+    Delete { row_index: usize },
+    Truncate,
+    ReplaceTable { rows: Vec<StoredRow> },
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct DirtyBuffer {
+    /// session_id -> table_name -> Vec<DirtyOp>
+    pub pending: HashMap<SessionId, HashMap<String, Vec<DirtyOp>>>,
+}
+
+impl DirtyBuffer {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn clear_session(&mut self, session_id: SessionId) {
+        self.pending.remove(&session_id);
+    }
+
+    pub fn push_op(&mut self, session_id: SessionId, table_name: String, op: DirtyOp) {
+        self.pending
+            .entry(session_id)
+            .or_default()
+            .entry(table_name)
+            .or_default()
+            .push(op);
+    }
+}
+
 /// Build a dirty-read view of storage and catalog by overlaying uncommitted
-/// writes from all active transactions onto the committed shared state.
-///
-/// For each session that has an active workspace with write_tables, we replace
-/// the corresponding table data in the cloned storage with the workspace's
-/// version (which includes uncommitted changes).
+/// writes from the shared dirty_buffer onto the committed shared state.
 pub(crate) fn build_dirty_read_storage<C, S>(
     state: &SharedState<C, S>,
     requesting_session_id: SessionId,
@@ -22,33 +53,46 @@ where
     let mut merged_catalog = state.catalog.clone();
     let mut merged_storage = state.storage.clone();
 
-    // Apply dirty writes from the requesting session's own workspace first
+    // 1. Merge catalogs from all active workspaces (including own)
+    // This allows seeing uncommitted tables/columns.
     if let Some(workspace) = requesting_workspace {
-        if !workspace.write_tables.is_empty() {
-            apply_workspace_writes(
-                &workspace.catalog,
-                &workspace.storage,
-                &workspace.write_tables,
-                &mut merged_catalog,
-                &mut merged_storage,
-            );
-        }
+        merge_catalog(&mut merged_catalog, &workspace.catalog);
     }
-
-    // Apply dirty writes from all other sessions' workspaces
     for (&sid, session) in &state.sessions {
         if sid == requesting_session_id {
             continue;
         }
         if let Some(ref workspace) = session.workspace {
-            if !workspace.write_tables.is_empty() {
-                apply_workspace_writes(
-                    &workspace.catalog,
-                    &workspace.storage,
-                    &workspace.write_tables,
-                    &mut merged_catalog,
-                    &mut merged_storage,
-                );
+            merge_catalog(&mut merged_catalog, &workspace.catalog);
+        }
+    }
+
+    // 2. Apply all dirty ops from the shared buffer
+    let buffer = state.dirty_buffer.borrow();
+    for session_ops in buffer.pending.values() {
+        for (table_name, ops) in session_ops {
+            if let Some(def) = merged_catalog.find_table("dbo", table_name) {
+                let table_id = def.id;
+                merged_storage.ensure_table(table_id);
+                for op in ops {
+                    match op {
+                        DirtyOp::Insert { row } => {
+                            let _ = merged_storage.insert_row(table_id, row.clone());
+                        }
+                        DirtyOp::Update { row_index, new_row } => {
+                            let _ = merged_storage.update_row(table_id, *row_index, new_row.clone());
+                        }
+                        DirtyOp::Delete { row_index } => {
+                            let _ = merged_storage.delete_row(table_id, *row_index);
+                        }
+                        DirtyOp::Truncate => {
+                            let _ = merged_storage.clear_table(table_id);
+                        }
+                        DirtyOp::ReplaceTable { rows } => {
+                            let _ = merged_storage.update_rows(table_id, rows.clone());
+                        }
+                    }
+                }
             }
         }
     }
@@ -56,37 +100,11 @@ where
     (merged_catalog, merged_storage)
 }
 
-/// For each table in `write_tables`, copy table data from the workspace
-/// storage/catalog into the merged storage/catalog.
-fn apply_workspace_writes<C, S>(
-    ws_catalog: &C,
-    ws_storage: &S,
-    write_tables: &std::collections::HashSet<String>,
-    merged_catalog: &mut C,
-    merged_storage: &mut S,
-) where
-    C: Catalog + Clone,
-    S: Storage + Clone,
-{
-    for table_name in write_tables {
-        // Look up the table definition in the workspace catalog to get its table_id
-        if let Some(def) = ws_catalog.find_table("dbo", table_name) {
-            let table_id = def.id;
-
-            // If the table doesn't exist in merged catalog, register it
-            // (it was created inside the transaction)
-            if merged_catalog.find_table("dbo", table_name).is_none() {
-                let tables = merged_catalog.get_tables_mut();
-                tables.push(def.clone());
-                merged_storage.ensure_table(table_id);
-            }
-
-            // Copy the workspace's row data for this table into merged storage
-            if let Ok(rows) = ws_storage.get_rows(table_id) {
-                merged_storage.ensure_table(table_id);
-                // Use update_rows to replace all rows, but ensure_table guarantees entry exists
-                let _ = merged_storage.update_rows(table_id, rows);
-            }
+fn merge_catalog<C: Catalog + Clone>(target: &mut C, source: &C) {
+    for table in source.get_tables() {
+        if target.find_table(table.schema_or_dbo(), &table.name).is_none() {
+            target.get_tables_mut().push(table.clone());
         }
     }
+    // Could also merge routines, triggers, etc. if needed
 }

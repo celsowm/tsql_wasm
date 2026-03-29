@@ -97,7 +97,7 @@ fn setup_single_counter_table(db: &Database, sid: u64) {
 }
 
 #[test]
-fn test_phase5_multisession_dirty_read_blocked_even_read_uncommitted() {
+fn test_phase5_multisession_dirty_read_allowed_read_uncommitted() {
     let (db, s1, s2) = new_db_with_sessions();
     setup_single_counter_table(&db, s1);
 
@@ -119,25 +119,20 @@ fn test_phase5_multisession_dirty_read_blocked_even_read_uncommitted() {
                 sql: "SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED",
                 expect_err: None,
             },
-            Step::Exec {
+            Step::QueryI64 {
                 sid: s2,
-                sql: "BEGIN TRANSACTION",
+                sql: "SELECT v FROM t WHERE id = 1",
+                expected: 99,
+            },
+            Step::Exec {
+                sid: s1,
+                sql: "ROLLBACK",
                 expect_err: None,
             },
             Step::QueryI64 {
                 sid: s2,
                 sql: "SELECT v FROM t WHERE id = 1",
                 expected: 10,
-            },
-            Step::Exec {
-                sid: s2,
-                sql: "ROLLBACK",
-                expect_err: None,
-            },
-            Step::Exec {
-                sid: s1,
-                sql: "ROLLBACK",
-                expect_err: None,
             },
         ],
     );

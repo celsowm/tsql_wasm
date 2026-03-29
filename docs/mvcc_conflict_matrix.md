@@ -6,7 +6,7 @@ This document captures the currently modeled multi-session transaction outcomes 
 
 | Isolation level | Dirty read | Non-repeatable read | Phantom read | Lost update | Write skew |
 |---|---|---|---|---|---|
-| READ UNCOMMITTED | Blocked in current model | Allowed | Allowed | Allowed | Allowed |
+| READ UNCOMMITTED | Allowed | Allowed | Allowed | Allowed | Allowed |
 | READ COMMITTED | Blocked in current model | Allowed | Allowed | Allowed | Allowed |
 | REPEATABLE READ | Blocked | Blocked (read lock + no-wait write conflict) | Blocked (read lock + no-wait write conflict) | Blocked (write lock no-wait) | Blocked at table-lock granularity (no-wait) |
 | SERIALIZABLE | Blocked | Blocked (read lock + no-wait write conflict) | Blocked (read lock + no-wait write conflict) | Blocked (write lock no-wait) | Blocked at table-lock granularity (no-wait) |
@@ -24,5 +24,5 @@ This document captures the currently modeled multi-session transaction outcomes 
 
 - Conflict handling is deterministic and immediate: no lock-wait simulation.
 - Locking is table-level and no-wait in this R5 model.
-- RU dirty reads are intentionally blocked in the current implementation because reads only observe committed shared state.
+- RU dirty reads are supported by merging uncommitted writes from all active sessions into a transient view.
 - Write skew remains table-level (not row/predicate-lock equivalent to SQL Server).

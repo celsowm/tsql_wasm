@@ -100,6 +100,7 @@ where
                 state.table_versions.insert(table.clone(), state.commit_ts);
             }
             state.table_locks.release_workspace_locks(session_id, workspace_slot, 0);
+            state.dirty_buffer.borrow_mut().clear_session(session_id);
             tx_manager.active = None;
             tx_manager.commit_ts = state.commit_ts;
             *workspace_slot = None;
@@ -131,6 +132,7 @@ where
                 state.table_locks.release_workspace_locks(session_id, workspace_slot, keep_depth);
             } else {
                 state.table_locks.release_workspace_locks(session_id, workspace_slot, 0);
+                state.dirty_buffer.borrow_mut().clear_session(session_id);
                 *workspace_slot = None;
             }
             journal.record(JournalEvent::Rollback { savepoint });
@@ -175,6 +177,7 @@ where
         let _ = tx_manager.rollback(None, &mut workspace.catalog, &mut workspace.storage);
     }
     state.table_locks.release_workspace_locks(session_id, workspace_slot, 0);
+    state.dirty_buffer.borrow_mut().clear_session(session_id);
     *workspace_slot = None;
     tx_manager.active = None;
     tx_manager.depth = 0;

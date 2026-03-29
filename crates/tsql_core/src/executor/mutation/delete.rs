@@ -230,6 +230,7 @@ impl<'a> MutationExecutor<'a> {
 
         for idx in indices_to_delete {
             self.storage.delete_row(table_id, idx)?;
+            self.push_dirty_delete(ctx, &table.name, idx);
         }
 
         self.execute_triggers(&table, crate::ast::TriggerEvent::Delete, false, &[], &deleted_rows_for_output, ctx)?;

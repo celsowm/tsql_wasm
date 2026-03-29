@@ -272,4 +272,82 @@ impl<'a> ScriptExecutor<'a> {
         }
         Ok(())
     }
+
+    pub(crate) fn push_dirty_insert(
+        &self,
+        ctx: &mut ExecutionContext,
+        table_name: &str,
+        row: &crate::storage::StoredRow,
+    ) {
+        if let Some(db) = &ctx.dirty_buffer {
+            db.borrow_mut().push_op(
+                ctx.session_id,
+                table_name.to_string(),
+                super::dirty_buffer::DirtyOp::Insert { row: row.clone() },
+            );
+        }
+    }
+
+    pub(crate) fn push_dirty_update(
+        &self,
+        ctx: &mut ExecutionContext,
+        table_name: &str,
+        row_index: usize,
+        new_row: &crate::storage::StoredRow,
+    ) {
+        if let Some(db) = &ctx.dirty_buffer {
+            db.borrow_mut().push_op(
+                ctx.session_id,
+                table_name.to_string(),
+                super::dirty_buffer::DirtyOp::Update {
+                    row_index,
+                    new_row: new_row.clone(),
+                },
+            );
+        }
+    }
+
+    pub(crate) fn push_dirty_delete(
+        &self,
+        ctx: &mut ExecutionContext,
+        table_name: &str,
+        row_index: usize,
+    ) {
+        if let Some(db) = &ctx.dirty_buffer {
+            db.borrow_mut().push_op(
+                ctx.session_id,
+                table_name.to_string(),
+                super::dirty_buffer::DirtyOp::Delete { row_index },
+            );
+        }
+    }
+
+    pub(crate) fn push_dirty_truncate(
+        &self,
+        ctx: &mut ExecutionContext,
+        table_name: &str,
+    ) {
+        if let Some(db) = &ctx.dirty_buffer {
+            db.borrow_mut().push_op(
+                ctx.session_id,
+                table_name.to_string(),
+                super::dirty_buffer::DirtyOp::Truncate,
+            );
+        }
+    }
+
+    pub(crate) fn push_dirty_replace(
+        &self,
+        ctx: &mut ExecutionContext,
+        table_name: &str,
+        rows: Vec<crate::storage::StoredRow>,
+    ) {
+        if let Some(db) = &ctx.dirty_buffer {
+            db.borrow_mut().push_op(
+                ctx.session_id,
+                table_name.to_string(),
+                super::dirty_buffer::DirtyOp::ReplaceTable { rows },
+            );
+        }
+    }
 }

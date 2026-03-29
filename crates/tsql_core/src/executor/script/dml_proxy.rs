@@ -70,7 +70,7 @@ impl<'a> ScriptExecutor<'a> {
             let table = TableDef {
                 id: table_id,
                 schema_id,
-                name: target.name,
+                name: target.name.clone(),
                 columns,
                 check_constraints: vec![],
                 foreign_keys: vec![],
@@ -83,7 +83,8 @@ impl<'a> ScriptExecutor<'a> {
                     values: row_values.clone(),
                     deleted: false,
                 };
-                self.storage.insert_row(table_id, row)?;
+                self.storage.insert_row(table_id, row.clone())?;
+                self.push_dirty_insert(ctx, &target.name, &row);
             }
         }
 

@@ -274,6 +274,7 @@ impl<'a> MutationExecutor<'a> {
                     enforce_unique_on_update(&table, self.storage, table_id, &new_row, idx)?;
 
                     self.storage.update_row(table_id, idx, new_row.clone())?;
+                    self.push_dirty_update(ctx, &table.name, idx, &new_row);
                     updated_indices.insert(idx);
 
                     if collect_rows {

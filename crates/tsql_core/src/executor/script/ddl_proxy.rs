@@ -73,6 +73,7 @@ impl<'a> ScriptExecutor<'a> {
             })?
             .clone();
         self.storage.clear_table(table.id)?;
+        self.push_dirty_truncate(ctx, &table.name);
         Ok(None)
     }
 
@@ -87,11 +88,26 @@ impl<'a> ScriptExecutor<'a> {
                 stmt.table.schema = Some("dbo".to_string());
             }
         }
+        let schema = stmt.table.schema_or_dbo();
+        let table_name = &stmt.table.name;
+        let table = self
+            .catalog
+            .find_table(schema, table_name)
+            .ok_or_else(|| {
+                DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
+            })?
+            .clone();
+
         SchemaExecutor {
             catalog: self.catalog,
             storage: self.storage,
         }
         .alter_table(stmt)?;
+
+        if let Ok(rows) = self.storage.get_rows(table.id) {
+            self.push_dirty_replace(ctx, &table.name, rows);
+        }
+
         Ok(None)
     }
 }

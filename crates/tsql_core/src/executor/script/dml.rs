@@ -344,9 +344,11 @@ impl<'a> ScriptExecutor<'a> {
 
         // Ensure all matched rows are updated in storage before NOT MATCHED
         self.storage.clear_table(target_table.id)?;
+        self.push_dirty_truncate(ctx, &target_table.name);
         for row in updated_target_rows {
             if !row.deleted {
-                self.storage.insert_row(target_table.id, row)?;
+                self.storage.insert_row(target_table.id, row.clone())?;
+                self.push_dirty_insert(ctx, &target_table.name, &row);
             }
         }
 
@@ -489,7 +491,8 @@ impl<'a> ScriptExecutor<'a> {
                                     });
                                 }
                                 inserted_rows_for_trigger.push(temp_row.clone());
-                                self.storage.insert_row(target_table.id, temp_row)?;
+                                self.storage.insert_row(target_table.id, temp_row.clone())?;
+                                self.push_dirty_insert(ctx, &target_table.name, &temp_row);
                             }
                             _ => {
                                 return Err(DbError::Execution(
