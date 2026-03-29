@@ -14,7 +14,7 @@ use crate::ast::statements::procedural::*;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Statement {
     BeginTransaction(Option<String>),
-    CommitTransaction,
+    CommitTransaction(Option<String>),
     RollbackTransaction(Option<String>),
     SaveTransaction(String),
     SetTransactionIsolationLevel(IsolationLevel),

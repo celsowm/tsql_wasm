@@ -111,7 +111,7 @@ pub(crate) fn is_transaction_statement(stmt: &Statement) -> bool {
     matches!(
         stmt,
         Statement::BeginTransaction(_)
-            | Statement::CommitTransaction
+            | Statement::CommitTransaction(_)
             | Statement::RollbackTransaction(_)
             | Statement::SaveTransaction(_)
             | Statement::SetTransactionIsolationLevel(_)

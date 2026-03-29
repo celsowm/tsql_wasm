@@ -210,6 +210,15 @@ pub fn parse_sql(sql: &str) -> Result<Statement, DbError> {
         }));
     }
 
+    if upper.starts_with("BEGIN DISTRIBUTED TRANSACTION") || upper.starts_with("BEGIN DISTRIBUTED TRAN") {
+        // Treat as regular BEGIN TRANSACTION for our purposes
+        let stripped = if upper.starts_with("BEGIN DISTRIBUTED TRANSACTION") {
+            format!("BEGIN TRANSACTION{}", &trimmed["BEGIN DISTRIBUTED TRANSACTION".len()..])
+        } else {
+            format!("BEGIN TRAN{}", &trimmed["BEGIN DISTRIBUTED TRAN".len()..])
+        };
+        return statements::parse_begin_transaction(&stripped);
+    }
     if upper.starts_with("BEGIN TRANSACTION")
         || upper.starts_with("BEGIN TRAN ")
         || upper == "BEGIN TRAN"

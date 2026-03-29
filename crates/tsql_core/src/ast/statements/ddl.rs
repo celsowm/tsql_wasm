@@ -80,6 +80,13 @@ pub struct ColumnSpec {
     pub check: Option<Expr>,
     pub check_constraint_name: Option<String>,
     pub computed_expr: Option<Expr>,
+    pub foreign_key: Option<ForeignKeyRef>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForeignKeyRef {
+    pub referenced_table: ObjectName,
+    pub referenced_columns: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,5 +105,13 @@ pub enum TableConstraintSpec {
         columns: Vec<String>,
         referenced_table: ObjectName,
         referenced_columns: Vec<String>,
+    },
+    PrimaryKey {
+        name: String,
+        columns: Vec<String>,
+    },
+    Unique {
+        name: String,
+        columns: Vec<String>,
     },
 }

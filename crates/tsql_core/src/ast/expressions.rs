@@ -106,6 +106,7 @@ pub struct WindowFrame {
 pub enum WindowFrameUnits {
     Rows,
     Range,
+    Groups,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

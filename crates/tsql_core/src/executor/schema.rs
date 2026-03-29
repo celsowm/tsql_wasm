@@ -77,6 +77,8 @@ impl<'a> SchemaExecutor<'a> {
                         referenced_columns,
                     });
                 }
+                TableConstraintSpec::PrimaryKey { .. } => {}
+                TableConstraintSpec::Unique { .. } => {}
             }
         }
         table.check_constraints = table_checks;

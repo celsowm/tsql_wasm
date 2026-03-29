@@ -61,19 +61,24 @@ impl super::ExprParser {
                     self.expect(|t| matches!(t, ExprToken::By), "BY")?;
                     loop {
                         let expr = self.parse_or()?;
-                        let asc = !self.match_tok(|t| matches!(t, ExprToken::Desc));
+                        let asc = if self.match_tok(|t| matches!(t, ExprToken::Desc)) {
+                            false
+                        } else {
+                            self.match_tok(|t| matches!(t, ExprToken::Asc));
+                            true
+                        };
                         order_by.push(OrderByExpr { expr, asc });
                         if self.match_tok(|t| matches!(t, ExprToken::Comma)) {
                             continue;
                         }
                         break;
                     }
-                } else if self.match_tok(|t| matches!(t, ExprToken::Rows | ExprToken::Range)) {
+                } else if self.match_tok(|t| matches!(t, ExprToken::Rows | ExprToken::Range | ExprToken::Groups)) {
                     self.pos -= 1;
                     frame = Some(self.parse_window_frame()?);
                 } else {
                     return Err(DbError::Parse(
-                        "expected PARTITION BY, ORDER BY, or ROWS/RANGE in window specification"
+                        "expected PARTITION BY, ORDER BY, or ROWS/RANGE/GROUPS in window specification"
                             .into(),
                     ));
                 }
@@ -93,7 +98,8 @@ impl super::ExprParser {
         let units = match self.next() {
             Some(ExprToken::Rows) => crate::ast::WindowFrameUnits::Rows,
             Some(ExprToken::Range) => crate::ast::WindowFrameUnits::Range,
-            _ => return Err(DbError::Parse("expected ROWS or RANGE".into())),
+            Some(ExprToken::Groups) => crate::ast::WindowFrameUnits::Groups,
+            _ => return Err(DbError::Parse("expected ROWS, RANGE, or GROUPS".into())),
         };
 
         if self.match_tok(|t| matches!(t, ExprToken::Between)) {

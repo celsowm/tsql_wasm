@@ -10,25 +10,38 @@ pub(crate) fn parse_begin_transaction(sql: &str) -> Result<Statement, DbError> {
     } else {
         return Err(DbError::Parse("invalid BEGIN TRANSACTION syntax".into()));
     };
-    let name = if rest.is_empty() {
+    // strip WITH MARK 'description' if present
+    let upper_rest = rest.to_uppercase();
+    let name_part = if let Some(wm_idx) = upper_rest.find("WITH MARK") {
+        rest[..wm_idx].trim()
+    } else {
+        rest
+    };
+    let name = if name_part.is_empty() {
         None
     } else {
-        Some(rest.to_string())
+        Some(name_part.to_string())
     };
     Ok(Statement::BeginTransaction(name))
 }
 
 pub(crate) fn parse_commit_transaction(sql: &str) -> Result<Statement, DbError> {
     let upper = sql.to_uppercase();
-    if !(upper == "COMMIT"
-        || upper == "COMMIT TRAN"
-        || upper == "COMMIT TRANSACTION"
-        || upper.starts_with("COMMIT TRAN ")
-        || upper.starts_with("COMMIT TRANSACTION "))
-    {
+    let rest = if upper.starts_with("COMMIT TRANSACTION") {
+        sql["COMMIT TRANSACTION".len()..].trim()
+    } else if upper.starts_with("COMMIT TRAN") {
+        sql["COMMIT TRAN".len()..].trim()
+    } else if upper == "COMMIT" {
+        ""
+    } else {
         return Err(DbError::Parse("invalid COMMIT syntax".into()));
-    }
-    Ok(Statement::CommitTransaction)
+    };
+    let name = if rest.is_empty() {
+        None
+    } else {
+        Some(rest.to_string())
+    };
+    Ok(Statement::CommitTransaction(name))
 }
 
 pub(crate) fn parse_rollback_transaction(sql: &str) -> Result<Statement, DbError> {

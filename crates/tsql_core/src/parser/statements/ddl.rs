@@ -24,6 +24,22 @@ pub(crate) fn parse_create_table(sql: &str) -> Result<Statement, DbError> {
         let item = raw_col.trim();
         if item.to_uppercase().starts_with("CONSTRAINT ") {
             table_constraints.push(parse_table_constraint(item)?);
+        } else if item.to_uppercase().starts_with("PRIMARY KEY") {
+            let after_pk = item["PRIMARY KEY".len()..].trim();
+            let cols_raw = strip_wrapping_parens(after_pk);
+            let columns_list = split_csv_top_level(cols_raw)
+                .into_iter()
+                .map(|s| s.trim().trim_matches('[').trim_matches(']').to_string())
+                .collect();
+            table_constraints.push(TableConstraintSpec::PrimaryKey { name: String::new(), columns: columns_list });
+        } else if item.to_uppercase().starts_with("UNIQUE") {
+            let after_uq = item["UNIQUE".len()..].trim();
+            let cols_raw = strip_wrapping_parens(after_uq);
+            let columns_list = split_csv_top_level(cols_raw)
+                .into_iter()
+                .map(|s| s.trim().trim_matches('[').trim_matches(']').to_string())
+                .collect();
+            table_constraints.push(TableConstraintSpec::Unique { name: String::new(), columns: columns_list });
         } else {
             columns.push(parse_column_spec(item)?);
         }
@@ -280,6 +296,7 @@ pub(crate) fn parse_column_spec(input: &str) -> Result<ColumnSpec, DbError> {
             check: None,
             check_constraint_name: None,
             computed_expr: Some(expr),
+            foreign_key: None,
         });
     }
 
@@ -296,6 +313,7 @@ pub(crate) fn parse_column_spec(input: &str) -> Result<ColumnSpec, DbError> {
     let mut check = None;
     let mut check_constraint_name = None;
     let computed_expr = None;
+    let mut foreign_key = None;
 
     let mut i = 0;
     while i < tail_tokens.len() {
@@ -393,6 +411,25 @@ pub(crate) fn parse_column_spec(input: &str) -> Result<ColumnSpec, DbError> {
                 identity = Some((seed, inc));
                 i += 1;
             }
+            "REFERENCES" => {
+                let ref_tok = tail_tokens
+                    .get(i + 1)
+                    .ok_or_else(|| DbError::Parse("missing table after REFERENCES".into()))?;
+                let ref_str = ref_tok.as_str();
+                if let Some(open) = ref_str.find('(') {
+                    let close = ref_str.rfind(')').ok_or_else(|| DbError::Parse("missing ')' in REFERENCES".into()))?;
+                    let ref_table = parse_object_name(&ref_str[..open]);
+                    let ref_cols = split_csv_top_level(&ref_str[open+1..close])
+                        .into_iter()
+                        .map(|s| s.trim().trim_matches('[').trim_matches(']').to_string())
+                        .collect();
+                    foreign_key = Some(crate::ast::ForeignKeyRef { referenced_table: ref_table, referenced_columns: ref_cols });
+                } else {
+                    let ref_table = parse_object_name(ref_str);
+                    foreign_key = Some(crate::ast::ForeignKeyRef { referenced_table: ref_table, referenced_columns: vec![] });
+                }
+                i += 2;
+            }
             _ => {
                 return Err(DbError::Parse(format!(
                     "unexpected token '{}'",
@@ -414,6 +451,7 @@ pub(crate) fn parse_column_spec(input: &str) -> Result<ColumnSpec, DbError> {
         check,
         check_constraint_name,
         computed_expr,
+        foreign_key,
     })
 }
 
@@ -450,6 +488,28 @@ pub(crate) fn parse_table_constraint(input: &str) -> Result<TableConstraintSpec,
         let expr_raw = strip_wrapping_parens(&tokens[3]);
         let expr = parse_expr(expr_raw)?;
         return Ok(TableConstraintSpec::Check { name, expr });
+    }
+    if tokens[2].eq_ignore_ascii_case("PRIMARY") {
+        if tokens.len() < 5 || !tokens[3].eq_ignore_ascii_case("KEY") {
+            return Err(DbError::Parse("expected KEY after PRIMARY".into()));
+        }
+        let cols_raw = strip_wrapping_parens(&tokens[4]);
+        let columns = split_csv_top_level(cols_raw)
+            .into_iter()
+            .map(|s| s.trim().trim_matches('[').trim_matches(']').to_string())
+            .collect();
+        return Ok(TableConstraintSpec::PrimaryKey { name, columns });
+    }
+    if tokens[2].eq_ignore_ascii_case("UNIQUE") {
+        if tokens.len() < 4 {
+            return Err(DbError::Parse("UNIQUE constraint missing columns".into()));
+        }
+        let cols_raw = strip_wrapping_parens(&tokens[3]);
+        let columns = split_csv_top_level(cols_raw)
+            .into_iter()
+            .map(|s| s.trim().trim_matches('[').trim_matches(']').to_string())
+            .collect();
+        return Ok(TableConstraintSpec::Unique { name, columns });
     }
     if tokens[2].eq_ignore_ascii_case("FOREIGN") {
         // CONSTRAINT name FOREIGN KEY (cols) REFERENCES table(ref_cols)

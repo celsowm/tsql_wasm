@@ -47,7 +47,7 @@ where
             });
             Ok(None)
         }
-        Statement::CommitTransaction => {
+        Statement::CommitTransaction(_) => {
             let tx = tx_manager
                 .active
                 .as_ref()

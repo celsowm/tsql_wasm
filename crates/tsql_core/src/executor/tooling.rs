@@ -628,7 +628,7 @@ fn statement_kind(stmt: &Statement) -> &'static str {
         Statement::SetOption(_) => "SET_OPTION",
         Statement::Set(_) => "SET_VARIABLE",
         Statement::BeginTransaction(_) => "BEGIN_TRANSACTION",
-        Statement::CommitTransaction => "COMMIT",
+        Statement::CommitTransaction(_) => "COMMIT",
         Statement::RollbackTransaction(_) => "ROLLBACK",
         _ => "STATEMENT",
     }
@@ -651,7 +651,7 @@ fn feature_tags_for_statement(stmt: &Statement) -> Vec<String> {
         | Statement::CreateIndex(_)
         | Statement::DropIndex(_) => tags.push("ddl".to_string()),
         Statement::BeginTransaction(_)
-        | Statement::CommitTransaction
+        | Statement::CommitTransaction(_)
         | Statement::RollbackTransaction(_)
         | Statement::SaveTransaction(_)
         | Statement::SetTransactionIsolationLevel(_) => tags.push("transaction".to_string()),

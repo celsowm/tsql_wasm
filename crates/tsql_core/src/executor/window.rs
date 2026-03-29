@@ -379,7 +379,7 @@ impl<'a> WindowExecutor<'a> {
                     WindowFrameBound::UnboundedFollowing => partition.len(),
                 }
             }
-            WindowFrameUnits::Range => {
+            WindowFrameUnits::Range | WindowFrameUnits::Groups => {
                 match bound {
                     WindowFrameBound::UnboundedPreceding => 0,
                     WindowFrameBound::UnboundedFollowing => partition.len(),
@@ -401,8 +401,6 @@ impl<'a> WindowExecutor<'a> {
                         }
                     }
                     _ => {
-                        // T-SQL doesn't support offset in RANGE well except for some types.
-                        // Fall back to ROWS-like behavior for offsets.
                         if is_end { current_idx + 1 } else { current_idx }
                     }
                 }

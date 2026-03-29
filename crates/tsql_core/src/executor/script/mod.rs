@@ -30,7 +30,7 @@ impl<'a> ScriptExecutor<'a> {
     ) -> Result<Option<QueryResult>, DbError> {
         match stmt {
             Statement::BeginTransaction(_)
-            | Statement::CommitTransaction
+            | Statement::CommitTransaction(_)
             | Statement::RollbackTransaction(_)
             | Statement::SaveTransaction(_)
             | Statement::SetTransactionIsolationLevel(_) => Err(DbError::Execution(
