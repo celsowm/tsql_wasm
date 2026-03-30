@@ -242,17 +242,17 @@ where
     let mut out = Ok(None);
     let mut ctx = ExecutionContext::new(
         &mut session.variables,
-        &mut session.session_last_identity,
-        &mut session.scope_identity_stack,
-        &mut session.temp_table_map,
-        &mut session.table_var_map,
-        &mut session.table_var_counter,
+        &mut session.identities.last_identity,
+        &mut session.identities.scope_stack,
+        &mut session.tables.temp_map,
+        &mut session.tables.var_map,
+        &mut session.tables.var_counter,
         session.options.ansi_nulls,
         session.options.datefirst,
         &mut session.random_state,
-        &mut session.cursors,
-        &mut session.fetch_status,
-        &mut session.print_output,
+        &mut session.cursors.map,
+        &mut session.cursors.fetch_status,
+        &mut session.diagnostics.print_output,
         if session.tx_manager.active.is_some() { Some(state.dirty_buffer.clone()) } else { None },
         session_id,
     );
@@ -308,7 +308,8 @@ where
             let _ = ctx.leave_scope_collect_table_vars();
         }
     } else {
-        cleanup_scope_table_vars(&mut state.catalog, &mut state.storage, &mut ctx)?;
+        cleanup_scope_table_vars(&mut state.storage.catalog, &mut state.storage.storage, &mut ctx)
+?;
     }
     out
 }
@@ -326,17 +327,17 @@ where
     let mut results: Vec<Option<QueryResult>> = Vec::new();
     let mut ctx = ExecutionContext::new(
         &mut session.variables,
-        &mut session.session_last_identity,
-        &mut session.scope_identity_stack,
-        &mut session.temp_table_map,
-        &mut session.table_var_map,
-        &mut session.table_var_counter,
+        &mut session.identities.last_identity,
+        &mut session.identities.scope_stack,
+        &mut session.tables.temp_map,
+        &mut session.tables.var_map,
+        &mut session.tables.var_counter,
         session.options.ansi_nulls,
         session.options.datefirst,
         &mut session.random_state,
-        &mut session.cursors,
-        &mut session.fetch_status,
-        &mut session.print_output,
+        &mut session.cursors.map,
+        &mut session.cursors.fetch_status,
+        &mut session.diagnostics.print_output,
         if session.tx_manager.active.is_some() { Some(state.dirty_buffer.clone()) } else { None },
         session_id,
     );
@@ -356,7 +357,7 @@ where
             ) {
                 Ok(r) => results.push(r),
                 Err(e) => {
-                    let _ = cleanup_scope_table_vars(&mut state.catalog, &mut state.storage, &mut ctx);
+                    let _ = cleanup_scope_table_vars(&mut state.storage.catalog, &mut state.storage.storage, &mut ctx);
                     return Err(e);
                 }
             }
@@ -378,7 +379,7 @@ where
                     break;
                 }
                 Err(e) => {
-                    let _ = cleanup_scope_table_vars(&mut state.catalog, &mut state.storage, &mut ctx);
+                    let _ = cleanup_scope_table_vars(&mut state.storage.catalog, &mut state.storage.storage, &mut ctx);
                     return Err(e);
                 }
             }
@@ -392,7 +393,8 @@ where
             let _ = ctx.leave_scope_collect_table_vars();
         }
     } else {
-        cleanup_scope_table_vars(&mut state.catalog, &mut state.storage, &mut ctx)?;
+        cleanup_scope_table_vars(&mut state.storage.catalog, &mut state.storage.storage, &mut ctx)
+?;
     }
 
     Ok(results)
@@ -421,17 +423,17 @@ where
 
     let mut ctx = ExecutionContext::new(
         &mut session.variables,
-        &mut session.session_last_identity,
-        &mut session.scope_identity_stack,
-        &mut session.temp_table_map,
-        &mut session.table_var_map,
-        &mut session.table_var_counter,
+        &mut session.identities.last_identity,
+        &mut session.identities.scope_stack,
+        &mut session.tables.temp_map,
+        &mut session.tables.var_map,
+        &mut session.tables.var_counter,
         session.options.ansi_nulls,
         session.options.datefirst,
         &mut session.random_state,
-        &mut session.cursors,
-        &mut session.fetch_status,
-        &mut session.print_output,
+        &mut session.cursors.map,
+        &mut session.cursors.fetch_status,
+        &mut session.diagnostics.print_output,
         if session.tx_manager.active.is_some() { Some(state.dirty_buffer.clone()) } else { None },
         session_id,
     );
@@ -521,8 +523,8 @@ where
             script.execute(stmt.clone(), ctx)
         } else if read_committed_from_shared {
             let mut script = ScriptExecutor {
-                catalog: &mut state.catalog,
-                storage: &mut state.storage,
+                catalog: &mut state.storage.catalog,
+                storage: &mut state.storage.storage,
                 clock,
             };
             script.execute(stmt.clone(), ctx)
@@ -568,33 +570,33 @@ where
         let written_tables = collect_write_tables(&stmt);
         if written_tables.is_empty() {
             let mut script = ScriptExecutor {
-                catalog: &mut state.catalog,
-                storage: &mut state.storage,
+                catalog: &mut state.storage.catalog,
+                storage: &mut state.storage.storage,
                 clock,
             };
             return script.execute(stmt, ctx);
         }
-        let before_catalog = state.catalog.clone();
-        let before_storage = state.storage.clone();
-        let before_versions = state.table_versions.clone();
-        let before_commit_ts = state.commit_ts;
+        let before_catalog = state.storage.catalog.clone();
+        let before_storage = state.storage.storage.clone();
+        let before_versions = state.storage.table_versions.clone();
+        let before_commit_ts = state.storage.commit_ts;
         let mut script = ScriptExecutor {
-            catalog: &mut state.catalog,
-            storage: &mut state.storage,
+            catalog: &mut state.storage.catalog,
+            storage: &mut state.storage.storage,
             clock,
         };
         let out = script.execute(stmt, ctx);
         if out.is_ok() {
-            state.commit_ts += 1;
+            state.storage.commit_ts += 1;
             for table in &written_tables {
-                state.table_versions.insert(table.clone(), state.commit_ts);
+                state.storage.table_versions.insert(table.clone(), state.storage.commit_ts);
             }
             let checkpoint = state.to_checkpoint();
             if let Err(e) = state.durability.persist_checkpoint(&checkpoint) {
-                state.catalog = before_catalog;
-                state.storage = before_storage;
-                state.table_versions = before_versions;
-                state.commit_ts = before_commit_ts;
+                state.storage.catalog = before_catalog;
+                state.storage.storage = before_storage;
+                state.storage.table_versions = before_versions;
+                state.storage.commit_ts = before_commit_ts;
                 return Err(e);
             }
         }

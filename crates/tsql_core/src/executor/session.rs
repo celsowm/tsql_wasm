@@ -25,22 +25,90 @@ pub trait SessionManager {
     ) -> Result<(), DbError>;
 }
 
+pub struct IdentityState {
+    pub(crate) last_identity: Option<i64>,
+    pub(crate) scope_stack: Vec<Option<i64>>,
+}
+
+impl IdentityState {
+    pub fn new() -> Self {
+        Self {
+            last_identity: None,
+            scope_stack: vec![None],
+        }
+    }
+    pub fn reset(&mut self) {
+        self.last_identity = None;
+        self.scope_stack = vec![None];
+    }
+}
+
+pub struct TableState {
+    pub(crate) temp_map: HashMap<String, String>,
+    pub(crate) var_map: HashMap<String, String>,
+    pub(crate) var_counter: u64,
+}
+
+impl TableState {
+    pub fn new() -> Self {
+        Self {
+            temp_map: HashMap::new(),
+            var_map: HashMap::new(),
+            var_counter: 0,
+        }
+    }
+    pub fn reset(&mut self) {
+        self.temp_map.clear();
+        self.var_map.clear();
+        self.var_counter = 0;
+    }
+}
+
+pub struct CursorState {
+    pub(crate) map: HashMap<String, super::model::Cursor>,
+    pub(crate) fetch_status: i32,
+}
+
+impl CursorState {
+    pub fn new() -> Self {
+        Self {
+            map: HashMap::new(),
+            fetch_status: -1,
+        }
+    }
+    pub fn reset(&mut self) {
+        self.map.clear();
+        self.fetch_status = -1;
+    }
+}
+
+pub struct DiagnosticsState {
+    pub(crate) print_output: Vec<String>,
+}
+
+impl DiagnosticsState {
+    pub fn new() -> Self {
+        Self {
+            print_output: Vec::new(),
+        }
+    }
+    pub fn reset(&mut self) {
+        self.print_output.clear();
+    }
+}
+
 pub struct SessionRuntime<C, S> {
     pub(crate) clock: Box<dyn Clock>,
     pub(crate) tx_manager: TransactionManager<C, S>,
     pub(crate) journal: Box<dyn Journal>,
     pub(crate) variables: Variables,
-    pub(crate) session_last_identity: Option<i64>,
-    pub(crate) scope_identity_stack: Vec<Option<i64>>,
-    pub(crate) temp_table_map: HashMap<String, String>,
-    pub(crate) table_var_map: HashMap<String, String>,
-    pub(crate) table_var_counter: u64,
+    pub(crate) identities: IdentityState,
+    pub(crate) tables: TableState,
+    pub(crate) cursors: CursorState,
+    pub(crate) diagnostics: DiagnosticsState,
     pub(crate) workspace: Option<TxWorkspace<C, S>>,
     pub(crate) options: SessionOptions,
     pub(crate) random_state: u64,
-    pub(crate) cursors: HashMap<String, super::model::Cursor>,
-    pub(crate) fetch_status: i32,
-    pub(crate) print_output: Vec<String>,
 }
 
 impl<C, S> SessionRuntime<C, S>
@@ -54,47 +122,43 @@ where
             tx_manager: TransactionManager::default(),
             journal: Box::new(NoopJournal),
             variables: Variables::new(),
-            session_last_identity: None,
-            scope_identity_stack: vec![None],
-            temp_table_map: HashMap::new(),
-            table_var_map: HashMap::new(),
-            table_var_counter: 0,
+            identities: IdentityState::new(),
+            tables: TableState::new(),
+            cursors: CursorState::new(),
+            diagnostics: DiagnosticsState::new(),
             workspace: None,
             options: SessionOptions::default(),
             random_state: 1,
-            cursors: HashMap::new(),
-            fetch_status: -1,
-            print_output: Vec::new(),
         }
     }
 
     pub(crate) fn reset(&mut self) {
         self.tx_manager = TransactionManager::default();
         self.variables.clear();
-        self.session_last_identity = None;
-        self.scope_identity_stack = vec![None];
-        self.temp_table_map.clear();
-        self.table_var_map.clear();
-        self.table_var_counter = 0;
+        self.identities.reset();
+        self.tables.reset();
+        self.cursors.reset();
+        self.diagnostics.reset();
         self.workspace = None;
         self.options = SessionOptions::default();
         self.random_state = 1;
-        self.cursors.clear();
-        self.fetch_status = -1;
-        self.print_output.clear();
     }
 }
 
-pub struct SharedState<C, S> {
+pub struct SharedStorage<C, S> {
     pub catalog: C,
     pub storage: S,
     pub commit_ts: u64,
     pub table_versions: HashMap<String, u64>,
+}
+
+pub struct SharedState<C, S> {
+    pub storage: SharedStorage<C, S>,
     pub table_locks: LockTable,
     pub durability: Box<dyn DurabilitySink<C>>,
     pub sessions: HashMap<SessionId, SessionRuntime<C, S>>,
     pub next_session_id: SessionId,
-    pub dirty_buffer: std::sync::Arc<std::cell::RefCell<super::dirty_buffer::DirtyBuffer>>,
+    pub dirty_buffer: std::sync::Arc<std::sync::Mutex<super::dirty_buffer::DirtyBuffer>>,
 }
 
 impl<C, S> SharedState<C, S>
@@ -104,15 +168,17 @@ where
 {
     pub fn with_initial(catalog: C, storage: S) -> Self {
         Self {
-            catalog,
-            storage,
-            commit_ts: 0,
-            table_versions: HashMap::new(),
+            storage: SharedStorage {
+                catalog,
+                storage,
+                commit_ts: 0,
+                table_versions: HashMap::new(),
+            },
             table_locks: LockTable::new(),
             durability: Box::new(NoopDurability::default()),
             sessions: HashMap::new(),
             next_session_id: 1,
-            dirty_buffer: std::sync::Arc::new(std::cell::RefCell::new(super::dirty_buffer::DirtyBuffer::new())),
+            dirty_buffer: std::sync::Arc::new(std::sync::Mutex::new(super::dirty_buffer::DirtyBuffer::new())),
         }
     }
 

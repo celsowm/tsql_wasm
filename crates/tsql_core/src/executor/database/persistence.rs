@@ -10,7 +10,7 @@ use crate::storage::Storage;
 
 use super::super::durability::{DurabilitySink, RecoveryCheckpoint};
 use super::super::locks::{LockTable, SessionId};
-use super::super::session::{SessionRuntime, SharedState};
+use super::super::session::{SessionRuntime, SharedState, SharedStorage};
 use super::CheckpointManager;
 
 #[derive(Clone)]
@@ -83,10 +83,10 @@ where
         let mut guard = self.inner.lock().expect("database mutex poisoned");
         let mut catalog = C::default();
         let _ = catalog.create_schema("dbo");
-        guard.catalog = catalog;
-        guard.storage = S::default();
-        guard.commit_ts = 0;
-        guard.table_versions.clear();
+        guard.storage.catalog = catalog;
+        guard.storage.storage = S::default();
+        guard.storage.commit_ts = 0;
+        guard.storage.table_versions.clear();
         guard.table_locks.clear();
         for session in guard.sessions.values_mut() {
             session.reset();
@@ -114,15 +114,17 @@ where
     ) -> Self {
         let _ = storage.restore_from_checkpoint(checkpoint.storage_data);
         Self {
-            catalog: checkpoint.catalog,
-            storage,
-            commit_ts: checkpoint.commit_ts,
-            table_versions: checkpoint.table_versions,
+            storage: SharedStorage {
+                catalog: checkpoint.catalog,
+                storage,
+                commit_ts: checkpoint.commit_ts,
+                table_versions: checkpoint.table_versions,
+            },
             table_locks: LockTable::new(),
             durability,
             sessions: HashMap::new(),
             next_session_id: 1,
-            dirty_buffer: std::sync::Arc::new(std::cell::RefCell::new(super::super::dirty_buffer::DirtyBuffer::new())),
+            dirty_buffer: std::sync::Arc::new(std::sync::Mutex::new(super::super::dirty_buffer::DirtyBuffer::new())),
         }
     }
 
@@ -130,23 +132,25 @@ where
         let mut storage = S::default();
         let _ = storage.restore_from_checkpoint(checkpoint.storage_data);
         Self {
-            catalog: checkpoint.catalog,
-            storage,
-            commit_ts: checkpoint.commit_ts,
-            table_versions: checkpoint.table_versions,
+            storage: SharedStorage {
+                catalog: checkpoint.catalog,
+                storage,
+                commit_ts: checkpoint.commit_ts,
+                table_versions: checkpoint.table_versions,
+            },
             table_locks: LockTable::new(),
             durability: Box::new(super::super::durability::NoopDurability::default()),
             sessions: HashMap::new(),
             next_session_id: 1,
-            dirty_buffer: std::sync::Arc::new(std::cell::RefCell::new(super::super::dirty_buffer::DirtyBuffer::new())),
+            dirty_buffer: std::sync::Arc::new(std::sync::Mutex::new(super::super::dirty_buffer::DirtyBuffer::new())),
         }
     }
 
     pub fn apply_checkpoint(&mut self, checkpoint: RecoveryCheckpoint<C>) {
-        self.catalog = checkpoint.catalog;
-        let _ = self.storage.restore_from_checkpoint(checkpoint.storage_data);
-        self.commit_ts = checkpoint.commit_ts;
-        self.table_versions = checkpoint.table_versions;
+        self.storage.catalog = checkpoint.catalog;
+        let _ = self.storage.storage.restore_from_checkpoint(checkpoint.storage_data);
+        self.storage.commit_ts = checkpoint.commit_ts;
+        self.storage.table_versions = checkpoint.table_versions;
         self.table_locks.clear();
         for session in self.sessions.values_mut() {
             session.reset();
@@ -155,10 +159,10 @@ where
 
     pub fn to_checkpoint(&self) -> RecoveryCheckpoint<C> {
         RecoveryCheckpoint {
-            catalog: self.catalog.clone(),
-            storage_data: self.storage.get_checkpoint_data(),
-            commit_ts: self.commit_ts,
-            table_versions: self.table_versions.clone(),
+            catalog: self.storage.catalog.clone(),
+            storage_data: self.storage.storage.get_checkpoint_data(),
+            commit_ts: self.storage.commit_ts,
+            table_versions: self.storage.table_versions.clone(),
         }
     }
 }

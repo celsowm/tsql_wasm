@@ -50,8 +50,8 @@ where
     C: Catalog + Clone,
     S: Storage + Clone,
 {
-    let mut merged_catalog = state.catalog.clone();
-    let mut merged_storage = state.storage.clone();
+    let mut merged_catalog = state.storage.catalog.clone();
+    let mut merged_storage = state.storage.storage.clone();
 
     // 1. Merge catalogs from all active workspaces (including own)
     // This allows seeing uncommitted tables/columns.
@@ -68,7 +68,7 @@ where
     }
 
     // 2. Apply all dirty ops from the shared buffer
-    let buffer = state.dirty_buffer.borrow();
+    let buffer = state.dirty_buffer.lock().unwrap();
     for session_ops in buffer.pending.values() {
         for (table_name, ops) in session_ops {
             if let Some(def) = merged_catalog.find_table("dbo", table_name) {

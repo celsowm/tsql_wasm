@@ -138,7 +138,7 @@ impl<'a> MutationExecutor<'a> {
         row: &crate::storage::StoredRow,
     ) {
         if let Some(db) = &ctx.dirty_buffer {
-            db.borrow_mut().push_op(
+            db.lock().unwrap().push_op(
                 ctx.session_id,
                 table_name.to_string(),
                 super::dirty_buffer::DirtyOp::Insert { row: row.clone() },
@@ -154,7 +154,7 @@ impl<'a> MutationExecutor<'a> {
         new_row: &crate::storage::StoredRow,
     ) {
         if let Some(db) = &ctx.dirty_buffer {
-            db.borrow_mut().push_op(
+            db.lock().unwrap().push_op(
                 ctx.session_id,
                 table_name.to_string(),
                 super::dirty_buffer::DirtyOp::Update {
@@ -172,7 +172,7 @@ impl<'a> MutationExecutor<'a> {
         row_index: usize,
     ) {
         if let Some(db) = &ctx.dirty_buffer {
-            db.borrow_mut().push_op(
+            db.lock().unwrap().push_op(
                 ctx.session_id,
                 table_name.to_string(),
                 super::dirty_buffer::DirtyOp::Delete { row_index },
@@ -186,7 +186,7 @@ impl<'a> MutationExecutor<'a> {
         table_name: &str,
     ) {
         if let Some(db) = &ctx.dirty_buffer {
-            db.borrow_mut().push_op(
+            db.lock().unwrap().push_op(
                 ctx.session_id,
                 table_name.to_string(),
                 super::dirty_buffer::DirtyOp::Truncate,
@@ -201,7 +201,7 @@ impl<'a> MutationExecutor<'a> {
         rows: Vec<crate::storage::StoredRow>,
     ) {
         if let Some(db) = &ctx.dirty_buffer {
-            db.borrow_mut().push_op(
+            db.lock().unwrap().push_op(
                 ctx.session_id,
                 table_name.to_string(),
                 super::dirty_buffer::DirtyOp::ReplaceTable { rows },

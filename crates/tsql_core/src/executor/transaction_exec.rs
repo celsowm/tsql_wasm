@@ -30,14 +30,14 @@ where
     match stmt {
         Statement::BeginTransaction(name) => {
             if tx_manager.depth == 0 {
-                let workspace_catalog = state.catalog.clone();
-                let workspace_storage = state.storage.clone();
-                tx_manager.commit_ts = state.commit_ts;
+                let workspace_catalog = state.storage.catalog.clone();
+                let workspace_storage = state.storage.storage.clone();
+                tx_manager.commit_ts = state.storage.commit_ts;
                 tx_manager.begin(&workspace_catalog, &workspace_storage, name.clone())?;
                 *workspace_slot = Some(TxWorkspace {
                     catalog: workspace_catalog,
                     storage: workspace_storage,
-                    base_table_versions: state.table_versions.clone(),
+                    base_table_versions: state.storage.table_versions.clone(),
                     read_tables: HashSet::new(),
                     write_tables: HashSet::new(),
                     acquired_locks: Vec::new(),
@@ -72,7 +72,7 @@ where
                 &workspace.base_table_versions,
                 &workspace.read_tables,
                 &workspace.write_tables,
-                &state.table_versions,
+                &state.storage.table_versions,
             );
             if conflicts {
                 return Err(DbError::Execution(
@@ -80,8 +80,8 @@ where
                 ));
             }
 
-            let next_commit_ts = state.commit_ts + 1;
-            let mut next_table_versions = state.table_versions.clone();
+            let next_commit_ts = state.storage.commit_ts + 1;
+            let mut next_table_versions = state.storage.table_versions.clone();
             for table in &workspace.write_tables {
                 next_table_versions.insert(table.clone(), next_commit_ts);
             }
@@ -93,16 +93,16 @@ where
             };
             state.durability.persist_checkpoint(&checkpoint)?;
 
-            state.catalog = workspace.catalog.clone();
-            state.storage = workspace.storage.clone();
-            state.commit_ts = next_commit_ts;
+            state.storage.catalog = workspace.catalog.clone();
+            state.storage.storage = workspace.storage.clone();
+            state.storage.commit_ts = next_commit_ts;
             for table in &workspace.write_tables {
-                state.table_versions.insert(table.clone(), state.commit_ts);
+                state.storage.table_versions.insert(table.clone(), state.storage.commit_ts);
             }
             state.table_locks.release_workspace_locks(session_id, workspace_slot, 0);
-            state.dirty_buffer.borrow_mut().clear_session(session_id);
+            state.dirty_buffer.lock().unwrap().clear_session(session_id);
             tx_manager.active = None;
-            tx_manager.commit_ts = state.commit_ts;
+            tx_manager.commit_ts = state.storage.commit_ts;
             *workspace_slot = None;
             journal.record(JournalEvent::Commit);
             Ok(None)
@@ -132,7 +132,7 @@ where
                 state.table_locks.release_workspace_locks(session_id, workspace_slot, keep_depth);
             } else {
                 state.table_locks.release_workspace_locks(session_id, workspace_slot, 0);
-                state.dirty_buffer.borrow_mut().clear_session(session_id);
+                state.dirty_buffer.lock().unwrap().clear_session(session_id);
                 *workspace_slot = None;
             }
             journal.record(JournalEvent::Rollback { savepoint });
@@ -177,11 +177,11 @@ where
         let _ = tx_manager.rollback(None, &mut workspace.catalog, &mut workspace.storage);
     }
     state.table_locks.release_workspace_locks(session_id, workspace_slot, 0);
-    state.dirty_buffer.borrow_mut().clear_session(session_id);
+    state.dirty_buffer.lock().unwrap().clear_session(session_id);
     *workspace_slot = None;
     tx_manager.active = None;
     tx_manager.depth = 0;
-    tx_manager.commit_ts = state.commit_ts;
+    tx_manager.commit_ts = state.storage.commit_ts;
     journal.record(JournalEvent::Rollback { savepoint: None });
 }
 
