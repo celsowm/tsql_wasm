@@ -14,7 +14,7 @@ use super::super::locks::{SessionId, TxWorkspace};
 use super::super::result::QueryResult;
 use super::super::schema::SchemaExecutor;
 use super::super::script::ScriptExecutor;
-use super::super::session::{SessionRuntime, SharedState};
+use super::super::session::{SessionRuntime, SharedState, SessionSnapshot};
 use super::super::table_util::{collect_write_tables, is_transaction_statement};
 use super::super::tooling::{
     analyze_sql_batch, apply_set_option,
@@ -268,6 +268,8 @@ where
                 &mut session.tx_manager,
                 &mut session.journal,
                 &mut session.workspace,
+                &mut ctx,
+                &mut session.options,
                 stmt,
             ) {
                 Ok(r) => out = Ok(r),
@@ -353,6 +355,8 @@ where
                 &mut session.tx_manager,
                 &mut session.journal,
                 &mut session.workspace,
+                &mut ctx,
+                &mut session.options,
                 stmt,
             ) {
                 Ok(r) => results.push(r),
@@ -410,17 +414,6 @@ where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
     S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
-    if is_transaction_statement(&stmt) {
-        return transaction_exec::execute_transaction_statement(
-            state,
-            session_id,
-            &mut session.tx_manager,
-            &mut session.journal,
-            &mut session.workspace,
-            stmt,
-        );
-    }
-
     let mut ctx = ExecutionContext::new(
         &mut session.variables,
         &mut session.identities.last_identity,
@@ -439,6 +432,19 @@ where
     );
     ctx.trancount = session.tx_manager.depth;
     ctx.identity_insert = session.options.identity_insert.clone();
+
+    if is_transaction_statement(&stmt) {
+        return transaction_exec::execute_transaction_statement(
+            state,
+            session_id,
+            &mut session.tx_manager,
+            &mut session.journal,
+            &mut session.workspace,
+            &mut ctx,
+            &mut session.options,
+            stmt,
+        );
+    }
 
     match execute_non_transaction_statement(
         state,
@@ -459,7 +465,7 @@ where
 pub(crate) fn execute_non_transaction_statement<C, S>(
     state: &mut SharedState<C, S>,
     session_id: SessionId,
-    tx_manager: &mut TransactionManager<C, S>,
+    tx_manager: &mut TransactionManager<C, S, SessionSnapshot>,
     journal: &mut dyn Journal,
     workspace_slot: &mut Option<TxWorkspace<C, S>>,
     clock: &dyn Clock,
@@ -471,6 +477,7 @@ where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
     S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
+
     if let Statement::SetOption(opt) = &stmt {
         let apply = apply_set_option(opt, session_options)?;
         ctx.ansi_nulls = session_options.ansi_nulls;
@@ -501,9 +508,6 @@ where
         isolation_level == IsolationLevel::ReadUncommitted && is_select;
 
     if tx_manager.active.is_some() {
-        let read_committed_from_shared =
-            isolation_level == IsolationLevel::ReadCommitted && is_select;
-
         state.table_locks.acquire_statement_locks(
             session_id,
             tx_manager,
@@ -521,14 +525,9 @@ where
                 clock,
             };
             script.execute(stmt.clone(), ctx)
-        } else if read_committed_from_shared {
-            let mut script = ScriptExecutor {
-                catalog: &mut state.storage.catalog,
-                storage: &mut state.storage.storage,
-                clock,
-            };
-            script.execute(stmt.clone(), ctx)
         } else {
+            // Use workspace for all other isolation levels when in a transaction.
+            // This ensures we see our own changes (and for now, provides REPEATABLE READ/SNAPSHOT semantics).
             let workspace = workspace_slot.as_mut().ok_or_else(|| {
                 DbError::Execution("internal error: missing transaction workspace".into())
             })?;
@@ -552,6 +551,8 @@ where
                 tx_manager,
                 journal,
                 workspace_slot,
+                ctx,
+                session_options,
             );
         }
         out

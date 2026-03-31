@@ -25,6 +25,7 @@ pub trait SessionManager {
     ) -> Result<(), DbError>;
 }
 
+#[derive(Debug, Clone)]
 pub struct IdentityState {
     pub(crate) last_identity: Option<i64>,
     pub(crate) scope_stack: Vec<Option<i64>>,
@@ -43,6 +44,7 @@ impl IdentityState {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct TableState {
     pub(crate) temp_map: HashMap<String, String>,
     pub(crate) var_map: HashMap<String, String>,
@@ -64,6 +66,7 @@ impl TableState {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct CursorState {
     pub(crate) map: HashMap<String, super::model::Cursor>,
     pub(crate) fetch_status: i32,
@@ -82,6 +85,17 @@ impl CursorState {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct SessionSnapshot {
+    pub variables: Variables,
+    pub identities: IdentityState,
+    pub tables: TableState,
+    pub cursors: CursorState,
+    pub options: SessionOptions,
+    pub random_state: u64,
+}
+
+#[derive(Debug, Clone)]
 pub struct DiagnosticsState {
     pub(crate) print_output: Vec<String>,
 }
@@ -99,7 +113,7 @@ impl DiagnosticsState {
 
 pub struct SessionRuntime<C, S> {
     pub(crate) clock: Box<dyn Clock>,
-    pub(crate) tx_manager: TransactionManager<C, S>,
+    pub(crate) tx_manager: TransactionManager<C, S, SessionSnapshot>,
     pub(crate) journal: Box<dyn Journal>,
     pub(crate) variables: Variables,
     pub(crate) identities: IdentityState,

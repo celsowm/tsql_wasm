@@ -333,4 +333,40 @@ impl<'a> ExecutionContext<'a> {
     pub fn get_window_value(&self, expr: &crate::ast::Expr) -> Option<Value> {
         self.window_context.as_ref().and_then(|m| m.get(expr).cloned())
     }
+
+    pub fn create_snapshot(&self, options: &super::tooling::SessionOptions) -> super::session::SessionSnapshot {
+        super::session::SessionSnapshot {
+            variables: self.variables.clone(),
+            identities: super::session::IdentityState {
+                last_identity: *self.session_last_identity,
+                scope_stack: self.scope_identity_stack.clone(),
+            },
+            tables: super::session::TableState {
+                temp_map: self.temp_table_map.clone(),
+                var_map: self.session_table_var_map.clone(),
+                var_counter: *self.table_var_counter,
+            },
+            cursors: super::session::CursorState {
+                map: self.cursors.clone(),
+                fetch_status: *self.fetch_status,
+            },
+            options: options.clone(),
+            random_state: *self.random_state,
+        }
+    }
+
+    pub fn restore_snapshot(&mut self, snapshot: super::session::SessionSnapshot, options: &mut super::tooling::SessionOptions) {
+        *self.variables = snapshot.variables;
+        *self.session_last_identity = snapshot.identities.last_identity;
+        *self.scope_identity_stack = snapshot.identities.scope_stack;
+        *self.temp_table_map = snapshot.tables.temp_map;
+        *self.session_table_var_map = snapshot.tables.var_map;
+        *self.table_var_counter = snapshot.tables.var_counter;
+        *self.cursors = snapshot.cursors.map;
+        *self.fetch_status = snapshot.cursors.fetch_status;
+        *options = snapshot.options;
+        *self.random_state = snapshot.random_state;
+        self.ansi_nulls = options.ansi_nulls;
+        self.datefirst = options.datefirst;
+    }
 }

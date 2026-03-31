@@ -18,14 +18,16 @@ use super::transaction::{TransactionManager, WriteIntentKind};
 pub(crate) fn execute_transaction_statement<C, S>(
     state: &mut SharedState<C, S>,
     session_id: SessionId,
-    tx_manager: &mut TransactionManager<C, S>,
+    tx_manager: &mut TransactionManager<C, S, super::session::SessionSnapshot>,
     journal: &mut Box<dyn Journal>,
     workspace_slot: &mut Option<TxWorkspace<C, S>>,
+    ctx: &mut super::context::ExecutionContext,
+    session_options: &mut super::tooling::SessionOptions,
     stmt: Statement,
 ) -> Result<Option<super::result::QueryResult>, DbError>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static,
+    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     match stmt {
         Statement::BeginTransaction(name) => {
@@ -33,7 +35,8 @@ where
                 let workspace_catalog = state.storage.catalog.clone();
                 let workspace_storage = state.storage.storage.clone();
                 tx_manager.commit_ts = state.storage.commit_ts;
-                tx_manager.begin(&workspace_catalog, &workspace_storage, name.clone())?;
+                let extra = ctx.create_snapshot(session_options);
+                tx_manager.begin(&workspace_catalog, &workspace_storage, &extra, name.clone())?;
                 *workspace_slot = Some(TxWorkspace {
                     catalog: workspace_catalog,
                     storage: workspace_storage,
@@ -112,11 +115,15 @@ where
                 let workspace = workspace_slot.as_mut().ok_or_else(|| {
                     DbError::Execution("ROLLBACK without active transaction".into())
                 })?;
+                let mut extra = ctx.create_snapshot(session_options);
                 tx_manager.rollback(
                     savepoint.clone(),
                     &mut workspace.catalog,
                     &mut workspace.storage,
+                    &mut extra,
                 )?;
+                ctx.restore_snapshot(extra, session_options);
+                
                 if let Some(ref active_tx) = tx_manager.active {
                     let keep = active_tx.write_set.len();
                     if workspace.write_tables.len() > keep {
@@ -142,7 +149,8 @@ where
             let workspace = workspace_slot.as_ref().ok_or_else(|| {
                 DbError::Execution("SAVE TRANSACTION without active transaction".into())
             })?;
-            tx_manager.save(name.clone(), &workspace.catalog, &workspace.storage)?;
+            let extra = ctx.create_snapshot(session_options);
+            tx_manager.save(name.clone(), &workspace.catalog, &workspace.storage, &extra)?;
             journal.record(JournalEvent::Savepoint { name });
             Ok(None)
         }
@@ -162,19 +170,23 @@ where
 pub(crate) fn force_xact_abort<C, S>(
     state: &mut SharedState<C, S>,
     session_id: SessionId,
-    tx_manager: &mut TransactionManager<C, S>,
+    tx_manager: &mut TransactionManager<C, S, super::session::SessionSnapshot>,
     journal: &mut dyn Journal,
     workspace_slot: &mut Option<TxWorkspace<C, S>>,
+    ctx: &mut super::context::ExecutionContext,
+    session_options: &mut super::tooling::SessionOptions,
 )
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static,
+    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     if tx_manager.active.is_none() {
         return;
     }
     if let Some(workspace) = workspace_slot.as_mut() {
-        let _ = tx_manager.rollback(None, &mut workspace.catalog, &mut workspace.storage);
+        let mut extra = ctx.create_snapshot(session_options);
+        let _ = tx_manager.rollback(None, &mut workspace.catalog, &mut workspace.storage, &mut extra);
+        ctx.restore_snapshot(extra, session_options);
     }
     state.table_locks.release_workspace_locks(session_id, workspace_slot, 0);
     state.dirty_buffer.lock().unwrap().clear_session(session_id);
@@ -202,7 +214,7 @@ pub(crate) fn register_workspace_write_tables<C, S>(workspace_slot: &mut Option<
 }
 
 pub(crate) fn register_write_intent<C, S>(
-    tx_manager: &mut TransactionManager<C, S>,
+    tx_manager: &mut TransactionManager<C, S, super::session::SessionSnapshot>,
     journal: &mut dyn Journal,
     stmt: &Statement,
 )

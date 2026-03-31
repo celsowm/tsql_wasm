@@ -6,10 +6,11 @@ use crate::error::DbError;
 use crate::storage::Storage;
 
 #[derive(Debug, Clone)]
-pub struct Savepoint<C, S> {
+pub struct Savepoint<C, S, X> {
     pub name: String,
     pub catalog_snapshot: C,
     pub storage_snapshot: S,
+    pub extra_snapshot: X,
     pub write_intent_len: usize,
 }
 
@@ -49,27 +50,30 @@ impl LockManager {
 }
 
 #[derive(Debug, Clone)]
-pub struct TxState<C, S> {
+pub struct TxState<C, S, X> {
     pub isolation_level: IsolationLevel,
     pub begin_catalog: C,
     pub begin_storage: S,
-    pub savepoints: Vec<Savepoint<C, S>>,
+    pub begin_extra: X,
+    pub savepoints: Vec<Savepoint<C, S, X>>,
     pub lock_manager: LockManager,
     pub write_set: Vec<WriteIntent>,
     pub snapshot_ts: u64,
 }
 
-impl<C, S> TxState<C, S> {
+impl<C, S, X> TxState<C, S, X> {
     pub fn new(
         isolation_level: IsolationLevel,
         begin_catalog: C,
         begin_storage: S,
+        begin_extra: X,
         snapshot_ts: u64,
     ) -> Self {
         Self {
             isolation_level,
             begin_catalog,
             begin_storage,
+            begin_extra,
             savepoints: vec![],
             lock_manager: LockManager::default(),
             write_set: vec![],
@@ -79,14 +83,14 @@ impl<C, S> TxState<C, S> {
 }
 
 #[derive(Debug, Clone)]
-pub struct TransactionManager<C, S> {
-    pub active: Option<TxState<C, S>>,
+pub struct TransactionManager<C, S, X> {
+    pub active: Option<TxState<C, S, X>>,
     pub session_isolation_level: IsolationLevel,
     pub commit_ts: u64,
     pub depth: u32,
 }
 
-impl<C, S> Default for TransactionManager<C, S> {
+impl<C, S, X> Default for TransactionManager<C, S, X> {
     fn default() -> Self {
         Self {
             active: None,
@@ -103,15 +107,17 @@ impl Default for IsolationLevel {
     }
 }
 
-impl<C, S> TransactionManager<C, S>
+impl<C, S, X> TransactionManager<C, S, X>
 where
     C: Catalog + Clone,
     S: Storage + Clone,
+    X: Clone,
 {
     pub fn begin(
         &mut self,
         catalog: &C,
         storage: &S,
+        extra: &X,
         explicit_name: Option<String>,
     ) -> Result<Option<String>, DbError> {
         if self.depth == 0 {
@@ -119,6 +125,7 @@ where
                 self.session_isolation_level,
                 catalog.clone(),
                 storage.clone(),
+                extra.clone(),
                 self.commit_ts,
             );
             self.active = Some(tx);
@@ -157,6 +164,7 @@ where
         savepoint: Option<String>,
         catalog: &mut C,
         storage: &mut S,
+        extra: &mut X,
     ) -> Result<(), DbError> {
         let Some(tx) = self.active.as_mut() else {
             return Err(DbError::Execution(
@@ -178,14 +186,16 @@ where
             let snapshot = tx.savepoints[pos].clone();
             *catalog = snapshot.catalog_snapshot;
             *storage = snapshot.storage_snapshot;
+            *extra = snapshot.extra_snapshot;
             tx.write_set.truncate(snapshot.write_intent_len);
             tx.savepoints.truncate(pos + 1);
-            tx.lock_manager.clear();
+            // tx.lock_manager.clear(); // Removed as it was clearing all locks, which is incorrect for savepoints
             return Ok(());
         }
 
         *catalog = tx.begin_catalog.clone();
         *storage = tx.begin_storage.clone();
+        *extra = tx.begin_extra.clone();
         self.active = None;
         self.depth = 0;
         Ok(())
@@ -196,6 +206,7 @@ where
         name: String,
         catalog: &C,
         storage: &S,
+        extra: &X,
     ) -> Result<(), DbError> {
         let Some(tx) = self.active.as_mut() else {
             return Err(DbError::Execution(
@@ -206,6 +217,7 @@ where
             name,
             catalog_snapshot: catalog.clone(),
             storage_snapshot: storage.clone(),
+            extra_snapshot: extra.clone(),
             write_intent_len: tx.write_set.len(),
         });
         Ok(())

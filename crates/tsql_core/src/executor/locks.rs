@@ -91,7 +91,7 @@ impl LockTable {
     pub fn acquire_statement_locks<C, S>(
         &mut self,
         session_id: SessionId,
-        tx_manager: &super::transaction::TransactionManager<C, S>,
+        tx_manager: &super::transaction::TransactionManager<C, S, super::session::SessionSnapshot>,
         workspace_slot: &mut Option<TxWorkspace<C, S>>,
         stmt: &Statement,
     ) -> Result<(), DbError> {
