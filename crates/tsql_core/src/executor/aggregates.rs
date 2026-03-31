@@ -10,11 +10,34 @@ use crate::catalog::Catalog;
 use crate::storage::Storage;
 pub use super::model::Group;
 
+/// Typed enum for aggregate functions, replacing string-based dispatch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AggregateFn {
+    Count,
+    Sum,
+    Avg,
+    Min,
+    Max,
+    StringAgg,
+}
+
+impl AggregateFn {
+    /// Parse an aggregate function name (case-insensitive) into a typed enum.
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name.to_uppercase().as_str() {
+            "COUNT" => Some(AggregateFn::Count),
+            "SUM" => Some(AggregateFn::Sum),
+            "AVG" => Some(AggregateFn::Avg),
+            "MIN" => Some(AggregateFn::Min),
+            "MAX" => Some(AggregateFn::Max),
+            "STRING_AGG" => Some(AggregateFn::StringAgg),
+            _ => None,
+        }
+    }
+}
+
 pub fn is_aggregate_function(name: &str) -> bool {
-    matches!(
-        name.to_uppercase().as_str(),
-        "COUNT" | "SUM" | "AVG" | "MIN" | "MAX" | "STRING_AGG"
-    )
+    AggregateFn::from_name(name).is_some()
 }
 
 /// Centralized aggregate dispatch. Returns None if the function is not a recognized aggregate.
@@ -28,14 +51,14 @@ pub fn dispatch_aggregate(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Option<Result<Value, DbError>> {
-    match name.to_uppercase().as_str() {
-        "COUNT" => Some(Ok(eval_aggregate_count(args, group, ctx, catalog, storage, clock))),
-        "SUM" => Some(eval_aggregate_sum(args, group, ctx, catalog, storage, clock)),
-        "AVG" => Some(eval_aggregate_avg(args, group, ctx, catalog, storage, clock)),
-        "MIN" => Some(eval_aggregate_min(args, group, ctx, catalog, storage, clock)),
-        "MAX" => Some(eval_aggregate_max(args, group, ctx, catalog, storage, clock)),
-        "STRING_AGG" => Some(eval_aggregate_string_agg(args, group, ctx, catalog, storage, clock)),
-        _ => None,
+    let agg = AggregateFn::from_name(name)?;
+    match agg {
+        AggregateFn::Count => Some(Ok(eval_aggregate_count(args, group, ctx, catalog, storage, clock))),
+        AggregateFn::Sum => Some(eval_aggregate_sum(args, group, ctx, catalog, storage, clock)),
+        AggregateFn::Avg => Some(eval_aggregate_avg(args, group, ctx, catalog, storage, clock)),
+        AggregateFn::Min => Some(eval_aggregate_min(args, group, ctx, catalog, storage, clock)),
+        AggregateFn::Max => Some(eval_aggregate_max(args, group, ctx, catalog, storage, clock)),
+        AggregateFn::StringAgg => Some(eval_aggregate_string_agg(args, group, ctx, catalog, storage, clock)),
     }
 }
 
@@ -155,7 +178,10 @@ pub fn eval_aggregate_avg(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    let values = collect_group_values(args.first().unwrap(), group, ctx, catalog, storage, clock);
+    let expr = args
+        .first()
+        .ok_or_else(|| DbError::Execution("AVG requires 1 argument".into()))?;
+    let values = collect_group_values(expr, group, ctx, catalog, storage, clock);
     if values.is_empty() {
         return Ok(Value::Null);
     }
@@ -217,7 +243,10 @@ pub fn eval_aggregate_min(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    let values = collect_group_values(args.first().unwrap(), group, ctx, catalog, storage, clock);
+    let expr = args
+        .first()
+        .ok_or_else(|| DbError::Execution("MIN requires 1 argument".into()))?;
+    let values = collect_group_values(expr, group, ctx, catalog, storage, clock);
     Ok(values
         .into_iter()
         .min_by(compare_values)
@@ -232,7 +261,10 @@ pub fn eval_aggregate_max(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    let values = collect_group_values(args.first().unwrap(), group, ctx, catalog, storage, clock);
+    let expr = args
+        .first()
+        .ok_or_else(|| DbError::Execution("MAX requires 1 argument".into()))?;
+    let values = collect_group_values(expr, group, ctx, catalog, storage, clock);
     Ok(values
         .into_iter()
         .max_by(compare_values)

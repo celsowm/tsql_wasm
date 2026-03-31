@@ -154,7 +154,7 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
     }
 
     pub fn print_output(&self) -> Vec<String> {
-        let guard = self.db.inner.lock().unwrap();
+        let guard = self.db.inner.lock();
         guard.sessions.get(&self.default_session).map(|s| s.diagnostics.print_output.clone()).unwrap_or_default()
     }
 }

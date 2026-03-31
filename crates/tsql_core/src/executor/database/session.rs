@@ -3,7 +3,7 @@ use serde::Serialize;
 
 use crate::ast::{DropTableStmt, IsolationLevel, ObjectName, Statement};
 use crate::catalog::Catalog;
-use crate::error::DbError;
+use crate::error::{DbError, StmtOutcome, StmtResult};
 use crate::parser::{parse_batch_with_quoted_ident, parse_sql};
 use crate::storage::Storage;
 
@@ -38,7 +38,7 @@ where
         session_id: SessionId,
         stmt: Statement,
     ) -> Result<Option<QueryResult>, DbError> {
-        let mut guard = self.inner.lock().expect("database mutex poisoned");
+        let mut guard = self.inner.lock();
         guard.with_session_mut(session_id, |state, session| {
             execute_single_statement(state, session_id, session, stmt)
         })
@@ -49,7 +49,7 @@ where
         session_id: SessionId,
         stmts: Vec<Statement>,
     ) -> Result<Option<QueryResult>, DbError> {
-        let mut guard = self.inner.lock().expect("database mutex poisoned");
+        let mut guard = self.inner.lock();
         guard.with_session_mut(session_id, |state, session| {
             execute_batch_statements(state, session_id, session, stmts)
         })
@@ -60,7 +60,7 @@ where
         session_id: SessionId,
         sql: &str,
     ) -> Result<Option<QueryResult>, DbError> {
-        let mut guard = self.inner.lock().expect("database mutex poisoned");
+        let mut guard = self.inner.lock();
         let quoted_ident = guard.with_session_mut(session_id, |_state, session| {
             Ok(session.options.quoted_identifier)
         })?;
@@ -75,14 +75,14 @@ where
         session_id: SessionId,
         sql: &str,
     ) -> Result<Vec<Option<QueryResult>>, DbError> {
-        let mut guard = self.inner.lock().expect("database mutex poisoned");
+        let mut guard = self.inner.lock();
         let quoted_ident = guard.with_session_mut(session_id, |_state, session| {
             Ok(session.options.quoted_identifier)
         })?;
         drop(guard);
 
         let stmts = parse_batch_with_quoted_ident(sql, quoted_ident)?;
-        let mut guard = self.inner.lock().expect("database mutex poisoned");
+        let mut guard = self.inner.lock();
         guard.with_session_mut(session_id, |state, session| {
             execute_batch_statements_multi(state, session_id, session, stmts)
         })
@@ -95,7 +95,7 @@ where
     S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     fn session_isolation_level(&self, session_id: SessionId) -> Result<IsolationLevel, DbError> {
-        let guard = self.inner.lock().expect("database mutex poisoned");
+        let guard = self.inner.lock();
         let session = guard
             .sessions
             .get(&session_id)
@@ -104,7 +104,7 @@ where
     }
 
     fn transaction_is_active(&self, session_id: SessionId) -> Result<bool, DbError> {
-        let guard = self.inner.lock().expect("database mutex poisoned");
+        let guard = self.inner.lock();
         let session = guard
             .sessions
             .get(&session_id)
@@ -113,7 +113,7 @@ where
     }
 
     fn session_options(&self, session_id: SessionId) -> Result<SessionOptions, DbError> {
-        let guard = self.inner.lock().expect("database mutex poisoned");
+        let guard = self.inner.lock();
         let session = guard
             .sessions
             .get(&session_id)
@@ -221,7 +221,7 @@ where
     S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     fn set_session_seed(&self, session_id: SessionId, seed: u64) -> Result<(), DbError> {
-        let mut guard = self.inner.lock().expect("database mutex poisoned");
+        let mut guard = self.inner.lock();
         guard.with_session_mut(session_id, |_, session| {
             session.random_state = seed;
             Ok(())
@@ -295,10 +295,20 @@ where
                 stmt,
                 &mut ctx,
             ) {
-                Ok(r) => out = Ok(r),
-                Err(DbError::Return(_)) => {
-                    out = Ok(None);
-                    break;
+                Ok(r) => {
+                    match r {
+                        StmtOutcome::Return(_) => {
+                            out = Ok(None);
+                            break;
+                        }
+                        StmtOutcome::Break | StmtOutcome::Continue => {
+                            // Control flow should propagate as-is through batch
+                            // (shouldn't normally reach here outside loops)
+                            out = r.into_result();
+                            break;
+                        }
+                        StmtOutcome::Ok(v) => out = Ok(v),
+                    }
                 }
                 Err(e) => {
                     out = Err(e);
@@ -394,10 +404,24 @@ where
                 stmt,
                 &mut ctx,
             ) {
-                Ok(r) => results.push(r),
-                Err(DbError::Return(_)) => {
-                    results.push(None);
-                    break;
+                Ok(r) => {
+                    match r {
+                        StmtOutcome::Return(_) => {
+                            results.push(None);
+                            break;
+                        }
+                        StmtOutcome::Break | StmtOutcome::Continue => {
+                            // BREAK/CONTINUE outside loops is an error
+                            return Err(DbError::Execution(
+                                if matches!(r, StmtOutcome::Break) {
+                                    "BREAK outside of WHILE".into()
+                                } else {
+                                    "CONTINUE outside of WHILE".into()
+                                }
+                            ));
+                        }
+                        StmtOutcome::Ok(v) => results.push(v),
+                    }
                 }
                 Err(e) => {
                     let _ = cleanup_scope_table_vars(
@@ -486,8 +510,9 @@ where
         stmt,
         &mut ctx,
     ) {
-        Err(DbError::Return(_)) => Ok(None),
-        other => other,
+        // Swallow RETURN at the top level; BREAK/CONTINUE outside loops are errors
+        Ok(outcome) => outcome.into_result_swallow_return(),
+        Err(e) => Err(e),
     }
 }
 
@@ -501,7 +526,7 @@ pub(crate) fn execute_non_transaction_statement<C, S>(
     session_options: &mut SessionOptions,
     stmt: Statement,
     ctx: &mut ExecutionContext,
-) -> Result<Option<QueryResult>, DbError>
+) -> StmtResult<Option<QueryResult>>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
     S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
@@ -513,7 +538,7 @@ where
         for warn in apply.warnings {
             journal.record(JournalEvent::Info { message: warn });
         }
-        return Ok(None);
+        return Ok(StmtOutcome::Ok(None));
     }
 
     if let Statement::SetIdentityInsert(ref id_stmt) = stmt {
@@ -523,7 +548,7 @@ where
         } else {
             session_options.identity_insert.remove(&table_name);
         }
-        return Ok(None);
+        return Ok(StmtOutcome::Ok(None));
     }
 
     let isolation_level = tx_manager
@@ -541,7 +566,6 @@ where
             .acquire_statement_locks(session_id, tx_manager, workspace_slot, &stmt)?;
 
         let out = if read_uncommitted_dirty {
-            // READ UNCOMMITTED: build a merged view with dirty writes from all sessions
             let (mut dirty_catalog, mut dirty_storage) =
                 dirty_buffer::build_dirty_read_storage(state, session_id, workspace_slot);
             let mut script = ScriptExecutor {
@@ -551,17 +575,10 @@ where
             };
             script.execute(stmt.clone(), ctx)
         } else if read_committed_select {
-            // READ COMMITTED: each statement sees the latest committed state for
-            // tables the session hasn't written to, and the workspace for tables it has.
-            // This lets the session see other sessions' committed changes while
-            // preserving its own uncommitted writes (including savepoint rollbacks).
             let workspace = workspace_slot.as_mut().ok_or_else(|| {
                 DbError::Execution("internal error: missing transaction workspace".into())
             })?;
 
-            // Refresh workspace: for tables NOT written by this session, update
-            // the workspace's storage from the committed state so we see changes
-            // committed by other sessions.
             for table_def in state.storage.catalog.get_tables() {
                 let tname = table_def.name.to_uppercase();
                 if workspace.write_tables.contains(&tname) {
@@ -572,7 +589,6 @@ where
                     let _ = workspace.storage.update_rows(tid, committed_rows);
                 }
             }
-            // Also refresh catalog for tables not in write set (e.g. new tables from other sessions)
             for table_def in state.storage.catalog.get_tables() {
                 let tname = table_def.name.to_uppercase();
                 if workspace.write_tables.contains(&tname) {
@@ -590,8 +606,6 @@ where
             };
             script.execute(stmt.clone(), ctx)
         } else {
-            // Use workspace for REPEATABLE READ / SERIALIZABLE / SNAPSHOT and non-SELECT statements.
-            // This ensures we see our own changes and provides snapshot semantics.
             let workspace = workspace_slot.as_mut().ok_or_else(|| {
                 DbError::Execution("internal error: missing transaction workspace".into())
             })?;
@@ -602,19 +616,16 @@ where
             };
             script.execute(stmt.clone(), ctx)
         };
-        if out.is_ok() {
+        // Control flow signals (Break/Continue/Return) should not affect transaction state
+        let is_control_flow = out.as_ref().map_or(false, |o| o.is_control_flow());
+        if out.is_ok() && !is_control_flow {
             transaction_exec::register_read_tables(workspace_slot, &stmt);
             transaction_exec::register_workspace_write_tables(workspace_slot, &stmt);
             transaction_exec::register_write_intent(tx_manager, journal, &stmt);
             if tx_manager.xact_state != -1 {
                 tx_manager.xact_state = 1;
             }
-        } else if session_options.xact_abort
-            && !matches!(
-                out,
-                Err(DbError::Break | DbError::Continue | DbError::Return(_))
-            )
-        {
+        } else if out.is_err() && session_options.xact_abort {
             transaction_exec::force_xact_abort(
                 state,
                 session_id,
@@ -624,10 +635,7 @@ where
                 ctx,
                 session_options,
             );
-        } else if !matches!(
-            out,
-            Err(DbError::Break | DbError::Continue | DbError::Return(_))
-        ) {
+        } else if out.is_err() {
             tx_manager.xact_state = -1;
         }
         out
@@ -662,7 +670,8 @@ where
             clock,
         };
         let out = script.execute(stmt, ctx);
-        if out.is_ok() {
+        let is_control_flow = out.as_ref().map_or(false, |o| o.is_control_flow());
+        if out.is_ok() && !is_control_flow {
             state.storage.commit_ts += 1;
             for table in &written_tables {
                 state

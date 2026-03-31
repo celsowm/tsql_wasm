@@ -155,13 +155,11 @@ fn parse_type_from_declare(input: &str) -> Result<(DataTypeSpec, &str), DbError>
     for (name, spec) in simple_types {
         if upper.starts_with(name) {
             let after = &trimmed[name.len()..];
-            let next_char = after.chars().next();
-            if next_char.is_none()
-                || next_char.unwrap().is_whitespace()
-                || next_char.unwrap() == '='
-                || next_char.unwrap() == ';'
-            {
-                return Ok((spec.clone(), after));
+            match after.chars().next() {
+                None | Some(' ') | Some('\t') | Some('\n') | Some('\r') | Some('=') | Some(';') => {
+                    return Ok((spec.clone(), after));
+                }
+                _ => {}
             }
         }
     }

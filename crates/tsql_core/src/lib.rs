@@ -6,7 +6,7 @@ pub mod parser;
 pub mod storage;
 pub mod types;
 
-pub use error::DbError;
+pub use error::{DbError, StmtOutcome, StmtResult};
 pub use executor::durability::{DurabilitySink, InMemoryDurability, NoopDurability, RecoveryCheckpoint};
 pub use executor::database::RandomSeed;
 pub use executor::database::{DatabaseInner, EngineInner, Database, PersistentDatabase, Engine, PersistentEngine};

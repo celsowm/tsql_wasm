@@ -115,7 +115,7 @@ where
             state
                 .table_locks
                 .release_workspace_locks(session_id, workspace_slot, 0);
-            state.dirty_buffer.lock().unwrap().clear_session(session_id);
+            state.dirty_buffer.lock().clear_session(session_id);
             tx_manager.active = None;
             tx_manager.commit_ts = state.storage.commit_ts;
             tx_manager.xact_state = 0;
@@ -156,7 +156,7 @@ where
                 state
                     .table_locks
                     .release_workspace_locks(session_id, workspace_slot, 0);
-                state.dirty_buffer.lock().unwrap().clear_session(session_id);
+                state.dirty_buffer.lock().clear_session(session_id);
                 *workspace_slot = None;
             }
             journal.record(JournalEvent::Rollback { savepoint });
@@ -212,7 +212,7 @@ pub(crate) fn force_xact_abort<C, S>(
     state
         .table_locks
         .release_workspace_locks(session_id, workspace_slot, 0);
-    state.dirty_buffer.lock().unwrap().clear_session(session_id);
+    state.dirty_buffer.lock().clear_session(session_id);
     *workspace_slot = None;
     tx_manager.active = None;
     tx_manager.depth = 0;

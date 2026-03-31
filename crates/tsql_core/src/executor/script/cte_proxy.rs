@@ -1,6 +1,6 @@
 use crate::ast::WithCteStmt;
 use crate::catalog::TableDef;
-use crate::error::DbError;
+use crate::error::{DbError, StmtOutcome};
 use crate::executor::context::ExecutionContext;
 use crate::executor::result::QueryResult;
 use crate::storage::StoredRow;
@@ -23,9 +23,15 @@ impl<'a> ScriptExecutor<'a> {
                         let recursive_stmt = *set_op.right.clone();
 
                         // 2. Execute Anchor Member
-                        let result = self.execute(anchor_stmt, ctx)?.ok_or_else(|| {
-                            DbError::Execution("CTE anchor member must return a result set".into())
-                        })?;
+                        let anchor_outcome = self.execute(anchor_stmt, ctx)?;
+                        let result = match anchor_outcome {
+                            StmtOutcome::Ok(Some(r)) => r,
+                            StmtOutcome::Ok(None) => {
+                                return Err(DbError::Execution("CTE anchor member must return a result set".into()))
+                            }
+                            // Propagate control flow
+                            other => return other.into_result(),
+                        };
 
                         let table_def = TableDef {
                             id: 0,
@@ -42,9 +48,9 @@ impl<'a> ScriptExecutor<'a> {
                                     identity: None,
                                     default: None,
                                     default_constraint_name: None,
+                                    computed_expr: None,
                                     check: None,
                                     check_constraint_name: None,
-                                    computed_expr: None,
                                 }
                             }).collect(),
                             check_constraints: vec![],
@@ -58,21 +64,27 @@ impl<'a> ScriptExecutor<'a> {
                         let mut iteration = 0;
                         let max_recursion = 100; // Default MS SQL limit
 
+                        // Hoist table_def clone out of the loop
+                        let table_def_inner = table_def.clone();
+
                         while !working_set.is_empty() && iteration < max_recursion {
                             iteration += 1;
                             
                             // Temporarily put only the working set into the CTE storage
                             // so the recursive member sees only the rows from the previous iteration
                             let mut iteration_ctes = old_ctes.clone();
-                            iteration_ctes.insert(&cte_def.name, table_def.clone(), working_set.clone());
+                            iteration_ctes.insert(&cte_def.name, table_def_inner.clone(), working_set);
                             let prev_ctes = std::mem::replace(&mut ctx.ctes, iteration_ctes);
 
-                            let step_result = self.execute(recursive_stmt.clone(), ctx)?;
+                            let step_outcome = self.execute(recursive_stmt.clone(), ctx)?;
                             
                             ctx.ctes = prev_ctes;
 
-                            let Some(res) = step_result else {
-                                break;
+                            let res = match step_outcome {
+                                StmtOutcome::Ok(Some(r)) => r,
+                                StmtOutcome::Ok(None) => break,
+                                // Propagate control flow
+                                other => return other.into_result(),
                             };
 
                             if res.rows.is_empty() {
@@ -80,7 +92,7 @@ impl<'a> ScriptExecutor<'a> {
                             }
 
                             working_set = res.rows.iter().map(|v| StoredRow { values: v.clone(), deleted: false }).collect();
-                            all_rows.extend(working_set.clone());
+                            all_rows.extend(working_set.iter().cloned());
                         }
 
                         if iteration >= max_recursion {
@@ -96,9 +108,15 @@ impl<'a> ScriptExecutor<'a> {
                 }
             } else {
                 // Standard non-recursive CTE
-                let result = self.execute(cte_def.query.clone(), ctx)?.ok_or_else(|| {
-                    DbError::Execution("CTE query must return a result set".into())
-                })?;
+                let cte_outcome = self.execute(cte_def.query.clone(), ctx)?;
+                let result = match cte_outcome {
+                    StmtOutcome::Ok(Some(r)) => r,
+                    StmtOutcome::Ok(None) => {
+                        return Err(DbError::Execution("CTE query must return a result set".into()))
+                    }
+                    // Propagate control flow
+                    other => return other.into_result(),
+                };
 
                 let table_def = TableDef {
                     id: 0,
@@ -118,9 +136,9 @@ impl<'a> ScriptExecutor<'a> {
                             identity: None,
                             default: None,
                             default_constraint_name: None,
+                            computed_expr: None,
                             check: None,
                             check_constraint_name: None,
-                            computed_expr: None,
                         })
                         .collect(),
                     check_constraints: vec![],
@@ -142,6 +160,7 @@ impl<'a> ScriptExecutor<'a> {
 
         let res = self.execute(*stmt.body, ctx);
         ctx.ctes = old_ctes;
-        res
+        // Propagate control flow from the body; unwrap Ok values
+        res.map(|outcome| outcome.into_result()).and_then(|r| r)
     }
 }

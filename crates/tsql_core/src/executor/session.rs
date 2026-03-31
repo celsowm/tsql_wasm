@@ -172,7 +172,7 @@ pub struct SharedState<C, S> {
     pub durability: Box<dyn DurabilitySink<C>>,
     pub sessions: HashMap<SessionId, SessionRuntime<C, S>>,
     pub next_session_id: SessionId,
-    pub dirty_buffer: std::sync::Arc<std::sync::Mutex<super::dirty_buffer::DirtyBuffer>>,
+    pub dirty_buffer: std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>,
 }
 
 impl<C, S> SharedState<C, S>
@@ -192,7 +192,7 @@ where
             durability: Box::new(NoopDurability::default()),
             sessions: HashMap::new(),
             next_session_id: 1,
-            dirty_buffer: std::sync::Arc::new(std::sync::Mutex::new(super::dirty_buffer::DirtyBuffer::new())),
+            dirty_buffer: std::sync::Arc::new(parking_lot::Mutex::new(super::dirty_buffer::DirtyBuffer::new())),
         }
     }
 

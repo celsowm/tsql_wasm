@@ -1,7 +1,7 @@
 use super::super::ScriptExecutor;
 use crate::ast::{ExecProcedureStmt, RoutineParamType, SpExecuteSqlStmt};
 use crate::catalog::{RoutineKind, TableTypeDef};
-use crate::error::DbError;
+use crate::error::{DbError, StmtOutcome};
 use crate::executor::context::ExecutionContext;
 use crate::executor::evaluator::eval_expr;
 use crate::executor::value_ops::coerce_value_to_type;
@@ -158,8 +158,9 @@ impl<'a> ScriptExecutor<'a> {
         }
 
         match proc_result {
-            Err(DbError::Return(_)) => Ok(None),
-            other => other,
+            Ok(StmtOutcome::Return(_)) | Ok(StmtOutcome::Break) | Ok(StmtOutcome::Continue) => Ok(None),
+            Ok(StmtOutcome::Ok(r)) => Ok(r),
+            Err(e) => Err(e),
         }
     }
 
@@ -267,6 +268,11 @@ impl<'a> ScriptExecutor<'a> {
                 *out = coerce_value_to_type(val, ty)?;
             }
         }
-        exec_result
+        // Swallow control flow signals at procedure boundary
+        match exec_result {
+            Ok(StmtOutcome::Return(_)) | Ok(StmtOutcome::Break) | Ok(StmtOutcome::Continue) => Ok(None),
+            Ok(StmtOutcome::Ok(r)) => Ok(r),
+            Err(e) => Err(e),
+        }
     }
 }

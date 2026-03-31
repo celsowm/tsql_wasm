@@ -50,8 +50,9 @@ pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {
 
     if let Some(sel_idx) = select_idx_stripped {
         // Check if SELECT is before VALUES and EXEC
-        if (values_idx_stripped.is_none() || sel_idx < values_idx_stripped.unwrap()) &&
-           (exec_idx_stripped.is_none() || sel_idx < exec_idx_stripped.unwrap()) {
+        let before_values = values_idx_stripped.map_or(true, |v| sel_idx < v);
+        let before_exec = exec_idx_stripped.map_or(true, |e| sel_idx < e);
+        if before_values && before_exec {
             let head = after_into_stripped[..sel_idx].trim();
             let (table_name, columns) = parse_table_and_columns(head)?;
             let select_sql = &after_into_stripped[sel_idx..];
@@ -69,7 +70,7 @@ pub(crate) fn parse_insert(sql: &str) -> Result<Statement, DbError> {
     }
 
     if let Some(exec_idx) = exec_idx_stripped {
-        if values_idx_stripped.is_none() || exec_idx < values_idx_stripped.unwrap() {
+        if values_idx_stripped.map_or(true, |v| exec_idx < v) {
             let head = after_into_stripped[..exec_idx].trim();
             let (table_name, columns) = parse_table_and_columns(head)?;
             let exec_sql = &after_into_stripped[exec_idx..];

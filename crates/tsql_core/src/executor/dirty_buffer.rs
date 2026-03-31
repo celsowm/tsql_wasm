@@ -68,7 +68,7 @@ where
     }
 
     // 2. Apply all dirty ops from the shared buffer
-    let buffer = state.dirty_buffer.lock().unwrap();
+    let buffer = state.dirty_buffer.lock();
     for session_ops in buffer.pending.values() {
         for (table_name, ops) in session_ops {
             if let Some(def) = merged_catalog.find_table("dbo", table_name) {

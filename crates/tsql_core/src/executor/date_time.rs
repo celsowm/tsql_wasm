@@ -1,5 +1,31 @@
 use crate::error::DbError;
 
+/// Typed enum for date parts, replacing string-based dispatch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DatePart {
+    Year,
+    Month,
+    Day,
+    Hour,
+    Minute,
+    Second,
+}
+
+impl DatePart {
+    /// Parse a date part string (case-insensitive) into a typed enum.
+    pub fn from_str(s: &str) -> Result<Self, DbError> {
+        match s.to_lowercase().as_str() {
+            "year" | "yy" | "yyyy" => Ok(DatePart::Year),
+            "month" | "mm" | "m" => Ok(DatePart::Month),
+            "day" | "dd" | "d" => Ok(DatePart::Day),
+            "hour" | "hh" => Ok(DatePart::Hour),
+            "minute" | "mi" | "n" => Ok(DatePart::Minute),
+            "second" | "ss" | "s" => Ok(DatePart::Second),
+            _ => Err(DbError::Execution(format!("unknown datepart '{}'", s))),
+        }
+    }
+}
+
 pub(crate) fn parse_datetime_parts(s: &str) -> Result<(i32, i32, i32, i32, i32, i32), DbError> {
     let s = s.trim();
     let t_parts: Vec<&str> = s.splitn(2, 'T').collect();
@@ -70,29 +96,30 @@ pub(crate) fn day_of_week_from_date(y: i32, m: i32, d: i32) -> i32 {
 }
 
 pub(crate) fn apply_dateadd(part: &str, num: i64, date_str: &str) -> Result<String, DbError> {
+    let date_part = DatePart::from_str(part)?;
     let (y, m, d, h, mi, s) = parse_datetime_parts(date_str)?;
 
-    let (ny, nm, nd, nh, nmi, ns) = match part {
-        "year" | "yy" | "yyyy" => (y + num as i32, m, d, h, mi, s),
-        "month" | "mm" | "m" => {
+    let (ny, nm, nd, nh, nmi, ns) = match date_part {
+        DatePart::Year => (y + num as i32, m, d, h, mi, s),
+        DatePart::Month => {
             let total = (y as i64) * 12 + (m as i64 - 1) + num;
             let ny = (total / 12) as i32;
             let nm = (total % 12 + 1) as i32;
             (ny, nm, d, h, mi, s)
         }
-        "day" | "dd" | "d" => {
+        DatePart::Day => {
             let total_days = date_to_days(y, m, d) + num;
             let (ny, nm, nd) = days_to_date(total_days);
             (ny, nm, nd, h, mi, s)
         }
-        "hour" | "hh" => {
+        DatePart::Hour => {
             let total_hours = (date_to_days(y, m, d) * 24) + h as i64 + num;
             let total_days = total_hours.div_euclid(24);
             let nh = total_hours.rem_euclid(24) as i32;
             let (ny, nm, nd) = days_to_date(total_days);
             (ny, nm, nd, nh, mi, s)
         }
-        "minute" | "mi" | "n" => {
+        DatePart::Minute => {
             let total_minutes = (date_to_days(y, m, d) * 24 * 60) + h as i64 * 60 + mi as i64 + num;
             let total_days = total_minutes.div_euclid(24 * 60);
             let remainder = total_minutes.rem_euclid(24 * 60);
@@ -101,7 +128,7 @@ pub(crate) fn apply_dateadd(part: &str, num: i64, date_str: &str) -> Result<Stri
             let (ny, nm, nd) = days_to_date(total_days);
             (ny, nm, nd, nh, nmi, s)
         }
-        "second" | "ss" | "s" => {
+        DatePart::Second => {
             let total_secs =
                 (date_to_days(y, m, d) * 86400) + h as i64 * 3600 + mi as i64 * 60 + s as i64 + num;
             let total_days = total_secs.div_euclid(86400);
@@ -112,7 +139,6 @@ pub(crate) fn apply_dateadd(part: &str, num: i64, date_str: &str) -> Result<Stri
             let (ny, nm, nd) = days_to_date(total_days);
             (ny, nm, nd, nh, nmi, ns)
         }
-        _ => return Err(DbError::Execution(format!("unknown datepart '{}'", part))),
     };
 
     Ok(format!(

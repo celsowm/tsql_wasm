@@ -1,6 +1,6 @@
 use crate::ast::Expr;
 use crate::catalog::Catalog;
-use crate::error::DbError;
+use crate::error::{DbError, StmtOutcome};
 use crate::storage::Storage;
 use crate::types::{DataType, Value};
 
@@ -82,8 +82,9 @@ pub(crate) fn eval_udf_body(
         clock,
     };
     match executor.execute_batch(stmts, ctx) {
-        Err(DbError::Return(Some(val))) => Ok(val),
-        Err(DbError::Return(None)) => Ok(Value::Null),
+        Ok(StmtOutcome::Return(Some(val))) => Ok(val),
+        Ok(StmtOutcome::Return(None)) => Ok(Value::Null),
+        Ok(StmtOutcome::Ok(_)) => Ok(Value::Null),
         Ok(_) => Ok(Value::Null),
         Err(e) => Err(e),
     }

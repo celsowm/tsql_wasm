@@ -26,7 +26,7 @@ impl QueryResult {
             .map(|r| {
                 let values = r
                     .iter()
-                    .map(|v| serde_json::to_value(v.to_json()).unwrap())
+                    .map(|v| serde_json::to_value(v.to_json()).unwrap_or(serde_json::Value::Null))
                     .collect::<Vec<_>>();
                 serde_json::Value::Array(values)
             })

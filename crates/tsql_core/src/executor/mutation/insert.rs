@@ -1,6 +1,6 @@
 use crate::ast::{InsertSource, InsertStmt};
 use crate::catalog::{Catalog, TableDef};
-use crate::error::DbError;
+use crate::error::{DbError, StmtOutcome};
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
@@ -83,13 +83,19 @@ impl<'a> MutationExecutor<'a> {
                     rows
                 }
                 InsertSource::Exec(exec_stmt) => {
-                    let query_result = super::super::script::ScriptExecutor {
+                    let outcome = super::super::script::ScriptExecutor {
                         catalog: self.catalog,
                         storage: self.storage,
                         clock: self.clock,
                     }
-                    .execute(*exec_stmt.clone(), ctx)?
-                    .ok_or_else(|| DbError::Execution("INSERT EXEC source returned no result".into()))?;
+                    .execute(*exec_stmt.clone(), ctx)?;
+                    let query_result = match outcome {
+                        StmtOutcome::Ok(Some(r)) => r,
+                        StmtOutcome::Ok(None) => {
+                            return Err(DbError::Execution("INSERT EXEC source returned no result".into()))
+                        }
+                        other => return other.into_result(),
+                    };
 
                     let insert_columns = self.get_insert_columns(&table, &stmt.columns);
                     let mut rows = Vec::new();
@@ -179,13 +185,19 @@ impl<'a> MutationExecutor<'a> {
                 }
             }
             InsertSource::Exec(exec_stmt) => {
-                let query_result = super::super::script::ScriptExecutor {
+                let outcome = super::super::script::ScriptExecutor {
                     catalog: self.catalog,
                     storage: self.storage,
                     clock: self.clock,
                 }
-                .execute(*exec_stmt, ctx)?
-                .ok_or_else(|| DbError::Execution("INSERT EXEC source returned no result".into()))?;
+                .execute(*exec_stmt, ctx)?;
+                let query_result = match outcome {
+                    StmtOutcome::Ok(Some(r)) => r,
+                    StmtOutcome::Ok(None) => {
+                        return Err(DbError::Execution("INSERT EXEC source returned no result".into()))
+                    }
+                    other => return other.into_result(),
+                };
 
                 let insert_columns = self.get_insert_columns(&table, &stmt.columns);
                 if insert_columns.len() != query_result.columns.len() {

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use parking_lot::Mutex;
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -80,7 +81,7 @@ where
     }
 
     pub fn reset(&self) {
-        let mut guard = self.inner.lock().expect("database mutex poisoned");
+        let mut guard = self.inner.lock();
         let mut catalog = C::default();
         let _ = catalog.create_schema("dbo");
         guard.storage.catalog = catalog;
@@ -97,7 +98,7 @@ where
         &self,
         durability: Box<dyn DurabilitySink<C>>,
     ) {
-        let mut guard = self.inner.lock().expect("database mutex poisoned");
+        let mut guard = self.inner.lock();
         guard.durability = durability;
     }
 }
@@ -124,7 +125,7 @@ where
             durability,
             sessions: HashMap::new(),
             next_session_id: 1,
-            dirty_buffer: std::sync::Arc::new(std::sync::Mutex::new(super::super::dirty_buffer::DirtyBuffer::new())),
+            dirty_buffer: std::sync::Arc::new(parking_lot::Mutex::new(super::super::dirty_buffer::DirtyBuffer::new())),
         }
     }
 
@@ -142,7 +143,7 @@ where
             durability: Box::new(super::super::durability::NoopDurability::default()),
             sessions: HashMap::new(),
             next_session_id: 1,
-            dirty_buffer: std::sync::Arc::new(std::sync::Mutex::new(super::super::dirty_buffer::DirtyBuffer::new())),
+            dirty_buffer: std::sync::Arc::new(parking_lot::Mutex::new(super::super::dirty_buffer::DirtyBuffer::new())),
         }
     }
 
@@ -173,13 +174,13 @@ where
     S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     fn export_checkpoint(&self) -> Result<String, DbError> {
-        let guard = self.inner.lock().expect("database mutex poisoned");
+        let guard = self.inner.lock();
         guard.to_checkpoint().to_json()
     }
 
     fn import_checkpoint(&self, payload: &str) -> Result<(), DbError> {
         let checkpoint = RecoveryCheckpoint::<C>::from_json(payload)?;
-        let mut guard = self.inner.lock().expect("database mutex poisoned");
+        let mut guard = self.inner.lock();
         guard.apply_checkpoint(checkpoint);
         Ok(())
     }
@@ -191,7 +192,7 @@ where
     S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     fn create_session(&self) -> SessionId {
-        let mut guard = self.inner.lock().expect("database mutex poisoned");
+        let mut guard = self.inner.lock();
         let id = guard.next_session_id;
         guard.next_session_id += 1;
         guard.sessions.insert(id, SessionRuntime::new());
@@ -199,7 +200,7 @@ where
     }
 
     fn close_session(&self, session_id: SessionId) -> Result<(), DbError> {
-        let mut guard = self.inner.lock().expect("database mutex poisoned");
+        let mut guard = self.inner.lock();
         guard.table_locks.release_all_for_session(session_id);
         let removed = guard.sessions.remove(&session_id);
         if removed.is_none() {
@@ -216,7 +217,7 @@ where
         session_id: SessionId,
         journal: Box<dyn super::super::journal::Journal>,
     ) -> Result<(), DbError> {
-        let mut guard = self.inner.lock().expect("database mutex poisoned");
+        let mut guard = self.inner.lock();
         guard.with_session_mut(session_id, |_, session| {
             session.journal = journal;
             Ok(())

@@ -38,202 +38,39 @@ pub(crate) fn eval_function(
         }
     }
 
-    match name.to_uppercase().as_str() {
-        "GETDATE" => {
-            if !args.is_empty() {
-                return Err(DbError::Execution("GETDATE expects no arguments".into()));
-            }
-            Ok(Value::DateTime(clock.now_datetime_literal()))
-        }
+    let upper = name.to_uppercase();
+    let upper_str = upper.as_str();
+
+    // Try category-based dispatch first
+    if let Some(result) = try_datetime_dispatch(upper_str, args, row, ctx, catalog, storage, clock) {
+        return result;
+    }
+    if let Some(result) = try_string_dispatch(upper_str, args, row, ctx, catalog, storage, clock) {
+        return result;
+    }
+    if let Some(result) = try_math_dispatch(upper_str, args, row, ctx, catalog, storage, clock) {
+        return result;
+    }
+    if let Some(result) = try_system_dispatch(upper_str, args, row, ctx, catalog, storage, clock) {
+        return result;
+    }
+    if let Some(result) = try_json_dispatch(upper_str, args, row, ctx, catalog, storage, clock) {
+        return result;
+    }
+    if let Some(result) = try_regexp_dispatch(upper_str, args, row, ctx, catalog, storage, clock) {
+        return result;
+    }
+    if let Some(result) = try_fuzzy_dispatch(upper_str, args, row, ctx, catalog, storage, clock) {
+        return result;
+    }
+
+    // Remaining functions not yet categorized
+    match upper_str {
         "ISNULL" => logic::eval_isnull(args, row, ctx, catalog, storage, clock),
         "COALESCE" => logic::eval_coalesce(args, row, ctx, catalog, storage, clock),
-        "LEN" => string::eval_len(args, row, ctx, catalog, storage, clock),
-        "SUBSTRING" => string::eval_substring(args, row, ctx, catalog, storage, clock),
-        "DATEADD" => datetime::eval_dateadd(args, row, ctx, catalog, storage, clock),
-        "DATEDIFF" => datetime::eval_datediff(args, row, ctx, catalog, storage, clock),
-        "DATEPART" => datetime::eval_datepart(args, row, ctx, catalog, storage, clock),
-        "DATENAME" => datetime::eval_datename(args, row, ctx, catalog, storage, clock),
-        "YEAR" => datetime::eval_year(args, row, ctx, catalog, storage, clock),
-        "MONTH" => datetime::eval_month(args, row, ctx, catalog, storage, clock),
-        "DAY" => datetime::eval_day(args, row, ctx, catalog, storage, clock),
-        "UPPER" => string::eval_upper(args, row, ctx, catalog, storage, clock),
-        "LOWER" => string::eval_lower(args, row, ctx, catalog, storage, clock),
-        "LTRIM" => string::eval_trim(args, row, ctx, catalog, storage, clock, true, false),
-        "RTRIM" => string::eval_trim(args, row, ctx, catalog, storage, clock, false, true),
-        "TRIM" => string::eval_trim(args, row, ctx, catalog, storage, clock, true, true),
-        "REPLACE" => string::eval_replace(args, row, ctx, catalog, storage, clock),
-        "ROUND" => math::eval_round(args, row, ctx, catalog, storage, clock),
-        "CEILING" => {
-            math::eval_math_unary(args, row, ctx, catalog, storage, clock, "CEILING", |f| {
-                f.ceil()
-            })
-        }
-        "FLOOR" => math::eval_math_unary(args, row, ctx, catalog, storage, clock, "FLOOR", |f| {
-            f.floor()
-        }),
-        "ABS" => math::eval_abs(args, row, ctx, catalog, storage, clock),
-        "POWER" => math::eval_power(args, row, ctx, catalog, storage, clock),
-        "SQRT" => math::eval_sqrt(args, row, ctx, catalog, storage, clock),
-        "SIGN" => math::eval_sign(args, row, ctx, catalog, storage, clock),
-        "ACOS" => math::eval_math_unary(args, row, ctx, catalog, storage, clock, "ACOS", f64::acos),
-        "ASIN" => math::eval_math_unary(args, row, ctx, catalog, storage, clock, "ASIN", f64::asin),
-        "ATAN" => math::eval_math_unary(args, row, ctx, catalog, storage, clock, "ATAN", f64::atan),
-        "ATN2" => math::eval_atn2(args, row, ctx, catalog, storage, clock),
-        "COS" => math::eval_math_unary(args, row, ctx, catalog, storage, clock, "COS", f64::cos),
-        "COT" => math::eval_math_unary(args, row, ctx, catalog, storage, clock, "COT", |f| 1.0 / f.tan()),
-        "DEGREES" => math::eval_math_unary(args, row, ctx, catalog, storage, clock, "DEGREES", f64::to_degrees),
-        "EXP" => math::eval_math_unary(args, row, ctx, catalog, storage, clock, "EXP", f64::exp),
-        "LOG" => math::eval_log(args, row, ctx, catalog, storage, clock),
-        "LOG10" => math::eval_math_unary(args, row, ctx, catalog, storage, clock, "LOG10", f64::log10),
-        "PI" => math::eval_pi(args),
-        "RADIANS" => math::eval_math_unary(args, row, ctx, catalog, storage, clock, "RADIANS", f64::to_radians),
-        "SIN" => math::eval_math_unary(args, row, ctx, catalog, storage, clock, "SIN", f64::sin),
-        "SQUARE" => math::eval_math_unary(args, row, ctx, catalog, storage, clock, "SQUARE", |f| f * f),
-        "TAN" => math::eval_math_unary(args, row, ctx, catalog, storage, clock, "TAN", f64::tan),
-        "LEFT" => string::eval_left(args, row, ctx, catalog, storage, clock),
-        "RIGHT" => string::eval_right(args, row, ctx, catalog, storage, clock),
-        "CHARINDEX" => string::eval_charindex(args, row, ctx, catalog, storage, clock),
-        "UNISTR" => string::eval_unistr(args, row, ctx, catalog, storage, clock),
-        "ASCII" => string::eval_ascii(args, row, ctx, catalog, storage, clock),
-        "CHAR" => string::eval_char(args, row, ctx, catalog, storage, clock),
-        "NCHAR" => string::eval_nchar(args, row, ctx, catalog, storage, clock),
-        "UNICODE" => string::eval_unicode(args, row, ctx, catalog, storage, clock),
-        "STRING_ESCAPE" => string::eval_string_escape(args, row, ctx, catalog, storage, clock),
-        "NEWID" => {
-            if !args.is_empty() {
-                return Err(DbError::Execution("NEWID expects no arguments".into()));
-            }
-            let uuid = system::deterministic_uuid(&mut *ctx.random_state);
-            Ok(Value::UniqueIdentifier(uuid))
-        }
-        "RAND" => {
-            let val = system::deterministic_rand(&mut *ctx.random_state);
-            Ok(Value::Decimal((val * 1_000_000_000.0) as i128, 9))
-        }
-        "OBJECT_ID" => system::eval_object_id(args, row, ctx, catalog, storage, clock),
-        "COLUMNPROPERTY" => system::eval_columnproperty(args, row, ctx, catalog, storage, clock),
-        "SCOPE_IDENTITY" => {
-            if !args.is_empty() {
-                return Err(DbError::Execution(
-                    "SCOPE_IDENTITY expects no arguments".into(),
-                ));
-            }
-            Ok(match ctx.current_scope_identity() {
-                Some(v) => Value::BigInt(v),
-                None => Value::Null,
-            })
-        }
-        "@@IDENTITY" => {
-            if !args.is_empty() {
-                return Err(DbError::Execution("@@IDENTITY expects no arguments".into()));
-            }
-            Ok(match *ctx.session_last_identity {
-                Some(v) => Value::BigInt(v),
-                None => Value::Null,
-            })
-        }
-        "IDENT_CURRENT" => system::eval_ident_current(args, row, ctx, catalog, storage, clock),
-        "JSON_VALUE" => eval_json_value(args, row, ctx, catalog, storage, clock),
-        "JSON_QUERY" => eval_json_query(args, row, ctx, catalog, storage, clock),
-        "JSON_MODIFY" => eval_json_modify(args, row, ctx, catalog, storage, clock),
-        "ISJSON" => eval_isjson(args, row, ctx, catalog, storage, clock),
-        "JSON_ARRAY_LENGTH" => eval_json_array_length(args, row, ctx, catalog, storage, clock),
-        "JSON_KEYS" => eval_json_keys(args, row, ctx, catalog, storage, clock),
-        "REGEXP_LIKE" => eval_regexp_like(args, row, ctx, catalog, storage, clock),
-        "REGEXP_REPLACE" => eval_regexp_replace(args, row, ctx, catalog, storage, clock),
-        "REGEXP_SUBSTR" => eval_regexp_substr(args, row, ctx, catalog, storage, clock),
-        "REGEXP_INSTR" => eval_regexp_instr(args, row, ctx, catalog, storage, clock),
-        "REGEXP_COUNT" => eval_regexp_count(args, row, ctx, catalog, storage, clock),
-        "EDIT_DISTANCE" => eval_edit_distance(args, row, ctx, catalog, storage, clock),
-        "EDIT_DISTANCE_SIMILARITY" => {
-            eval_edit_distance_similarity(args, row, ctx, catalog, storage, clock)
-        }
-        "JARO_WINKLER_DISTANCE" => {
-            eval_jaro_winkler_distance(args, row, ctx, catalog, storage, clock)
-        }
-        "JARO_WINKLER_SIMILARITY" => {
-            eval_jaro_winkler_similarity(args, row, ctx, catalog, storage, clock)
-        }
-        "CURRENT_TIMESTAMP" => {
-            if !args.is_empty() {
-                return Err(DbError::Execution(
-                    "CURRENT_TIMESTAMP expects no arguments".into(),
-                ));
-            }
-            Ok(Value::DateTime(clock.now_datetime_literal()))
-        }
-        "CURRENT_DATE" => {
-            if !args.is_empty() {
-                return Err(DbError::Execution(
-                    "CURRENT_DATE expects no arguments".into(),
-                ));
-            }
-            let dt = clock.now_datetime_literal();
-            let date_str = if dt.len() >= 10 {
-                &dt[..10]
-            } else {
-                "1970-01-01"
-            };
-            Ok(Value::Date(date_str.to_string()))
-        }
-        "@@VERSION" => Ok(Value::NVarChar(
-            "Microsoft SQL Server 2022 (RTM) - 16.0.1000.6 (tsql_wasm emulator)".into(),
-        )),
-        "@@SERVERNAME" => Ok(Value::NVarChar("localhost".into())),
-        "@@SERVICENAME" => Ok(Value::NVarChar("MSSQLSERVER".into())),
-        "@@SPID" => Ok(Value::SmallInt(1)),
-        "@@TRANCOUNT" => Ok(Value::Int(ctx.trancount as i32)),
-        "XACT_STATE" => {
-            if !args.is_empty() {
-                return Err(DbError::Execution("XACT_STATE expects no arguments".into()));
-            }
-            Ok(Value::Int(ctx.xact_state as i32))
-        }
-        "@@ERROR" => Ok(Value::Int(0)),
-        "@@FETCH_STATUS" => Ok(Value::Int(*ctx.fetch_status)),
-        "@@LANGUAGE" => Ok(Value::NVarChar("us_english".into())),
-        "@@TEXTSIZE" => Ok(Value::Int(2147483647)),
-        "@@MAX_PRECISION" => Ok(Value::TinyInt(38)),
-        "@@DATEFIRST" => Ok(Value::TinyInt(ctx.datefirst as u8)),
-        "ERROR_MESSAGE" => system::eval_error_message(ctx),
-        "ERROR_NUMBER" => system::eval_error_number(ctx),
-        "ERROR_SEVERITY" => system::eval_error_severity(ctx),
-        "ERROR_STATE" => system::eval_error_state(ctx),
-        // String functions
-        "CONCAT" => string::eval_concat(args, row, ctx, catalog, storage, clock),
-        "CONCAT_WS" => string::eval_concat_ws(args, row, ctx, catalog, storage, clock),
-        "REPLICATE" => string::eval_replicate(args, row, ctx, catalog, storage, clock),
-        "REVERSE" => string::eval_reverse(args, row, ctx, catalog, storage, clock),
-        "STUFF" => string::eval_stuff(args, row, ctx, catalog, storage, clock),
-        "SPACE" => string::eval_space(args, row, ctx, catalog, storage, clock),
-        "STR" => string::eval_str(args, row, ctx, catalog, storage, clock),
-        "TRANSLATE" => string::eval_translate(args, row, ctx, catalog, storage, clock),
-        "FORMAT" => string::eval_format(args, row, ctx, catalog, storage, clock),
-        "PATINDEX" => string::eval_patindex(args, row, ctx, catalog, storage, clock),
-        "SOUNDEX" => string::eval_soundex(args, row, ctx, catalog, storage, clock),
-        "DIFFERENCE" => string::eval_difference(args, row, ctx, catalog, storage, clock),
-        // Logic functions
         "IIF" => logic::eval_iif(args, row, ctx, catalog, storage, clock),
         "NULLIF" => logic::eval_nullif(args, row, ctx, catalog, storage, clock),
         "CHOOSE" => logic::eval_choose(args, row, ctx, catalog, storage, clock),
-        // Math functions
-        "CHECKSUM" => math::eval_checksum(args, row, ctx, catalog, storage, clock),
-        // System functions
-        "DB_NAME" => system::eval_db_name(args, ctx),
-        "DB_ID" => system::eval_db_id(args, ctx),
-        "SUSER_SNAME" => system::eval_suser_sname(args, ctx),
-        "SUSER_ID" => system::eval_suser_id(args, ctx),
-        "USER_NAME" => system::eval_user_name(args, ctx),
-        "USER_ID" => system::eval_user_id(args, ctx),
-        "APP_NAME" => system::eval_app_name(args, ctx),
-        "HOST_NAME" => system::eval_host_name(args, ctx),
-        "SYSTEM_USER" => system::eval_system_user(args, ctx),
-        "ORIGINAL_LOGIN" => system::eval_original_login(args, ctx),
-        "HASHBYTES" => system::eval_hashbytes(args, row, ctx, catalog, storage, clock),
-        "PARSENAME" => system::eval_parsename(args, row, ctx, catalog, storage, clock),
-        "QUOTENAME" => system::eval_quotename(args, row, ctx, catalog, storage, clock),
-        "SESSION_USER" => system::eval_session_user(args, ctx),
-        "CURRENT_USER" => system::eval_current_user(args, ctx),
         "COUNT" | "SUM" | "AVG" => Err(DbError::Execution(format!(
             "{} is only supported in grouped projection",
             name
@@ -245,6 +82,260 @@ pub(crate) fn eval_function(
             "COUNT_BIG is only supported in grouped projection".into(),
         )),
         _ => eval_user_scalar_function(name, args, row, ctx, catalog, storage, clock),
+    }
+}
+
+fn try_datetime_dispatch(
+    name: &str,
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Option<Result<Value, DbError>> {
+    match name {
+        "GETDATE" | "CURRENT_TIMESTAMP" => {
+            if !args.is_empty() {
+                return Some(Err(DbError::Execution(format!("{} expects no arguments", name))));
+            }
+            Some(Ok(Value::DateTime(clock.now_datetime_literal())))
+        }
+        "CURRENT_DATE" => {
+            if !args.is_empty() {
+                return Some(Err(DbError::Execution("CURRENT_DATE expects no arguments".into())));
+            }
+            let dt = clock.now_datetime_literal();
+            let date_str = if dt.len() >= 10 { &dt[..10] } else { "1970-01-01" };
+            Some(Ok(Value::Date(date_str.to_string())))
+        }
+        "DATEADD" => Some(datetime::eval_dateadd(args, row, ctx, catalog, storage, clock)),
+        "DATEDIFF" => Some(datetime::eval_datediff(args, row, ctx, catalog, storage, clock)),
+        "DATEPART" => Some(datetime::eval_datepart(args, row, ctx, catalog, storage, clock)),
+        "DATENAME" => Some(datetime::eval_datename(args, row, ctx, catalog, storage, clock)),
+        "YEAR" => Some(datetime::eval_year(args, row, ctx, catalog, storage, clock)),
+        "MONTH" => Some(datetime::eval_month(args, row, ctx, catalog, storage, clock)),
+        "DAY" => Some(datetime::eval_day(args, row, ctx, catalog, storage, clock)),
+        _ => None,
+    }
+}
+
+fn try_string_dispatch(
+    name: &str,
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Option<Result<Value, DbError>> {
+    match name {
+        "LEN" => Some(string::eval_len(args, row, ctx, catalog, storage, clock)),
+        "SUBSTRING" => Some(string::eval_substring(args, row, ctx, catalog, storage, clock)),
+        "UPPER" => Some(string::eval_upper(args, row, ctx, catalog, storage, clock)),
+        "LOWER" => Some(string::eval_lower(args, row, ctx, catalog, storage, clock)),
+        "LTRIM" => Some(string::eval_trim(args, row, ctx, catalog, storage, clock, true, false)),
+        "RTRIM" => Some(string::eval_trim(args, row, ctx, catalog, storage, clock, false, true)),
+        "TRIM" => Some(string::eval_trim(args, row, ctx, catalog, storage, clock, true, true)),
+        "REPLACE" => Some(string::eval_replace(args, row, ctx, catalog, storage, clock)),
+        "LEFT" => Some(string::eval_left(args, row, ctx, catalog, storage, clock)),
+        "RIGHT" => Some(string::eval_right(args, row, ctx, catalog, storage, clock)),
+        "CHARINDEX" => Some(string::eval_charindex(args, row, ctx, catalog, storage, clock)),
+        "UNISTR" => Some(string::eval_unistr(args, row, ctx, catalog, storage, clock)),
+        "ASCII" => Some(string::eval_ascii(args, row, ctx, catalog, storage, clock)),
+        "CHAR" => Some(string::eval_char(args, row, ctx, catalog, storage, clock)),
+        "NCHAR" => Some(string::eval_nchar(args, row, ctx, catalog, storage, clock)),
+        "UNICODE" => Some(string::eval_unicode(args, row, ctx, catalog, storage, clock)),
+        "STRING_ESCAPE" => Some(string::eval_string_escape(args, row, ctx, catalog, storage, clock)),
+        "CONCAT" => Some(string::eval_concat(args, row, ctx, catalog, storage, clock)),
+        "CONCAT_WS" => Some(string::eval_concat_ws(args, row, ctx, catalog, storage, clock)),
+        "REPLICATE" => Some(string::eval_replicate(args, row, ctx, catalog, storage, clock)),
+        "REVERSE" => Some(string::eval_reverse(args, row, ctx, catalog, storage, clock)),
+        "STUFF" => Some(string::eval_stuff(args, row, ctx, catalog, storage, clock)),
+        "SPACE" => Some(string::eval_space(args, row, ctx, catalog, storage, clock)),
+        "STR" => Some(string::eval_str(args, row, ctx, catalog, storage, clock)),
+        "TRANSLATE" => Some(string::eval_translate(args, row, ctx, catalog, storage, clock)),
+        "FORMAT" => Some(string::eval_format(args, row, ctx, catalog, storage, clock)),
+        "PATINDEX" => Some(string::eval_patindex(args, row, ctx, catalog, storage, clock)),
+        "SOUNDEX" => Some(string::eval_soundex(args, row, ctx, catalog, storage, clock)),
+        "DIFFERENCE" => Some(string::eval_difference(args, row, ctx, catalog, storage, clock)),
+        _ => None,
+    }
+}
+
+fn try_math_dispatch(
+    name: &str,
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Option<Result<Value, DbError>> {
+    match name {
+        "ROUND" => Some(math::eval_round(args, row, ctx, catalog, storage, clock)),
+        "CEILING" => Some(math::eval_math_unary(args, row, ctx, catalog, storage, clock, "CEILING", |f| f.ceil())),
+        "FLOOR" => Some(math::eval_math_unary(args, row, ctx, catalog, storage, clock, "FLOOR", |f| f.floor())),
+        "ABS" => Some(math::eval_abs(args, row, ctx, catalog, storage, clock)),
+        "POWER" => Some(math::eval_power(args, row, ctx, catalog, storage, clock)),
+        "SQRT" => Some(math::eval_sqrt(args, row, ctx, catalog, storage, clock)),
+        "SIGN" => Some(math::eval_sign(args, row, ctx, catalog, storage, clock)),
+        "ACOS" => Some(math::eval_math_unary(args, row, ctx, catalog, storage, clock, "ACOS", f64::acos)),
+        "ASIN" => Some(math::eval_math_unary(args, row, ctx, catalog, storage, clock, "ASIN", f64::asin)),
+        "ATAN" => Some(math::eval_math_unary(args, row, ctx, catalog, storage, clock, "ATAN", f64::atan)),
+        "ATN2" => Some(math::eval_atn2(args, row, ctx, catalog, storage, clock)),
+        "COS" => Some(math::eval_math_unary(args, row, ctx, catalog, storage, clock, "COS", f64::cos)),
+        "COT" => Some(math::eval_math_unary(args, row, ctx, catalog, storage, clock, "COT", |f| 1.0 / f.tan())),
+        "DEGREES" => Some(math::eval_math_unary(args, row, ctx, catalog, storage, clock, "DEGREES", f64::to_degrees)),
+        "EXP" => Some(math::eval_math_unary(args, row, ctx, catalog, storage, clock, "EXP", f64::exp)),
+        "LOG" => Some(math::eval_log(args, row, ctx, catalog, storage, clock)),
+        "LOG10" => Some(math::eval_math_unary(args, row, ctx, catalog, storage, clock, "LOG10", f64::log10)),
+        "PI" => Some(math::eval_pi(args)),
+        "RADIANS" => Some(math::eval_math_unary(args, row, ctx, catalog, storage, clock, "RADIANS", f64::to_radians)),
+        "SIN" => Some(math::eval_math_unary(args, row, ctx, catalog, storage, clock, "SIN", f64::sin)),
+        "SQUARE" => Some(math::eval_math_unary(args, row, ctx, catalog, storage, clock, "SQUARE", |f| f * f)),
+        "TAN" => Some(math::eval_math_unary(args, row, ctx, catalog, storage, clock, "TAN", f64::tan)),
+        "CHECKSUM" => Some(math::eval_checksum(args, row, ctx, catalog, storage, clock)),
+        _ => None,
+    }
+}
+
+fn try_system_dispatch(
+    name: &str,
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Option<Result<Value, DbError>> {
+    match name {
+        "NEWID" => {
+            if !args.is_empty() {
+                return Some(Err(DbError::Execution("NEWID expects no arguments".into())));
+            }
+            let uuid = system::deterministic_uuid(&mut *ctx.random_state);
+            Some(Ok(Value::UniqueIdentifier(uuid)))
+        }
+        "RAND" => {
+            let val = system::deterministic_rand(&mut *ctx.random_state);
+            Some(Ok(Value::Decimal((val * 1_000_000_000.0) as i128, 9)))
+        }
+        "OBJECT_ID" => Some(system::eval_object_id(args, row, ctx, catalog, storage, clock)),
+        "COLUMNPROPERTY" => Some(system::eval_columnproperty(args, row, ctx, catalog, storage, clock)),
+        "SCOPE_IDENTITY" => {
+            if !args.is_empty() {
+                return Some(Err(DbError::Execution("SCOPE_IDENTITY expects no arguments".into())));
+            }
+            Some(Ok(match ctx.current_scope_identity() {
+                Some(v) => Value::BigInt(v),
+                None => Value::Null,
+            }))
+        }
+        "@@IDENTITY" => {
+            if !args.is_empty() {
+                return Some(Err(DbError::Execution("@@IDENTITY expects no arguments".into())));
+            }
+            Some(Ok(match *ctx.session_last_identity {
+                Some(v) => Value::BigInt(v),
+                None => Value::Null,
+            }))
+        }
+        "IDENT_CURRENT" => Some(system::eval_ident_current(args, row, ctx, catalog, storage, clock)),
+        "@@VERSION" => Some(Ok(Value::NVarChar("Microsoft SQL Server 2022 (RTM) - 16.0.1000.6 (tsql_wasm emulator)".into()))),
+        "@@SERVERNAME" => Some(Ok(Value::NVarChar("localhost".into()))),
+        "@@SERVICENAME" => Some(Ok(Value::NVarChar("MSSQLSERVER".into()))),
+        "@@SPID" => Some(Ok(Value::SmallInt(1))),
+        "@@TRANCOUNT" => Some(Ok(Value::Int(ctx.trancount as i32))),
+        "XACT_STATE" => {
+            if !args.is_empty() {
+                return Some(Err(DbError::Execution("XACT_STATE expects no arguments".into())));
+            }
+            Some(Ok(Value::Int(ctx.xact_state as i32)))
+        }
+        "@@ERROR" => Some(Ok(Value::Int(0))),
+        "@@FETCH_STATUS" => Some(Ok(Value::Int(*ctx.fetch_status))),
+        "@@LANGUAGE" => Some(Ok(Value::NVarChar("us_english".into()))),
+        "@@TEXTSIZE" => Some(Ok(Value::Int(2147483647))),
+        "@@MAX_PRECISION" => Some(Ok(Value::TinyInt(38))),
+        "@@DATEFIRST" => Some(Ok(Value::TinyInt(ctx.datefirst as u8))),
+        "ERROR_MESSAGE" => Some(system::eval_error_message(ctx)),
+        "ERROR_NUMBER" => Some(system::eval_error_number(ctx)),
+        "ERROR_SEVERITY" => Some(system::eval_error_severity(ctx)),
+        "ERROR_STATE" => Some(system::eval_error_state(ctx)),
+        "DB_NAME" => Some(system::eval_db_name(args, ctx)),
+        "DB_ID" => Some(system::eval_db_id(args, ctx)),
+        "SUSER_SNAME" => Some(system::eval_suser_sname(args, ctx)),
+        "SUSER_ID" => Some(system::eval_suser_id(args, ctx)),
+        "USER_NAME" => Some(system::eval_user_name(args, ctx)),
+        "USER_ID" => Some(system::eval_user_id(args, ctx)),
+        "APP_NAME" => Some(system::eval_app_name(args, ctx)),
+        "HOST_NAME" => Some(system::eval_host_name(args, ctx)),
+        "SYSTEM_USER" => Some(system::eval_system_user(args, ctx)),
+        "ORIGINAL_LOGIN" => Some(system::eval_original_login(args, ctx)),
+        "HASHBYTES" => Some(system::eval_hashbytes(args, row, ctx, catalog, storage, clock)),
+        "PARSENAME" => Some(system::eval_parsename(args, row, ctx, catalog, storage, clock)),
+        "QUOTENAME" => Some(system::eval_quotename(args, row, ctx, catalog, storage, clock)),
+        "SESSION_USER" => Some(system::eval_session_user(args, ctx)),
+        "CURRENT_USER" => Some(system::eval_current_user(args, ctx)),
+        _ => None,
+    }
+}
+
+fn try_json_dispatch(
+    name: &str,
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Option<Result<Value, DbError>> {
+    match name {
+        "JSON_VALUE" => Some(eval_json_value(args, row, ctx, catalog, storage, clock)),
+        "JSON_QUERY" => Some(eval_json_query(args, row, ctx, catalog, storage, clock)),
+        "JSON_MODIFY" => Some(eval_json_modify(args, row, ctx, catalog, storage, clock)),
+        "ISJSON" => Some(eval_isjson(args, row, ctx, catalog, storage, clock)),
+        "JSON_ARRAY_LENGTH" => Some(eval_json_array_length(args, row, ctx, catalog, storage, clock)),
+        "JSON_KEYS" => Some(eval_json_keys(args, row, ctx, catalog, storage, clock)),
+        _ => None,
+    }
+}
+
+fn try_regexp_dispatch(
+    name: &str,
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Option<Result<Value, DbError>> {
+    match name {
+        "REGEXP_LIKE" => Some(eval_regexp_like(args, row, ctx, catalog, storage, clock)),
+        "REGEXP_REPLACE" => Some(eval_regexp_replace(args, row, ctx, catalog, storage, clock)),
+        "REGEXP_SUBSTR" => Some(eval_regexp_substr(args, row, ctx, catalog, storage, clock)),
+        "REGEXP_INSTR" => Some(eval_regexp_instr(args, row, ctx, catalog, storage, clock)),
+        "REGEXP_COUNT" => Some(eval_regexp_count(args, row, ctx, catalog, storage, clock)),
+        _ => None,
+    }
+}
+
+fn try_fuzzy_dispatch(
+    name: &str,
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Option<Result<Value, DbError>> {
+    match name {
+        "EDIT_DISTANCE" => Some(eval_edit_distance(args, row, ctx, catalog, storage, clock)),
+        "EDIT_DISTANCE_SIMILARITY" => Some(eval_edit_distance_similarity(args, row, ctx, catalog, storage, clock)),
+        "JARO_WINKLER_DISTANCE" => Some(eval_jaro_winkler_distance(args, row, ctx, catalog, storage, clock)),
+        "JARO_WINKLER_SIMILARITY" => Some(eval_jaro_winkler_similarity(args, row, ctx, catalog, storage, clock)),
+        _ => None,
     }
 }
 

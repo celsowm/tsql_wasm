@@ -64,7 +64,7 @@ pub(crate) fn parse_select(sql: &str) -> Result<Statement, DbError> {
     let from_idx = find_keyword_top_level(select_rest, "FROM");
 
     let (into_table, select_rest_no_into) = if let Some(idx) = into_idx {
-        if from_idx.is_none() || idx < from_idx.unwrap() {
+        if from_idx.map_or(true, |f| idx < f) {
             let after_into = &select_rest[idx + "INTO".len()..].trim();
             let end_of_into = find_keyword_top_level(after_into, "FROM").unwrap_or(after_into.len());
             let into_name = after_into[..end_of_into].trim();
@@ -80,7 +80,7 @@ pub(crate) fn parse_select(sql: &str) -> Result<Statement, DbError> {
 
     let from_idx = find_keyword_top_level(&select_rest_no_into, "FROM");
 
-    if from_idx.is_none() {
+    let Some(from_idx) = from_idx else {
         if let Some(stmt) = try_parse_select_assign_no_from(&select_rest_no_into)? {
             return Ok(stmt);
         }
@@ -100,9 +100,8 @@ pub(crate) fn parse_select(sql: &str) -> Result<Statement, DbError> {
             offset: None,
             fetch: None,
         }));
-    }
+    };
 
-    let from_idx = from_idx.unwrap();
     let projection_raw = select_rest_no_into[..from_idx].trim();
     let tail = select_rest_no_into[from_idx + "FROM".len()..].trim();
 

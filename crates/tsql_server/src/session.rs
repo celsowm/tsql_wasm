@@ -273,7 +273,7 @@ impl TdsSession {
             return Ok(true);
         }
 
-        let session_id = self.session_id.unwrap();
+        let session_id = self.session_id.ok_or_else(|| "session not initialized".to_string())?;
 
         let upper = sql.to_uppercase();
         if upper.starts_with("USE ") {

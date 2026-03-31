@@ -45,7 +45,7 @@ pub struct ExecutionContext<'a> {
     pub trancount: u32,
     pub xact_state: i8,
     pub identity_insert: HashSet<String>,
-    pub dirty_buffer: Option<std::sync::Arc<std::sync::Mutex<super::dirty_buffer::DirtyBuffer>>>,
+    pub dirty_buffer: Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>>,
     pub session_id: super::locks::SessionId,
     pub session_database: Option<String>,
     pub session_user: Option<String>,
@@ -67,7 +67,7 @@ impl<'a> ExecutionContext<'a> {
         cursors: &'a mut HashMap<String, Cursor>,
         fetch_status: &'a mut i32,
         print_output: &'a mut Vec<String>,
-        dirty_buffer: Option<std::sync::Arc<std::sync::Mutex<super::dirty_buffer::DirtyBuffer>>>,
+        dirty_buffer: Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>>,
         session_id: super::locks::SessionId,
     ) -> Self {
         Self {

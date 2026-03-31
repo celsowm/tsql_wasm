@@ -193,7 +193,7 @@ fn set_json_value(json: &mut JsonValue, path: &str, new_value: JsonValue) {
                         map.insert(key.clone(), JsonValue::Object(serde_json::Map::new()));
                     }
                 }
-                current = map.get_mut(&key).unwrap();
+                current = map.get_mut(&key).expect("JSON key was just inserted");
             }
         }
     }

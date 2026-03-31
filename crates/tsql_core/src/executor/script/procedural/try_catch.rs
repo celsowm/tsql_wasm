@@ -1,5 +1,5 @@
 use crate::ast::TryCatchStmt;
-use crate::error::DbError;
+use crate::error::StmtResult;
 use crate::executor::context::ExecutionContext;
 use crate::executor::result::QueryResult;
 use super::super::ScriptExecutor;
@@ -9,16 +9,16 @@ impl<'a> ScriptExecutor<'a> {
         &mut self,
         stmt: TryCatchStmt,
         ctx: &mut ExecutionContext,
-    ) -> Result<Option<QueryResult>, DbError> {
+    ) -> StmtResult<Option<QueryResult>> {
         match self.execute_batch(&stmt.try_body, ctx) {
-            Ok(r) => Ok(r),
-            Err(e) => {
-                // If it's a Return, Break, or Continue, don't catch it
-                match e {
-                    DbError::Return(_) | DbError::Break | DbError::Continue => return Err(e),
-                    _ => {}
+            Ok(outcome) => {
+                // Control flow signals pass through TRY...CATCH unchanged
+                if outcome.is_control_flow() {
+                    return Ok(outcome);
                 }
-
+                Ok(outcome)
+            }
+            Err(e) => {
                 // Store error for ERROR_* functions
                 ctx.last_error = Some(e);
 

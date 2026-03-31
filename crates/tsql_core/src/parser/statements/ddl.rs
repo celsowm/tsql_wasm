@@ -785,7 +785,7 @@ fn parse_parameterized_type(prefix: &str, upper: &str) -> Result<u16, DbError> {
 }
 
 fn parse_decimal_params(upper: &str) -> Result<(u8, u8), DbError> {
-    let open = upper.find('(').unwrap();
+    let open = upper.find('(').ok_or_else(|| DbError::Parse("DECIMAL/NUMERIC missing opening parenthesis".into()))?;
     let inner = &upper[open + 1..upper.len() - 1];
     let parts: Vec<&str> = inner.split(',').map(|s| s.trim()).collect();
     if parts.len() != 2 {
