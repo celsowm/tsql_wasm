@@ -1,6 +1,4 @@
-use std::collections::HashMap;
 use std::sync::Arc;
-use parking_lot::Mutex;
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -10,7 +8,7 @@ use crate::error::DbError;
 use crate::storage::Storage;
 
 use super::super::durability::{DurabilitySink, RecoveryCheckpoint};
-use super::super::locks::{LockTable, SessionId};
+use super::super::locks::SessionId;
 use super::super::session::{SessionRuntime, SharedState, SharedStorage};
 use super::CheckpointManager;
 
@@ -20,7 +18,7 @@ where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
     S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
-    pub inner: Arc<Mutex<SharedState<C, S>>>,
+    pub inner: Arc<SharedState<C, S>>,
 }
 
 impl DatabaseInner<CatalogImpl, crate::storage::RedbStorage> {
@@ -32,11 +30,11 @@ impl DatabaseInner<CatalogImpl, crate::storage::RedbStorage> {
             SharedState::from_checkpoint(checkpoint, Box::new(durability), storage)
         } else {
             let mut state = SharedState::with_initial(CatalogImpl::new(), storage);
-            state.durability = Box::new(durability);
+            *state.durability.get_mut() = Box::new(durability);
             state
         };
         Ok(Self {
-            inner: Arc::new(Mutex::new(state)),
+            inner: Arc::new(state),
         })
     }
 }
@@ -51,7 +49,7 @@ where
         let _ = catalog.create_schema("dbo");
         let state = SharedState::with_initial(catalog, S::default());
         Self {
-            inner: Arc::new(Mutex::new(state)),
+            inner: Arc::new(state),
         }
     }
 
@@ -64,11 +62,11 @@ where
             let mut catalog = C::default();
             let _ = catalog.create_schema("dbo");
             let mut state = SharedState::with_initial(catalog, S::default());
-            state.durability = durability;
+            *state.durability.get_mut() = durability;
             state
         };
         Self {
-            inner: Arc::new(Mutex::new(state)),
+            inner: Arc::new(state),
         }
     }
 
@@ -76,21 +74,21 @@ where
         let checkpoint = RecoveryCheckpoint::<C>::from_json(payload)?;
         let state = SharedState::from_checkpoint_internal(checkpoint);
         Ok(Self {
-            inner: Arc::new(Mutex::new(state)),
+            inner: Arc::new(state),
         })
     }
 
     pub fn reset(&self) {
-        let mut guard = self.inner.lock();
+        let mut storage = self.inner.storage.write();
         let mut catalog = C::default();
         let _ = catalog.create_schema("dbo");
-        guard.storage.catalog = catalog;
-        guard.storage.storage = S::default();
-        guard.storage.commit_ts = 0;
-        guard.storage.table_versions.clear();
-        guard.table_locks.clear();
-        for session in guard.sessions.values_mut() {
-            session.reset();
+        storage.catalog = catalog;
+        storage.storage = S::default();
+        storage.commit_ts = 0;
+        storage.table_versions.clear();
+        self.inner.table_locks.lock().clear();
+        for mut session_lock in self.inner.sessions.iter_mut() {
+            session_lock.value_mut().get_mut().reset();
         }
     }
 
@@ -98,8 +96,8 @@ where
         &self,
         durability: Box<dyn DurabilitySink<C>>,
     ) {
-        let mut guard = self.inner.lock();
-        guard.durability = durability;
+        let mut guard = self.inner.durability.lock();
+        *guard = durability;
     }
 }
 
@@ -115,16 +113,16 @@ where
     ) -> Self {
         let _ = storage.restore_from_checkpoint(checkpoint.storage_data);
         Self {
-            storage: SharedStorage {
+            storage: parking_lot::RwLock::new(SharedStorage {
                 catalog: checkpoint.catalog,
                 storage,
                 commit_ts: checkpoint.commit_ts,
                 table_versions: checkpoint.table_versions,
-            },
-            table_locks: LockTable::new(),
-            durability,
-            sessions: HashMap::new(),
-            next_session_id: 1,
+            }),
+            table_locks: parking_lot::Mutex::new(super::super::locks::LockTable::new()),
+            durability: parking_lot::Mutex::new(durability),
+            sessions: dashmap::DashMap::new(),
+            next_session_id: std::sync::atomic::AtomicU64::new(1),
             dirty_buffer: std::sync::Arc::new(parking_lot::Mutex::new(super::super::dirty_buffer::DirtyBuffer::new())),
         }
     }
@@ -133,37 +131,43 @@ where
         let mut storage = S::default();
         let _ = storage.restore_from_checkpoint(checkpoint.storage_data);
         Self {
-            storage: SharedStorage {
+            storage: parking_lot::RwLock::new(SharedStorage {
                 catalog: checkpoint.catalog,
                 storage,
                 commit_ts: checkpoint.commit_ts,
                 table_versions: checkpoint.table_versions,
-            },
-            table_locks: LockTable::new(),
-            durability: Box::new(super::super::durability::NoopDurability::default()),
-            sessions: HashMap::new(),
-            next_session_id: 1,
+            }),
+            table_locks: parking_lot::Mutex::new(super::super::locks::LockTable::new()),
+            durability: parking_lot::Mutex::new(Box::new(super::super::durability::NoopDurability::default())),
+            sessions: dashmap::DashMap::new(),
+            next_session_id: std::sync::atomic::AtomicU64::new(1),
             dirty_buffer: std::sync::Arc::new(parking_lot::Mutex::new(super::super::dirty_buffer::DirtyBuffer::new())),
         }
     }
 
-    pub fn apply_checkpoint(&mut self, checkpoint: RecoveryCheckpoint<C>) {
-        self.storage.catalog = checkpoint.catalog;
-        let _ = self.storage.storage.restore_from_checkpoint(checkpoint.storage_data);
-        self.storage.commit_ts = checkpoint.commit_ts;
-        self.storage.table_versions = checkpoint.table_versions;
-        self.table_locks.clear();
-        for session in self.sessions.values_mut() {
-            session.reset();
+    pub fn apply_checkpoint(&self, checkpoint: RecoveryCheckpoint<C>) {
+        let mut storage = self.storage.write();
+        storage.catalog = checkpoint.catalog;
+        let _ = storage.storage.restore_from_checkpoint(checkpoint.storage_data);
+        storage.commit_ts = checkpoint.commit_ts;
+        storage.table_versions = checkpoint.table_versions;
+        self.table_locks.lock().clear();
+        for mut session_lock in self.sessions.iter_mut() {
+            session_lock.value_mut().get_mut().reset();
         }
     }
 
     pub fn to_checkpoint(&self) -> RecoveryCheckpoint<C> {
+        let storage = self.storage.read();
+        self.to_checkpoint_internal(&storage)
+    }
+
+    pub fn to_checkpoint_internal(&self, storage: &SharedStorage<C, S>) -> RecoveryCheckpoint<C> {
         RecoveryCheckpoint {
-            catalog: self.storage.catalog.clone(),
-            storage_data: self.storage.storage.get_checkpoint_data(),
-            commit_ts: self.storage.commit_ts,
-            table_versions: self.storage.table_versions.clone(),
+            catalog: storage.catalog.clone(),
+            storage_data: storage.storage.get_checkpoint_data(),
+            commit_ts: storage.commit_ts,
+            table_versions: storage.table_versions.clone(),
         }
     }
 }
@@ -174,14 +178,12 @@ where
     S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     fn export_checkpoint(&self) -> Result<String, DbError> {
-        let guard = self.inner.lock();
-        guard.to_checkpoint().to_json()
+        self.inner.to_checkpoint().to_json()
     }
 
     fn import_checkpoint(&self, payload: &str) -> Result<(), DbError> {
         let checkpoint = RecoveryCheckpoint::<C>::from_json(payload)?;
-        let mut guard = self.inner.lock();
-        guard.apply_checkpoint(checkpoint);
+        self.inner.apply_checkpoint(checkpoint);
         Ok(())
     }
 }
@@ -192,17 +194,14 @@ where
     S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     fn create_session(&self) -> SessionId {
-        let mut guard = self.inner.lock();
-        let id = guard.next_session_id;
-        guard.next_session_id += 1;
-        guard.sessions.insert(id, SessionRuntime::new());
+        let id = self.inner.next_session_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner.sessions.insert(id, parking_lot::Mutex::new(SessionRuntime::new()));
         id
     }
 
     fn close_session(&self, session_id: SessionId) -> Result<(), DbError> {
-        let mut guard = self.inner.lock();
-        guard.table_locks.release_all_for_session(session_id);
-        let removed = guard.sessions.remove(&session_id);
+        self.inner.table_locks.lock().release_all_for_session(session_id);
+        let removed = self.inner.sessions.remove(&session_id);
         if removed.is_none() {
             return Err(DbError::Execution(format!(
                 "session {} not found",
@@ -217,10 +216,10 @@ where
         session_id: SessionId,
         journal: Box<dyn super::super::journal::Journal>,
     ) -> Result<(), DbError> {
-        let mut guard = self.inner.lock();
-        guard.with_session_mut(session_id, |_, session| {
-            session.journal = journal;
-            Ok(())
-        })
+        let session_mutex = self.inner.sessions.get(&session_id)
+            .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
+        let mut session = session_mutex.lock();
+        session.journal = journal;
+        Ok(())
     }
 }

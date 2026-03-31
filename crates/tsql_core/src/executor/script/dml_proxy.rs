@@ -91,7 +91,13 @@ impl<'a> ScriptExecutor<'a> {
                     deleted: false,
                 };
                 self.storage.insert_row(table_id, row.clone())?;
-                self.push_dirty_insert(ctx, &target.name, &row);
+                if let Some(db) = &ctx.dirty_buffer {
+                    db.lock().push_op(
+                        ctx.session_id,
+                        target.name.to_string(),
+                        super::super::dirty_buffer::DirtyOp::Insert { row: row.clone() },
+                    );
+                }
             }
         }
 

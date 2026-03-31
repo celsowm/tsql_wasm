@@ -166,12 +166,18 @@ pub struct SharedStorage<C, S> {
     pub table_versions: HashMap<String, u64>,
 }
 
+impl<C, S> SharedStorage<C, S> {
+    pub fn get_mut_refs(&mut self) -> (&mut C, &mut S) {
+        (&mut self.catalog, &mut self.storage)
+    }
+}
+
 pub struct SharedState<C, S> {
-    pub storage: SharedStorage<C, S>,
-    pub table_locks: LockTable,
-    pub durability: Box<dyn DurabilitySink<C>>,
-    pub sessions: HashMap<SessionId, SessionRuntime<C, S>>,
-    pub next_session_id: SessionId,
+    pub storage: parking_lot::RwLock<SharedStorage<C, S>>,
+    pub table_locks: parking_lot::Mutex<LockTable>,
+    pub durability: parking_lot::Mutex<Box<dyn DurabilitySink<C>>>,
+    pub sessions: dashmap::DashMap<SessionId, parking_lot::Mutex<SessionRuntime<C, S>>>,
+    pub next_session_id: std::sync::atomic::AtomicU64,
     pub dirty_buffer: std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>,
 }
 
@@ -182,30 +188,17 @@ where
 {
     pub fn with_initial(catalog: C, storage: S) -> Self {
         Self {
-            storage: SharedStorage {
+            storage: parking_lot::RwLock::new(SharedStorage {
                 catalog,
                 storage,
                 commit_ts: 0,
                 table_versions: HashMap::new(),
-            },
-            table_locks: LockTable::new(),
-            durability: Box::new(NoopDurability::default()),
-            sessions: HashMap::new(),
-            next_session_id: 1,
+            }),
+            table_locks: parking_lot::Mutex::new(LockTable::new()),
+            durability: parking_lot::Mutex::new(Box::new(NoopDurability::default())),
+            sessions: dashmap::DashMap::new(),
+            next_session_id: std::sync::atomic::AtomicU64::new(1),
             dirty_buffer: std::sync::Arc::new(parking_lot::Mutex::new(super::dirty_buffer::DirtyBuffer::new())),
         }
-    }
-
-    pub fn with_session_mut<T, F>(&mut self, session_id: SessionId, f: F) -> Result<T, DbError>
-    where
-        F: FnOnce(&mut SharedState<C, S>, &mut SessionRuntime<C, S>) -> Result<T, DbError>,
-    {
-        let mut session = self
-            .sessions
-            .remove(&session_id)
-            .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
-        let result = f(self, &mut session);
-        self.sessions.insert(session_id, session);
-        result
     }
 }

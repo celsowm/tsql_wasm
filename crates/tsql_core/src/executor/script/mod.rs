@@ -267,16 +267,6 @@ impl<'a> ScriptExecutor<'a> {
         Ok(last_result)
     }
 
-    /// Execute a batch and convert the result to a plain Result, swallowing RETURN signals.
-    /// Used at procedure/function boundaries.
-    pub fn execute_batch_to_result(
-        &mut self,
-        stmts: &[Statement],
-        ctx: &mut ExecutionContext,
-    ) -> Result<Option<QueryResult>, DbError> {
-        self.execute_batch(stmts, ctx).and_then(|outcome| outcome.into_result())
-    }
-
     fn cleanup_scope_table_vars(&mut self, ctx: &mut ExecutionContext) -> Result<(), DbError> {
         let dropped_physical = ctx.leave_scope_collect_table_vars();
         for physical in dropped_physical {
@@ -312,62 +302,6 @@ impl<'a> ScriptExecutor<'a> {
         }
     }
 
-    pub(crate) fn push_dirty_update(
-        &self,
-        ctx: &mut ExecutionContext,
-        table_name: &str,
-        row_index: usize,
-        new_row: &crate::storage::StoredRow,
-    ) {
-        if let Some(db) = &ctx.dirty_buffer {
-            db.lock().push_op(
-                ctx.session_id,
-                table_name.to_string(),
-                super::dirty_buffer::DirtyOp::Update {
-                    row_index,
-                    new_row: new_row.clone(),
-                },
-            );
-        }
-    }
 
-    pub(crate) fn push_dirty_delete(
-        &self,
-        ctx: &mut ExecutionContext,
-        table_name: &str,
-        row_index: usize,
-    ) {
-        if let Some(db) = &ctx.dirty_buffer {
-            db.lock().push_op(
-                ctx.session_id,
-                table_name.to_string(),
-                super::dirty_buffer::DirtyOp::Delete { row_index },
-            );
-        }
-    }
 
-    pub(crate) fn push_dirty_truncate(&self, ctx: &mut ExecutionContext, table_name: &str) {
-        if let Some(db) = &ctx.dirty_buffer {
-            db.lock().push_op(
-                ctx.session_id,
-                table_name.to_string(),
-                super::dirty_buffer::DirtyOp::Truncate,
-            );
-        }
-    }
-
-    pub(crate) fn push_dirty_replace(
-        &self,
-        ctx: &mut ExecutionContext,
-        table_name: &str,
-        rows: Vec<crate::storage::StoredRow>,
-    ) {
-        if let Some(db) = &ctx.dirty_buffer {
-            db.lock().push_op(
-                ctx.session_id,
-                table_name.to_string(),
-                super::dirty_buffer::DirtyOp::ReplaceTable { rows },
-            );
-        }
-    }
 }

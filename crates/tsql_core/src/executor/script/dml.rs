@@ -379,7 +379,13 @@ impl<'a> ScriptExecutor<'a> {
 
         // Ensure all matched rows are updated in storage before NOT MATCHED
         self.storage.clear_table(target_table.id)?;
-        self.push_dirty_truncate(ctx, &target_table.name);
+        if let Some(db) = &ctx.dirty_buffer {
+            db.lock().push_op(
+                ctx.session_id,
+                target_table.name.clone(),
+                super::super::dirty_buffer::DirtyOp::Truncate,
+            );
+        }
         for row in updated_target_rows {
             if !row.deleted {
                 self.storage.insert_row(target_table.id, row.clone())?;

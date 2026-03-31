@@ -38,10 +38,10 @@ where
         session_id: SessionId,
         stmt: Statement,
     ) -> Result<Option<QueryResult>, DbError> {
-        let mut guard = self.inner.lock();
-        guard.with_session_mut(session_id, |state, session| {
-            execute_single_statement(state, session_id, session, stmt)
-        })
+        let session_mutex = self.inner.sessions.get(&session_id)
+            .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
+        let mut session = session_mutex.lock();
+        execute_single_statement(&self.inner, session_id, &mut session, stmt)
     }
 
     fn execute_session_batch(
@@ -49,10 +49,10 @@ where
         session_id: SessionId,
         stmts: Vec<Statement>,
     ) -> Result<Option<QueryResult>, DbError> {
-        let mut guard = self.inner.lock();
-        guard.with_session_mut(session_id, |state, session| {
-            execute_batch_statements(state, session_id, session, stmts)
-        })
+        let session_mutex = self.inner.sessions.get(&session_id)
+            .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
+        let mut session = session_mutex.lock();
+        execute_batch_statements(&self.inner, session_id, &mut session, stmts)
     }
 
     fn execute_session_batch_sql(
@@ -60,11 +60,12 @@ where
         session_id: SessionId,
         sql: &str,
     ) -> Result<Option<QueryResult>, DbError> {
-        let mut guard = self.inner.lock();
-        let quoted_ident = guard.with_session_mut(session_id, |_state, session| {
-            Ok(session.options.quoted_identifier)
-        })?;
-        drop(guard);
+        let quoted_ident = {
+            let session_mutex = self.inner.sessions.get(&session_id)
+                .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
+            let session = session_mutex.lock();
+            session.options.quoted_identifier
+        };
 
         let stmts = parse_batch_with_quoted_ident(sql, quoted_ident)?;
         self.execute_session_batch(session_id, stmts)
@@ -75,17 +76,18 @@ where
         session_id: SessionId,
         sql: &str,
     ) -> Result<Vec<Option<QueryResult>>, DbError> {
-        let mut guard = self.inner.lock();
-        let quoted_ident = guard.with_session_mut(session_id, |_state, session| {
-            Ok(session.options.quoted_identifier)
-        })?;
-        drop(guard);
+        let quoted_ident = {
+            let session_mutex = self.inner.sessions.get(&session_id)
+                .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
+            let session = session_mutex.lock();
+            session.options.quoted_identifier
+        };
 
         let stmts = parse_batch_with_quoted_ident(sql, quoted_ident)?;
-        let mut guard = self.inner.lock();
-        guard.with_session_mut(session_id, |state, session| {
-            execute_batch_statements_multi(state, session_id, session, stmts)
-        })
+        let session_mutex = self.inner.sessions.get(&session_id)
+            .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
+        let mut session = session_mutex.lock();
+        execute_batch_statements_multi(&self.inner, session_id, &mut session, stmts)
     }
 }
 
@@ -95,29 +97,23 @@ where
     S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     fn session_isolation_level(&self, session_id: SessionId) -> Result<IsolationLevel, DbError> {
-        let guard = self.inner.lock();
-        let session = guard
-            .sessions
-            .get(&session_id)
+        let session_mutex = self.inner.sessions.get(&session_id)
             .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
+        let session = session_mutex.lock();
         Ok(session.tx_manager.session_isolation_level)
     }
 
     fn transaction_is_active(&self, session_id: SessionId) -> Result<bool, DbError> {
-        let guard = self.inner.lock();
-        let session = guard
-            .sessions
-            .get(&session_id)
+        let session_mutex = self.inner.sessions.get(&session_id)
             .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
+        let session = session_mutex.lock();
         Ok(session.tx_manager.active.is_some())
     }
 
     fn session_options(&self, session_id: SessionId) -> Result<SessionOptions, DbError> {
-        let guard = self.inner.lock();
-        let session = guard
-            .sessions
-            .get(&session_id)
+        let session_mutex = self.inner.sessions.get(&session_id)
             .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
+        let session = session_mutex.lock();
         Ok(session.options.clone())
     }
 
@@ -221,16 +217,16 @@ where
     S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     fn set_session_seed(&self, session_id: SessionId, seed: u64) -> Result<(), DbError> {
-        let mut guard = self.inner.lock();
-        guard.with_session_mut(session_id, |_, session| {
-            session.random_state = seed;
-            Ok(())
-        })
+        let session_mutex = self.inner.sessions.get(&session_id)
+            .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
+        let mut session = session_mutex.lock();
+        session.random_state = seed;
+        Ok(())
     }
 }
 
 pub(crate) fn execute_batch_statements<C, S>(
-    state: &mut SharedState<C, S>,
+    state: &SharedState<C, S>,
     session_id: SessionId,
     session: &mut SessionRuntime<C, S>,
     stmts: Vec<Statement>,
@@ -325,9 +321,11 @@ where
             let _ = ctx.leave_scope_collect_table_vars();
         }
     } else {
+        let mut storage_guard = state.storage.write();
+        let (cat, stor) = storage_guard.get_mut_refs();
         cleanup_scope_table_vars(
-            &mut state.storage.catalog,
-            &mut state.storage.storage,
+            cat,
+            stor,
             &mut ctx,
         )?;
     }
@@ -335,7 +333,7 @@ where
 }
 
 pub(crate) fn execute_batch_statements_multi<C, S>(
-    state: &mut SharedState<C, S>,
+    state: &SharedState<C, S>,
     session_id: SessionId,
     session: &mut SessionRuntime<C, S>,
     stmts: Vec<Statement>,
@@ -384,9 +382,11 @@ where
             ) {
                 Ok(r) => results.push(r),
                 Err(e) => {
+                    let mut storage_guard = state.storage.write();
+                    let (cat, stor) = storage_guard.get_mut_refs();
                     let _ = cleanup_scope_table_vars(
-                        &mut state.storage.catalog,
-                        &mut state.storage.storage,
+                        cat,
+                        stor,
                         &mut ctx,
                     );
                     return Err(e);
@@ -424,9 +424,11 @@ where
                     }
                 }
                 Err(e) => {
+                    let mut storage_guard = state.storage.write();
+                    let (cat, stor) = storage_guard.get_mut_refs();
                     let _ = cleanup_scope_table_vars(
-                        &mut state.storage.catalog,
-                        &mut state.storage.storage,
+                        cat,
+                        stor,
                         &mut ctx,
                     );
                     return Err(e);
@@ -442,9 +444,11 @@ where
             let _ = ctx.leave_scope_collect_table_vars();
         }
     } else {
+        let mut storage_guard = state.storage.write();
+        let (cat, stor) = storage_guard.get_mut_refs();
         cleanup_scope_table_vars(
-            &mut state.storage.catalog,
-            &mut state.storage.storage,
+            cat,
+            stor,
             &mut ctx,
         )?;
     }
@@ -453,7 +457,7 @@ where
 }
 
 pub(crate) fn execute_single_statement<C, S>(
-    state: &mut SharedState<C, S>,
+    state: &SharedState<C, S>,
     session_id: SessionId,
     session: &mut SessionRuntime<C, S>,
     stmt: Statement,
@@ -517,7 +521,7 @@ where
 }
 
 pub(crate) fn execute_non_transaction_statement<C, S>(
-    state: &mut SharedState<C, S>,
+    state: &SharedState<C, S>,
     session_id: SessionId,
     tx_manager: &mut TransactionManager<C, S, SessionSnapshot>,
     journal: &mut dyn Journal,
@@ -563,6 +567,7 @@ where
     if tx_manager.active.is_some() {
         state
             .table_locks
+            .lock()
             .acquire_statement_locks(session_id, tx_manager, workspace_slot, &stmt)?;
 
         let out = if read_uncommitted_dirty {
@@ -579,23 +584,26 @@ where
                 DbError::Execution("internal error: missing transaction workspace".into())
             })?;
 
-            for table_def in state.storage.catalog.get_tables() {
-                let tname = table_def.name.to_uppercase();
-                if workspace.write_tables.contains(&tname) {
-                    continue;
+            {
+                let storage_guard = state.storage.read();
+                for table_def in storage_guard.catalog.get_tables() {
+                    let tname = table_def.name.to_uppercase();
+                    if workspace.write_tables.contains(&tname) {
+                        continue;
+                    }
+                    let tid = table_def.id;
+                    if let Ok(committed_rows) = storage_guard.storage.get_rows(tid) {
+                        let _ = workspace.storage.update_rows(tid, committed_rows);
+                    }
                 }
-                let tid = table_def.id;
-                if let Ok(committed_rows) = state.storage.storage.get_rows(tid) {
-                    let _ = workspace.storage.update_rows(tid, committed_rows);
-                }
-            }
-            for table_def in state.storage.catalog.get_tables() {
-                let tname = table_def.name.to_uppercase();
-                if workspace.write_tables.contains(&tname) {
-                    continue;
-                }
-                if workspace.catalog.find_table(table_def.schema_or_dbo(), &table_def.name).is_none() {
-                    workspace.catalog.get_tables_mut().push(table_def.clone());
+                for table_def in storage_guard.catalog.get_tables() {
+                    let tname = table_def.name.to_uppercase();
+                    if workspace.write_tables.contains(&tname) {
+                        continue;
+                    }
+                    if workspace.catalog.find_table(table_def.schema_or_dbo(), &table_def.name).is_none() {
+                        workspace.catalog.get_tables_mut().push(table_def.clone());
+                    }
                 }
             }
 
@@ -653,38 +661,41 @@ where
 
         let written_tables = collect_write_tables(&stmt);
         if written_tables.is_empty() {
+            let mut storage_guard = state.storage.write();
+            let (cat, stor) = storage_guard.get_mut_refs();
             let mut script = ScriptExecutor {
-                catalog: &mut state.storage.catalog,
-                storage: &mut state.storage.storage,
+                catalog: cat,
+                storage: stor,
                 clock,
             };
             return script.execute(stmt, ctx);
         }
-        let before_catalog = state.storage.catalog.clone();
-        let before_storage = state.storage.storage.clone();
-        let before_versions = state.storage.table_versions.clone();
-        let before_commit_ts = state.storage.commit_ts;
+
+        let mut storage_guard = state.storage.write();
+        let before_catalog = storage_guard.catalog.clone();
+        let before_storage = storage_guard.storage.clone();
+        let before_versions = storage_guard.table_versions.clone();
+        let before_commit_ts = storage_guard.commit_ts;
+        let (cat, stor) = storage_guard.get_mut_refs();
         let mut script = ScriptExecutor {
-            catalog: &mut state.storage.catalog,
-            storage: &mut state.storage.storage,
+            catalog: cat,
+            storage: stor,
             clock,
         };
         let out = script.execute(stmt, ctx);
         let is_control_flow = out.as_ref().map_or(false, |o| o.is_control_flow());
         if out.is_ok() && !is_control_flow {
-            state.storage.commit_ts += 1;
+            storage_guard.commit_ts += 1;
             for table in &written_tables {
-                state
-                    .storage
-                    .table_versions
-                    .insert(table.clone(), state.storage.commit_ts);
+                let ts = storage_guard.commit_ts;
+                storage_guard.table_versions.insert(table.clone(), ts);
             }
-            let checkpoint = state.to_checkpoint();
-            if let Err(e) = state.durability.persist_checkpoint(&checkpoint) {
-                state.storage.catalog = before_catalog;
-                state.storage.storage = before_storage;
-                state.storage.table_versions = before_versions;
-                state.storage.commit_ts = before_commit_ts;
+            let checkpoint = state.to_checkpoint_internal(&storage_guard);
+            if let Err(e) = state.durability.lock().persist_checkpoint(&checkpoint) {
+                storage_guard.catalog = before_catalog;
+                storage_guard.storage = before_storage;
+                storage_guard.table_versions = before_versions;
+                storage_guard.commit_ts = before_commit_ts;
                 return Err(e);
             }
         }

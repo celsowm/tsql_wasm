@@ -1,4 +1,4 @@
-use tsql_core::{parse_sql, types::Value, Engine};
+use tsql_core::{types::Value, Engine};
 
 #[test]
 fn test_state_restoration_on_savepoint_rollback() {

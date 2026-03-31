@@ -114,7 +114,7 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
     }
 
     pub fn set_durability_sink(
-        &mut self,
+        &self,
         durability: Box<dyn DurabilitySink<CatalogImpl>>,
     ) {
         self.db.set_durability_sink(durability);
@@ -154,8 +154,8 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
     }
 
     pub fn print_output(&self) -> Vec<String> {
-        let guard = self.db.inner.lock();
-        guard.sessions.get(&self.default_session).map(|s| s.diagnostics.print_output.clone()).unwrap_or_default()
+        let session_mutex = self.db.inner.sessions.get(&self.default_session);
+        session_mutex.map(|s| s.lock().diagnostics.print_output.clone()).unwrap_or_default()
     }
 }
 

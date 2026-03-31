@@ -30,6 +30,17 @@ pub(crate) fn collect_read_tables(stmt: &Statement) -> HashSet<String> {
             }
             out.extend(collect_read_tables(&stmt.body));
         }
+        Statement::Merge(s) => {
+            out.insert(s.target.name.name().to_uppercase());
+            match &s.source {
+                crate::ast::MergeSource::Table(tr) => {
+                    out.insert(normalize_table_ref(tr));
+                }
+                crate::ast::MergeSource::Subquery(select, _) => {
+                    collect_tables_from_select(select, &mut out);
+                }
+            }
+        }
         _ => {}
     }
     out
@@ -93,6 +104,12 @@ pub(crate) fn collect_write_tables(stmt: &Statement) -> HashSet<String> {
         }
         Statement::CreateSchema(_) | Statement::DropSchema(_) => {
             out.insert("__GLOBAL__".to_string());
+        }
+        Statement::CreateProcedure(_) | Statement::DropProcedure(_) | Statement::CreateFunction(_) | Statement::DropFunction(_) | Statement::CreateTrigger(_) | Statement::DropTrigger(_) | Statement::CreateView(_) | Statement::DropView(_) => {
+            out.insert("__GLOBAL__".to_string());
+        }
+        Statement::Merge(s) => {
+            out.insert(s.target.name.name().to_uppercase());
         }
         _ => {}
     }

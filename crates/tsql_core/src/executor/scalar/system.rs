@@ -219,7 +219,7 @@ pub(crate) fn eval_db_name(
 
 pub(crate) fn eval_db_id(
     args: &[Expr],
-    ctx: &ExecutionContext,
+    _ctx: &ExecutionContext,
 ) -> Result<Value, DbError> {
     if args.len() > 1 {
         return Err(DbError::Execution("DB_ID expects 0 or 1 arguments".into()));
@@ -239,7 +239,7 @@ pub(crate) fn eval_suser_sname(
 
 pub(crate) fn eval_suser_id(
     args: &[Expr],
-    ctx: &ExecutionContext,
+    _ctx: &ExecutionContext,
 ) -> Result<Value, DbError> {
     if args.len() > 1 {
         return Err(DbError::Execution("SUSER_ID expects 0 or 1 arguments".into()));
@@ -249,7 +249,7 @@ pub(crate) fn eval_suser_id(
 
 pub(crate) fn eval_user_name(
     args: &[Expr],
-    ctx: &ExecutionContext,
+    _ctx: &ExecutionContext,
 ) -> Result<Value, DbError> {
     if args.len() > 1 {
         return Err(DbError::Execution("USER_NAME expects 0 or 1 arguments".into()));
@@ -259,7 +259,7 @@ pub(crate) fn eval_user_name(
 
 pub(crate) fn eval_user_id(
     args: &[Expr],
-    ctx: &ExecutionContext,
+    _ctx: &ExecutionContext,
 ) -> Result<Value, DbError> {
     if args.len() > 1 {
         return Err(DbError::Execution("USER_ID expects 0 or 1 arguments".into()));
@@ -309,7 +309,7 @@ pub(crate) fn eval_original_login(
 
 pub(crate) fn eval_session_user(
     args: &[Expr],
-    ctx: &ExecutionContext,
+    _ctx: &ExecutionContext,
 ) -> Result<Value, DbError> {
     if !args.is_empty() {
         return Err(DbError::Execution("SESSION_USER expects no arguments".into()));
@@ -319,7 +319,7 @@ pub(crate) fn eval_session_user(
 
 pub(crate) fn eval_current_user(
     args: &[Expr],
-    ctx: &ExecutionContext,
+    _ctx: &ExecutionContext,
 ) -> Result<Value, DbError> {
     if !args.is_empty() {
         return Err(DbError::Execution("CURRENT_USER expects no arguments".into()));

@@ -50,18 +50,22 @@ where
     C: Catalog + Clone,
     S: Storage + Clone,
 {
-    let mut merged_catalog = state.storage.catalog.clone();
-    let mut merged_storage = state.storage.storage.clone();
+    let (mut merged_catalog, mut merged_storage) = {
+        let storage_guard = state.storage.read();
+        (storage_guard.catalog.clone(), storage_guard.storage.clone())
+    };
 
-    // 1. Merge catalogs from all active workspaces (including own)
+    // 1. Merge catalogs from all active workspaces
     // This allows seeing uncommitted tables/columns.
-    if let Some(workspace) = requesting_workspace {
-        merge_catalog(&mut merged_catalog, &workspace.catalog);
-    }
-    for (&sid, session) in &state.sessions {
+    for entry in state.sessions.iter() {
+        let sid = *entry.key();
         if sid == requesting_session_id {
+            if let Some(workspace) = requesting_workspace {
+                merge_catalog(&mut merged_catalog, &workspace.catalog);
+            }
             continue;
         }
+        let session = entry.value().lock();
         if let Some(ref workspace) = session.workspace {
             merge_catalog(&mut merged_catalog, &workspace.catalog);
         }
