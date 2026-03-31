@@ -31,7 +31,10 @@ pub(crate) fn parse_create_table(sql: &str) -> Result<Statement, DbError> {
                 .into_iter()
                 .map(|s| s.trim().trim_matches('[').trim_matches(']').to_string())
                 .collect();
-            table_constraints.push(TableConstraintSpec::PrimaryKey { name: String::new(), columns: columns_list });
+            table_constraints.push(TableConstraintSpec::PrimaryKey {
+                name: String::new(),
+                columns: columns_list,
+            });
         } else if item.to_uppercase().starts_with("UNIQUE") {
             let after_uq = item["UNIQUE".len()..].trim();
             let cols_raw = strip_wrapping_parens(after_uq);
@@ -39,7 +42,10 @@ pub(crate) fn parse_create_table(sql: &str) -> Result<Statement, DbError> {
                 .into_iter()
                 .map(|s| s.trim().trim_matches('[').trim_matches(']').to_string())
                 .collect();
-            table_constraints.push(TableConstraintSpec::Unique { name: String::new(), columns: columns_list });
+            table_constraints.push(TableConstraintSpec::Unique {
+                name: String::new(),
+                columns: columns_list,
+            });
         } else {
             columns.push(parse_column_spec(item)?);
         }
@@ -151,6 +157,67 @@ pub(crate) fn parse_drop_view(sql: &str) -> Result<Statement, DbError> {
     }))
 }
 
+pub(crate) fn parse_create_type(sql: &str) -> Result<Statement, DbError> {
+    let after = sql["CREATE TYPE".len()..].trim();
+    let upper = after.to_uppercase();
+    let as_idx = find_keyword_top_level(&upper, "AS")
+        .ok_or_else(|| DbError::Parse("CREATE TYPE missing AS".into()))?;
+    let name = parse_object_name(after[..as_idx].trim());
+    let after_as = after[as_idx + "AS".len()..].trim();
+    if !after_as.to_uppercase().starts_with("TABLE") {
+        return Err(DbError::Parse("CREATE TYPE only supports AS TABLE".into()));
+    }
+    let open = after_as
+        .find('(')
+        .ok_or_else(|| DbError::Parse("CREATE TYPE ... AS TABLE missing '('".into()))?;
+    let close = after_as
+        .rfind(')')
+        .ok_or_else(|| DbError::Parse("CREATE TYPE ... AS TABLE missing ')'".into()))?;
+    let body = after_as[open + 1..close].trim();
+    let mut columns = Vec::new();
+    let mut table_constraints = Vec::new();
+    for raw_col in split_csv_top_level(body) {
+        let item = raw_col.trim();
+        if item.to_uppercase().starts_with("CONSTRAINT ") {
+            table_constraints.push(parse_table_constraint(item)?);
+        } else if item.to_uppercase().starts_with("PRIMARY KEY") {
+            let after_pk = item["PRIMARY KEY".len()..].trim();
+            let cols_raw = strip_wrapping_parens(after_pk);
+            let columns_list = split_csv_top_level(cols_raw)
+                .into_iter()
+                .map(|s| s.trim().trim_matches('[').trim_matches(']').to_string())
+                .collect();
+            table_constraints.push(TableConstraintSpec::PrimaryKey {
+                name: String::new(),
+                columns: columns_list,
+            });
+        } else if item.to_uppercase().starts_with("UNIQUE") {
+            let after_uq = item["UNIQUE".len()..].trim();
+            let cols_raw = strip_wrapping_parens(after_uq);
+            let columns_list = split_csv_top_level(cols_raw)
+                .into_iter()
+                .map(|s| s.trim().trim_matches('[').trim_matches(']').to_string())
+                .collect();
+            table_constraints.push(TableConstraintSpec::Unique {
+                name: String::new(),
+                columns: columns_list,
+            });
+        } else {
+            columns.push(parse_column_spec(item)?);
+        }
+    }
+    Ok(Statement::CreateType(CreateTypeStmt {
+        name,
+        columns,
+        table_constraints,
+    }))
+}
+
+pub(crate) fn parse_drop_type(sql: &str) -> Result<Statement, DbError> {
+    let name = parse_object_name(sql["DROP TYPE".len()..].trim());
+    Ok(Statement::DropType(DropTypeStmt { name }))
+}
+
 pub(crate) fn parse_truncate_table(sql: &str) -> Result<Statement, DbError> {
     let table_name = sql["TRUNCATE TABLE".len()..].trim();
     let name = parse_object_name(table_name);
@@ -163,7 +230,7 @@ pub(crate) fn parse_alter_table(sql: &str) -> Result<Statement, DbError> {
     if let Some(add_idx) = find_keyword_top_level(after_table, "ADD") {
         let table_name = after_table[..add_idx].trim();
         let col_def = after_table[add_idx + "ADD".len()..].trim();
-        
+
         if col_def.to_uppercase().starts_with("CONSTRAINT") {
             let constraint = parse_table_constraint(col_def)?;
             return Ok(Statement::AlterTable(AlterTableStmt {
@@ -171,7 +238,7 @@ pub(crate) fn parse_alter_table(sql: &str) -> Result<Statement, DbError> {
                 action: AlterTableAction::AddConstraint(constraint),
             }));
         }
-        
+
         let column = parse_column_spec(col_def)?;
         return Ok(Statement::AlterTable(AlterTableStmt {
             table: parse_object_name(table_name),
@@ -198,14 +265,15 @@ pub(crate) fn parse_alter_table(sql: &str) -> Result<Statement, DbError> {
     }
 
     Err(DbError::Parse(
-        "ALTER TABLE only supports ADD column, ADD CONSTRAINT, DROP COLUMN, and DROP CONSTRAINT".into(),
+        "ALTER TABLE only supports ADD column, ADD CONSTRAINT, DROP COLUMN, and DROP CONSTRAINT"
+            .into(),
     ))
 }
 
 pub(crate) fn parse_with_cte(sql: &str) -> Result<Statement, DbError> {
     let after_with = sql["WITH".len()..].trim();
     let upper_after_with = after_with.to_uppercase();
-    
+
     let (recursive, mut rest) = if upper_after_with.starts_with("RECURSIVE") {
         (true, after_with["RECURSIVE".len()..].trim().to_string())
     } else {
@@ -435,9 +503,11 @@ pub(crate) fn parse_column_spec(input: &str) -> Result<ColumnSpec, DbError> {
                     .ok_or_else(|| DbError::Parse("missing table after REFERENCES".into()))?;
                 let ref_str = ref_tok.as_str();
                 if let Some(open) = ref_str.find('(') {
-                    let close = ref_str.rfind(')').ok_or_else(|| DbError::Parse("missing ')' in REFERENCES".into()))?;
+                    let close = ref_str
+                        .rfind(')')
+                        .ok_or_else(|| DbError::Parse("missing ')' in REFERENCES".into()))?;
                     let ref_table = parse_object_name(&ref_str[..open]);
-                    let ref_cols = split_csv_top_level(&ref_str[open+1..close])
+                    let ref_cols = split_csv_top_level(&ref_str[open + 1..close])
                         .into_iter()
                         .map(|s| s.trim().trim_matches('[').trim_matches(']').to_string())
                         .collect();
@@ -555,8 +625,12 @@ pub(crate) fn parse_table_constraint(input: &str) -> Result<TableConstraintSpec,
         }
 
         let ref_part = &tokens[6];
-        let open = ref_part.find('(').ok_or_else(|| DbError::Parse("missing '(' in REFERENCES".into()))?;
-        let close = ref_part.rfind(')').ok_or_else(|| DbError::Parse("missing ')' in REFERENCES".into()))?;
+        let open = ref_part
+            .find('(')
+            .ok_or_else(|| DbError::Parse("missing '(' in REFERENCES".into()))?;
+        let close = ref_part
+            .rfind(')')
+            .ok_or_else(|| DbError::Parse("missing ')' in REFERENCES".into()))?;
 
         let ref_table_name = ref_part[..open].trim();
         let referenced_table = parse_object_name(ref_table_name);
@@ -575,8 +649,10 @@ pub(crate) fn parse_table_constraint(input: &str) -> Result<TableConstraintSpec,
             if tokens[i].eq_ignore_ascii_case("ON") && i + 1 < tokens.len() {
                 if tokens[i + 1].eq_ignore_ascii_case("DELETE") {
                     if i + 2 < tokens.len() {
-                        let action_token = if i + 3 < tokens.len() && 
-                            (tokens[i + 2].eq_ignore_ascii_case("NO") || tokens[i + 2].eq_ignore_ascii_case("SET")) {
+                        let action_token = if i + 3 < tokens.len()
+                            && (tokens[i + 2].eq_ignore_ascii_case("NO")
+                                || tokens[i + 2].eq_ignore_ascii_case("SET"))
+                        {
                             format!("{} {}", tokens[i + 2], tokens[i + 3])
                         } else {
                             tokens[i + 2].clone()
@@ -587,8 +663,10 @@ pub(crate) fn parse_table_constraint(input: &str) -> Result<TableConstraintSpec,
                     }
                 } else if tokens[i + 1].eq_ignore_ascii_case("UPDATE") {
                     if i + 2 < tokens.len() {
-                        let action_token = if i + 3 < tokens.len() && 
-                            (tokens[i + 2].eq_ignore_ascii_case("NO") || tokens[i + 2].eq_ignore_ascii_case("SET")) {
+                        let action_token = if i + 3 < tokens.len()
+                            && (tokens[i + 2].eq_ignore_ascii_case("NO")
+                                || tokens[i + 2].eq_ignore_ascii_case("SET"))
+                        {
                             format!("{} {}", tokens[i + 2], tokens[i + 3])
                         } else {
                             tokens[i + 2].clone()
@@ -621,15 +699,18 @@ pub(crate) fn parse_create_trigger(sql: &str) -> Result<Statement, DbError> {
     let trigger_name = parse_object_name(after_prefix[..on_idx].trim());
     let rest = &after_prefix[on_idx + "ON".len()..].trim();
 
-    let (is_instead_of, table_name_end_pos, event_pos) = if let Some(pos) = find_keyword_top_level(rest, "INSTEAD OF") {
-        (true, pos, pos + "INSTEAD OF".len())
-    } else if let Some(pos) = find_keyword_top_level(rest, "AFTER") {
-        (false, pos, pos + "AFTER".len())
-    } else if let Some(pos) = find_keyword_top_level(rest, "FOR") {
-        (false, pos, pos + "FOR".len())
-    } else {
-        return Err(DbError::Parse("CREATE TRIGGER expects AFTER, FOR, or INSTEAD OF".into()));
-    };
+    let (is_instead_of, table_name_end_pos, event_pos) =
+        if let Some(pos) = find_keyword_top_level(rest, "INSTEAD OF") {
+            (true, pos, pos + "INSTEAD OF".len())
+        } else if let Some(pos) = find_keyword_top_level(rest, "AFTER") {
+            (false, pos, pos + "AFTER".len())
+        } else if let Some(pos) = find_keyword_top_level(rest, "FOR") {
+            (false, pos, pos + "FOR".len())
+        } else {
+            return Err(DbError::Parse(
+                "CREATE TRIGGER expects AFTER, FOR, or INSTEAD OF".into(),
+            ));
+        };
 
     let table_name = parse_object_name(rest[..table_name_end_pos].trim());
     let after_event = &rest[event_pos..].trim();

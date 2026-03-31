@@ -13,9 +13,16 @@ pub fn parse_expr_subquery_aware(input: &str) -> Result<crate::ast::Expr, DbErro
     parse_expr_subquery_aware_with_quoted_ident(input, true)
 }
 
-pub fn parse_expr_subquery_aware_with_quoted_ident(input: &str, quoted_identifier: bool) -> Result<crate::ast::Expr, DbError> {
+pub fn parse_expr_subquery_aware_with_quoted_ident(
+    input: &str,
+    quoted_identifier: bool,
+) -> Result<crate::ast::Expr, DbError> {
     let (processed, subquery_map) = statements::extract_subqueries(input);
-    let mut expr = expression::parse_expr_with_subqueries_and_quoted_ident(&processed, &subquery_map, quoted_identifier)?;
+    let mut expr = expression::parse_expr_with_subqueries_and_quoted_ident(
+        &processed,
+        &subquery_map,
+        quoted_identifier,
+    )?;
     statements::apply_subquery_map(&mut expr, &subquery_map);
     Ok(expr)
 }
@@ -24,7 +31,10 @@ pub fn parse_batch(sql: &str) -> Result<Vec<Statement>, DbError> {
     parse_batch_with_quoted_ident(sql, true)
 }
 
-pub fn parse_batch_with_quoted_ident(sql: &str, quoted_identifier: bool) -> Result<Vec<Statement>, DbError> {
+pub fn parse_batch_with_quoted_ident(
+    sql: &str,
+    quoted_identifier: bool,
+) -> Result<Vec<Statement>, DbError> {
     let processed_sql = preprocess_sql_for_quoted_ident(sql, quoted_identifier);
     let stripped = strip_comments(&processed_sql);
     let trimmed = stripped.trim();
@@ -96,7 +106,8 @@ fn split_statements(sql: &str) -> Vec<String> {
                 let next_ok = i + 5 >= chars.len() || !chars[i + 5].is_ascii_alphanumeric();
                 if prev_ok && next_ok && !is_begin_transaction(&upper_chars, chars.len(), i + 5) {
                     // Check if it's BEGIN TRY
-                    let is_try = i + 9 <= upper_chars.len() && upper_chars[i..i + 9] == ['B', 'E', 'G', 'I', 'N', ' ', 'T', 'R', 'Y'];
+                    let is_try = i + 9 <= upper_chars.len()
+                        && upper_chars[i..i + 9] == ['B', 'E', 'G', 'I', 'N', ' ', 'T', 'R', 'Y'];
                     if is_try && block_depth == 0 && paren_depth == 0 {
                         // Let parse_try_catch handle it as a single unit
                         in_try_catch = true;
@@ -114,24 +125,26 @@ fn split_statements(sql: &str) -> Vec<String> {
                 let next_ok = i + 3 >= chars.len() || !chars[i + 3].is_ascii_alphanumeric();
                 if prev_ok && next_ok {
                     // Check if it's END CATCH
-                    let is_end_catch = i + 9 <= upper_chars.len() && upper_chars[i..i + 9] == ['E', 'N', 'D', ' ', 'C', 'A', 'T', 'C', 'H'];
+                    let is_end_catch = i + 9 <= upper_chars.len()
+                        && upper_chars[i..i + 9] == ['E', 'N', 'D', ' ', 'C', 'A', 'T', 'C', 'H'];
                     if is_end_catch && block_depth == 0 && paren_depth == 0 {
-                         // End of a TRY...CATCH block.
-                         buf.extend(chars[i..i + 9].iter());
-                         i += 9;
-                         out.push(buf.trim().to_string());
-                         buf.clear();
-                         in_try_catch = false;
-                         continue;
+                        // End of a TRY...CATCH block.
+                        buf.extend(chars[i..i + 9].iter());
+                        i += 9;
+                        out.push(buf.trim().to_string());
+                        buf.clear();
+                        in_try_catch = false;
+                        continue;
                     }
-                    
+
                     // Check if it's END TRY - skip over it without splitting
-                    let is_end_try = i + 7 <= upper_chars.len() && upper_chars[i..i + 7] == ['E', 'N', 'D', ' ', 'T', 'R', 'Y'];
+                    let is_end_try = i + 7 <= upper_chars.len()
+                        && upper_chars[i..i + 7] == ['E', 'N', 'D', ' ', 'T', 'R', 'Y'];
                     if is_end_try && block_depth == 0 && paren_depth == 0 {
-                         // Skip END TRY, continue scanning for BEGIN CATCH
-                         buf.extend(chars[i..i + 7].iter());
-                         i += 7;
-                         continue;
+                        // Skip END TRY, continue scanning for BEGIN CATCH
+                        buf.extend(chars[i..i + 7].iter());
+                        i += 7;
+                        continue;
                     }
 
                     if block_depth > 0 {
@@ -179,9 +192,30 @@ fn split_statements(sql: &str) -> Vec<String> {
 
 fn is_statement_keyword_start(upper_chars: &[char], chars: &[char], start: usize) -> bool {
     let stmt_keywords = [
-        "INSERT", "SELECT", "UPDATE", "DELETE", "SET", "DECLARE", "IF", "WHILE", "RETURN", "BREAK",
-        "CONTINUE", "EXEC", "EXECUTE", "CREATE", "DROP", "BEGIN", "COMMIT", "ROLLBACK", "SAVE",
-        "PRINT", "OPEN", "FETCH", "CLOSE", "DEALLOCATE",
+        "INSERT",
+        "SELECT",
+        "UPDATE",
+        "DELETE",
+        "SET",
+        "DECLARE",
+        "IF",
+        "WHILE",
+        "RETURN",
+        "BREAK",
+        "CONTINUE",
+        "EXEC",
+        "EXECUTE",
+        "CREATE",
+        "DROP",
+        "BEGIN",
+        "COMMIT",
+        "ROLLBACK",
+        "SAVE",
+        "PRINT",
+        "OPEN",
+        "FETCH",
+        "CLOSE",
+        "DEALLOCATE",
     ];
 
     for kw in &stmt_keywords {
@@ -208,37 +242,37 @@ fn preprocess_sql_for_quoted_ident(sql: &str, quoted_identifier: bool) -> String
     if quoted_identifier {
         return sql.to_string();
     }
-    
+
     let mut result = String::new();
     let mut in_string = false;
     let mut in_bracket = false;
     let chars: Vec<char> = sql.chars().collect();
     let mut i = 0;
-    
+
     while i < chars.len() {
         let ch = chars[i];
-        
+
         if ch == '\'' && !in_bracket {
             in_string = !in_string;
             result.push(ch);
             i += 1;
             continue;
         }
-        
+
         if ch == '[' && !in_string {
             in_bracket = true;
             result.push(ch);
             i += 1;
             continue;
         }
-        
+
         if ch == ']' && in_bracket {
             in_bracket = false;
             result.push(ch);
             i += 1;
             continue;
         }
-        
+
         if ch == '"' && !in_string && !in_bracket {
             let start = i + 1;
             let mut end = start;
@@ -254,15 +288,18 @@ fn preprocess_sql_for_quoted_ident(sql: &str, quoted_identifier: bool) -> String
                 continue;
             }
         }
-        
+
         result.push(ch);
         i += 1;
     }
-    
+
     result
 }
 
-pub fn parse_sql_with_quoted_ident(sql: &str, quoted_identifier: bool) -> Result<Statement, DbError> {
+pub fn parse_sql_with_quoted_ident(
+    sql: &str,
+    quoted_identifier: bool,
+) -> Result<Statement, DbError> {
     let processed_sql = preprocess_sql_for_quoted_ident(sql, quoted_identifier);
     let trimmed = processed_sql.trim().trim_end_matches(';').trim();
 
@@ -283,10 +320,15 @@ pub fn parse_sql_with_quoted_ident(sql: &str, quoted_identifier: bool) -> Result
         }));
     }
 
-    if upper.starts_with("BEGIN DISTRIBUTED TRANSACTION") || upper.starts_with("BEGIN DISTRIBUTED TRAN") {
+    if upper.starts_with("BEGIN DISTRIBUTED TRANSACTION")
+        || upper.starts_with("BEGIN DISTRIBUTED TRAN")
+    {
         // Treat as regular BEGIN TRANSACTION for our purposes
         let stripped = if upper.starts_with("BEGIN DISTRIBUTED TRANSACTION") {
-            format!("BEGIN TRANSACTION{}", &trimmed["BEGIN DISTRIBUTED TRANSACTION".len()..])
+            format!(
+                "BEGIN TRANSACTION{}",
+                &trimmed["BEGIN DISTRIBUTED TRANSACTION".len()..]
+            )
         } else {
             format!("BEGIN TRAN{}", &trimmed["BEGIN DISTRIBUTED TRAN".len()..])
         };
@@ -392,6 +434,8 @@ pub fn parse_sql_with_quoted_ident(sql: &str, quoted_identifier: bool) -> Result
         statements::parse_create_table(trimmed)
     } else if upper.starts_with("CREATE VIEW ") {
         statements::parse_create_view(trimmed)
+    } else if upper.starts_with("CREATE TYPE ") {
+        statements::parse_create_type(trimmed)
     } else if upper.starts_with("CREATE INDEX ") {
         statements::parse_create_index(trimmed)
     } else if upper.starts_with("CREATE SCHEMA ") {
@@ -400,6 +444,8 @@ pub fn parse_sql_with_quoted_ident(sql: &str, quoted_identifier: bool) -> Result
         statements::parse_drop_table(trimmed)
     } else if upper.starts_with("DROP VIEW ") {
         statements::parse_drop_view(trimmed)
+    } else if upper.starts_with("DROP TYPE ") {
+        statements::parse_drop_type(trimmed)
     } else if upper.starts_with("DROP INDEX ") {
         statements::parse_drop_index(trimmed)
     } else if upper.starts_with("DROP SCHEMA ") {
@@ -472,8 +518,11 @@ fn find_set_operation(sql: &str) -> Option<(&str, SetOpKind, &str)> {
                 let kw_bytes = kw.as_bytes();
                 let kw_len = kw_bytes.len();
                 if i + kw_len <= bytes.len() && &bytes[i..i + kw_len] == kw_bytes {
-                    let prev_is_ident = i > 0 && ((bytes[i - 1] as char).is_ascii_alphanumeric() || bytes[i - 1] == b'_');
-                    let next_is_ident = i + kw_len < bytes.len() && ((bytes[i + kw_len] as char).is_ascii_alphanumeric() || bytes[i + kw_len] == b'_');
+                    let prev_is_ident = i > 0
+                        && ((bytes[i - 1] as char).is_ascii_alphanumeric() || bytes[i - 1] == b'_');
+                    let next_is_ident = i + kw_len < bytes.len()
+                        && ((bytes[i + kw_len] as char).is_ascii_alphanumeric()
+                            || bytes[i + kw_len] == b'_');
                     if !prev_is_ident && !next_is_ident {
                         let left = sql[..i].trim();
                         let right = sql[i + kw_len..].trim();

@@ -8,8 +8,8 @@ mod variable;
 
 use super::clock::Clock;
 use super::context::ExecutionContext;
-use super::result::QueryResult;
 use super::model::Cursor;
+use super::result::QueryResult;
 use super::schema::SchemaExecutor;
 use crate::ast::{DropTableStmt, ObjectName, Statement};
 use crate::catalog::{Catalog, RoutineDef, RoutineKind};
@@ -38,6 +38,22 @@ impl<'a> ScriptExecutor<'a> {
             )),
             Statement::CreateTable(stmt) => self.execute_create_table(stmt, ctx),
             Statement::DropTable(stmt) => self.execute_drop_table(stmt, ctx),
+            Statement::CreateType(stmt) => {
+                SchemaExecutor {
+                    catalog: self.catalog,
+                    storage: self.storage,
+                }
+                .create_type(stmt)?;
+                Ok(None)
+            }
+            Statement::DropType(stmt) => {
+                SchemaExecutor {
+                    catalog: self.catalog,
+                    storage: self.storage,
+                }
+                .drop_type(stmt)?;
+                Ok(None)
+            }
             Statement::CreateIndex(stmt) => {
                 SchemaExecutor {
                     catalog: self.catalog,
@@ -130,7 +146,7 @@ impl<'a> ScriptExecutor<'a> {
                 )?;
                 let sql_str = sql_val.to_string_value();
                 let batch = crate::parser::parse_batch(&sql_str)?;
-                
+
                 ctx.enter_scope();
                 let res = self.execute_batch(&batch, ctx);
                 self.cleanup_scope_table_vars(ctx)?;
@@ -192,11 +208,14 @@ impl<'a> ScriptExecutor<'a> {
             Statement::Raiserror(stmt) => self.execute_raiserror(stmt, ctx),
             Statement::TryCatch(stmt) => self.execute_try_catch(stmt, ctx),
             Statement::DeclareCursor(stmt) => {
-                ctx.cursors.insert(stmt.name.clone(), Cursor {
-                    query: Some(stmt.query),
-                    query_result: QueryResult::default(),
-                    current_row: -1,
-                });
+                ctx.cursors.insert(
+                    stmt.name.clone(),
+                    Cursor {
+                        query: Some(stmt.query),
+                        query_result: QueryResult::default(),
+                        current_row: -1,
+                    },
+                );
                 Ok(None)
             }
             Statement::OpenCursor(name) => self.execute_open_cursor(name, ctx),
@@ -322,11 +341,7 @@ impl<'a> ScriptExecutor<'a> {
         }
     }
 
-    pub(crate) fn push_dirty_truncate(
-        &self,
-        ctx: &mut ExecutionContext,
-        table_name: &str,
-    ) {
+    pub(crate) fn push_dirty_truncate(&self, ctx: &mut ExecutionContext, table_name: &str) {
         if let Some(db) = &ctx.dirty_buffer {
             db.lock().unwrap().push_op(
                 ctx.session_id,

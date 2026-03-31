@@ -88,6 +88,7 @@ pub struct TransactionManager<C, S, X> {
     pub session_isolation_level: IsolationLevel,
     pub commit_ts: u64,
     pub depth: u32,
+    pub xact_state: i8,
 }
 
 impl<C, S, X> Default for TransactionManager<C, S, X> {
@@ -97,6 +98,7 @@ impl<C, S, X> Default for TransactionManager<C, S, X> {
             session_isolation_level: IsolationLevel::default(),
             commit_ts: 0,
             depth: 0,
+            xact_state: 0,
         }
     }
 }
@@ -129,6 +131,7 @@ where
                 self.commit_ts,
             );
             self.active = Some(tx);
+            self.xact_state = 1;
         }
         self.depth += 1;
         Ok(explicit_name)
@@ -140,11 +143,19 @@ where
                 "COMMIT without active transaction".into(),
             ));
         }
+        if self.xact_state == -1 {
+            return Err(DbError::Execution(
+                "The current transaction cannot be committed and cannot support operations that write to the log file. Roll back the transaction.".into(),
+            ));
+        }
         self.depth -= 1;
         if self.depth > 0 {
             return Ok(());
         }
-        let tx = self.active.take().expect("active tx must exist at depth > 0");
+        let tx = self
+            .active
+            .take()
+            .expect("active tx must exist at depth > 0");
         if tx.isolation_level == IsolationLevel::Snapshot
             && !tx.write_set.is_empty()
             && tx.snapshot_ts != self.commit_ts
@@ -156,6 +167,7 @@ where
             ));
         }
         self.commit_ts += 1;
+        self.xact_state = 0;
         Ok(())
     }
 
@@ -198,6 +210,7 @@ where
         *extra = tx.begin_extra.clone();
         self.active = None;
         self.depth = 0;
+        self.xact_state = 0;
         Ok(())
     }
 

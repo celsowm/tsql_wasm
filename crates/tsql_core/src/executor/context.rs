@@ -2,9 +2,9 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 use super::cte::CteStorage;
-use super::model::{JoinedRow, Cursor};
-use crate::types::{DataType, Value};
+use super::model::{Cursor, JoinedRow};
 use crate::error::DbError;
+use crate::types::{DataType, Value};
 
 pub type Variables = std::collections::HashMap<String, (DataType, Value)>;
 
@@ -25,6 +25,7 @@ pub struct ExecutionContext<'a> {
     pub session_last_identity: &'a mut Option<i64>,
     pub scope_identity_stack: &'a mut Vec<Option<i64>>,
     pub table_vars: Vec<HashMap<String, String>>,
+    pub readonly_table_vars: Vec<HashSet<String>>,
     pub temp_table_map: &'a mut HashMap<String, String>,
     pub session_table_var_map: &'a mut HashMap<String, String>,
     pub table_var_counter: &'a mut u64,
@@ -42,11 +43,11 @@ pub struct ExecutionContext<'a> {
     pub skip_instead_of: bool,
     pub last_error: Option<DbError>,
     pub trancount: u32,
+    pub xact_state: i8,
     pub identity_insert: HashSet<String>,
     pub dirty_buffer: Option<std::sync::Arc<std::sync::Mutex<super::dirty_buffer::DirtyBuffer>>>,
     pub session_id: super::locks::SessionId,
 }
-
 
 impl<'a> ExecutionContext<'a> {
     pub fn new(
@@ -75,6 +76,7 @@ impl<'a> ExecutionContext<'a> {
             session_last_identity,
             scope_identity_stack,
             table_vars: vec![HashMap::new()],
+            readonly_table_vars: vec![HashSet::new()],
             temp_table_map,
             session_table_var_map,
             scope_vars: vec![vec![]],
@@ -92,6 +94,7 @@ impl<'a> ExecutionContext<'a> {
             skip_instead_of: false,
             last_error: None,
             trancount: 0,
+            xact_state: 0,
             identity_insert: HashSet::new(),
             dirty_buffer,
             session_id,
@@ -109,6 +112,7 @@ impl<'a> ExecutionContext<'a> {
             session_last_identity: self.session_last_identity,
             scope_identity_stack: self.scope_identity_stack,
             table_vars: self.table_vars.clone(),
+            readonly_table_vars: self.readonly_table_vars.clone(),
             temp_table_map: self.temp_table_map,
             session_table_var_map: self.session_table_var_map,
             scope_vars: self.scope_vars.clone(),
@@ -126,6 +130,7 @@ impl<'a> ExecutionContext<'a> {
             skip_instead_of: self.skip_instead_of,
             last_error: self.last_error.clone(),
             trancount: self.trancount,
+            xact_state: self.xact_state,
             identity_insert: self.identity_insert.clone(),
             dirty_buffer: self.dirty_buffer.clone(),
             session_id: self.session_id,
@@ -143,6 +148,7 @@ impl<'a> ExecutionContext<'a> {
             session_last_identity: self.session_last_identity,
             scope_identity_stack: self.scope_identity_stack,
             table_vars: self.table_vars.clone(),
+            readonly_table_vars: self.readonly_table_vars.clone(),
             temp_table_map: self.temp_table_map,
             session_table_var_map: self.session_table_var_map,
             scope_vars: self.scope_vars.clone(),
@@ -160,6 +166,7 @@ impl<'a> ExecutionContext<'a> {
             skip_instead_of: self.skip_instead_of,
             last_error: self.last_error.clone(),
             trancount: self.trancount,
+            xact_state: self.xact_state,
             identity_insert: self.identity_insert.clone(),
             dirty_buffer: self.dirty_buffer.clone(),
             session_id: self.session_id,
@@ -181,6 +188,7 @@ impl<'a> ExecutionContext<'a> {
             session_last_identity: self.session_last_identity,
             scope_identity_stack: self.scope_identity_stack,
             table_vars: self.table_vars.clone(),
+            readonly_table_vars: self.readonly_table_vars.clone(),
             temp_table_map: self.temp_table_map,
             session_table_var_map: self.session_table_var_map,
             scope_vars: self.scope_vars.clone(),
@@ -198,6 +206,7 @@ impl<'a> ExecutionContext<'a> {
             skip_instead_of: self.skip_instead_of,
             last_error: self.last_error.clone(),
             trancount: self.trancount,
+            xact_state: self.xact_state,
             identity_insert: self.identity_insert.clone(),
             dirty_buffer: self.dirty_buffer.clone(),
             session_id: self.session_id,
@@ -215,6 +224,7 @@ impl<'a> ExecutionContext<'a> {
     pub fn enter_scope(&mut self) {
         self.scope_vars.push(vec![]);
         self.table_vars.push(HashMap::new());
+        self.readonly_table_vars.push(HashSet::new());
         self.scope_identity_stack.push(None);
     }
 
@@ -255,6 +265,9 @@ impl<'a> ExecutionContext<'a> {
                 }
             }
         }
+        if self.readonly_table_vars.len() > 1 {
+            let _ = self.readonly_table_vars.pop();
+        }
         // Preserve identity value when leaving scope (propagate to parent)
         if let Some(val) = self.scope_identity_stack.pop() {
             if let Some(last) = self.scope_identity_stack.last_mut() {
@@ -278,6 +291,23 @@ impl<'a> ExecutionContext<'a> {
         }
         self.session_table_var_map
             .insert(logical_name.to_uppercase(), physical_name.to_string());
+    }
+
+    pub fn mark_table_var_readonly(&mut self, logical_name: &str) {
+        if let Some(scope) = self.readonly_table_vars.last_mut() {
+            scope.insert(logical_name.to_uppercase());
+        }
+    }
+
+    pub fn is_readonly_table_var(&self, logical_name: &str) -> bool {
+        let mut upper = logical_name.to_uppercase();
+        if upper.starts_with("DBO.") {
+            upper = upper["DBO.".len()..].to_string();
+        }
+        self.readonly_table_vars
+            .iter()
+            .rev()
+            .any(|scope| scope.contains(&upper))
     }
 
     pub fn resolve_table_name(&self, logical: &str) -> Option<String> {
@@ -331,10 +361,15 @@ impl<'a> ExecutionContext<'a> {
     }
 
     pub fn get_window_value(&self, expr: &crate::ast::Expr) -> Option<Value> {
-        self.window_context.as_ref().and_then(|m| m.get(expr).cloned())
+        self.window_context
+            .as_ref()
+            .and_then(|m| m.get(expr).cloned())
     }
 
-    pub fn create_snapshot(&self, options: &super::tooling::SessionOptions) -> super::session::SessionSnapshot {
+    pub fn create_snapshot(
+        &self,
+        options: &super::tooling::SessionOptions,
+    ) -> super::session::SessionSnapshot {
         super::session::SessionSnapshot {
             variables: self.variables.clone(),
             identities: super::session::IdentityState {
@@ -355,7 +390,11 @@ impl<'a> ExecutionContext<'a> {
         }
     }
 
-    pub fn restore_snapshot(&mut self, snapshot: super::session::SessionSnapshot, options: &mut super::tooling::SessionOptions) {
+    pub fn restore_snapshot(
+        &mut self,
+        snapshot: super::session::SessionSnapshot,
+        options: &mut super::tooling::SessionOptions,
+    ) {
         *self.variables = snapshot.variables;
         *self.session_last_identity = snapshot.identities.last_identity;
         *self.scope_identity_stack = snapshot.identities.scope_stack;

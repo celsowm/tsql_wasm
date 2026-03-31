@@ -1,5 +1,6 @@
-use crate::ast::{SelectStmt, TableRef, TableName};
-use crate::catalog::{Catalog, RoutineKind, TableDef, ColumnDef};
+use crate::ast::RoutineParamType;
+use crate::ast::{SelectStmt, TableName, TableRef};
+use crate::catalog::{Catalog, ColumnDef, RoutineKind, TableDef};
 use crate::error::DbError;
 use crate::parser::parse_expr_subquery_aware;
 use crate::storage::{Storage, StoredRow};
@@ -21,15 +22,21 @@ pub(crate) fn bind_table(
     query_executor_proxy: impl Fn(SelectStmt, &mut ExecutionContext) -> Result<QueryResult, DbError>,
 ) -> Result<BoundTable, DbError> {
     if let TableName::Subquery(ref select) = tref.name {
-        let alias = tref.alias.clone().ok_or_else(|| DbError::Semantic("subquery in FROM must have an alias".into()))?;
+        let alias = tref
+            .alias
+            .clone()
+            .ok_or_else(|| DbError::Semantic("subquery in FROM must have an alias".into()))?;
         let result = query_executor_proxy(*select.clone(), ctx)?;
-        
+
         let table_def = TableDef {
             id: 0,
             schema_id: 1,
             name: alias.clone(),
-            columns: result.columns.iter().enumerate().map(|(i, cname)| {
-                ColumnDef {
+            columns: result
+                .columns
+                .iter()
+                .enumerate()
+                .map(|(i, cname)| ColumnDef {
                     id: (i + 1) as u32,
                     name: cname.clone(),
                     data_type: result.column_types[i].clone(),
@@ -42,14 +49,21 @@ pub(crate) fn bind_table(
                     check: None,
                     check_constraint_name: None,
                     computed_expr: None,
-                }
-            }).collect(),
+                })
+                .collect(),
             check_constraints: vec![],
             foreign_keys: vec![],
         };
 
-        let rows = result.rows.into_iter().map(|values| StoredRow { values, deleted: false }).collect();
-        
+        let rows = result
+            .rows
+            .into_iter()
+            .map(|values| StoredRow {
+                values,
+                deleted: false,
+            })
+            .collect();
+
         return Ok(BoundTable {
             alias,
             table: table_def,
@@ -60,10 +74,13 @@ pub(crate) fn bind_table(
     if let Some(bound_tvf) = bind_builtin_tvf(catalog, storage, clock, &tref, ctx)? {
         return Ok(bound_tvf);
     }
-    if let Some(bound_tvf) = bind_inline_tvf(catalog, storage, clock, &tref, ctx, &query_executor_proxy)? {
+    if let Some(bound_tvf) =
+        bind_inline_tvf(catalog, storage, clock, &tref, ctx, &query_executor_proxy)?
+    {
         return Ok(bound_tvf);
     }
-    if let Some(bound_view) = bind_view(catalog, storage, clock, &tref, ctx, &query_executor_proxy)? {
+    if let Some(bound_view) = bind_view(catalog, storage, clock, &tref, ctx, &query_executor_proxy)?
+    {
         return Ok(bound_view);
     }
     planner_bind_table(tref, catalog, ctx)
@@ -89,11 +106,15 @@ fn bind_builtin_tvf(
     let inner = name
         .strip_prefix("STRING_SPLIT(")
         .and_then(|s| s.strip_suffix(')'))
-        .ok_or_else(|| DbError::Parse("STRING_SPLIT requires (string, separator[, enable_ordinal])".into()))?;
+        .ok_or_else(|| {
+            DbError::Parse("STRING_SPLIT requires (string, separator[, enable_ordinal])".into())
+        })?;
 
     let parts = crate::parser::utils::split_csv_top_level(inner);
     if parts.len() < 2 || parts.len() > 3 {
-        return Err(DbError::Parse("STRING_SPLIT requires 2 or 3 arguments".into()));
+        return Err(DbError::Parse(
+            "STRING_SPLIT requires 2 or 3 arguments".into(),
+        ));
     }
 
     let string_expr = parse_expr_subquery_aware(&parts[0])?;
@@ -107,7 +128,11 @@ fn bind_builtin_tvf(
             Value::TinyInt(v) => v != 0,
             Value::SmallInt(v) => v != 0,
             Value::Bit(v) => v,
-            _ => return Err(DbError::Execution("STRING_SPLIT third argument (enable_ordinal) must be an integer".into())),
+            _ => {
+                return Err(DbError::Execution(
+                    "STRING_SPLIT third argument (enable_ordinal) must be an integer".into(),
+                ))
+            }
         }
     } else {
         false
@@ -118,12 +143,20 @@ fn bind_builtin_tvf(
 
     let string_str = match &string_val {
         Value::VarChar(s) | Value::NVarChar(s) | Value::Char(s) | Value::NChar(s) => s.clone(),
-        _ => return Err(DbError::Execution("STRING_SPLIT first argument must be a string".into())),
+        _ => {
+            return Err(DbError::Execution(
+                "STRING_SPLIT first argument must be a string".into(),
+            ))
+        }
     };
 
     let separator_str = match &separator_val {
         Value::VarChar(s) | Value::NVarChar(s) | Value::Char(s) | Value::NChar(s) => s.clone(),
-        _ => return Err(DbError::Execution("STRING_SPLIT second argument must be a string".into())),
+        _ => {
+            return Err(DbError::Execution(
+                "STRING_SPLIT second argument must be a string".into(),
+            ))
+        }
     };
 
     let split_parts: Vec<&str> = string_str.split(&separator_str).collect();
@@ -239,8 +272,8 @@ fn bind_view(
                 computed_expr: None,
             })
             .collect(),
-        check_constraints: vec![], foreign_keys: vec![],
-
+        check_constraints: vec![],
+        foreign_keys: vec![],
     };
     let rows = result
         .rows
@@ -300,16 +333,15 @@ fn bind_inline_tvf(
 
     ctx.enter_scope();
     for (param, arg_raw) in routine.params.iter().zip(arg_exprs.iter()) {
+        let RoutineParamType::Scalar(dt) = &param.param_type else {
+            return Err(DbError::Execution(format!(
+                "TVF '{}.{}' has unsupported non-scalar parameter '{}'",
+                schema, fname, param.name
+            )));
+        };
         let expr = parse_expr_subquery_aware(arg_raw)?;
-        let val = eval_expr(
-            &expr,
-            &[],
-            ctx,
-            catalog,
-            storage,
-            clock,
-        )?;
-        let ty = super::super::type_mapping::data_type_spec_to_runtime(&param.data_type);
+        let val = eval_expr(&expr, &[], ctx, catalog, storage, clock)?;
+        let ty = super::super::type_mapping::data_type_spec_to_runtime(dt);
         let coerced = super::super::value_ops::coerce_value_to_type(val, &ty)?;
         ctx.variables.insert(param.name.clone(), (ty, coerced));
         ctx.register_declared_var(&param.name);
@@ -341,8 +373,8 @@ fn bind_inline_tvf(
                 computed_expr: None,
             })
             .collect(),
-        check_constraints: vec![], foreign_keys: vec![],
-
+        check_constraints: vec![],
+        foreign_keys: vec![],
     };
     let rows = result
         .rows

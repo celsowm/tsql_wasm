@@ -9,21 +9,20 @@ use crate::storage::Storage;
 
 use super::super::clock::Clock;
 use super::super::context::ExecutionContext;
+use super::super::dirty_buffer;
 use super::super::journal::{Journal, JournalEvent};
 use super::super::locks::{SessionId, TxWorkspace};
 use super::super::result::QueryResult;
 use super::super::schema::SchemaExecutor;
 use super::super::script::ScriptExecutor;
-use super::super::session::{SessionRuntime, SharedState, SessionSnapshot};
+use super::super::session::{SessionRuntime, SessionSnapshot, SharedState};
 use super::super::table_util::{collect_write_tables, is_transaction_statement};
 use super::super::tooling::{
-    analyze_sql_batch, apply_set_option,
-    collect_read_tables as collect_read_tables_tooling,
-    collect_write_tables as collect_write_tables_tooling, explain_statement,
-    split_sql_statements, statement_compat_warnings, CompatibilityReport, ExecutionTrace,
-    ExplainPlan, SessionOptions, TraceStatementEvent,
+    analyze_sql_batch, apply_set_option, collect_read_tables as collect_read_tables_tooling,
+    collect_write_tables as collect_write_tables_tooling, explain_statement, split_sql_statements,
+    statement_compat_warnings, CompatibilityReport, ExecutionTrace, ExplainPlan, SessionOptions,
+    TraceStatementEvent,
 };
-use super::super::dirty_buffer;
 use super::super::transaction::TransactionManager;
 use super::super::transaction_exec;
 use super::persistence::DatabaseInner;
@@ -66,7 +65,7 @@ where
             Ok(session.options.quoted_identifier)
         })?;
         drop(guard);
-        
+
         let stmts = parse_batch_with_quoted_ident(sql, quoted_ident)?;
         self.execute_session_batch(session_id, stmts)
     }
@@ -74,13 +73,14 @@ where
     fn execute_session_batch_sql_multi(
         &self,
         session_id: SessionId,
-        sql: &str) -> Result<Vec<Option<QueryResult>>, DbError> {
+        sql: &str,
+    ) -> Result<Vec<Option<QueryResult>>, DbError> {
         let mut guard = self.inner.lock().expect("database mutex poisoned");
         let quoted_ident = guard.with_session_mut(session_id, |_state, session| {
             Ok(session.options.quoted_identifier)
         })?;
         drop(guard);
-        
+
         let stmts = parse_batch_with_quoted_ident(sql, quoted_ident)?;
         let mut guard = self.inner.lock().expect("database mutex poisoned");
         guard.with_session_mut(session_id, |state, session| {
@@ -253,13 +253,18 @@ where
         &mut session.cursors.map,
         &mut session.cursors.fetch_status,
         &mut session.diagnostics.print_output,
-        if session.tx_manager.active.is_some() { Some(state.dirty_buffer.clone()) } else { None },
+        if session.tx_manager.active.is_some() {
+            Some(state.dirty_buffer.clone())
+        } else {
+            None
+        },
         session_id,
     );
     ctx.enter_scope();
 
     for stmt in stmts {
         ctx.trancount = session.tx_manager.depth;
+        ctx.xact_state = session.tx_manager.xact_state;
         ctx.identity_insert = session.options.identity_insert.clone();
         if is_transaction_statement(&stmt) {
             match transaction_exec::execute_transaction_statement(
@@ -310,8 +315,11 @@ where
             let _ = ctx.leave_scope_collect_table_vars();
         }
     } else {
-        cleanup_scope_table_vars(&mut state.storage.catalog, &mut state.storage.storage, &mut ctx)
-?;
+        cleanup_scope_table_vars(
+            &mut state.storage.catalog,
+            &mut state.storage.storage,
+            &mut ctx,
+        )?;
     }
     out
 }
@@ -340,13 +348,18 @@ where
         &mut session.cursors.map,
         &mut session.cursors.fetch_status,
         &mut session.diagnostics.print_output,
-        if session.tx_manager.active.is_some() { Some(state.dirty_buffer.clone()) } else { None },
+        if session.tx_manager.active.is_some() {
+            Some(state.dirty_buffer.clone())
+        } else {
+            None
+        },
         session_id,
     );
     ctx.enter_scope();
 
     for stmt in stmts {
         ctx.trancount = session.tx_manager.depth;
+        ctx.xact_state = session.tx_manager.xact_state;
         ctx.identity_insert = session.options.identity_insert.clone();
         if is_transaction_statement(&stmt) {
             match transaction_exec::execute_transaction_statement(
@@ -361,7 +374,11 @@ where
             ) {
                 Ok(r) => results.push(r),
                 Err(e) => {
-                    let _ = cleanup_scope_table_vars(&mut state.storage.catalog, &mut state.storage.storage, &mut ctx);
+                    let _ = cleanup_scope_table_vars(
+                        &mut state.storage.catalog,
+                        &mut state.storage.storage,
+                        &mut ctx,
+                    );
                     return Err(e);
                 }
             }
@@ -383,7 +400,11 @@ where
                     break;
                 }
                 Err(e) => {
-                    let _ = cleanup_scope_table_vars(&mut state.storage.catalog, &mut state.storage.storage, &mut ctx);
+                    let _ = cleanup_scope_table_vars(
+                        &mut state.storage.catalog,
+                        &mut state.storage.storage,
+                        &mut ctx,
+                    );
                     return Err(e);
                 }
             }
@@ -397,8 +418,11 @@ where
             let _ = ctx.leave_scope_collect_table_vars();
         }
     } else {
-        cleanup_scope_table_vars(&mut state.storage.catalog, &mut state.storage.storage, &mut ctx)
-?;
+        cleanup_scope_table_vars(
+            &mut state.storage.catalog,
+            &mut state.storage.storage,
+            &mut ctx,
+        )?;
     }
 
     Ok(results)
@@ -427,10 +451,15 @@ where
         &mut session.cursors.map,
         &mut session.cursors.fetch_status,
         &mut session.diagnostics.print_output,
-        if session.tx_manager.active.is_some() { Some(state.dirty_buffer.clone()) } else { None },
+        if session.tx_manager.active.is_some() {
+            Some(state.dirty_buffer.clone())
+        } else {
+            None
+        },
         session_id,
     );
     ctx.trancount = session.tx_manager.depth;
+    ctx.xact_state = session.tx_manager.xact_state;
     ctx.identity_insert = session.options.identity_insert.clone();
 
     if is_transaction_statement(&stmt) {
@@ -477,7 +506,6 @@ where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
     S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
-
     if let Statement::SetOption(opt) = &stmt {
         let apply = apply_set_option(opt, session_options)?;
         ctx.ansi_nulls = session_options.ansi_nulls;
@@ -504,16 +532,12 @@ where
         .map(|tx| tx.isolation_level)
         .unwrap_or(tx_manager.session_isolation_level);
     let is_select = matches!(stmt, Statement::Select(_));
-    let read_uncommitted_dirty =
-        isolation_level == IsolationLevel::ReadUncommitted && is_select;
+    let read_uncommitted_dirty = isolation_level == IsolationLevel::ReadUncommitted && is_select;
 
     if tx_manager.active.is_some() {
-        state.table_locks.acquire_statement_locks(
-            session_id,
-            tx_manager,
-            workspace_slot,
-            &stmt,
-        )?;
+        state
+            .table_locks
+            .acquire_statement_locks(session_id, tx_manager, workspace_slot, &stmt)?;
 
         let out = if read_uncommitted_dirty {
             // READ UNCOMMITTED: build a merged view with dirty writes from all sessions
@@ -542,8 +566,14 @@ where
             transaction_exec::register_read_tables(workspace_slot, &stmt);
             transaction_exec::register_workspace_write_tables(workspace_slot, &stmt);
             transaction_exec::register_write_intent(tx_manager, journal, &stmt);
+            if tx_manager.xact_state != -1 {
+                tx_manager.xact_state = 1;
+            }
         } else if session_options.xact_abort
-            && !matches!(out, Err(DbError::Break | DbError::Continue | DbError::Return(_)))
+            && !matches!(
+                out,
+                Err(DbError::Break | DbError::Continue | DbError::Return(_))
+            )
         {
             transaction_exec::force_xact_abort(
                 state,
@@ -554,6 +584,11 @@ where
                 ctx,
                 session_options,
             );
+        } else if !matches!(
+            out,
+            Err(DbError::Break | DbError::Continue | DbError::Return(_))
+        ) {
+            tx_manager.xact_state = -1;
         }
         out
     } else {
@@ -590,7 +625,10 @@ where
         if out.is_ok() {
             state.storage.commit_ts += 1;
             for table in &written_tables {
-                state.storage.table_versions.insert(table.clone(), state.storage.commit_ts);
+                state
+                    .storage
+                    .table_versions
+                    .insert(table.clone(), state.storage.commit_ts);
             }
             let checkpoint = state.to_checkpoint();
             if let Err(e) = state.durability.persist_checkpoint(&checkpoint) {

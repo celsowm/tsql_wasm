@@ -2,6 +2,68 @@ use crate::ast::*;
 use crate::error::DbError;
 use crate::parser::utils::{find_matching_paren_index, parse_object_name, split_csv_top_level};
 
+fn parse_routine_param(raw: &str) -> Result<RoutineParam, DbError> {
+    let tokens = raw.split_whitespace().collect::<Vec<_>>();
+    if tokens.len() < 2 {
+        return Err(DbError::Parse("invalid routine parameter".into()));
+    }
+    let name = tokens[0].to_string();
+    let type_token = tokens[1];
+    let mut idx = 2usize;
+    let mut default = None;
+    let mut is_output = false;
+    let mut is_readonly = false;
+    while idx < tokens.len() {
+        if tokens[idx].eq_ignore_ascii_case("=") {
+            if idx + 1 >= tokens.len() {
+                return Err(DbError::Parse(
+                    "missing default value in routine parameter".into(),
+                ));
+            }
+            let expr_txt = tokens[idx + 1..].join(" ");
+            default = Some(crate::parser::expression::parse_expr(&expr_txt)?);
+            break;
+        }
+        if tokens[idx].eq_ignore_ascii_case("OUTPUT") {
+            is_output = true;
+        } else if tokens[idx].eq_ignore_ascii_case("READONLY") {
+            is_readonly = true;
+        }
+        idx += 1;
+    }
+
+    let param_type = match super::parse_data_type_inline(type_token) {
+        Ok(dt) => RoutineParamType::Scalar(dt),
+        Err(_) => RoutineParamType::TableType(parse_object_name(type_token)),
+    };
+
+    if matches!(param_type, RoutineParamType::TableType(_)) {
+        if !is_readonly {
+            return Err(DbError::Parse(
+                "table-valued parameters must be declared READONLY".into(),
+            ));
+        }
+        if is_output {
+            return Err(DbError::Parse(
+                "table-valued parameters cannot be OUTPUT".into(),
+            ));
+        }
+        if default.is_some() {
+            return Err(DbError::Parse(
+                "table-valued parameters cannot have default values".into(),
+            ));
+        }
+    }
+
+    Ok(RoutineParam {
+        name,
+        param_type,
+        is_output,
+        is_readonly,
+        default,
+    })
+}
+
 pub(crate) fn parse_routine_params(input: &str) -> Result<Vec<RoutineParam>, DbError> {
     let trimmed = input
         .trim()
@@ -13,33 +75,7 @@ pub(crate) fn parse_routine_params(input: &str) -> Result<Vec<RoutineParam>, DbE
     }
     let mut out = Vec::new();
     for raw in split_csv_top_level(trimmed) {
-        let tokens = raw.split_whitespace().collect::<Vec<_>>();
-        if tokens.len() < 2 {
-            return Err(DbError::Parse("invalid routine parameter".into()));
-        }
-        let name = tokens[0].to_string();
-        let mut idx = 1usize;
-        let data_type = super::parse_data_type_inline(tokens[idx])?;
-        idx += 1;
-        let mut default = None;
-        let mut is_output = false;
-        while idx < tokens.len() {
-            if tokens[idx].eq_ignore_ascii_case("=") {
-                let expr_txt = tokens[idx + 1..].join(" ");
-                default = Some(crate::parser::expression::parse_expr(&expr_txt)?);
-                break;
-            }
-            if tokens[idx].eq_ignore_ascii_case("OUTPUT") {
-                is_output = true;
-            }
-            idx += 1;
-        }
-        out.push(RoutineParam {
-            name,
-            data_type,
-            is_output,
-            default,
-        });
+        out.push(parse_routine_param(&raw)?);
     }
     Ok(out)
 }
@@ -84,6 +120,14 @@ pub(crate) fn parse_create_function(sql: &str) -> Result<Statement, DbError> {
         .ok_or_else(|| DbError::Parse("CREATE FUNCTION missing ')'".into()))?;
     let params_raw = after[open + 1..close].trim();
     let params = parse_routine_params(params_raw)?;
+    if params
+        .iter()
+        .any(|p| matches!(p.param_type, RoutineParamType::TableType(_)))
+    {
+        return Err(DbError::Parse(
+            "functions do not support table-valued parameters".into(),
+        ));
+    }
     let rest = after[close + 1..].trim();
     let returns_idx = crate::parser::utils::find_keyword_top_level(rest, "RETURNS")
         .ok_or_else(|| DbError::Parse("CREATE FUNCTION missing RETURNS".into()))?;

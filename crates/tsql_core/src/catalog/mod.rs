@@ -112,6 +112,14 @@ pub struct RoutineDef {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TableTypeDef {
+    pub schema: String,
+    pub name: String,
+    pub columns: Vec<crate::ast::ColumnSpec>,
+    pub table_constraints: Vec<crate::ast::TableConstraintSpec>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ViewDef {
     pub schema: String,
     pub name: String,
@@ -170,6 +178,10 @@ pub trait Catalog: std::fmt::Debug + Send + Sync {
         expect_function: bool,
     ) -> Result<(), DbError>;
     fn find_routine(&self, schema: &str, name: &str) -> Option<&RoutineDef>;
+    fn create_table_type(&mut self, def: TableTypeDef) -> Result<(), DbError>;
+    fn drop_table_type(&mut self, schema: &str, name: &str) -> Result<(), DbError>;
+    fn find_table_type(&self, schema: &str, name: &str) -> Option<&TableTypeDef>;
+    fn get_table_types(&self) -> &[TableTypeDef];
     fn create_view(&mut self, schema: &str, name: &str, query: Statement) -> Result<(), DbError>;
     fn drop_view(&mut self, schema: &str, name: &str) -> Result<(), DbError>;
     fn find_view(&self, schema: &str, name: &str) -> Option<&ViewDef>;
@@ -188,6 +200,7 @@ pub struct CatalogImpl {
     pub tables: Vec<TableDef>,
     pub indexes: Vec<IndexDef>,
     pub routines: Vec<RoutineDef>,
+    pub table_types: Vec<TableTypeDef>,
     pub views: Vec<ViewDef>,
     pub triggers: Vec<TriggerDef>,
     next_schema_id: u32,
@@ -508,9 +521,48 @@ impl Catalog for CatalogImpl {
             .find(|r| r.schema.eq_ignore_ascii_case(schema) && r.name.eq_ignore_ascii_case(name))
     }
 
+    fn create_table_type(&mut self, def: TableTypeDef) -> Result<(), DbError> {
+        if self.table_types.iter().any(|t| {
+            t.schema.eq_ignore_ascii_case(&def.schema) && t.name.eq_ignore_ascii_case(&def.name)
+        }) {
+            return Err(DbError::Semantic(format!(
+                "type '{}.{}' already exists",
+                def.schema, def.name
+            )));
+        }
+        self.table_types.push(def);
+        Ok(())
+    }
+
+    fn drop_table_type(&mut self, schema: &str, name: &str) -> Result<(), DbError> {
+        let Some(pos) = self.table_types.iter().position(|t| {
+            t.schema.eq_ignore_ascii_case(schema) && t.name.eq_ignore_ascii_case(name)
+        }) else {
+            return Err(DbError::Semantic(format!(
+                "type '{}.{}' not found",
+                schema, name
+            )));
+        };
+        self.table_types.remove(pos);
+        Ok(())
+    }
+
+    fn find_table_type(&self, schema: &str, name: &str) -> Option<&TableTypeDef> {
+        self.table_types
+            .iter()
+            .find(|t| t.schema.eq_ignore_ascii_case(schema) && t.name.eq_ignore_ascii_case(name))
+    }
+
+    fn get_table_types(&self) -> &[TableTypeDef] {
+        &self.table_types
+    }
+
     fn create_view(&mut self, schema: &str, name: &str, query: Statement) -> Result<(), DbError> {
         if self.find_view(schema, name).is_some() {
-            return Err(DbError::Semantic(format!("view '{}.{}' already exists", schema, name)));
+            return Err(DbError::Semantic(format!(
+                "view '{}.{}' already exists",
+                schema, name
+            )));
         }
         self.views.push(ViewDef {
             schema: schema.to_string(),
@@ -521,17 +573,21 @@ impl Catalog for CatalogImpl {
     }
 
     fn drop_view(&mut self, schema: &str, name: &str) -> Result<(), DbError> {
-        let pos = self.views.iter().position(|v| {
-            v.schema.eq_ignore_ascii_case(schema) && v.name.eq_ignore_ascii_case(name)
-        }).ok_or_else(|| DbError::Semantic(format!("view '{}.{}' not found", schema, name)))?;
+        let pos = self
+            .views
+            .iter()
+            .position(|v| {
+                v.schema.eq_ignore_ascii_case(schema) && v.name.eq_ignore_ascii_case(name)
+            })
+            .ok_or_else(|| DbError::Semantic(format!("view '{}.{}' not found", schema, name)))?;
         self.views.remove(pos);
         Ok(())
     }
 
     fn find_view(&self, schema: &str, name: &str) -> Option<&ViewDef> {
-        self.views.iter().find(|v| {
-            v.schema.eq_ignore_ascii_case(schema) && v.name.eq_ignore_ascii_case(name)
-        })
+        self.views
+            .iter()
+            .find(|v| v.schema.eq_ignore_ascii_case(schema) && v.name.eq_ignore_ascii_case(name))
     }
 
     fn create_trigger(&mut self, trigger: TriggerDef) -> Result<(), DbError> {
@@ -539,24 +595,35 @@ impl Catalog for CatalogImpl {
             t.schema.eq_ignore_ascii_case(&trigger.schema)
                 && t.name.eq_ignore_ascii_case(&trigger.name)
         }) {
-            return Err(DbError::Semantic(format!("trigger '{}.{}' already exists", trigger.schema, trigger.name)));
+            return Err(DbError::Semantic(format!(
+                "trigger '{}.{}' already exists",
+                trigger.schema, trigger.name
+            )));
         }
         self.triggers.push(trigger);
         Ok(())
     }
 
     fn drop_trigger(&mut self, schema: &str, name: &str) -> Result<(), DbError> {
-        let pos = self.triggers.iter().position(|t| {
-            t.schema.eq_ignore_ascii_case(schema) && t.name.eq_ignore_ascii_case(name)
-        }).ok_or_else(|| DbError::Semantic(format!("trigger '{}.{}' not found", schema, name)))?;
+        let pos = self
+            .triggers
+            .iter()
+            .position(|t| {
+                t.schema.eq_ignore_ascii_case(schema) && t.name.eq_ignore_ascii_case(name)
+            })
+            .ok_or_else(|| DbError::Semantic(format!("trigger '{}.{}' not found", schema, name)))?;
         self.triggers.remove(pos);
         Ok(())
     }
 
     fn find_triggers_for_table(&self, schema: &str, name: &str) -> Vec<&TriggerDef> {
-        self.triggers.iter().filter(|t| {
-            t.table_schema.eq_ignore_ascii_case(schema) && t.table_name.eq_ignore_ascii_case(name)
-        }).collect()
+        self.triggers
+            .iter()
+            .filter(|t| {
+                t.table_schema.eq_ignore_ascii_case(schema)
+                    && t.table_name.eq_ignore_ascii_case(name)
+            })
+            .collect()
     }
 
     fn get_views(&self) -> &[ViewDef] {

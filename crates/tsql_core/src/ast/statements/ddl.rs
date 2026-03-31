@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
-use crate::ast::ObjectName;
-use crate::ast::expressions::Expr;
 use crate::ast::data_types::DataTypeSpec;
+use crate::ast::expressions::Expr;
 use crate::ast::statements::query::SelectStmt;
+use crate::ast::ObjectName;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateTableStmt {
@@ -66,6 +66,18 @@ pub struct CreateViewStmt {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DropViewStmt {
+    pub name: ObjectName,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateTypeStmt {
+    pub name: ObjectName,
+    pub columns: Vec<ColumnSpec>,
+    pub table_constraints: Vec<TableConstraintSpec>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DropTypeStmt {
     pub name: ObjectName,
 }
 

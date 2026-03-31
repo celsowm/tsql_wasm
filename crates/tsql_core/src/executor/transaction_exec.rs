@@ -56,7 +56,14 @@ where
         }
         Statement::CommitTransaction(_) => {
             if tx_manager.depth == 0 {
-                return Err(DbError::Execution("COMMIT without active transaction".into()));
+                return Err(DbError::Execution(
+                    "COMMIT without active transaction".into(),
+                ));
+            }
+            if tx_manager.xact_state == -1 {
+                return Err(DbError::Execution(
+                    "The current transaction cannot be committed and cannot support operations that write to the log file. Roll back the transaction.".into(),
+                ));
             }
             tx_manager.depth -= 1;
             if tx_manager.depth > 0 {
@@ -100,12 +107,18 @@ where
             state.storage.storage = workspace.storage.clone();
             state.storage.commit_ts = next_commit_ts;
             for table in &workspace.write_tables {
-                state.storage.table_versions.insert(table.clone(), state.storage.commit_ts);
+                state
+                    .storage
+                    .table_versions
+                    .insert(table.clone(), state.storage.commit_ts);
             }
-            state.table_locks.release_workspace_locks(session_id, workspace_slot, 0);
+            state
+                .table_locks
+                .release_workspace_locks(session_id, workspace_slot, 0);
             state.dirty_buffer.lock().unwrap().clear_session(session_id);
             tx_manager.active = None;
             tx_manager.commit_ts = state.storage.commit_ts;
+            tx_manager.xact_state = 0;
             *workspace_slot = None;
             journal.record(JournalEvent::Commit);
             Ok(None)
@@ -123,7 +136,7 @@ where
                     &mut extra,
                 )?;
                 ctx.restore_snapshot(extra, session_options);
-                
+
                 if let Some(ref active_tx) = tx_manager.active {
                     let keep = active_tx.write_set.len();
                     if workspace.write_tables.len() > keep {
@@ -136,9 +149,13 @@ where
             }
             if let Some(ref active_tx) = tx_manager.active {
                 let keep_depth = active_tx.savepoints.len();
-                state.table_locks.release_workspace_locks(session_id, workspace_slot, keep_depth);
+                state
+                    .table_locks
+                    .release_workspace_locks(session_id, workspace_slot, keep_depth);
             } else {
-                state.table_locks.release_workspace_locks(session_id, workspace_slot, 0);
+                state
+                    .table_locks
+                    .release_workspace_locks(session_id, workspace_slot, 0);
                 state.dirty_buffer.lock().unwrap().clear_session(session_id);
                 *workspace_slot = None;
             }
@@ -175,8 +192,7 @@ pub(crate) fn force_xact_abort<C, S>(
     workspace_slot: &mut Option<TxWorkspace<C, S>>,
     ctx: &mut super::context::ExecutionContext,
     session_options: &mut super::tooling::SessionOptions,
-)
-where
+) where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
     S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
@@ -185,19 +201,30 @@ where
     }
     if let Some(workspace) = workspace_slot.as_mut() {
         let mut extra = ctx.create_snapshot(session_options);
-        let _ = tx_manager.rollback(None, &mut workspace.catalog, &mut workspace.storage, &mut extra);
+        let _ = tx_manager.rollback(
+            None,
+            &mut workspace.catalog,
+            &mut workspace.storage,
+            &mut extra,
+        );
         ctx.restore_snapshot(extra, session_options);
     }
-    state.table_locks.release_workspace_locks(session_id, workspace_slot, 0);
+    state
+        .table_locks
+        .release_workspace_locks(session_id, workspace_slot, 0);
     state.dirty_buffer.lock().unwrap().clear_session(session_id);
     *workspace_slot = None;
     tx_manager.active = None;
     tx_manager.depth = 0;
     tx_manager.commit_ts = state.storage.commit_ts;
+    tx_manager.xact_state = 0;
     journal.record(JournalEvent::Rollback { savepoint: None });
 }
 
-pub(crate) fn register_read_tables<C, S>(workspace_slot: &mut Option<TxWorkspace<C, S>>, stmt: &Statement) {
+pub(crate) fn register_read_tables<C, S>(
+    workspace_slot: &mut Option<TxWorkspace<C, S>>,
+    stmt: &Statement,
+) {
     if let Some(workspace) = workspace_slot.as_mut() {
         for table in collect_read_tables(stmt) {
             workspace.read_tables.insert(table);
@@ -205,7 +232,10 @@ pub(crate) fn register_read_tables<C, S>(workspace_slot: &mut Option<TxWorkspace
     }
 }
 
-pub(crate) fn register_workspace_write_tables<C, S>(workspace_slot: &mut Option<TxWorkspace<C, S>>, stmt: &Statement) {
+pub(crate) fn register_workspace_write_tables<C, S>(
+    workspace_slot: &mut Option<TxWorkspace<C, S>>,
+    stmt: &Statement,
+) {
     if let Some(workspace) = workspace_slot.as_mut() {
         for table in collect_write_tables(stmt) {
             workspace.write_tables.insert(table);
@@ -217,8 +247,7 @@ pub(crate) fn register_write_intent<C, S>(
     tx_manager: &mut TransactionManager<C, S, super::session::SessionSnapshot>,
     journal: &mut dyn Journal,
     stmt: &Statement,
-)
-where
+) where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
     S: Storage + Serialize + DeserializeOwned + Clone + 'static,
 {

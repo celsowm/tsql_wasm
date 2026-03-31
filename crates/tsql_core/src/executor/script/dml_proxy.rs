@@ -1,12 +1,12 @@
+use super::ScriptExecutor;
 use crate::ast::{DeleteStmt, InsertStmt, UpdateStmt};
+use crate::catalog::{Catalog, TableDef};
 use crate::error::DbError;
 use crate::executor::context::ExecutionContext;
 use crate::executor::mutation::MutationExecutor;
 use crate::executor::query::QueryExecutor;
 use crate::executor::result::QueryResult;
-use crate::catalog::{Catalog, TableDef};
 use crate::storage::{Storage, StoredRow};
-use super::ScriptExecutor;
 
 impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_insert(
@@ -14,6 +14,12 @@ impl<'a> ScriptExecutor<'a> {
         stmt: InsertStmt,
         ctx: &mut ExecutionContext,
     ) -> Result<Option<QueryResult>, DbError> {
+        if ctx.is_readonly_table_var(&stmt.table.name) {
+            return Err(DbError::Execution(format!(
+                "table-valued parameter '{}' is READONLY",
+                stmt.table.name
+            )));
+        }
         let mut mut_exec = MutationExecutor {
             catalog: self.catalog,
             storage: self.storage,
@@ -44,9 +50,10 @@ impl<'a> ScriptExecutor<'a> {
                 )));
             }
 
-            let schema_id = self.catalog.get_schema_id(schema_name).ok_or_else(|| {
-                DbError::Semantic(format!("schema '{}' not found", schema_name))
-            })?;
+            let schema_id = self
+                .catalog
+                .get_schema_id(schema_name)
+                .ok_or_else(|| DbError::Semantic(format!("schema '{}' not found", schema_name)))?;
 
             let mut columns = Vec::new();
             for (i, name) in result.columns.iter().enumerate() {
@@ -96,6 +103,12 @@ impl<'a> ScriptExecutor<'a> {
         stmt: UpdateStmt,
         ctx: &mut ExecutionContext,
     ) -> Result<Option<QueryResult>, DbError> {
+        if ctx.is_readonly_table_var(&stmt.table.name) {
+            return Err(DbError::Execution(format!(
+                "table-valued parameter '{}' is READONLY",
+                stmt.table.name
+            )));
+        }
         let mut mut_exec = MutationExecutor {
             catalog: self.catalog,
             storage: self.storage,
@@ -109,6 +122,12 @@ impl<'a> ScriptExecutor<'a> {
         stmt: DeleteStmt,
         ctx: &mut ExecutionContext,
     ) -> Result<Option<QueryResult>, DbError> {
+        if ctx.is_readonly_table_var(&stmt.table.name) {
+            return Err(DbError::Execution(format!(
+                "table-valued parameter '{}' is READONLY",
+                stmt.table.name
+            )));
+        }
         let mut mut_exec = MutationExecutor {
             catalog: self.catalog,
             storage: self.storage,

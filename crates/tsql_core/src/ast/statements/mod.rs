@@ -3,13 +3,13 @@ pub mod dml;
 pub mod procedural;
 pub mod query;
 
-use serde::{Deserialize, Serialize};
-use crate::ast::expressions::Expr;
 use crate::ast::data_types::DataTypeSpec;
-use crate::ast::statements::dml::*;
+use crate::ast::expressions::Expr;
 use crate::ast::statements::ddl::*;
-use crate::ast::statements::query::*;
+use crate::ast::statements::dml::*;
 use crate::ast::statements::procedural::*;
+use crate::ast::statements::query::*;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Statement {
@@ -22,6 +22,8 @@ pub enum Statement {
     CreateIndex(CreateIndexStmt),
     DropIndex(DropIndexStmt),
     DropTable(DropTableStmt),
+    CreateType(CreateTypeStmt),
+    DropType(DropTypeStmt),
     CreateSchema(CreateSchemaStmt),
     DropSchema(DropSchemaStmt),
     Insert(InsertStmt),
@@ -94,10 +96,17 @@ pub enum SessionOptionValue {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RoutineParamType {
+    Scalar(DataTypeSpec),
+    TableType(crate::ast::ObjectName),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoutineParam {
     pub name: String,
-    pub data_type: DataTypeSpec,
+    pub param_type: RoutineParamType,
     pub is_output: bool,
+    pub is_readonly: bool,
     pub default: Option<Expr>,
 }
 

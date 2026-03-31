@@ -6,12 +6,12 @@ pub mod statements;
 pub use common::*;
 pub use data_types::*;
 pub use expressions::*;
-pub use statements::dml::*;
-pub use statements::ddl::*;
-pub use statements::query::*;
-pub use statements::procedural::*;
-pub use statements::{
-    Statement, IsolationLevel, SessionOption, SessionOptionValue, RoutineParam,
-    SetIdentityInsertStmt,
-};
 pub use statements::ddl::ReferentialAction;
+pub use statements::ddl::*;
+pub use statements::dml::*;
+pub use statements::procedural::*;
+pub use statements::query::*;
+pub use statements::{
+    IsolationLevel, RoutineParam, RoutineParamType, SessionOption, SessionOptionValue,
+    SetIdentityInsertStmt, Statement,
+};
