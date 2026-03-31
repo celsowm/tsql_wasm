@@ -55,6 +55,7 @@ pub enum ExprToken {
     Group,
 }
 
+#[allow(dead_code)]
 pub fn tokenize_expr(input: &str) -> Result<Vec<ExprToken>, DbError> {
     tokenize_expr_with_quoted_ident(input, true)
 }

@@ -16,7 +16,7 @@ use super::table_util::{collect_read_tables, collect_write_tables};
 use super::transaction::{TransactionManager, WriteIntentKind};
 
 pub(crate) fn execute_transaction_statement<C, S>(
-    state: &mut SharedState<C, S>,
+    state: &SharedState<C, S>,
     session_id: SessionId,
     tx_manager: &mut TransactionManager<C, S, super::session::SessionSnapshot>,
     journal: &mut Box<dyn Journal>,
@@ -32,15 +32,22 @@ where
     match stmt {
         Statement::BeginTransaction(name) => {
             if tx_manager.depth == 0 {
-                let workspace_catalog = state.storage.catalog.clone();
-                let workspace_storage = state.storage.storage.clone();
-                tx_manager.commit_ts = state.storage.commit_ts;
+                let (workspace_catalog, workspace_storage, commit_ts, table_versions) = {
+                    let storage_guard = state.storage.read();
+                    (
+                        storage_guard.catalog.clone(),
+                        storage_guard.storage.clone(),
+                        storage_guard.commit_ts,
+                        storage_guard.table_versions.clone(),
+                    )
+                };
+                tx_manager.commit_ts = commit_ts;
                 let extra = ctx.create_snapshot(session_options);
                 tx_manager.begin(&workspace_catalog, &workspace_storage, &extra, name.clone())?;
                 *workspace_slot = Some(TxWorkspace {
                     catalog: workspace_catalog,
                     storage: workspace_storage,
-                    base_table_versions: state.storage.table_versions.clone(),
+                    base_table_versions: table_versions,
                     read_tables: HashSet::new(),
                     write_tables: HashSet::new(),
                     acquired_locks: Vec::new(),
@@ -77,12 +84,14 @@ where
                 DbError::Execution("internal error: missing transaction workspace".into())
             })?;
 
+            let mut storage_guard = state.storage.write();
+
             let conflicts = detect_conflicts(
                 tx.isolation_level,
                 &workspace.base_table_versions,
                 &workspace.read_tables,
                 &workspace.write_tables,
-                &state.storage.table_versions,
+                &storage_guard.table_versions,
             );
             if conflicts {
                 return Err(DbError::Execution(
@@ -90,8 +99,8 @@ where
                 ));
             }
 
-            let next_commit_ts = state.storage.commit_ts + 1;
-            let mut next_table_versions = state.storage.table_versions.clone();
+            let next_commit_ts = storage_guard.commit_ts + 1;
+            let mut next_table_versions = storage_guard.table_versions.clone();
             for table in &workspace.write_tables {
                 next_table_versions.insert(table.clone(), next_commit_ts);
             }
@@ -101,23 +110,23 @@ where
                 commit_ts: next_commit_ts,
                 table_versions: next_table_versions.clone(),
             };
-            state.durability.persist_checkpoint(&checkpoint)?;
+            state.durability.lock().persist_checkpoint(&checkpoint)?;
 
-            state.storage.catalog = workspace.catalog.clone();
-            state.storage.storage = workspace.storage.clone();
-            state.storage.commit_ts = next_commit_ts;
+            storage_guard.catalog = workspace.catalog.clone();
+            storage_guard.storage = workspace.storage.clone();
+            storage_guard.commit_ts = next_commit_ts;
             for table in &workspace.write_tables {
-                state
-                    .storage
+                storage_guard
                     .table_versions
-                    .insert(table.clone(), state.storage.commit_ts);
+                    .insert(table.clone(), next_commit_ts);
             }
             state
                 .table_locks
+                .lock()
                 .release_workspace_locks(session_id, workspace_slot, 0);
             state.dirty_buffer.lock().clear_session(session_id);
             tx_manager.active = None;
-            tx_manager.commit_ts = state.storage.commit_ts;
+            tx_manager.commit_ts = storage_guard.commit_ts;
             tx_manager.xact_state = 0;
             *workspace_slot = None;
             journal.record(JournalEvent::Commit);
@@ -151,10 +160,12 @@ where
                 let keep_depth = active_tx.savepoints.len();
                 state
                     .table_locks
+                    .lock()
                     .release_workspace_locks(session_id, workspace_slot, keep_depth);
             } else {
                 state
                     .table_locks
+                    .lock()
                     .release_workspace_locks(session_id, workspace_slot, 0);
                 state.dirty_buffer.lock().clear_session(session_id);
                 *workspace_slot = None;
@@ -185,7 +196,7 @@ where
 }
 
 pub(crate) fn force_xact_abort<C, S>(
-    state: &mut SharedState<C, S>,
+    state: &SharedState<C, S>,
     session_id: SessionId,
     tx_manager: &mut TransactionManager<C, S, super::session::SessionSnapshot>,
     journal: &mut dyn Journal,
@@ -211,12 +222,13 @@ pub(crate) fn force_xact_abort<C, S>(
     }
     state
         .table_locks
+        .lock()
         .release_workspace_locks(session_id, workspace_slot, 0);
     state.dirty_buffer.lock().clear_session(session_id);
     *workspace_slot = None;
     tx_manager.active = None;
     tx_manager.depth = 0;
-    tx_manager.commit_ts = state.storage.commit_ts;
+    tx_manager.commit_ts = state.storage.read().commit_ts;
     tx_manager.xact_state = 0;
     journal.record(JournalEvent::Rollback { savepoint: None });
 }

@@ -3,6 +3,7 @@ use crate::error::DbError;
 use crate::executor::context::ExecutionContext;
 use crate::executor::result::QueryResult;
 use crate::executor::schema::SchemaExecutor;
+use crate::executor::mutation::MutationExecutor;
 use super::ScriptExecutor;
 
 impl<'a> ScriptExecutor<'a> {
@@ -73,7 +74,13 @@ impl<'a> ScriptExecutor<'a> {
             })?
             .clone();
         self.storage.clear_table(table.id)?;
-        self.push_dirty_truncate(ctx, &table.name);
+
+        let mut_exec = MutationExecutor {
+            catalog: self.catalog,
+            storage: self.storage,
+            clock: self.clock,
+        };
+        mut_exec.push_dirty_truncate(ctx, &table.name);
         Ok(None)
     }
 
@@ -105,7 +112,12 @@ impl<'a> ScriptExecutor<'a> {
         .alter_table(stmt)?;
 
         if let Ok(rows) = self.storage.get_rows(table.id) {
-            self.push_dirty_replace(ctx, &table.name, rows);
+            let mut_exec = MutationExecutor {
+                catalog: self.catalog,
+                storage: self.storage,
+                clock: self.clock,
+            };
+            mut_exec.push_dirty_replace(ctx, &table.name, rows);
         }
 
         Ok(None)
