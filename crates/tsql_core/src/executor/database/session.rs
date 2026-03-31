@@ -11,7 +11,7 @@ use super::super::clock::Clock;
 use super::super::context::ExecutionContext;
 use super::super::dirty_buffer;
 use super::super::journal::{Journal, JournalEvent};
-use super::super::locks::{SessionId, TxWorkspace};
+use super::super::locks::{LockTable, SessionId, TxWorkspace};
 use super::super::result::QueryResult;
 use super::super::schema::SchemaExecutor;
 use super::super::script::ScriptExecutor;
@@ -565,10 +565,14 @@ where
     let read_committed_select = isolation_level == IsolationLevel::ReadCommitted && is_select;
 
     if tx_manager.active.is_some() {
-        state
-            .table_locks
-            .lock()
-            .acquire_statement_locks(session_id, tx_manager, workspace_slot, &stmt)?;
+        LockTable::acquire_statement_locks(
+            &state.table_locks,
+            session_id,
+            tx_manager,
+            workspace_slot,
+            &stmt,
+            session_options.lock_timeout_ms,
+        )?;
 
         let out = if read_uncommitted_dirty {
             let (mut dirty_catalog, mut dirty_storage) =
@@ -661,6 +665,15 @@ where
 
         let written_tables = collect_write_tables(&stmt);
         if written_tables.is_empty() {
+            LockTable::acquire_statement_locks(
+                &state.table_locks,
+                session_id,
+                tx_manager,
+                workspace_slot,
+                &stmt,
+                session_options.lock_timeout_ms,
+            )?;
+
             let mut storage_guard = state.storage.write();
             let (cat, stor) = storage_guard.get_mut_refs();
             let mut script = ScriptExecutor {
@@ -668,8 +681,19 @@ where
                 storage: stor,
                 clock,
             };
-            return script.execute(stmt, ctx);
+            let out = script.execute(stmt, ctx);
+            state.table_locks.lock().release_all_for_session(session_id);
+            return out;
         }
+
+        LockTable::acquire_statement_locks(
+            &state.table_locks,
+            session_id,
+            tx_manager,
+            workspace_slot,
+            &stmt,
+            session_options.lock_timeout_ms,
+        )?;
 
         let mut storage_guard = state.storage.write();
         let before_catalog = storage_guard.catalog.clone();
@@ -696,9 +720,11 @@ where
                 storage_guard.storage = before_storage;
                 storage_guard.table_versions = before_versions;
                 storage_guard.commit_ts = before_commit_ts;
+                state.table_locks.lock().release_all_for_session(session_id);
                 return Err(e);
             }
         }
+        state.table_locks.lock().release_all_for_session(session_id);
         out
     }
 }
