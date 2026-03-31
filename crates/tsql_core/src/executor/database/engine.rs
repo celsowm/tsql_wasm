@@ -62,7 +62,7 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
         })
     }
 
-    pub fn reset(&mut self) {
+    pub fn reset(&self) {
         self.db.reset();
     }
 
@@ -81,35 +81,43 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
         self.db.clone()
     }
 
-    pub fn execute(&mut self, stmt: Statement) -> Result<Option<QueryResult>, DbError> {
+    pub fn execute(&self, stmt: Statement) -> Result<Option<QueryResult>, DbError> {
         StatementExecutor::execute_session(&self.db, self.default_session, stmt)
     }
 
-    pub fn exec(&mut self, sql: &str) -> Result<(), DbError> {
+    pub fn exec(&self, sql: &str) -> Result<(), DbError> {
         let quoted_ident = self.session_options().quoted_identifier;
         let stmt = parse_sql_with_quoted_ident(sql, quoted_ident)?;
-        let res = self.execute(stmt)?;
+        let res = StatementExecutor::execute_session(&self.db, self.default_session, stmt)?;
         if res.is_some() {
             return Err(DbError::Execution("exec() received a query statement; use query()".into()));
         }
         Ok(())
     }
 
-    pub fn query(&mut self, sql: &str) -> Result<QueryResult, DbError> {
+    pub fn query(&self, sql: &str) -> Result<QueryResult, DbError> {
         let quoted_ident = self.session_options().quoted_identifier;
         let stmt = parse_sql_with_quoted_ident(sql, quoted_ident)?;
-        let res = self.execute(stmt)?;
+        let res = StatementExecutor::execute_session(&self.db, self.default_session, stmt)?;
         res.ok_or_else(|| DbError::Execution("query() expected a result set".into()))
     }
 
     pub fn execute_batch(
-        &mut self,
+        &self,
         stmts: Vec<Statement>,
     ) -> Result<Option<QueryResult>, DbError> {
         StatementExecutor::execute_session_batch(&self.db, self.default_session, stmts)
     }
 
-    pub fn set_journal(&mut self, journal: Box<dyn Journal>) {
+    pub fn execute_session_batch_sql(
+        &self,
+        session_id: SessionId,
+        sql: &str,
+    ) -> Result<Option<QueryResult>, DbError> {
+        StatementExecutor::execute_session_batch_sql(&self.db, session_id, sql)
+    }
+
+    pub fn set_journal(&self, journal: Box<dyn Journal>) {
         let _ = self.db.set_session_journal(self.default_session, journal);
     }
 
@@ -124,7 +132,7 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
         CheckpointManager::export_checkpoint(&self.db)
     }
 
-    pub fn import_checkpoint(&mut self, payload: &str) -> Result<(), DbError> {
+    pub fn import_checkpoint(&self, payload: &str) -> Result<(), DbError> {
         CheckpointManager::import_checkpoint(&self.db, payload)
     }
 

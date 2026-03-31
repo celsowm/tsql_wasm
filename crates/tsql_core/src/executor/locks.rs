@@ -62,6 +62,7 @@ impl<C: Clone, S: Clone> Clone for TxWorkspace<C, S> {
 pub struct LockTable {
     locks: HashMap<String, TableLockState>,
     pub condvar: std::sync::Arc<parking_lot::Condvar>,
+    pub wait_for_graph: super::deadlock::WaitForGraph,
 }
 
 impl Default for LockTable {
@@ -69,6 +70,7 @@ impl Default for LockTable {
         Self {
             locks: HashMap::new(),
             condvar: std::sync::Arc::new(parking_lot::Condvar::new()),
+            wait_for_graph: super::deadlock::WaitForGraph::new(),
         }
     }
 }
@@ -140,17 +142,22 @@ impl LockTable {
         loop {
             let mut all_acquired = true;
             let mut conflict_info = None;
+            let mut holders = std::collections::HashSet::new();
 
             // Try to acquire all locks
             for (table, mode) in &tables_to_lock {
                 if !guard.can_acquire_lock(session_id, table, *mode) {
                     all_acquired = false;
                     conflict_info = Some((table.clone(), *mode));
+                    for h in guard.get_blocking_sessions(session_id, table, *mode) {
+                        holders.insert(h);
+                    }
                     break;
                 }
             }
 
             if all_acquired {
+                guard.wait_for_graph.remove_waiter(session_id);
                 for (table, mode) in tables_to_lock {
                     guard.perform_acquire_lock(session_id, workspace_slot, &table, mode, depth);
                 }
@@ -165,8 +172,23 @@ impl LockTable {
                 )));
             }
 
+            // Deadlock detection before waiting
+            guard.wait_for_graph.remove_waiter(session_id);
+            for &holder in &holders {
+                guard.wait_for_graph.add_edge(session_id, holder);
+            }
+
+            if let Some(cycle) = guard.wait_for_graph.detect_cycle(session_id) {
+                guard.wait_for_graph.remove_waiter(session_id);
+                return Err(DbError::Deadlock(format!(
+                    "Transaction was deadlocked on lock resources with another process and has been chosen as the deadlock victim. Cycle: {:?}",
+                    cycle
+                )));
+            }
+
             let elapsed = start.elapsed();
             if timeout_ms > 0 && elapsed.as_millis() >= timeout_ms as u128 {
+                guard.wait_for_graph.remove_waiter(session_id);
                 let (table, mode) = conflict_info.unwrap();
                 return Err(DbError::Execution(format!(
                     "lock timeout ({}ms): {:?} lock on '{}' is blocked",
@@ -181,6 +203,7 @@ impl LockTable {
                 let remaining = std::time::Duration::from_millis(timeout_ms as u64)
                     .saturating_sub(elapsed);
                 if condvar.wait_for(&mut guard, remaining).timed_out() {
+                    guard.wait_for_graph.remove_waiter(session_id);
                     let (table, mode) = conflict_info.unwrap();
                     return Err(DbError::Execution(format!(
                         "lock timeout ({}ms): {:?} lock on '{}' is blocked",
@@ -189,6 +212,37 @@ impl LockTable {
                 }
             }
         }
+    }
+
+    pub fn get_blocking_sessions(&self, session_id: SessionId, table: &str, mode: LockMode) -> Vec<SessionId> {
+        let normalized = table.to_uppercase();
+        let Some(lock_state) = self.locks.get(&normalized) else {
+            return Vec::new();
+        };
+
+        let mut blockers = Vec::new();
+        match mode {
+            LockMode::Read => {
+                if let Some((writer, _)) = lock_state.writer {
+                    if writer != session_id {
+                        blockers.push(writer);
+                    }
+                }
+            }
+            LockMode::Write => {
+                if let Some((writer, _)) = lock_state.writer {
+                    if writer != session_id {
+                        blockers.push(writer);
+                    }
+                }
+                for (reader, count) in &lock_state.readers {
+                    if *reader != session_id && *count > 0 {
+                        blockers.push(*reader);
+                    }
+                }
+            }
+        }
+        blockers
     }
 
     fn can_acquire_lock(&self, session_id: SessionId, table: &str, mode: LockMode) -> bool {
@@ -285,6 +339,7 @@ impl LockTable {
         for table in tables {
             self.release_all_for_table(session_id, &table);
         }
+        self.wait_for_graph.remove_waiter(session_id);
         self.condvar.notify_all();
     }
 

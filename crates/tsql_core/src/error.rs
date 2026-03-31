@@ -21,6 +21,9 @@ pub enum DbError {
 
     #[error("storage error: {0}")]
     Storage(String),
+
+    #[error("deadlock: {0}")]
+    Deadlock(String),
 }
 
 impl DbError {
@@ -28,7 +31,7 @@ impl DbError {
         match self {
             DbError::Parse(_) => ErrorClass::Parse,
             DbError::Semantic(_) => ErrorClass::Semantic,
-            DbError::Execution(_) => ErrorClass::Execution,
+            DbError::Execution(_) | DbError::Deadlock(_) => ErrorClass::Execution,
             DbError::Storage(_) => ErrorClass::Storage,
         }
     }
@@ -39,6 +42,7 @@ impl DbError {
             DbError::Semantic(_) => "TSQL_SEMANTIC_ERROR",
             DbError::Execution(_) => "TSQL_EXECUTION_ERROR",
             DbError::Storage(_) => "TSQL_STORAGE_ERROR",
+            DbError::Deadlock(_) => "TSQL_DEADLOCK_ERROR",
         }
     }
 }
