@@ -284,3 +284,47 @@ pub(crate) fn eval_day(
         Err(_) => Ok(Value::Null),
     }
 }
+
+pub(crate) fn format_datetime_string(dt: &str, fmt: &str) -> String {
+    match fmt.to_lowercase().as_str() {
+        "yyyy" | "yyyy-mm-dd" => {
+            if dt.len() >= 10 { dt[..10].to_string() } else { dt.to_string() }
+        }
+        "mm/dd/yyyy" => {
+            if let Ok((y, m, d, _, _, _)) = parse_datetime_parts(dt) {
+                format!("{:02}/{:02}/{}", m, d, y)
+            } else {
+                dt.to_string()
+            }
+        }
+        "dd/mm/yyyy" => {
+            if let Ok((y, m, d, _, _, _)) = parse_datetime_parts(dt) {
+                format!("{:02}/{:02}/{}", d, m, y)
+            } else {
+                dt.to_string()
+            }
+        }
+        "dd MMM yyyy" | "dd MMM yyyy hh:mi:ss" => {
+            if let Ok((y, m, d, h, mi, s)) = parse_datetime_parts(dt) {
+                let months = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                let mon = if m >= 1 && m <= 12 { months[m as usize] } else { "???" };
+                if h > 0 || mi > 0 || s > 0 {
+                    format!("{:02} {} {} {:02}:{:02}:{:02}", d, mon, y, h, mi, s)
+                } else {
+                    format!("{:02} {} {}", d, mon, y)
+                }
+            } else {
+                dt.to_string()
+            }
+        }
+        "hh:mi:ss" => {
+            if let Ok((_, _, _, h, mi, s)) = parse_datetime_parts(dt) {
+                format!("{:02}:{:02}:{:02}", h, mi, s)
+            } else {
+                dt.to_string()
+            }
+        }
+        _ => dt.to_string(),
+    }
+}

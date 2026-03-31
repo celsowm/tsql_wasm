@@ -47,6 +47,10 @@ pub struct ExecutionContext<'a> {
     pub identity_insert: HashSet<String>,
     pub dirty_buffer: Option<std::sync::Arc<std::sync::Mutex<super::dirty_buffer::DirtyBuffer>>>,
     pub session_id: super::locks::SessionId,
+    pub session_database: Option<String>,
+    pub session_user: Option<String>,
+    pub session_app_name: Option<String>,
+    pub session_host_name: Option<String>,
 }
 
 impl<'a> ExecutionContext<'a> {
@@ -98,6 +102,10 @@ impl<'a> ExecutionContext<'a> {
             identity_insert: HashSet::new(),
             dirty_buffer,
             session_id,
+            session_database: None,
+            session_user: None,
+            session_app_name: None,
+            session_host_name: None,
         }
     }
 
@@ -134,6 +142,10 @@ impl<'a> ExecutionContext<'a> {
             identity_insert: self.identity_insert.clone(),
             dirty_buffer: self.dirty_buffer.clone(),
             session_id: self.session_id,
+            session_database: self.session_database.clone(),
+            session_user: self.session_user.clone(),
+            session_app_name: self.session_app_name.clone(),
+            session_host_name: self.session_host_name.clone(),
         }
     }
 
@@ -170,6 +182,10 @@ impl<'a> ExecutionContext<'a> {
             identity_insert: self.identity_insert.clone(),
             dirty_buffer: self.dirty_buffer.clone(),
             session_id: self.session_id,
+            session_database: self.session_database.clone(),
+            session_user: self.session_user.clone(),
+            session_app_name: self.session_app_name.clone(),
+            session_host_name: self.session_host_name.clone(),
         }
     }
 
@@ -210,6 +226,10 @@ impl<'a> ExecutionContext<'a> {
             identity_insert: self.identity_insert.clone(),
             dirty_buffer: self.dirty_buffer.clone(),
             session_id: self.session_id,
+            session_database: self.session_database.clone(),
+            session_user: self.session_user.clone(),
+            session_app_name: self.session_app_name.clone(),
+            session_host_name: self.session_host_name.clone(),
         }
     }
 

@@ -77,7 +77,9 @@ pub fn expr_label(expr: &Expr) -> String {
         }
         Expr::FunctionCall { name, .. } => name.clone(),
         Expr::Cast { .. } => "CAST".to_string(),
+        Expr::TryCast { .. } => "TRY_CAST".to_string(),
         Expr::Convert { .. } => "CONVERT".to_string(),
+        Expr::TryConvert { .. } => "TRY_CONVERT".to_string(),
         Expr::Wildcard => "*".to_string(),
         Expr::Case { .. } => "CASE".to_string(),
         Expr::InList { .. } => "IN".to_string(),

@@ -140,6 +140,13 @@ pub fn eval_expr(
             let value = eval_expr(expr, row, ctx, catalog, storage, clock)?;
             coerce_value_to_type(value, &data_type_spec_to_runtime(target))
         }
+        Expr::TryCast { expr, target } => {
+            let value = eval_expr(expr, row, ctx, catalog, storage, clock)?;
+            match coerce_value_to_type(value, &data_type_spec_to_runtime(target)) {
+                Ok(v) => Ok(v),
+                Err(_) => Ok(Value::Null),
+            }
+        }
         Expr::Convert {
             target,
             expr,
@@ -154,6 +161,26 @@ pub fn eval_expr(
                 )
             } else {
                 coerce_value_to_type(value, &data_type_spec_to_runtime(target))
+            }
+        }
+        Expr::TryConvert {
+            target,
+            expr,
+            style,
+        } => {
+            let value = eval_expr(expr, row, ctx, catalog, storage, clock)?;
+            let result = if let Some(style_code) = style {
+                super::value_ops::convert_with_style(
+                    value,
+                    &data_type_spec_to_runtime(target),
+                    *style_code,
+                )
+            } else {
+                coerce_value_to_type(value, &data_type_spec_to_runtime(target))
+            };
+            match result {
+                Ok(v) => Ok(v),
+                Err(_) => Ok(Value::Null),
             }
         }
         Expr::Case {

@@ -270,11 +270,19 @@ pub(crate) fn format_expr(expr: &Expr) -> String {
         Expr::IsNull(inner) => format!("{} IS NULL", format_expr(inner)),
         Expr::IsNotNull(inner) => format!("{} IS NOT NULL", format_expr(inner)),
         Expr::Cast { expr, target } => format!("CAST({} AS {})", format_expr(expr), format_data_type_spec(target)),
+        Expr::TryCast { expr, target } => format!("TRY_CAST({} AS {})", format_expr(expr), format_data_type_spec(target)),
         Expr::Convert { target, expr, style } => {
             if let Some(s) = style {
                 format!("CONVERT({}, {}, {})", format_data_type_spec(target), format_expr(expr), s)
             } else {
                 format!("CONVERT({}, {})", format_data_type_spec(target), format_expr(expr))
+            }
+        }
+        Expr::TryConvert { target, expr, style } => {
+            if let Some(s) = style {
+                format!("TRY_CONVERT({}, {}, {})", format_data_type_spec(target), format_expr(expr), s)
+            } else {
+                format!("TRY_CONVERT({}, {})", format_data_type_spec(target), format_expr(expr))
             }
         }
         Expr::Case { operand, when_clauses, else_result } => {

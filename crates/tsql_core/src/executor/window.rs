@@ -291,7 +291,7 @@ impl<'a> WindowExecutor<'a> {
             Expr::Unary { expr: inner, .. } => {
                 self.collect_window_exprs(inner, window_specs);
             }
-            Expr::IsNull(inner) | Expr::IsNotNull(inner) | Expr::Cast { expr: inner, .. } | Expr::Convert { expr: inner, .. } => {
+            Expr::IsNull(inner) | Expr::IsNotNull(inner) | Expr::Cast { expr: inner, .. } | Expr::Convert { expr: inner, .. } | Expr::TryCast { expr: inner, .. } | Expr::TryConvert { expr: inner, .. } => {
                 self.collect_window_exprs(inner, window_specs);
             }
             Expr::Case { operand, when_clauses, else_result } => {
@@ -485,7 +485,7 @@ pub fn has_window_function(expr: &Expr) -> bool {
         Expr::WindowFunction { .. } => true,
         Expr::Binary { left, right, .. } => has_window_function(left) || has_window_function(right),
         Expr::Unary { expr: inner, .. } => has_window_function(inner),
-        Expr::Cast { expr: inner, .. } | Expr::Convert { expr: inner, .. } | Expr::IsNull(inner) | Expr::IsNotNull(inner) => has_window_function(inner),
+        Expr::Cast { expr: inner, .. } | Expr::Convert { expr: inner, .. } | Expr::TryCast { expr: inner, .. } | Expr::TryConvert { expr: inner, .. } | Expr::IsNull(inner) | Expr::IsNotNull(inner) => has_window_function(inner),
         Expr::Case { operand, when_clauses, else_result } => {
             let has_in_operand = operand.as_ref().map_or(false, |e| has_window_function(e));
             let has_in_when = when_clauses

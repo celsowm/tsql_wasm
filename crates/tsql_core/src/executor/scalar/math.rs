@@ -247,3 +247,36 @@ pub(crate) fn eval_sign(
     };
     Ok(Value::Float(result.to_bits()))
 }
+
+pub(crate) fn eval_checksum(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.is_empty() {
+        return Err(DbError::Execution("CHECKSUM requires at least one argument".into()));
+    }
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    for arg in args {
+        let val = eval_expr(arg, row, ctx, catalog, storage, clock)?;
+        match val {
+            Value::Null => { 0i64.hash(&mut hasher); }
+            Value::Bit(v) => { v.hash(&mut hasher); }
+            Value::TinyInt(v) => { v.hash(&mut hasher); }
+            Value::SmallInt(v) => { v.hash(&mut hasher); }
+            Value::Int(v) => { v.hash(&mut hasher); }
+            Value::BigInt(v) => { v.hash(&mut hasher); }
+            Value::Float(v) => { v.hash(&mut hasher); }
+            _ => { val.to_string_value().hash(&mut hasher); }
+        }
+    }
+    let hash = hasher.finish();
+    // CHECKSUM returns INT in SQL Server
+    Ok(Value::Int((hash as i64) as i32))
+}

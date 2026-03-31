@@ -464,7 +464,9 @@ fn expr_aliases(expr: &Expr) -> HashSet<String> {
             Expr::Unary { expr, .. } => walk(expr, out),
             Expr::IsNull(inner) | Expr::IsNotNull(inner) => walk(inner, out),
             Expr::Cast { expr, .. } => walk(expr, out),
+            Expr::TryCast { expr, .. } => walk(expr, out),
             Expr::Convert { expr, .. } => walk(expr, out),
+            Expr::TryConvert { expr, .. } => walk(expr, out),
             Expr::Case {
                 operand,
                 when_clauses,

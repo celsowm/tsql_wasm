@@ -32,7 +32,16 @@ pub enum Expr {
         expr: Box<Expr>,
         target: DataTypeSpec,
     },
+    TryCast {
+        expr: Box<Expr>,
+        target: DataTypeSpec,
+    },
     Convert {
+        target: DataTypeSpec,
+        expr: Box<Expr>,
+        style: Option<i32>,
+    },
+    TryConvert {
         target: DataTypeSpec,
         expr: Box<Expr>,
         style: Option<i32>,

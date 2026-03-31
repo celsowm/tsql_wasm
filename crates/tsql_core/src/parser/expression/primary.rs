@@ -43,10 +43,16 @@ impl super::ExprParser {
                 }
                 if self.match_tok(|t| matches!(t, ExprToken::LParen)) {
                     if name.eq_ignore_ascii_case("CAST") {
-                        return self.parse_cast_call();
+                        return self.parse_cast_call(false);
+                    }
+                    if name.eq_ignore_ascii_case("TRY_CAST") {
+                        return self.parse_cast_call(true);
                     }
                     if name.eq_ignore_ascii_case("CONVERT") {
-                        return self.parse_convert_call();
+                        return self.parse_convert_call(false);
+                    }
+                    if name.eq_ignore_ascii_case("TRY_CONVERT") {
+                        return self.parse_convert_call(true);
                     }
 
                     let mut args = Vec::new();

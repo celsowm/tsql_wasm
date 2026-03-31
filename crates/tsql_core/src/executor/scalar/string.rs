@@ -339,3 +339,454 @@ pub(crate) fn eval_unistr(
     
     Ok(Value::NVarChar(result))
 }
+
+pub(crate) fn eval_concat(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.is_empty() {
+        return Err(DbError::Execution("CONCAT requires at least one argument".into()));
+    }
+    let mut result = String::new();
+    for arg in args {
+        let val = eval_expr(arg, row, ctx, catalog, storage, clock)?;
+        if !val.is_null() {
+            result.push_str(&val.to_string_value());
+        }
+    }
+    Ok(Value::NVarChar(result))
+}
+
+pub(crate) fn eval_concat_ws(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() < 2 {
+        return Err(DbError::Execution("CONCAT_WS requires at least 2 arguments".into()));
+    }
+    let separator_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let separator = if separator_val.is_null() {
+        return Ok(Value::Null);
+    } else {
+        separator_val.to_string_value()
+    };
+    let mut parts: Vec<String> = Vec::new();
+    for arg in &args[1..] {
+        let val = eval_expr(arg, row, ctx, catalog, storage, clock)?;
+        if !val.is_null() {
+            let s = val.to_string_value();
+            if !s.is_empty() {
+                parts.push(s);
+            }
+        }
+    }
+    Ok(Value::NVarChar(parts.join(&separator)))
+}
+
+pub(crate) fn eval_replicate(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution("REPLICATE expects 2 arguments".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let count = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+    if val.is_null() || count.is_null() {
+        return Ok(Value::Null);
+    }
+    let s = val.to_string_value();
+    let n = count.to_integer_i64().unwrap_or(0).max(0) as usize;
+    Ok(Value::VarChar(s.repeat(n)))
+}
+
+pub(crate) fn eval_reverse(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("REVERSE expects 1 argument".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+    let s = val.to_string_value();
+    Ok(Value::NVarChar(s.chars().rev().collect()))
+}
+
+pub(crate) fn eval_stuff(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 4 {
+        return Err(DbError::Execution("STUFF expects 4 arguments".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let start = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+    let length = eval_expr(&args[2], row, ctx, catalog, storage, clock)?;
+    let replacement = eval_expr(&args[3], row, ctx, catalog, storage, clock)?;
+
+    if val.is_null() || start.is_null() || length.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let s = val.to_string_value();
+    let start_i = start.to_integer_i64().unwrap_or(1) as i32;
+    let length_i = length.to_integer_i64().unwrap_or(0) as i32;
+    let repl = if replacement.is_null() {
+        String::new()
+    } else {
+        replacement.to_string_value()
+    };
+
+    let chars: Vec<char> = s.chars().collect();
+    let start_idx = if start_i <= 0 { 0 } else { (start_i - 1) as usize };
+    let delete_count = if length_i < 0 { 0 } else { length_i as usize };
+    let end_idx = (start_idx + delete_count).min(chars.len());
+
+    let mut result: String = chars[..start_idx.min(chars.len())].iter().collect();
+    result.push_str(&repl);
+    result.extend(chars[end_idx..].iter());
+
+    Ok(Value::NVarChar(result))
+}
+
+pub(crate) fn eval_space(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("SPACE expects 1 argument".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+    let n = val.to_integer_i64().unwrap_or(0).max(0) as usize;
+    Ok(Value::VarChar(" ".repeat(n)))
+}
+
+pub(crate) fn eval_str(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.is_empty() || args.len() > 3 {
+        return Err(DbError::Execution("STR expects 1 to 3 arguments".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+    let length = if args.len() >= 2 {
+        eval_expr(&args[1], row, ctx, catalog, storage, clock)?
+            .to_integer_i64().unwrap_or(10) as usize
+    } else {
+        10
+    };
+    let decimals = if args.len() == 3 {
+        eval_expr(&args[2], row, ctx, catalog, storage, clock)?
+            .to_integer_i64().unwrap_or(0) as usize
+    } else {
+        0
+    };
+
+    let f = match val {
+        Value::Float(bits) => f64::from_bits(bits),
+        Value::Int(v) => v as f64,
+        Value::BigInt(v) => v as f64,
+        Value::TinyInt(v) => v as f64,
+        Value::SmallInt(v) => v as f64,
+        Value::Decimal(raw, scale) => {
+            let divisor = 10f64.powi(scale as i32);
+            raw as f64 / divisor
+        }
+        _ => val.to_string_value().parse::<f64>().unwrap_or(0.0),
+    };
+
+    let formatted = if decimals > 0 {
+        format!("{:.*}", decimals, f)
+    } else {
+        format!("{:.0}", f)
+    };
+
+    let trimmed = formatted.trim();
+    if trimmed.len() >= length {
+        Ok(Value::VarChar(trimmed.to_string()))
+    } else {
+        Ok(Value::VarChar(format!("{:>width$}", trimmed, width = length)))
+    }
+}
+
+pub(crate) fn eval_translate(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 3 {
+        return Err(DbError::Execution("TRANSLATE expects 3 arguments".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let from = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+    let to = eval_expr(&args[2], row, ctx, catalog, storage, clock)?;
+
+    if val.is_null() || from.is_null() || to.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let s = val.to_string_value();
+    let from_chars: Vec<char> = from.to_string_value().chars().collect();
+    let to_chars: Vec<char> = to.to_string_value().chars().collect();
+
+    if from_chars.len() != to_chars.len() {
+        return Err(DbError::Execution(
+            "TRANSLATE: the second and third arguments must have the same length".into(),
+        ));
+    }
+
+    let mut result = String::with_capacity(s.len());
+    for c in s.chars() {
+        if let Some(pos) = from_chars.iter().position(|&fc| fc == c) {
+            result.push(to_chars[pos]);
+        } else {
+            result.push(c);
+        }
+    }
+    Ok(Value::NVarChar(result))
+}
+
+pub(crate) fn eval_format(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() < 2 || args.len() > 3 {
+        return Err(DbError::Execution("FORMAT expects 2 or 3 arguments".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let format_str = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let fmt = format_str.to_string_value();
+
+    match val {
+        Value::DateTime(ref s) | Value::DateTime2(ref s) | Value::Date(ref s) => {
+            Ok(Value::NVarChar(crate::executor::scalar::datetime::format_datetime_string(s, &fmt)))
+        }
+        Value::Int(v) => Ok(Value::NVarChar(format_integer(v, &fmt))),
+        Value::BigInt(v) => Ok(Value::NVarChar(format_integer(v, &fmt))),
+        Value::Float(bits) => {
+            let f = f64::from_bits(bits);
+            Ok(Value::NVarChar(format_float_value(f, &fmt)))
+        }
+        _ => Ok(Value::NVarChar(val.to_string_value())),
+    }
+}
+
+fn format_integer<T: std::fmt::Display>(v: T, fmt: &str) -> String {
+    match fmt {
+        "N" | "n" => {
+            let s = format!("{}", v);
+            format_number_with_commas(&s)
+        }
+        "C" | "c" => format!("${}", v),
+        "P" | "p" => format!("{}%", v),
+        _ => format!("{}", v),
+    }
+}
+
+fn format_float_value(f: f64, fmt: &str) -> String {
+    if fmt.starts_with('N') || fmt.starts_with('n') {
+        let decimals: usize = if fmt.len() > 1 { fmt[1..].parse().unwrap_or(2) } else { 2 };
+        let s = format!("{:.*}", decimals, f);
+        format_number_with_commas(&s)
+    } else if fmt.starts_with('C') || fmt.starts_with('c') {
+        let decimals: usize = if fmt.len() > 1 { fmt[1..].parse().unwrap_or(2) } else { 2 };
+        format!("${:.*}", decimals, f)
+    } else if fmt.starts_with('P') || fmt.starts_with('p') {
+        let decimals: usize = if fmt.len() > 1 { fmt[1..].parse().unwrap_or(2) } else { 2 };
+        format!("{:.*}%", decimals, f * 100.0)
+    } else {
+        format!("{}", f)
+    }
+}
+
+fn format_number_with_commas(s: &str) -> String {
+    let (negative, abs) = if s.starts_with('-') {
+        (true, &s[1..])
+    } else {
+        (false, s)
+    };
+    let parts: Vec<&str> = abs.splitn(2, '.').collect();
+    let int_part = parts[0];
+    let frac_part = parts.get(1).copied();
+
+    let mut result = String::new();
+    let chars: Vec<char> = int_part.chars().collect();
+    for (i, c) in chars.iter().enumerate() {
+        if i > 0 && (chars.len() - i) % 3 == 0 {
+            result.push(',');
+        }
+        result.push(*c);
+    }
+    if let Some(frac) = frac_part {
+        result.push('.');
+        result.push_str(frac);
+    }
+    if negative {
+        format!("-{}", result)
+    } else {
+        result
+    }
+}
+
+pub(crate) fn eval_patindex(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution("PATINDEX expects 2 arguments".into()));
+    }
+    let pattern_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let target_val = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+
+    if pattern_val.is_null() || target_val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let pattern = pattern_val.to_string_value();
+    let target = target_val.to_string_value();
+
+    let pat = pattern.trim_start_matches('%').trim_end_matches('%');
+    let starts_with_wild = pattern.starts_with('%');
+    let ends_with_wild = pattern.ends_with('%');
+
+    let result = if starts_with_wild && ends_with_wild {
+        target.find(pat).map(|pos| (pos + 1) as i64).unwrap_or(0)
+    } else if starts_with_wild {
+        target.rfind(pat).map(|pos| (pos + 1) as i64).unwrap_or(0)
+    } else if ends_with_wild {
+        target.find(pat).map(|pos| (pos + 1) as i64).unwrap_or(0)
+    } else {
+        if target == pat { 1 } else { 0 }
+    };
+
+    Ok(Value::Int(result as i32))
+}
+
+pub(crate) fn eval_soundex(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("SOUNDEX expects 1 argument".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+    let s = val.to_string_value();
+    Ok(Value::VarChar(soundex(&s)))
+}
+
+fn soundex(s: &str) -> String {
+    let chars: Vec<char> = s.to_uppercase().chars().filter(|c| c.is_ascii_alphabetic()).collect();
+    if chars.is_empty() {
+        return "0000".to_string();
+    }
+    let mut result = String::with_capacity(4);
+    result.push(chars[0]);
+
+    let mut prev_code = soundex_code(chars[0]);
+    for &c in &chars[1..] {
+        let code = soundex_code(c);
+        if code != '0' && code != prev_code {
+            result.push(code);
+            if result.len() == 4 { break; }
+        }
+        prev_code = code;
+    }
+    while result.len() < 4 {
+        result.push('0');
+    }
+    result
+}
+
+fn soundex_code(c: char) -> char {
+    match c {
+        'B' | 'F' | 'P' | 'V' => '1',
+        'C' | 'G' | 'J' | 'K' | 'Q' | 'S' | 'X' | 'Z' => '2',
+        'D' | 'T' => '3',
+        'L' => '4',
+        'M' | 'N' => '5',
+        'R' => '6',
+        _ => '0',
+    }
+}
+
+pub(crate) fn eval_difference(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution("DIFFERENCE expects 2 arguments".into()));
+    }
+    let s1 = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let s2 = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+    if s1.is_null() || s2.is_null() {
+        return Ok(Value::Null);
+    }
+    let sx1 = soundex(&s1.to_string_value());
+    let sx2 = soundex(&s2.to_string_value());
+    let matches = sx1.chars().zip(sx2.chars()).filter(|(a, b)| a == b).count();
+    Ok(Value::Int(matches as i32))
+}

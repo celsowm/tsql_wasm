@@ -203,3 +203,269 @@ pub(crate) fn eval_error_state(
         None => Value::Null,
     })
 }
+
+pub(crate) fn eval_db_name(
+    args: &[Expr],
+    ctx: &ExecutionContext,
+) -> Result<Value, DbError> {
+    if args.len() > 1 {
+        return Err(DbError::Execution("DB_NAME expects 0 or 1 arguments".into()));
+    }
+    if !args.is_empty() {
+        // DB_NAME(database_id) - for now always return current db
+    }
+    Ok(Value::NVarChar(ctx.session_database.clone().unwrap_or_else(|| "master".to_string())))
+}
+
+pub(crate) fn eval_db_id(
+    args: &[Expr],
+    ctx: &ExecutionContext,
+) -> Result<Value, DbError> {
+    if args.len() > 1 {
+        return Err(DbError::Execution("DB_ID expects 0 or 1 arguments".into()));
+    }
+    Ok(Value::Int(1)) // Always db_id=1 for emulator
+}
+
+pub(crate) fn eval_suser_sname(
+    args: &[Expr],
+    ctx: &ExecutionContext,
+) -> Result<Value, DbError> {
+    if args.len() > 1 {
+        return Err(DbError::Execution("SUSER_SNAME expects 0 or 1 arguments".into()));
+    }
+    Ok(Value::NVarChar(ctx.session_user.clone().unwrap_or_else(|| "sa".to_string())))
+}
+
+pub(crate) fn eval_suser_id(
+    args: &[Expr],
+    ctx: &ExecutionContext,
+) -> Result<Value, DbError> {
+    if args.len() > 1 {
+        return Err(DbError::Execution("SUSER_ID expects 0 or 1 arguments".into()));
+    }
+    Ok(Value::Int(1))
+}
+
+pub(crate) fn eval_user_name(
+    args: &[Expr],
+    ctx: &ExecutionContext,
+) -> Result<Value, DbError> {
+    if args.len() > 1 {
+        return Err(DbError::Execution("USER_NAME expects 0 or 1 arguments".into()));
+    }
+    Ok(Value::NVarChar("dbo".to_string()))
+}
+
+pub(crate) fn eval_user_id(
+    args: &[Expr],
+    ctx: &ExecutionContext,
+) -> Result<Value, DbError> {
+    if args.len() > 1 {
+        return Err(DbError::Execution("USER_ID expects 0 or 1 arguments".into()));
+    }
+    Ok(Value::Int(1))
+}
+
+pub(crate) fn eval_app_name(
+    args: &[Expr],
+    ctx: &ExecutionContext,
+) -> Result<Value, DbError> {
+    if !args.is_empty() {
+        return Err(DbError::Execution("APP_NAME expects no arguments".into()));
+    }
+    Ok(Value::NVarChar(ctx.session_app_name.clone().unwrap_or_else(|| "tsql_wasm".to_string())))
+}
+
+pub(crate) fn eval_host_name(
+    args: &[Expr],
+    ctx: &ExecutionContext,
+) -> Result<Value, DbError> {
+    if !args.is_empty() {
+        return Err(DbError::Execution("HOST_NAME expects no arguments".into()));
+    }
+    Ok(Value::NVarChar(ctx.session_host_name.clone().unwrap_or_else(|| "localhost".to_string())))
+}
+
+pub(crate) fn eval_system_user(
+    args: &[Expr],
+    ctx: &ExecutionContext,
+) -> Result<Value, DbError> {
+    if !args.is_empty() {
+        return Err(DbError::Execution("SYSTEM_USER expects no arguments".into()));
+    }
+    Ok(Value::NVarChar(ctx.session_user.clone().unwrap_or_else(|| "sa".to_string())))
+}
+
+pub(crate) fn eval_original_login(
+    args: &[Expr],
+    ctx: &ExecutionContext,
+) -> Result<Value, DbError> {
+    if !args.is_empty() {
+        return Err(DbError::Execution("ORIGINAL_LOGIN expects no arguments".into()));
+    }
+    Ok(Value::NVarChar(ctx.session_user.clone().unwrap_or_else(|| "sa".to_string())))
+}
+
+pub(crate) fn eval_session_user(
+    args: &[Expr],
+    ctx: &ExecutionContext,
+) -> Result<Value, DbError> {
+    if !args.is_empty() {
+        return Err(DbError::Execution("SESSION_USER expects no arguments".into()));
+    }
+    Ok(Value::NVarChar("dbo".to_string()))
+}
+
+pub(crate) fn eval_current_user(
+    args: &[Expr],
+    ctx: &ExecutionContext,
+) -> Result<Value, DbError> {
+    if !args.is_empty() {
+        return Err(DbError::Execution("CURRENT_USER expects no arguments".into()));
+    }
+    Ok(Value::NVarChar("dbo".to_string()))
+}
+
+pub(crate) fn eval_hashbytes(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution("HASHBYTES expects 2 arguments".into()));
+    }
+    let algo_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let data_val = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+
+    if algo_val.is_null() || data_val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let algo = algo_val.to_string_value().to_uppercase();
+    let data = data_val.to_string_value();
+
+    // Simple hash simulation using built-in Rust hashing
+    let hash_bytes = match algo.as_str() {
+        "MD5" => {
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            data.hash(&mut hasher);
+            let h = hasher.finish();
+            let mut bytes = h.to_be_bytes().to_vec();
+            bytes.resize(16, 0);
+            bytes
+        }
+        "SHA1" | "SHA_1" => {
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher1 = DefaultHasher::new();
+            let mut hasher2 = DefaultHasher::new();
+            data.hash(&mut hasher1);
+            data.len().hash(&mut hasher2);
+            let mut bytes = Vec::with_capacity(20);
+            bytes.extend_from_slice(&hasher1.finish().to_be_bytes());
+            bytes.extend_from_slice(&hasher2.finish().to_be_bytes());
+            bytes.extend_from_slice(&[0u8; 4]);
+            bytes
+        }
+        "SHA2_256" | "SHA256" => {
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut bytes = Vec::with_capacity(32);
+            for i in 0..4 {
+                let mut hasher = DefaultHasher::new();
+                data.hash(&mut hasher);
+                i.hash(&mut hasher);
+                bytes.extend_from_slice(&hasher.finish().to_be_bytes());
+            }
+            bytes
+        }
+        "SHA2_512" | "SHA512" => {
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut bytes = Vec::with_capacity(64);
+            for i in 0..8 {
+                let mut hasher = DefaultHasher::new();
+                data.hash(&mut hasher);
+                i.hash(&mut hasher);
+                bytes.extend_from_slice(&hasher.finish().to_be_bytes());
+            }
+            bytes
+        }
+        _ => return Err(DbError::Execution(format!(
+            "Unsupported hash algorithm '{}'. Supported: MD5, SHA1, SHA2_256, SHA2_512", algo
+        ))),
+    };
+
+    Ok(Value::VarBinary(hash_bytes))
+}
+
+pub(crate) fn eval_parsename(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution("PARSENAME expects 2 arguments".into()));
+    }
+    let obj_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let piece_val = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+
+    if obj_val.is_null() || piece_val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let obj = obj_val.to_string_value();
+    let piece = piece_val.to_integer_i64().unwrap_or(0);
+
+    let parts: Vec<&str> = obj.split('.').rev().collect();
+    let result = match piece {
+        1 => parts.first().copied(), // Object name
+        2 => if parts.len() >= 2 { Some(parts[1]) } else { None }, // Schema name
+        3 => if parts.len() >= 3 { Some(parts[2]) } else { None }, // Database name
+        4 => if parts.len() >= 4 { Some(parts[3]) } else { None }, // Server name
+        _ => None,
+    };
+
+    match result {
+        Some(s) => Ok(Value::NVarChar(s.to_string())),
+        None => Ok(Value::Null),
+    }
+}
+
+pub(crate) fn eval_quotename(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.is_empty() || args.len() > 2 {
+        return Err(DbError::Execution("QUOTENAME expects 1 or 2 arguments".into()));
+    }
+    let name_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if name_val.is_null() {
+        return Ok(Value::Null);
+    }
+    let quote_char = if args.len() == 2 {
+        eval_expr(&args[1], row, ctx, catalog, storage, clock)?
+            .to_string_value()
+    } else {
+        "]".to_string()
+    };
+
+    let name = name_val.to_string_value();
+    let open = if quote_char == "]" { "[" } else { &quote_char[..quote_char.len().min(1)] };
+    let close = &quote_char;
+
+    Ok(Value::NVarChar(format!("{}{}{}", open, name, close)))
+}

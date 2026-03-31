@@ -3,7 +3,7 @@ use crate::error::DbError;
 use super::ExprToken;
 
 impl super::ExprParser {
-    pub(crate) fn parse_cast_call(&mut self) -> Result<Expr, DbError> {
+    pub(crate) fn parse_cast_call(&mut self, try_cast: bool) -> Result<Expr, DbError> {
         self.depth += 1;
         if self.depth > 100 {
             return Err(DbError::Parse("expression nested too deeply".into()));
@@ -12,13 +12,20 @@ impl super::ExprParser {
         self.expect(|t| matches!(t, ExprToken::As), "AS")?;
         let target = self.parse_expr_data_type()?;
         self.expect(|t| matches!(t, ExprToken::RParen), ")")?;
-        Ok(Expr::Cast {
-            expr: Box::new(expr),
-            target,
-        })
+        if try_cast {
+            Ok(Expr::TryCast {
+                expr: Box::new(expr),
+                target,
+            })
+        } else {
+            Ok(Expr::Cast {
+                expr: Box::new(expr),
+                target,
+            })
+        }
     }
 
-    pub(crate) fn parse_convert_call(&mut self) -> Result<Expr, DbError> {
+    pub(crate) fn parse_convert_call(&mut self, try_convert: bool) -> Result<Expr, DbError> {
         let target = self.parse_expr_data_type()?;
         self.expect(|t| matches!(t, ExprToken::Comma), ",")?;
         let expr = self.parse_or()?;
@@ -31,11 +38,19 @@ impl super::ExprParser {
             None
         };
         self.expect(|t| matches!(t, ExprToken::RParen), ")")?;
-        Ok(Expr::Convert {
-            target,
-            expr: Box::new(expr),
-            style,
-        })
+        if try_convert {
+            Ok(Expr::TryConvert {
+                target,
+                expr: Box::new(expr),
+                style,
+            })
+        } else {
+            Ok(Expr::Convert {
+                target,
+                expr: Box::new(expr),
+                style,
+            })
+        }
     }
 
     pub(crate) fn parse_case(&mut self) -> Result<Expr, DbError> {
