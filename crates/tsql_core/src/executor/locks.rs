@@ -61,12 +61,14 @@ impl<C: Clone, S: Clone> Clone for TxWorkspace<C, S> {
 
 pub struct LockTable {
     locks: HashMap<String, TableLockState>,
+    pub condvar: std::sync::Arc<parking_lot::Condvar>,
 }
 
 impl Default for LockTable {
     fn default() -> Self {
         Self {
             locks: HashMap::new(),
+            condvar: std::sync::Arc::new(parking_lot::Condvar::new()),
         }
     }
 }
@@ -89,11 +91,12 @@ impl LockTable {
     }
 
     pub fn acquire_statement_locks<C, S>(
-        &mut self,
+        state_lock: &parking_lot::Mutex<LockTable>,
         session_id: SessionId,
         tx_manager: &super::transaction::TransactionManager<C, S, super::session::SessionSnapshot>,
         workspace_slot: &mut Option<TxWorkspace<C, S>>,
         stmt: &Statement,
+        timeout_ms: i64,
     ) -> Result<(), DbError> {
         let read_tables = collect_read_tables(stmt);
         let write_tables = collect_write_tables(stmt);
@@ -117,47 +120,96 @@ impl LockTable {
                     | IsolationLevel::Snapshot
             );
 
+        let mut tables_to_lock = Vec::new();
         if read_lock_required {
             for table in read_tables {
-                self.acquire_lock(session_id, workspace_slot, &table, LockMode::Read, depth)?;
+                tables_to_lock.push((table, LockMode::Read));
             }
         }
         for table in write_tables {
-            self.acquire_lock(session_id, workspace_slot, &table, LockMode::Write, depth)?;
+            tables_to_lock.push((table, LockMode::Write));
         }
-        Ok(())
+
+        if tables_to_lock.is_empty() {
+            return Ok(());
+        }
+
+        let start = std::time::Instant::now();
+        let mut guard = state_lock.lock();
+
+        loop {
+            let mut all_acquired = true;
+            let mut conflict_info = None;
+
+            // Try to acquire all locks
+            for (table, mode) in &tables_to_lock {
+                if !guard.can_acquire_lock(session_id, table, *mode) {
+                    all_acquired = false;
+                    conflict_info = Some((table.clone(), *mode));
+                    break;
+                }
+            }
+
+            if all_acquired {
+                for (table, mode) in tables_to_lock {
+                    guard.perform_acquire_lock(session_id, workspace_slot, &table, mode, depth);
+                }
+                return Ok(());
+            }
+
+            if timeout_ms == 0 {
+                let (table, mode) = conflict_info.unwrap();
+                return Err(DbError::Execution(format!(
+                    "lock conflict (no-wait): {:?} lock on '{}' is blocked",
+                    mode, table
+                )));
+            }
+
+            let elapsed = start.elapsed();
+            if timeout_ms > 0 && elapsed.as_millis() >= timeout_ms as u128 {
+                let (table, mode) = conflict_info.unwrap();
+                return Err(DbError::Execution(format!(
+                    "lock timeout ({}ms): {:?} lock on '{}' is blocked",
+                    timeout_ms, mode, table
+                )));
+            }
+
+            let condvar = guard.condvar.clone();
+            if timeout_ms < 0 {
+                condvar.wait(&mut guard);
+            } else {
+                let remaining = std::time::Duration::from_millis(timeout_ms as u64)
+                    .saturating_sub(elapsed);
+                if condvar.wait_for(&mut guard, remaining).timed_out() {
+                    let (table, mode) = conflict_info.unwrap();
+                    return Err(DbError::Execution(format!(
+                        "lock timeout ({}ms): {:?} lock on '{}' is blocked",
+                        timeout_ms, mode, table
+                    )));
+                }
+            }
+        }
     }
 
-    fn acquire_lock<C, S>(
-        &mut self,
-        session_id: SessionId,
-        workspace_slot: &mut Option<TxWorkspace<C, S>>,
-        table: &str,
-        mode: LockMode,
-        savepoint_depth: usize,
-    ) -> Result<(), DbError> {
+    fn can_acquire_lock(&self, session_id: SessionId, table: &str, mode: LockMode) -> bool {
         let normalized = table.to_uppercase();
-        let lock_state = self.locks.entry(normalized.clone()).or_default();
+        let Some(lock_state) = self.locks.get(&normalized) else {
+            return true;
+        };
 
         match mode {
             LockMode::Read => {
                 if let Some((writer, _)) = lock_state.writer {
                     if writer != session_id {
-                        return Err(DbError::Execution(format!(
-                            "lock conflict (no-wait): READ lock on '{}' blocked by WRITE lock from session {}",
-                            normalized, writer
-                        )));
+                        return false;
                     }
                 }
-                *lock_state.readers.entry(session_id).or_insert(0) += 1;
+                true
             }
             LockMode::Write => {
                 if let Some((writer, _)) = lock_state.writer {
                     if writer != session_id {
-                        return Err(DbError::Execution(format!(
-                            "lock conflict (no-wait): WRITE lock on '{}' blocked by WRITE lock from session {}",
-                            normalized, writer
-                        )));
+                        return false;
                     }
                 }
                 if lock_state
@@ -165,20 +217,36 @@ impl LockTable {
                     .iter()
                     .any(|(reader, count)| *reader != session_id && *count > 0)
                 {
-                    return Err(DbError::Execution(format!(
-                        "lock conflict (no-wait): WRITE lock on '{}' blocked by active READ lock",
-                        normalized
-                    )));
+                    return false;
                 }
-                match lock_state.writer.as_mut() {
-                    Some((writer, count)) if *writer == session_id => {
-                        *count += 1;
-                    }
-                    _ => {
-                        lock_state.writer = Some((session_id, 1));
-                    }
-                }
+                true
             }
+        }
+    }
+
+    fn perform_acquire_lock<C, S>(
+        &mut self,
+        session_id: SessionId,
+        workspace_slot: &mut Option<TxWorkspace<C, S>>,
+        table: &str,
+        mode: LockMode,
+        savepoint_depth: usize,
+    ) {
+        let normalized = table.to_uppercase();
+        let lock_state = self.locks.entry(normalized.clone()).or_default();
+
+        match mode {
+            LockMode::Read => {
+                *lock_state.readers.entry(session_id).or_insert(0) += 1;
+            }
+            LockMode::Write => match lock_state.writer.as_mut() {
+                Some((writer, count)) if *writer == session_id => {
+                    *count += 1;
+                }
+                _ => {
+                    lock_state.writer = Some((session_id, 1));
+                }
+            },
         }
 
         if let Some(workspace) = workspace_slot.as_mut() {
@@ -188,7 +256,6 @@ impl LockTable {
                 savepoint_depth,
             });
         }
-        Ok(())
     }
 
     pub fn release_workspace_locks<C, S>(
@@ -210,6 +277,7 @@ impl LockTable {
             self.release_lock_count(session_id, &lock.table, lock.mode);
         }
         workspace.acquired_locks = retained;
+        self.condvar.notify_all();
     }
 
     pub fn release_all_for_session(&mut self, session_id: SessionId) {
@@ -217,6 +285,7 @@ impl LockTable {
         for table in tables {
             self.release_all_for_table(session_id, &table);
         }
+        self.condvar.notify_all();
     }
 
     fn release_all_for_table(&mut self, session_id: SessionId, table: &str) {
@@ -265,5 +334,6 @@ impl LockTable {
         if lock_state.readers.is_empty() && lock_state.writer.is_none() {
             self.locks.remove(table);
         }
+        self.condvar.notify_all();
     }
 }

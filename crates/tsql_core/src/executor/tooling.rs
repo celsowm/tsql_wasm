@@ -14,6 +14,7 @@ pub struct SessionOptions {
     pub datefirst: i32,
     pub language: String,
     pub dateformat: String,
+    pub lock_timeout_ms: i64,
     #[serde(skip)]
     pub identity_insert: HashSet<String>,
 }
@@ -28,6 +29,7 @@ impl Default for SessionOptions {
             datefirst: 7,
             language: "us_english".to_string(),
             dateformat: "mdy".to_string(),
+            lock_timeout_ms: 0,
             identity_insert: HashSet::new(),
         }
     }
@@ -151,6 +153,9 @@ pub fn apply_set_option(stmt: &SetOptionStmt, options: &mut SessionOptions) -> R
         }
         (SessionOption::DateFormat, SessionOptionValue::Text(v)) => {
             options.dateformat = v.to_lowercase();
+        }
+        (SessionOption::LockTimeout, SessionOptionValue::Int(v)) => {
+            options.lock_timeout_ms = *v as i64;
         }
         _ => {
             warnings.push("SET option value type mismatch; statement accepted with no state change".to_string());

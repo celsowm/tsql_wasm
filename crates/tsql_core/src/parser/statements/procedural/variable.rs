@@ -241,6 +241,18 @@ fn parse_set_option(raw: &str, upper: &str) -> Result<Statement, DbError> {
                 value: crate::ast::SessionOptionValue::Text(rest.to_string()),
             })
         }
+        "LOCK_TIMEOUT" => {
+            if rest.is_empty() {
+                return Err(DbError::Parse("SET LOCK_TIMEOUT requires a value".into()));
+            }
+            let n = rest
+                .parse::<i32>()
+                .map_err(|_| DbError::Parse("SET LOCK_TIMEOUT requires numeric value".into()))?;
+            Statement::SetOption(crate::ast::SetOptionStmt {
+                option: crate::ast::SessionOption::LockTimeout,
+                value: crate::ast::SessionOptionValue::Int(n),
+            })
+        }
         _ => {
             return Err(DbError::Parse(format!(
                 "unsupported SET option '{}'",
@@ -265,6 +277,7 @@ fn parse_set_bool_option(option: crate::ast::SessionOption, rest: &str) -> Resul
                 crate::ast::SessionOption::DateFirst => "DATEFIRST",
                 crate::ast::SessionOption::Language => "LANGUAGE",
                 crate::ast::SessionOption::DateFormat => "DATEFORMAT",
+                crate::ast::SessionOption::LockTimeout => "LOCK_TIMEOUT",
             };
             return Err(DbError::Parse(format!(
                 "SET {} expects ON|OFF",

@@ -86,6 +86,7 @@ pub enum SessionOption {
     DateFirst,
     Language,
     DateFormat,
+    LockTimeout,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
