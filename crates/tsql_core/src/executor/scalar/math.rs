@@ -280,3 +280,62 @@ pub(crate) fn eval_checksum(
     // CHECKSUM returns INT in SQL Server
     Ok(Value::Int((hash as i64) as i32))
 }
+
+pub(crate) fn eval_atn2(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution("ATN2 expects 2 arguments".into()));
+    }
+    let y = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let x = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+    if y.is_null() || x.is_null() {
+        return Ok(Value::Null);
+    }
+    let yf = value_to_f64(&y)?;
+    let xf = value_to_f64(&x)?;
+    Ok(Value::Float(yf.atan2(xf).to_bits()))
+}
+
+pub(crate) fn eval_log(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.is_empty() || args.len() > 2 {
+        return Err(DbError::Execution("LOG expects 1 or 2 arguments".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+    let f = value_to_f64(&val)?;
+    let result = if args.len() == 2 {
+        let base_val = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+        if base_val.is_null() {
+            return Ok(Value::Null);
+        }
+        let base = value_to_f64(&base_val)?;
+        f.log(base)
+    } else {
+        f.ln()
+    };
+    Ok(Value::Float(result.to_bits()))
+}
+
+pub(crate) fn eval_pi(
+    args: &[Expr],
+) -> Result<Value, DbError> {
+    if !args.is_empty() {
+        return Err(DbError::Execution("PI expects no arguments".into()));
+    }
+    Ok(Value::Float(std::f64::consts::PI.to_bits()))
+}

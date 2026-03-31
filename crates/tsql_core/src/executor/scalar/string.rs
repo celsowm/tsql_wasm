@@ -790,3 +790,161 @@ pub(crate) fn eval_difference(
     let matches = sx1.chars().zip(sx2.chars()).filter(|(a, b)| a == b).count();
     Ok(Value::Int(matches as i32))
 }
+
+pub(crate) fn eval_ascii(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("ASCII expects 1 argument".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+    let s = val.to_string_value();
+    match s.chars().next() {
+        Some(c) => Ok(Value::Int(c as i32)),
+        None => Ok(Value::Null),
+    }
+}
+
+pub(crate) fn eval_char(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("CHAR expects 1 argument".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+    let code = val.to_integer_i64().unwrap_or(0);
+    if code < 0 || code > 255 {
+        return Ok(Value::Null);
+    }
+    match char::from_u32(code as u32) {
+        Some(c) => Ok(Value::VarChar(c.to_string())),
+        None => Ok(Value::Null),
+    }
+}
+
+pub(crate) fn eval_nchar(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("NCHAR expects 1 argument".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+    let code = val.to_integer_i64().unwrap_or(0);
+    if code < 0 || code > 0x10FFFF {
+        return Ok(Value::Null);
+    }
+    match char::from_u32(code as u32) {
+        Some(c) => Ok(Value::NVarChar(c.to_string())),
+        None => Ok(Value::Null),
+    }
+}
+
+pub(crate) fn eval_unicode(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("UNICODE expects 1 argument".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+    let s = val.to_string_value();
+    match s.chars().next() {
+        Some(c) => Ok(Value::Int(c as i32)),
+        None => Ok(Value::Null),
+    }
+}
+
+pub(crate) fn eval_string_escape(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution("STRING_ESCAPE expects 2 arguments".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let escape_type = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+
+    if val.is_null() || escape_type.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let s = val.to_string_value();
+    let typ = escape_type.to_string_value().to_uppercase();
+
+    let result = match typ.as_str() {
+        "JSON" => {
+            let mut out = String::with_capacity(s.len() + 8);
+            for c in s.chars() {
+                match c {
+                    '"' => out.push_str("\\\""),
+                    '\\' => out.push_str("\\\\"),
+                    '/' => out.push_str("\\/"),
+                    '\n' => out.push_str("\\n"),
+                    '\r' => out.push_str("\\r"),
+                    '\t' => out.push_str("\\t"),
+                    '\u{08}' => out.push_str("\\b"),
+                    '\u{0C}' => out.push_str("\\f"),
+                    _ if c < '\x20' => {
+                        out.push_str(&format!("\\u{:04x}", c as u32));
+                    }
+                    _ => out.push(c),
+                }
+            }
+            out
+        }
+        "HTML" => {
+            s.replace('&', "&amp;")
+                .replace('<', "&lt;")
+                .replace('>', "&gt;")
+                .replace('"', "&quot;")
+                .replace('\'', "&#39;")
+        }
+        "XML" => {
+            s.replace('&', "&amp;")
+                .replace('<', "&lt;")
+                .replace('>', "&gt;")
+                .replace('"', "&quot;")
+                .replace('\'', "&apos;")
+        }
+        _ => return Err(DbError::Execution(format!(
+            "Unsupported escape type '{}'. Supported: JSON, HTML, XML", typ
+        ))),
+    };
+
+    Ok(Value::NVarChar(result))
+}

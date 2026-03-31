@@ -533,6 +533,7 @@ where
         .unwrap_or(tx_manager.session_isolation_level);
     let is_select = matches!(stmt, Statement::Select(_));
     let read_uncommitted_dirty = isolation_level == IsolationLevel::ReadUncommitted && is_select;
+    let read_committed_select = isolation_level == IsolationLevel::ReadCommitted && is_select;
 
     if tx_manager.active.is_some() {
         state
@@ -549,9 +550,48 @@ where
                 clock,
             };
             script.execute(stmt.clone(), ctx)
+        } else if read_committed_select {
+            // READ COMMITTED: each statement sees the latest committed state for
+            // tables the session hasn't written to, and the workspace for tables it has.
+            // This lets the session see other sessions' committed changes while
+            // preserving its own uncommitted writes (including savepoint rollbacks).
+            let workspace = workspace_slot.as_mut().ok_or_else(|| {
+                DbError::Execution("internal error: missing transaction workspace".into())
+            })?;
+
+            // Refresh workspace: for tables NOT written by this session, update
+            // the workspace's storage from the committed state so we see changes
+            // committed by other sessions.
+            for table_def in state.storage.catalog.get_tables() {
+                let tname = table_def.name.to_uppercase();
+                if workspace.write_tables.contains(&tname) {
+                    continue;
+                }
+                let tid = table_def.id;
+                if let Ok(committed_rows) = state.storage.storage.get_rows(tid) {
+                    let _ = workspace.storage.update_rows(tid, committed_rows);
+                }
+            }
+            // Also refresh catalog for tables not in write set (e.g. new tables from other sessions)
+            for table_def in state.storage.catalog.get_tables() {
+                let tname = table_def.name.to_uppercase();
+                if workspace.write_tables.contains(&tname) {
+                    continue;
+                }
+                if workspace.catalog.find_table(table_def.schema_or_dbo(), &table_def.name).is_none() {
+                    workspace.catalog.get_tables_mut().push(table_def.clone());
+                }
+            }
+
+            let mut script = ScriptExecutor {
+                catalog: &mut workspace.catalog,
+                storage: &mut workspace.storage,
+                clock,
+            };
+            script.execute(stmt.clone(), ctx)
         } else {
-            // Use workspace for all other isolation levels when in a transaction.
-            // This ensures we see our own changes (and for now, provides REPEATABLE READ/SNAPSHOT semantics).
+            // Use workspace for REPEATABLE READ / SERIALIZABLE / SNAPSHOT and non-SELECT statements.
+            // This ensures we see our own changes and provides snapshot semantics.
             let workspace = workspace_slot.as_mut().ok_or_else(|| {
                 DbError::Execution("internal error: missing transaction workspace".into())
             })?;

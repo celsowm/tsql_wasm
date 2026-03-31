@@ -102,6 +102,9 @@ pub enum WindowFunc {
     Lead,
     FirstValue,
     LastValue,
+    PercentileCont,
+    PercentileDisc,
+    PercentileRank,
     Aggregate(String),
 }
 

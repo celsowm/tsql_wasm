@@ -384,3 +384,194 @@ fn test_translate_with_stuff() {
     );
     assert_eq!(r.rows[0][0], Value::NVarChar("123Xef".to_string()));
 }
+
+// ─── ASCII ────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_ascii_basic() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT ASCII('A') AS v");
+    assert_eq!(r.rows[0][0], Value::Int(65));
+}
+
+#[test]
+fn test_ascii_string() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT ASCII('Hello') AS v");
+    assert_eq!(r.rows[0][0], Value::Int(72));
+}
+
+#[test]
+fn test_ascii_null() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT ASCII(NULL) AS v");
+    assert!(r.rows[0][0].is_null());
+}
+
+#[test]
+fn test_ascii_empty() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT ASCII('') AS v");
+    assert!(r.rows[0][0].is_null());
+}
+
+// ─── CHAR ─────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_char_basic() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT CHAR(65) AS v");
+    assert_eq!(r.rows[0][0], Value::VarChar("A".to_string()));
+}
+
+#[test]
+fn test_char_space() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT CHAR(32) AS v");
+    assert_eq!(r.rows[0][0], Value::VarChar(" ".to_string()));
+}
+
+#[test]
+fn test_char_null() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT CHAR(NULL) AS v");
+    assert!(r.rows[0][0].is_null());
+}
+
+#[test]
+fn test_char_roundtrip() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT ASCII(CHAR(97)) AS v");
+    assert_eq!(r.rows[0][0], Value::Int(97));
+}
+
+// ─── NCHAR ────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_nchar_basic() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT NCHAR(65) AS v");
+    assert_eq!(r.rows[0][0], Value::NVarChar("A".to_string()));
+}
+
+#[test]
+fn test_nchar_unicode() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT NCHAR(9731) AS v");
+    assert_eq!(r.rows[0][0], Value::NVarChar("\u{2603}".to_string()));
+}
+
+#[test]
+fn test_nchar_null() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT NCHAR(NULL) AS v");
+    assert!(r.rows[0][0].is_null());
+}
+
+#[test]
+fn test_nchar_roundtrip() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT UNICODE(NCHAR(66)) AS v");
+    assert_eq!(r.rows[0][0], Value::Int(66));
+}
+
+// ─── UNICODE ──────────────────────────────────────────────────────────────
+
+#[test]
+fn test_unicode_basic() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT UNICODE('A') AS v");
+    assert_eq!(r.rows[0][0], Value::Int(65));
+}
+
+#[test]
+fn test_unicode_multichar() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT UNICODE('Hello') AS v");
+    assert_eq!(r.rows[0][0], Value::Int(72));
+}
+
+#[test]
+fn test_unicode_null() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT UNICODE(NULL) AS v");
+    assert!(r.rows[0][0].is_null());
+}
+
+#[test]
+fn test_unicode_equals_ascii_for_ascii_chars() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT UNICODE('Z') = ASCII('Z') AS v");
+    assert_eq!(r.rows[0][0], Value::Bit(true));
+}
+
+// ─── STRING_ESCAPE ────────────────────────────────────────────────────────
+
+#[test]
+fn test_string_escape_json() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT STRING_ESCAPE('hello \"world\"', 'JSON') AS v");
+    assert_eq!(r.rows[0][0], Value::NVarChar("hello \\\"world\\\"".to_string()));
+}
+
+#[test]
+fn test_string_escape_json_newline() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT STRING_ESCAPE('line1' + CHAR(13) + CHAR(10) + 'line2', 'JSON') AS v");
+    assert!(r.rows[0][0].to_string_value().contains("\\r\\n"));
+}
+
+#[test]
+fn test_string_escape_html() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT STRING_ESCAPE('<b>bold</b>', 'HTML') AS v");
+    assert_eq!(r.rows[0][0], Value::NVarChar("&lt;b&gt;bold&lt;/b&gt;".to_string()));
+}
+
+#[test]
+fn test_string_escape_xml() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT STRING_ESCAPE('a & b', 'XML') AS v");
+    assert_eq!(r.rows[0][0], Value::NVarChar("a &amp; b".to_string()));
+}
+
+#[test]
+fn test_string_escape_null() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT STRING_ESCAPE(NULL, 'JSON') AS v");
+    assert!(r.rows[0][0].is_null());
+}
+
+// ─── INTEGRATION ──────────────────────────────────────────────────────────
+
+#[test]
+fn test_ascii_char_composition() {
+    let mut engine = Engine::new();
+    let r = query(
+        &mut engine,
+        "SELECT CONCAT(CHAR(ASCII('H')), 'ello') AS v",
+    );
+    assert_eq!(r.rows[0][0], Value::NVarChar("Hello".to_string()));
+}
+
+#[test]
+fn test_nchar_unicode_composition() {
+    let mut engine = Engine::new();
+    let r = query(
+        &mut engine,
+        "SELECT CONCAT(NCHAR(9731), ' snow') AS v",
+    );
+    assert_eq!(r.rows[0][0], Value::NVarChar("\u{2603} snow".to_string()));
+}
+
+#[test]
+fn test_string_escape_in_query() {
+    let mut engine = Engine::new();
+    exec(&mut engine, "CREATE TABLE dbo.t (msg VARCHAR(100))");
+    exec(&mut engine, "INSERT INTO dbo.t (msg) VALUES ('He said \"hello\"')");
+    let r = query(
+        &mut engine,
+        "SELECT STRING_ESCAPE(msg, 'JSON') AS escaped FROM dbo.t",
+    );
+    assert_eq!(r.rows[0][0], Value::NVarChar("He said \\\"hello\\\"".to_string()));
+}

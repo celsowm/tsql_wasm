@@ -19,6 +19,9 @@ impl super::ExprParser {
                 | "AVG"
                 | "MIN"
                 | "MAX"
+                | "PERCENTILE_CONT"
+                | "PERCENTILE_DISC"
+                | "PERCENTILE_RANK"
         )
     }
 
@@ -33,14 +36,49 @@ impl super::ExprParser {
             "LEAD" => WindowFunc::Lead,
             "FIRST_VALUE" => WindowFunc::FirstValue,
             "LAST_VALUE" => WindowFunc::LastValue,
+            "PERCENTILE_CONT" => WindowFunc::PercentileCont,
+            "PERCENTILE_DISC" => WindowFunc::PercentileDisc,
+            "PERCENTILE_RANK" => WindowFunc::PercentileRank,
             "COUNT" | "SUM" | "AVG" | "MIN" | "MAX" => WindowFunc::Aggregate(func_name_upper),
             _ => return Err(DbError::Parse(format!("unknown window function: {}", name))),
+        };
+
+        // PERCENTILE_CONT and PERCENTILE_DISC use WITHIN GROUP (ORDER BY ...) OVER (...)
+        let within_group_order_by = if matches!(func, WindowFunc::PercentileCont | WindowFunc::PercentileDisc) {
+            self.expect(|t| matches!(t, ExprToken::Within), "WITHIN")?;
+            self.expect(|t| matches!(t, ExprToken::Group), "GROUP")?;
+            self.expect(|t| matches!(t, ExprToken::LParen), "(")?;
+            self.expect(|t| matches!(t, ExprToken::Order), "ORDER")?;
+            self.expect(|t| matches!(t, ExprToken::By), "BY")?;
+            let mut order_by = Vec::new();
+            loop {
+                let expr = self.parse_or()?;
+                let asc = if self.match_tok(|t| matches!(t, ExprToken::Desc)) {
+                    false
+                } else {
+                    self.match_tok(|t| matches!(t, ExprToken::Asc));
+                    true
+                };
+                order_by.push(OrderByExpr { expr, asc });
+                if self.match_tok(|t| matches!(t, ExprToken::Comma)) {
+                    continue;
+                }
+                break;
+            }
+            self.expect(|t| matches!(t, ExprToken::RParen), ")")?;
+            order_by
+        } else {
+            Vec::new()
         };
 
         self.expect(|t| matches!(t, ExprToken::LParen), "(")?;
 
         let mut partition_by = Vec::new();
-        let mut order_by = Vec::new();
+        let mut order_by = if !within_group_order_by.is_empty() {
+            within_group_order_by
+        } else {
+            Vec::new()
+        };
         let mut frame = None;
 
         if !self.match_tok(|t| matches!(t, ExprToken::RParen)) {

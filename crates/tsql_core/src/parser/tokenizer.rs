@@ -51,6 +51,8 @@ pub enum ExprToken {
     Following,
     Current,
     Row,
+    Within,
+    Group,
 }
 
 pub fn tokenize_expr(input: &str) -> Result<Vec<ExprToken>, DbError> {
@@ -268,6 +270,8 @@ fn push_ident_token(out: &mut Vec<ExprToken>, ident: String) {
         "FOLLOWING" => out.push(ExprToken::Following),
         "CURRENT" => out.push(ExprToken::Current),
         "ROW" => out.push(ExprToken::Row),
+        "WITHIN" => out.push(ExprToken::Within),
+        "GROUP" => out.push(ExprToken::Group),
         _ => out.push(ExprToken::Identifier(ident)),
     }
 }

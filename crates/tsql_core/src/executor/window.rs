@@ -8,6 +8,7 @@ use super::evaluator::eval_expr;
 use super::model::{JoinedRow, Group};
 use super::value_ops::compare_values;
 use super::aggregates::dispatch_aggregate;
+use super::value_helpers::value_to_f64;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
@@ -201,6 +202,101 @@ impl<'a> WindowExecutor<'a> {
                                             current_row += rows_in_this_bucket;
                                         }
                                         Value::BigInt(found_bucket)
+                                    }
+                                }
+                                WindowFunc::PercentileCont | WindowFunc::PercentileDisc => {
+                                    let percentile = if let Some(e) = args.get(0) {
+                                        match eval_expr(e, &partition[i].1, ctx, self.catalog, self.storage, self.clock) {
+                                            Ok(Value::Float(v)) => f64::from_bits(v),
+                                            Ok(v) => value_to_f64(&v).unwrap_or(f64::NAN),
+                                            _ => f64::NAN,
+                                        }
+                                    } else {
+                                        f64::NAN
+                                    };
+
+                                    if percentile.is_nan() || percentile < 0.0 || percentile > 1.0 {
+                                        Value::Null
+                                    } else {
+                                        // Collect all non-null values from the ORDER BY column across the partition
+                                        let mut values: Vec<f64> = Vec::new();
+                                        for (_, row) in partition.iter() {
+                                            if let Some(order_expr) = spec.order_by.first() {
+                                                match eval_expr(&order_expr.expr, row, ctx, self.catalog, self.storage, self.clock) {
+                                                    Ok(v) if !v.is_null() => {
+                                                        if let Ok(f) = value_to_f64(&v) {
+                                                            values.push(f);
+                                                        }
+                                                    }
+                                                    _ => {}
+                                                }
+                                            }
+                                        }
+
+                                        values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+
+                                        if values.is_empty() {
+                                            Value::Null
+                                        } else if values.len() == 1 {
+                                            Value::Float(values[0].to_bits())
+                                        } else {
+                                            let n = values.len();
+                                            let exact_index = percentile * (n - 1) as f64;
+                                            let lo = exact_index.floor() as usize;
+                                            let hi = exact_index.ceil() as usize;
+
+                                            if lo == hi {
+                                                Value::Float(values[lo].to_bits())
+                                            } else {
+                                                let frac = exact_index - lo as f64;
+                                                let result = values[lo] * (1.0 - frac) + values[hi] * frac;
+                                                Value::Float(result.to_bits())
+                                            }
+                                        }
+                                    }
+                                }
+                                WindowFunc::PercentileRank => {
+                                    if partition.len() <= 1 {
+                                        Value::Null
+                                    } else {
+                                        // Get current row's ORDER BY value
+                                        let current_val = if let Some(order_expr) = spec.order_by.first() {
+                                            eval_expr(&order_expr.expr, &partition[i].1, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null)
+                                        } else {
+                                            Value::Null
+                                        };
+
+                                        if current_val.is_null() {
+                                            Value::Null
+                                        } else {
+                                            // Count values strictly less than current
+                                            let mut count_less = 0i64;
+                                            // Count values equal to current (to find first tie position)
+                                            let mut first_equal_idx: Option<i64> = None;
+
+                                            for (j, (_, row)) in partition.iter().enumerate() {
+                                                if let Some(order_expr) = spec.order_by.first() {
+                                                    let v = eval_expr(&order_expr.expr, row, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null);
+                                                    if !v.is_null() {
+                                                        let ord = compare_values(&v, &current_val);
+                                                        if ord == Ordering::Less {
+                                                            count_less += 1;
+                                                        } else if ord == Ordering::Equal && first_equal_idx.is_none() {
+                                                            first_equal_idx = Some(j as i64);
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            let rank = if let Some(first_idx) = first_equal_idx {
+                                                first_idx + 1
+                                            } else {
+                                                count_less + 1
+                                            };
+
+                                            let result = (rank - 1) as f64 / (partition.len() - 1) as f64;
+                                            Value::Float(result.to_bits())
+                                        }
                                     }
                                 }
                                 WindowFunc::Aggregate(name) => {
