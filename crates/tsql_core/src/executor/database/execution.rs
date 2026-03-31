@@ -130,6 +130,19 @@ where
                 stmt,
             ) {
                 Ok(r) => out = Ok(r),
+                Err(DbError::Deadlock(e)) => {
+                    transaction_exec::force_xact_abort(
+                        state,
+                        session_id,
+                        &mut session.tx_manager,
+                        session.journal.as_mut(),
+                        &mut session.workspace,
+                        &mut ctx,
+                        &mut session.options,
+                    );
+                    out = Err(DbError::Deadlock(e));
+                    break;
+                }
                 Err(e) => {
                     out = Err(e);
                     break;
@@ -162,6 +175,19 @@ where
                         }
                         StmtOutcome::Ok(v) => out = Ok(v),
                     }
+                }
+                Err(DbError::Deadlock(e)) => {
+                    transaction_exec::force_xact_abort(
+                        state,
+                        session_id,
+                        &mut session.tx_manager,
+                        session.journal.as_mut(),
+                        &mut session.workspace,
+                        &mut ctx,
+                        &mut session.options,
+                    );
+                    out = Err(DbError::Deadlock(e));
+                    break;
                 }
                 Err(e) => {
                     out = Err(e);
@@ -238,6 +264,25 @@ where
                 stmt,
             ) {
                 Ok(r) => results.push(r),
+                Err(DbError::Deadlock(e)) => {
+                    transaction_exec::force_xact_abort(
+                        state,
+                        session_id,
+                        &mut session.tx_manager,
+                        session.journal.as_mut(),
+                        &mut session.workspace,
+                        &mut ctx,
+                        &mut session.options,
+                    );
+                    let mut storage_guard = state.storage.write();
+                    let (cat, stor) = storage_guard.get_mut_refs();
+                    let _ = cleanup_scope_table_vars(
+                        cat,
+                        stor,
+                        &mut ctx,
+                    );
+                    return Err(DbError::Deadlock(e));
+                }
                 Err(e) => {
                     let mut storage_guard = state.storage.write();
                     let (cat, stor) = storage_guard.get_mut_refs();
@@ -280,6 +325,25 @@ where
                         }
                         StmtOutcome::Ok(v) => results.push(v),
                     }
+                }
+                Err(DbError::Deadlock(e)) => {
+                    transaction_exec::force_xact_abort(
+                        state,
+                        session_id,
+                        &mut session.tx_manager,
+                        session.journal.as_mut(),
+                        &mut session.workspace,
+                        &mut ctx,
+                        &mut session.options,
+                    );
+                    let mut storage_guard = state.storage.write();
+                    let (cat, stor) = storage_guard.get_mut_refs();
+                    let _ = cleanup_scope_table_vars(
+                        cat,
+                        stor,
+                        &mut ctx,
+                    );
+                    return Err(DbError::Deadlock(e));
                 }
                 Err(e) => {
                     let mut storage_guard = state.storage.write();
@@ -374,6 +438,18 @@ where
     ) {
         // Swallow RETURN at the top level; BREAK/CONTINUE outside loops are errors
         Ok(outcome) => outcome.into_result_swallow_return(),
+        Err(DbError::Deadlock(e)) => {
+            transaction_exec::force_xact_abort(
+                state,
+                session_id,
+                &mut session.tx_manager,
+                session.journal.as_mut(),
+                &mut session.workspace,
+                &mut ctx,
+                &mut session.options,
+            );
+            Err(DbError::Deadlock(e))
+        }
         Err(e) => Err(e),
     }
 }

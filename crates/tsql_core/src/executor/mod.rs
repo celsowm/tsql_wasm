@@ -1,6 +1,7 @@
 pub(crate) mod aggregates;
 pub mod clock;
 pub mod conflict;
+pub(crate) mod deadlock;
 pub(crate) mod dirty_buffer;
 pub mod context;
 pub(crate) mod cte;
