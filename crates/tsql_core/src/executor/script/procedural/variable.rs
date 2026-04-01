@@ -3,7 +3,7 @@ use crate::error::DbError;
 use crate::executor::context::ExecutionContext;
 use crate::executor::result::QueryResult;
 use crate::executor::schema::SchemaExecutor;
-use super::ScriptExecutor;
+use super::super::ScriptExecutor;
 
 impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_declare(
@@ -12,9 +12,9 @@ impl<'a> ScriptExecutor<'a> {
         ctx: &mut ExecutionContext,
     ) -> Result<Option<QueryResult>, DbError> {
         let declared_name = stmt.name.clone();
-        let ty = super::super::type_mapping::data_type_spec_to_runtime(&stmt.data_type);
+        let ty = crate::executor::type_mapping::data_type_spec_to_runtime(&stmt.data_type);
         let value = if let Some(ref default_expr) = stmt.default {
-            super::super::evaluator::eval_expr(
+            crate::executor::evaluator::eval_expr(
                 default_expr,
                 &[],
                 ctx,
@@ -64,7 +64,7 @@ impl<'a> ScriptExecutor<'a> {
         stmt: SetStmt,
         ctx: &mut ExecutionContext,
     ) -> Result<Option<QueryResult>, DbError> {
-        let val = super::super::evaluator::eval_expr(
+        let val = crate::executor::evaluator::eval_expr(
             &stmt.expr,
             &[],
             ctx,
@@ -73,7 +73,7 @@ impl<'a> ScriptExecutor<'a> {
             self.clock,
         )?;
         if let Some((ty, var)) = ctx.variables.get_mut(&stmt.name) {
-            let coerced = super::super::value_ops::coerce_value_to_type(val, ty)?;
+            let coerced = crate::executor::value_ops::coerce_value_to_type(val, ty)?;
             *var = coerced;
         } else {
             return Err(DbError::Semantic(format!(

@@ -4,7 +4,7 @@ use crate::error::{DbError, StmtOutcome};
 use crate::executor::context::ExecutionContext;
 use crate::executor::result::QueryResult;
 use crate::storage::StoredRow;
-use super::ScriptExecutor;
+use super::super::ScriptExecutor;
 
 impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_with_cte(

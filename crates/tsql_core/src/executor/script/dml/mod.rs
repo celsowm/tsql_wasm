@@ -1,3 +1,6 @@
+pub(crate) mod merge;
+pub(crate) mod cte;
+
 use super::ScriptExecutor;
 use crate::ast::{DeleteStmt, InsertStmt, UpdateStmt};
 use crate::catalog::{Catalog, TableDef};
@@ -95,7 +98,7 @@ impl<'a> ScriptExecutor<'a> {
                     db.lock().push_op(
                         ctx.session_id,
                         target.name.to_string(),
-                        super::super::dirty_buffer::DirtyOp::Insert { row: row.clone() },
+                        crate::executor::dirty_buffer::DirtyOp::Insert { row: row.clone() },
                     );
                 }
             }

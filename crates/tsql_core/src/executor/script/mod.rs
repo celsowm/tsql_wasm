@@ -1,10 +1,6 @@
-mod control_flow;
-mod cte_proxy;
-mod ddl_proxy;
+mod ddl;
 mod dml;
-mod dml_proxy;
 mod procedural;
-mod variable;
 
 use super::clock::Clock;
 use super::context::ExecutionContext;

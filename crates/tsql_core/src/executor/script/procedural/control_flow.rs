@@ -2,7 +2,7 @@ use crate::ast::{IfStmt, WhileStmt};
 use crate::error::{StmtOutcome, StmtResult};
 use crate::executor::context::ExecutionContext;
 use crate::executor::result::QueryResult;
-use super::ScriptExecutor;
+use super::super::ScriptExecutor;
 
 impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_if(
@@ -10,7 +10,7 @@ impl<'a> ScriptExecutor<'a> {
         stmt: IfStmt,
         ctx: &mut ExecutionContext,
     ) -> StmtResult<Option<QueryResult>> {
-        let cond = super::super::evaluator::eval_expr(
+        let cond = crate::executor::evaluator::eval_expr(
             &stmt.condition,
             &[],
             ctx,
@@ -18,7 +18,7 @@ impl<'a> ScriptExecutor<'a> {
             self.storage,
             self.clock,
         )?;
-        let truthy = super::super::value_ops::truthy(&cond);
+        let truthy = crate::executor::value_ops::truthy(&cond);
         if truthy {
             self.execute_batch(&stmt.then_body, ctx)
         } else if let Some(ref else_body) = stmt.else_body {
@@ -37,7 +37,7 @@ impl<'a> ScriptExecutor<'a> {
         let loop_result = (|| {
             let mut last_batch: StmtResult<Option<QueryResult>> = Ok(StmtOutcome::Ok(None));
             loop {
-                let cond = super::super::evaluator::eval_expr(
+                let cond = crate::executor::evaluator::eval_expr(
                     &stmt.condition,
                     &[],
                     ctx,
@@ -45,7 +45,7 @@ impl<'a> ScriptExecutor<'a> {
                     self.storage,
                     self.clock,
                 )?;
-                if !super::super::value_ops::truthy(&cond) {
+                if !crate::executor::value_ops::truthy(&cond) {
                     break;
                 }
 
@@ -79,7 +79,7 @@ impl<'a> ScriptExecutor<'a> {
         ctx: &mut ExecutionContext,
     ) -> StmtResult<Option<QueryResult>> {
         let value = if let Some(ref e) = expr {
-            Some(super::super::evaluator::eval_expr(
+            Some(crate::executor::evaluator::eval_expr(
                 e,
                 &[],
                 ctx,
