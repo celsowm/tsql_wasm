@@ -105,14 +105,20 @@ pub enum RoutineKind {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoutineDef {
+    #[serde(default)]
+    pub object_id: i32,
     pub schema: String,
     pub name: String,
     pub params: Vec<RoutineParam>,
     pub kind: RoutineKind,
+    #[serde(default)]
+    pub definition_sql: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TableTypeDef {
+    #[serde(default)]
+    pub object_id: i32,
     pub schema: String,
     pub name: String,
     pub columns: Vec<crate::ast::ColumnSpec>,
@@ -121,13 +127,19 @@ pub struct TableTypeDef {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ViewDef {
+    #[serde(default)]
+    pub object_id: i32,
     pub schema: String,
     pub name: String,
     pub query: Statement, // Should be Statement::Select
+    #[serde(default)]
+    pub definition_sql: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TriggerDef {
+    #[serde(default)]
+    pub object_id: i32,
     pub schema: String,
     pub name: String,
     pub table_schema: String,
@@ -135,6 +147,8 @@ pub struct TriggerDef {
     pub events: Vec<TriggerEvent>,
     pub is_instead_of: bool,
     pub body: Vec<Statement>,
+    #[serde(default)]
+    pub definition_sql: String,
 }
 
 pub trait Catalog: std::fmt::Debug + Send + Sync {
@@ -145,6 +159,7 @@ pub trait Catalog: std::fmt::Debug + Send + Sync {
     fn get_tables_mut(&mut self) -> &mut Vec<TableDef>;
     fn get_indexes_mut(&mut self) -> &mut Vec<IndexDef>;
     fn alloc_table_id(&mut self) -> u32;
+    fn alloc_object_id(&mut self) -> i32;
     fn alloc_column_id(&mut self) -> u32;
     fn alloc_index_id(&mut self) -> u32;
     fn get_schema_id(&self, name: &str) -> Option<u32>;
@@ -182,7 +197,7 @@ pub trait Catalog: std::fmt::Debug + Send + Sync {
     fn drop_table_type(&mut self, schema: &str, name: &str) -> Result<(), DbError>;
     fn find_table_type(&self, schema: &str, name: &str) -> Option<&TableTypeDef>;
     fn get_table_types(&self) -> &[TableTypeDef];
-    fn create_view(&mut self, schema: &str, name: &str, query: Statement) -> Result<(), DbError>;
+    fn create_view(&mut self, view: ViewDef) -> Result<(), DbError>;
     fn drop_view(&mut self, schema: &str, name: &str) -> Result<(), DbError>;
     fn find_view(&self, schema: &str, name: &str) -> Option<&ViewDef>;
     fn create_trigger(&mut self, trigger: TriggerDef) -> Result<(), DbError>;
@@ -194,7 +209,7 @@ pub trait Catalog: std::fmt::Debug + Send + Sync {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CatalogImpl {
     pub schemas: Vec<SchemaDef>,
     pub tables: Vec<TableDef>,
@@ -207,17 +222,13 @@ pub struct CatalogImpl {
     next_table_id: u32,
     next_column_id: u32,
     next_index_id: u32,
+    #[serde(default = "default_next_object_id")]
+    next_object_id: i32,
 }
 
 impl CatalogImpl {
     pub fn new() -> Self {
-        let mut c = Self {
-            next_schema_id: 1,
-            next_table_id: 1234567890,
-            next_column_id: 1,
-            next_index_id: 234567890,
-            ..Default::default()
-        };
+        let mut c = Self::default();
         let dbo_id = c.alloc_schema_id();
         c.schemas.push(SchemaDef {
             id: dbo_id,
@@ -231,6 +242,29 @@ impl CatalogImpl {
         self.next_schema_id += 1;
         id
     }
+}
+
+impl Default for CatalogImpl {
+    fn default() -> Self {
+        Self {
+            schemas: Vec::new(),
+            tables: Vec::new(),
+            indexes: Vec::new(),
+            routines: Vec::new(),
+            table_types: Vec::new(),
+            views: Vec::new(),
+            triggers: Vec::new(),
+            next_schema_id: 1,
+            next_table_id: 1234567890,
+            next_column_id: 1,
+            next_index_id: 234567890,
+            next_object_id: -1,
+        }
+    }
+}
+
+fn default_next_object_id() -> i32 {
+    -1
 }
 
 impl Catalog for CatalogImpl {
@@ -273,6 +307,12 @@ impl Catalog for CatalogImpl {
     fn alloc_index_id(&mut self) -> u32 {
         let id = self.next_index_id;
         self.next_index_id += 1;
+        id
+    }
+
+    fn alloc_object_id(&mut self) -> i32 {
+        let id = self.next_object_id;
+        self.next_object_id -= 1;
         id
     }
 
@@ -444,6 +484,19 @@ impl Catalog for CatalogImpl {
                 return Some(idx.id as i32);
             }
         }
+        if let Some(routine) = self.find_routine(schema, name) {
+            return Some(routine.object_id);
+        }
+        if let Some(view) = self.find_view(schema, name) {
+            return Some(view.object_id);
+        }
+        if let Some(trigger) = self
+            .triggers
+            .iter()
+            .find(|t| t.schema.eq_ignore_ascii_case(schema) && t.name.eq_ignore_ascii_case(name))
+        {
+            return Some(trigger.object_id);
+        }
         None
     }
 
@@ -557,18 +610,14 @@ impl Catalog for CatalogImpl {
         &self.table_types
     }
 
-    fn create_view(&mut self, schema: &str, name: &str, query: Statement) -> Result<(), DbError> {
-        if self.find_view(schema, name).is_some() {
+    fn create_view(&mut self, view: ViewDef) -> Result<(), DbError> {
+        if self.find_view(&view.schema, &view.name).is_some() {
             return Err(DbError::Semantic(format!(
                 "view '{}.{}' already exists",
-                schema, name
+                view.schema, view.name
             )));
         }
-        self.views.push(ViewDef {
-            schema: schema.to_string(),
-            name: name.to_string(),
-            query,
-        });
+        self.views.push(view);
         Ok(())
     }
 

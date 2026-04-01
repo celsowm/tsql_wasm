@@ -111,6 +111,7 @@ where
             None
         },
         session_id,
+        session.original_database.clone(),
     );
     ctx.enter_scope();
 
@@ -245,6 +246,7 @@ where
             None
         },
         session_id,
+        session.original_database.clone(),
     );
     ctx.enter_scope();
 
@@ -407,6 +409,7 @@ where
             None
         },
         session_id,
+        session.original_database.clone(),
     );
     ctx.trancount = session.tx_manager.depth;
     ctx.xact_state = session.tx_manager.xact_state;

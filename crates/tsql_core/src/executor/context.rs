@@ -9,6 +9,21 @@ use crate::types::{DataType, Value};
 pub type Variables = std::collections::HashMap<String, (DataType, Value)>;
 
 #[derive(Debug, Clone)]
+pub enum ModuleKind {
+    Procedure,
+    Function,
+    Trigger,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModuleFrame {
+    pub object_id: i32,
+    pub schema: String,
+    pub name: String,
+    pub kind: ModuleKind,
+}
+
+#[derive(Debug, Clone)]
 pub enum ControlFlow {
     Break,
     Continue,
@@ -29,6 +44,7 @@ pub struct ExecutionContext<'a> {
     pub temp_table_map: &'a mut HashMap<String, String>,
     pub session_table_var_map: &'a mut HashMap<String, String>,
     pub table_var_counter: &'a mut u64,
+    pub module_stack: Vec<ModuleFrame>,
     pub scope_vars: Vec<Vec<String>>,
     pub ansi_nulls: bool,
     pub datefirst: i32,
@@ -48,6 +64,7 @@ pub struct ExecutionContext<'a> {
     pub dirty_buffer: Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>>,
     pub session_id: super::locks::SessionId,
     pub session_database: Option<String>,
+    pub session_original_database: String,
     pub session_user: Option<String>,
     pub session_app_name: Option<String>,
     pub session_host_name: Option<String>,
@@ -69,6 +86,7 @@ impl<'a> ExecutionContext<'a> {
         print_output: &'a mut Vec<String>,
         dirty_buffer: Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>>,
         session_id: super::locks::SessionId,
+        session_original_database: String,
     ) -> Self {
         Self {
             variables,
@@ -85,6 +103,7 @@ impl<'a> ExecutionContext<'a> {
             session_table_var_map,
             scope_vars: vec![vec![]],
             table_var_counter,
+            module_stack: vec![],
             ansi_nulls,
             datefirst,
             random_state,
@@ -103,6 +122,7 @@ impl<'a> ExecutionContext<'a> {
             dirty_buffer,
             session_id,
             session_database: None,
+            session_original_database,
             session_user: None,
             session_app_name: None,
             session_host_name: None,
@@ -125,6 +145,7 @@ impl<'a> ExecutionContext<'a> {
             session_table_var_map: self.session_table_var_map,
             scope_vars: self.scope_vars.clone(),
             table_var_counter: self.table_var_counter,
+            module_stack: self.module_stack.clone(),
             ansi_nulls: self.ansi_nulls,
             datefirst: self.datefirst,
             random_state: self.random_state,
@@ -143,6 +164,7 @@ impl<'a> ExecutionContext<'a> {
             dirty_buffer: self.dirty_buffer.clone(),
             session_id: self.session_id,
             session_database: self.session_database.clone(),
+            session_original_database: self.session_original_database.clone(),
             session_user: self.session_user.clone(),
             session_app_name: self.session_app_name.clone(),
             session_host_name: self.session_host_name.clone(),
@@ -165,6 +187,7 @@ impl<'a> ExecutionContext<'a> {
             session_table_var_map: self.session_table_var_map,
             scope_vars: self.scope_vars.clone(),
             table_var_counter: self.table_var_counter,
+            module_stack: self.module_stack.clone(),
             ansi_nulls: self.ansi_nulls,
             datefirst: self.datefirst,
             random_state: self.random_state,
@@ -183,6 +206,7 @@ impl<'a> ExecutionContext<'a> {
             dirty_buffer: self.dirty_buffer.clone(),
             session_id: self.session_id,
             session_database: self.session_database.clone(),
+            session_original_database: self.session_original_database.clone(),
             session_user: self.session_user.clone(),
             session_app_name: self.session_app_name.clone(),
             session_host_name: self.session_host_name.clone(),
@@ -209,6 +233,7 @@ impl<'a> ExecutionContext<'a> {
             session_table_var_map: self.session_table_var_map,
             scope_vars: self.scope_vars.clone(),
             table_var_counter: self.table_var_counter,
+            module_stack: self.module_stack.clone(),
             ansi_nulls: self.ansi_nulls,
             datefirst: self.datefirst,
             random_state: self.random_state,
@@ -227,6 +252,7 @@ impl<'a> ExecutionContext<'a> {
             dirty_buffer: self.dirty_buffer.clone(),
             session_id: self.session_id,
             session_database: self.session_database.clone(),
+            session_original_database: self.session_original_database.clone(),
             session_user: self.session_user.clone(),
             session_app_name: self.session_app_name.clone(),
             session_host_name: self.session_host_name.clone(),
@@ -373,6 +399,22 @@ impl<'a> ExecutionContext<'a> {
 
     pub fn current_scope_identity(&self) -> Option<i64> {
         self.scope_identity_stack.last().and_then(|v| *v)
+    }
+
+    pub fn push_module(&mut self, module: ModuleFrame) {
+        self.module_stack.push(module);
+    }
+
+    pub fn pop_module(&mut self) {
+        self.module_stack.pop();
+    }
+
+    pub fn current_module(&self) -> Option<&ModuleFrame> {
+        self.module_stack.last()
+    }
+
+    pub fn current_procid(&self) -> Option<i32> {
+        self.current_module().map(|module| module.object_id)
     }
 
     pub fn next_table_var_id(&mut self) -> u64 {

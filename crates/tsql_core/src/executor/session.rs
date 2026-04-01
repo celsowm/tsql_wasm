@@ -124,6 +124,7 @@ pub struct SessionRuntime<C, S> {
     pub(crate) workspace: Option<TxWorkspace<C, S>>,
     pub(crate) options: SessionOptions,
     pub(crate) random_state: u64,
+    pub(crate) original_database: String,
 }
 
 impl<C, S> SessionRuntime<C, S>
@@ -144,6 +145,7 @@ where
             workspace: None,
             options: SessionOptions::default(),
             random_state: 1,
+            original_database: "master".to_string(),
         }
     }
 

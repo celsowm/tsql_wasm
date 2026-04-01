@@ -7,8 +7,9 @@ use super::context::ExecutionContext;
 use super::model::Cursor;
 use super::result::QueryResult;
 use super::schema::SchemaExecutor;
+use super::tooling::{format_routine_definition, format_trigger_definition};
 use crate::ast::{DropTableStmt, ObjectName, Statement};
-use crate::catalog::{Catalog, RoutineDef, RoutineKind};
+use crate::catalog::{Catalog, RoutineDef, RoutineKind, TriggerDef};
 use crate::error::{DbError, StmtOutcome, StmtResult};
 use crate::storage::Storage;
 
@@ -153,12 +154,16 @@ impl<'a> ScriptExecutor<'a> {
             Statement::SelectAssign(stmt) => self.execute_select_assign(stmt, ctx).map(StmtOutcome::Ok),
             Statement::CreateProcedure(stmt) => {
                 let schema = stmt.name.schema_or_dbo().to_string();
-                self.catalog.create_routine(RoutineDef {
+                let mut routine = RoutineDef {
+                    object_id: self.catalog.alloc_object_id(),
                     schema,
                     name: stmt.name.name,
                     params: stmt.params,
                     kind: RoutineKind::Procedure { body: stmt.body },
-                })?;
+                    definition_sql: String::new(),
+                };
+                routine.definition_sql = format_routine_definition(&routine);
+                self.catalog.create_routine(routine)?;
                 Ok(StmtOutcome::Ok(None))
             }
             Statement::DropProcedure(stmt) => {
@@ -168,7 +173,8 @@ impl<'a> ScriptExecutor<'a> {
             }
             Statement::CreateFunction(stmt) => {
                 let schema = stmt.name.schema_or_dbo().to_string();
-                self.catalog.create_routine(RoutineDef {
+                let mut routine = RoutineDef {
+                    object_id: self.catalog.alloc_object_id(),
                     schema,
                     name: stmt.name.name,
                     params: stmt.params,
@@ -176,7 +182,10 @@ impl<'a> ScriptExecutor<'a> {
                         returns: stmt.returns,
                         body: stmt.body,
                     },
-                })?;
+                    definition_sql: String::new(),
+                };
+                routine.definition_sql = format_routine_definition(&routine);
+                self.catalog.create_routine(routine)?;
                 Ok(StmtOutcome::Ok(None))
             }
             Statement::DropFunction(stmt) => {
@@ -224,7 +233,8 @@ impl<'a> ScriptExecutor<'a> {
             Statement::DeallocateCursor(name) => self.execute_deallocate_cursor(name, ctx).map(StmtOutcome::Ok),
             Statement::CreateTrigger(stmt) => {
                 let schema = stmt.name.schema_or_dbo().to_string();
-                self.catalog.create_trigger(crate::catalog::TriggerDef {
+                let mut trigger = TriggerDef {
+                    object_id: self.catalog.alloc_object_id(),
                     schema,
                     name: stmt.name.name,
                     table_schema: stmt.table.schema_or_dbo().to_string(),
@@ -232,7 +242,10 @@ impl<'a> ScriptExecutor<'a> {
                     events: stmt.events,
                     is_instead_of: stmt.is_instead_of,
                     body: stmt.body,
-                })?;
+                    definition_sql: String::new(),
+                };
+                trigger.definition_sql = format_trigger_definition(&trigger);
+                self.catalog.create_trigger(trigger)?;
                 Ok(StmtOutcome::Ok(None))
             }
             Statement::DropTrigger(stmt) => {

@@ -10,6 +10,7 @@ use crate::error::DbError;
 use crate::storage::{Storage, StoredRow};
 
 use super::type_mapping::data_type_spec_to_runtime;
+use super::tooling::format_view_definition;
 
 pub(crate) struct SchemaExecutor<'a> {
     pub(crate) catalog: &'a mut dyn Catalog,
@@ -22,7 +23,9 @@ impl<'a> SchemaExecutor<'a> {
         if self.catalog.get_schema_id(&schema).is_none() {
             return Err(DbError::Semantic(format!("schema '{}' not found", schema)));
         }
+        let object_id = self.catalog.alloc_object_id();
         self.catalog.create_table_type(TableTypeDef {
+            object_id,
             schema,
             name: stmt.name.name,
             columns: stmt.columns,
@@ -187,12 +190,18 @@ impl<'a> SchemaExecutor<'a> {
     }
 
     pub(crate) fn create_view(&mut self, stmt: crate::ast::CreateViewStmt) -> Result<(), DbError> {
-        let schema = stmt.name.schema_or_dbo();
-        self.catalog.create_view(
+        let schema = stmt.name.schema_or_dbo().to_string();
+        let view_name = stmt.name.name;
+        let query = stmt.query;
+        let mut view = crate::catalog::ViewDef {
+            object_id: self.catalog.alloc_object_id(),
             schema,
-            &stmt.name.name,
-            crate::ast::Statement::Select(stmt.query),
-        )
+            name: view_name,
+            query: crate::ast::Statement::Select(query),
+            definition_sql: String::new(),
+        };
+        view.definition_sql = format_view_definition(&view);
+        self.catalog.create_view(view)
     }
 
     pub(crate) fn drop_view(&mut self, stmt: crate::ast::DropViewStmt) -> Result<(), DbError> {

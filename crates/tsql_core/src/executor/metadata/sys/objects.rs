@@ -118,6 +118,62 @@ impl VirtualTable for SysObjects {
                 fk_id += 1;
             }
         }
+        for routine in catalog.get_routines() {
+            let (ty, desc) = match &routine.kind {
+                crate::catalog::RoutineKind::Procedure { .. } => (
+                    "P ".to_string(),
+                    "SQL_STORED_PROCEDURE".to_string(),
+                ),
+                crate::catalog::RoutineKind::Function {
+                    body: crate::ast::FunctionBody::InlineTable(_),
+                    ..
+                } => (
+                    "IF".to_string(),
+                    "SQL_INLINE_TABLE_VALUED_FUNCTION".to_string(),
+                ),
+                crate::catalog::RoutineKind::Function { .. } => (
+                    "FN".to_string(),
+                    "SQL_SCALAR_FUNCTION".to_string(),
+                ),
+            };
+            rows.push(StoredRow {
+                values: vec![
+                    Value::Int(routine.object_id),
+                    Value::VarChar(routine.name.clone()),
+                    Value::Int(catalog.get_schema_id(&routine.schema).unwrap_or(1) as i32),
+                    Value::Int(0),
+                    Value::Char(ty),
+                    Value::VarChar(desc),
+                ],
+                deleted: false,
+            });
+        }
+        for view in catalog.get_views() {
+            rows.push(StoredRow {
+                values: vec![
+                    Value::Int(view.object_id),
+                    Value::VarChar(view.name.clone()),
+                    Value::Int(catalog.get_schema_id(&view.schema).unwrap_or(1) as i32),
+                    Value::Int(0),
+                    Value::Char("V ".to_string()),
+                    Value::VarChar("VIEW".to_string()),
+                ],
+                deleted: false,
+            });
+        }
+        for trigger in catalog.get_triggers() {
+            rows.push(StoredRow {
+                values: vec![
+                    Value::Int(trigger.object_id),
+                    Value::VarChar(trigger.name.clone()),
+                    Value::Int(catalog.get_schema_id(&trigger.schema).unwrap_or(1) as i32),
+                    Value::Int(catalog.object_id(&trigger.table_schema, &trigger.table_name).unwrap_or(0)),
+                    Value::Char("TR".to_string()),
+                    Value::VarChar("SQL_TRIGGER".to_string()),
+                ],
+                deleted: false,
+            });
+        }
         for idx in catalog.get_indexes() {
             rows.push(StoredRow {
                 values: vec![

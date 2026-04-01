@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::ast::{BinaryOp, DataTypeSpec, Expr, JoinClause, JoinType, ObjectName, SelectItem, SelectStmt, SessionOption, SessionOptionValue, SetOptionStmt, Statement, TableRef, UnaryOp};
+use crate::ast::{BinaryOp, DataTypeSpec, Expr, FunctionBody, JoinClause, JoinType, ObjectName, OrderByExpr, RoutineParam, RoutineParamType, SelectItem, SelectStmt, SessionOption, SessionOptionValue, SetOptionStmt, Statement, TableName, TableRef, TriggerEvent, UnaryOp};
 use crate::parser::parse_sql;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -362,6 +362,430 @@ pub(crate) fn format_expr(expr: &Expr) -> String {
             parts.join(" ")
         }
     }
+}
+
+pub(crate) fn format_object_name(name: &ObjectName) -> String {
+    match name.schema.as_deref() {
+        Some(schema) => format!("{}.{}", schema, name.name),
+        None => name.name.clone(),
+    }
+}
+
+fn format_table_ref(table: &TableRef) -> String {
+    let mut out = match &table.name {
+        TableName::Object(o) => format_object_name(o),
+        TableName::Subquery(stmt) => format!("({})", format_select_stmt(stmt)),
+    };
+    if let Some(alias) = &table.alias {
+        out.push_str(" AS ");
+        out.push_str(alias);
+    }
+    out
+}
+
+fn format_order_by(items: &[OrderByExpr]) -> String {
+    let parts: Vec<String> = items
+        .iter()
+        .map(|item| {
+            let dir = if item.asc { "" } else { " DESC" };
+            format!("{}{}", format_expr(&item.expr), dir)
+        })
+        .collect();
+    parts.join(", ")
+}
+
+pub(crate) fn format_select_stmt(stmt: &SelectStmt) -> String {
+    let mut out = String::from("SELECT ");
+    if stmt.distinct {
+        out.push_str("DISTINCT ");
+    }
+    if let Some(top) = &stmt.top {
+        out.push_str("TOP ");
+        out.push_str(&format_expr(&top.value));
+        out.push(' ');
+    }
+    out.push_str(&format_select_columns(&stmt.projection));
+    if let Some(into) = &stmt.into_table {
+        out.push_str(" INTO ");
+        out.push_str(&format_object_name(into));
+    }
+    if let Some(from) = &stmt.from {
+        out.push_str(" FROM ");
+        out.push_str(&format_table_ref(from));
+    }
+    for join in &stmt.joins {
+        out.push(' ');
+        out.push_str(&format_join(join));
+    }
+    for apply in &stmt.applies {
+        out.push(' ');
+        let apply_kw = match apply.apply_type {
+            crate::ast::ApplyType::Cross => "CROSS APPLY",
+            crate::ast::ApplyType::Outer => "OUTER APPLY",
+        };
+        out.push_str(apply_kw);
+        out.push_str(" (");
+        out.push_str(&format_select_stmt(&apply.subquery));
+        out.push_str(") AS ");
+        out.push_str(&apply.alias);
+    }
+    if let Some(selection) = &stmt.selection {
+        out.push_str(" WHERE ");
+        out.push_str(&format_expr(selection));
+    }
+    if !stmt.group_by.is_empty() {
+        out.push_str(" GROUP BY ");
+        let parts: Vec<String> = stmt.group_by.iter().map(format_expr).collect();
+        out.push_str(&parts.join(", "));
+    }
+    if let Some(having) = &stmt.having {
+        out.push_str(" HAVING ");
+        out.push_str(&format_expr(having));
+    }
+    if !stmt.order_by.is_empty() {
+        out.push_str(" ORDER BY ");
+        out.push_str(&format_order_by(&stmt.order_by));
+    }
+    if let Some(offset) = &stmt.offset {
+        out.push_str(" OFFSET ");
+        out.push_str(&format_expr(offset));
+        out.push_str(" ROWS");
+        if let Some(fetch) = &stmt.fetch {
+            out.push_str(" FETCH NEXT ");
+            out.push_str(&format_expr(fetch));
+            out.push_str(" ROWS ONLY");
+        }
+    }
+    out
+}
+
+fn format_param(param: &RoutineParam) -> String {
+    let mut out = param.name.clone();
+    out.push(' ');
+    match &param.param_type {
+        RoutineParamType::Scalar(dt) => out.push_str(&format_data_type_spec(dt)),
+        RoutineParamType::TableType(name) => out.push_str(&format_object_name(name)),
+    }
+    if param.is_output {
+        out.push_str(" OUTPUT");
+    }
+    if param.is_readonly {
+        out.push_str(" READONLY");
+    }
+    if let Some(default) = &param.default {
+        out.push_str(" = ");
+        out.push_str(&format_expr(default));
+    }
+    out
+}
+
+fn format_statement_list(stmts: &[Statement]) -> String {
+    stmts
+        .iter()
+        .map(format_statement)
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+pub(crate) fn format_statement(stmt: &Statement) -> String {
+    match stmt {
+        Statement::Select(s) => format_select_stmt(s),
+        Statement::Insert(s) => format!("INSERT INTO {}", format_object_name(&s.table)),
+        Statement::Update(s) => {
+            let mut out = format!("UPDATE {}", format_object_name(&s.table));
+            if !s.assignments.is_empty() {
+                let assigns = s
+                    .assignments
+                    .iter()
+                    .map(|a| format!("{} = {}", a.column, format_expr(&a.expr)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                out.push_str(" SET ");
+                out.push_str(&assigns);
+            }
+            out
+        }
+        Statement::Delete(s) => format!("DELETE FROM {}", format_object_name(&s.table)),
+        Statement::Set(s) => format!("SET {} = {}", s.name, format_expr(&s.expr)),
+        Statement::Declare(s) => {
+            let mut out = format!("DECLARE {} {}", s.name, format_data_type_spec(&s.data_type));
+            if let Some(default) = &s.default {
+                out.push_str(" = ");
+                out.push_str(&format_expr(default));
+            }
+            out
+        }
+        Statement::Return(Some(expr)) => format!("RETURN {}", format_expr(expr)),
+        Statement::Return(None) => "RETURN".to_string(),
+        Statement::Print(expr) => format!("PRINT {}", format_expr(expr)),
+        Statement::Raiserror(stmt) => format!(
+            "RAISERROR({}, {}, {})",
+            format_expr(&stmt.message),
+            format_expr(&stmt.severity),
+            format_expr(&stmt.state)
+        ),
+        Statement::BeginEnd(stmts) => format!("BEGIN {} END", format_statement_list(stmts)),
+        Statement::If(stmt) => {
+            let mut out = format!("IF {} ", format_expr(&stmt.condition));
+            out.push_str(&format!("BEGIN {} END", format_statement_list(&stmt.then_body)));
+            if let Some(else_body) = &stmt.else_body {
+                out.push_str(" ELSE ");
+                out.push_str(&format!("BEGIN {} END", format_statement_list(else_body)));
+            }
+            out
+        }
+        Statement::While(stmt) => format!(
+            "WHILE {} BEGIN {} END",
+            format_expr(&stmt.condition),
+            format_statement_list(&stmt.body)
+        ),
+        Statement::TryCatch(stmt) => format!(
+            "BEGIN TRY {} END TRY BEGIN CATCH {} END CATCH",
+            format_statement_list(&stmt.try_body),
+            format_statement_list(&stmt.catch_body)
+        ),
+        Statement::ExecDynamic(stmt) => format!("EXEC({})", format_expr(&stmt.sql_expr)),
+        Statement::ExecProcedure(stmt) => {
+            let mut out = format!("EXEC {}", format_object_name(&stmt.name));
+            if !stmt.args.is_empty() {
+                let args = stmt
+                    .args
+                    .iter()
+                    .map(|a| {
+                        let mut item = String::new();
+                        if let Some(name) = &a.name {
+                            item.push_str(name);
+                            item.push_str(" = ");
+                        }
+                        item.push_str(&format_expr(&a.expr));
+                        if a.is_output {
+                            item.push_str(" OUTPUT");
+                        }
+                        item
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                out.push(' ');
+                out.push_str(&args);
+            }
+            out
+        }
+        Statement::SpExecuteSql(stmt) => {
+            let mut out = format!("EXEC sp_executesql {}", format_expr(&stmt.sql_expr));
+            if let Some(params) = &stmt.params_def {
+                out.push_str(", ");
+                out.push_str(&format_expr(params));
+            }
+            out
+        }
+        Statement::SelectAssign(stmt) => {
+            let assigns = stmt
+                .targets
+                .iter()
+                .map(|t| format!("{} = {}", t.variable, format_expr(&t.expr)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let mut out = format!("SELECT {}", assigns);
+            if let Some(from) = &stmt.from {
+                out.push_str(" FROM ");
+                out.push_str(&format_table_ref(from));
+            }
+            out
+        }
+        Statement::Merge(_) => "MERGE".to_string(),
+        Statement::DeclareCursor(stmt) => {
+            format!("DECLARE {} CURSOR FOR {}", stmt.name, format_select_stmt(&stmt.query))
+        }
+        Statement::OpenCursor(name) => format!("OPEN {}", name),
+        Statement::FetchCursor(stmt) => format!("FETCH {}", stmt.name),
+        Statement::CloseCursor(name) => format!("CLOSE {}", name),
+        Statement::DeallocateCursor(name) => format!("DEALLOCATE {}", name),
+        Statement::CreateTable(stmt) => format!("CREATE TABLE {}", format_object_name(&stmt.name)),
+        Statement::CreateView(stmt) => format!("CREATE VIEW {}", format_object_name(&stmt.name)),
+        Statement::CreateProcedure(stmt) => {
+            let params = stmt
+                .params
+                .iter()
+                .map(format_param)
+                .collect::<Vec<_>>()
+                .join(", ");
+            let mut out = format!("CREATE PROCEDURE {} ", format_object_name(&stmt.name));
+            if !params.is_empty() {
+                out.push('(');
+                out.push_str(&params);
+                out.push(')');
+            }
+            out.push_str(" AS BEGIN ");
+            out.push_str(&format_statement_list(&stmt.body));
+            out.push_str(" END");
+            out
+        }
+        Statement::CreateFunction(stmt) => {
+            let params = stmt
+                .params
+                .iter()
+                .map(format_param)
+                .collect::<Vec<_>>()
+                .join(", ");
+            let mut out = format!("CREATE FUNCTION {} ", format_object_name(&stmt.name));
+            if !params.is_empty() {
+                out.push('(');
+                out.push_str(&params);
+                out.push(')');
+            }
+            if let Some(returns) = &stmt.returns {
+                out.push_str(" RETURNS ");
+                out.push_str(&format_data_type_spec(returns));
+            }
+            match &stmt.body {
+                FunctionBody::ScalarReturn(expr) => {
+                    out.push_str(" AS RETURN ");
+                    out.push_str(&format_expr(expr));
+                }
+                FunctionBody::Scalar(stmts) => {
+                    out.push_str(" AS BEGIN ");
+                    out.push_str(&format_statement_list(stmts));
+                    out.push_str(" END");
+                }
+                FunctionBody::InlineTable(select) => {
+                    out.push_str(" AS RETURN ");
+                    out.push_str(&format_select_stmt(select));
+                }
+            }
+            out
+        }
+        Statement::CreateTrigger(stmt) => {
+            let events = stmt
+                .events
+                .iter()
+                .map(|event| match event {
+                    TriggerEvent::Insert => "INSERT",
+                    TriggerEvent::Update => "UPDATE",
+                    TriggerEvent::Delete => "DELETE",
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            let scope = if stmt.is_instead_of {
+                "INSTEAD OF"
+            } else {
+                "AFTER"
+            };
+            format!(
+                "CREATE TRIGGER {} ON {} {} {} AS BEGIN {} END",
+                format_object_name(&stmt.name),
+                format_object_name(&stmt.table),
+                scope,
+                events,
+                format_statement_list(&stmt.body)
+            )
+        }
+        _ => statement_kind(stmt).to_string(),
+    }
+}
+
+pub(crate) fn format_routine_definition(routine: &crate::catalog::RoutineDef) -> String {
+    let params = routine
+        .params
+        .iter()
+        .map(format_param)
+        .collect::<Vec<_>>()
+        .join(", ");
+    let name = ObjectName {
+        schema: Some(routine.schema.clone()),
+        name: routine.name.clone(),
+    };
+    let mut out = match &routine.kind {
+        crate::catalog::RoutineKind::Procedure { body } => {
+            let mut s = format!("CREATE PROCEDURE {} ", format_object_name(&name));
+            if !params.is_empty() {
+                s.push('(');
+                s.push_str(&params);
+                s.push(')');
+            }
+            s.push_str(" AS BEGIN ");
+            s.push_str(&format_statement_list(body));
+            s.push_str(" END");
+            s
+        }
+        crate::catalog::RoutineKind::Function { returns, body } => {
+            let mut s = format!("CREATE FUNCTION {} ", format_object_name(&name));
+            if !params.is_empty() {
+                s.push('(');
+                s.push_str(&params);
+                s.push(')');
+            }
+            if let Some(returns) = returns {
+                s.push_str(" RETURNS ");
+                s.push_str(&format_data_type_spec(returns));
+            }
+            match body {
+                FunctionBody::ScalarReturn(expr) => {
+                    s.push_str(" AS RETURN ");
+                    s.push_str(&format_expr(expr));
+                }
+                FunctionBody::Scalar(stmts) => {
+                    s.push_str(" AS BEGIN ");
+                    s.push_str(&format_statement_list(stmts));
+                    s.push_str(" END");
+                }
+                FunctionBody::InlineTable(select) => {
+                    s.push_str(" AS RETURN ");
+                    s.push_str(&format_select_stmt(select));
+                }
+            }
+            s
+        }
+    };
+    if out.is_empty() {
+        out = format_object_name(&name);
+    }
+    out
+}
+
+pub(crate) fn format_view_definition(view: &crate::catalog::ViewDef) -> String {
+    format!(
+        "CREATE VIEW {} AS {}",
+        format_object_name(&ObjectName {
+            schema: Some(view.schema.clone()),
+            name: view.name.clone(),
+        }),
+        match &view.query {
+            Statement::Select(select) => format_select_stmt(select),
+            other => format_statement(other),
+        }
+    )
+}
+
+pub(crate) fn format_trigger_definition(trigger: &crate::catalog::TriggerDef) -> String {
+    let events = trigger
+        .events
+        .iter()
+        .map(|event| match event {
+            TriggerEvent::Insert => "INSERT",
+            TriggerEvent::Update => "UPDATE",
+            TriggerEvent::Delete => "DELETE",
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let scope = if trigger.is_instead_of {
+        "INSTEAD OF"
+    } else {
+        "AFTER"
+    };
+    format!(
+        "CREATE TRIGGER {} ON {} {} {} AS BEGIN {} END",
+        format_object_name(&ObjectName {
+            schema: Some(trigger.schema.clone()),
+            name: trigger.name.clone(),
+        }),
+        format_object_name(&ObjectName {
+            schema: Some(trigger.table_schema.clone()),
+            name: trigger.table_name.clone(),
+        }),
+        scope,
+        events,
+        format_statement_list(&trigger.body)
+    )
 }
 
 fn format_select_columns(projection: &[SelectItem]) -> String {

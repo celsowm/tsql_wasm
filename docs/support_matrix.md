@@ -1,7 +1,7 @@
 # T-SQL Support Matrix (R9)
 
 **Engine Version:** R9 — Advanced DML  
-**Last Updated:** 2026-03-27
+**Last Updated:** 2026-04-01
 **Test Suite:** 350+ tests passing
 
 ## Support Status Legend
@@ -161,8 +161,31 @@
 | PRODUCT() | ✅ Exact | Aggregate |
 | OBJECT_ID() | ✅ Exact | |
 | COLUMNPROPERTY() | ✅ Exact | |
-| OBJECTPROPERTY() | 📋 Stubbed | |
+| OBJECT_NAME() | ✅ Exact | Schema/object lookup |
+| OBJECT_SCHEMA_NAME() | ✅ Exact | Schema/object lookup |
+| OBJECT_DEFINITION() | ✅ Exact | Routines, views, triggers |
+| SCHEMA_ID() | ✅ Exact | |
+| SCHEMA_NAME() | ✅ Exact | |
+| TYPE_ID() | ✅ Exact | Built-in and table types |
+| TYPE_NAME() | ✅ Exact | Built-in and table types |
+| TYPEPROPERTY() | 🔶 Partial | Small doc-backed whitelist |
+| COL_NAME() | ✅ Exact | |
+| COL_LENGTH() | ✅ Exact | Byte length semantics |
+| INDEX_COL() | 🔶 Partial | Key ordinal lookup |
+| INDEXKEY_PROPERTY() | 🔶 Partial | Small doc-backed whitelist |
+| INDEXPROPERTY() | 🔶 Partial | Small doc-backed whitelist |
+| DATABASEPROPERTYEX() | 🔶 Partial | Current database subset |
+| ORIGINAL_DB_NAME() | ✅ Exact | |
+| OBJECTPROPERTY() | 🔶 Partial | Small doc-backed whitelist |
+| OBJECTPROPERTYEX() | 🔶 Partial | Small doc-backed whitelist |
+| @@PROCID | ✅ Exact | Current module id |
 | UNISTR() | ✅ Exact | Unicode string |
+
+Deferred metadata families that still depend on missing subsystems:
+`FILE_ID`, `FILE_IDEX`, `FILE_NAME`, `FILEGROUP_ID`, `FILEGROUP_NAME`,
+`FILEGROUPPROPERTY`, `FILEPROPERTY`, `FILEPROPERTYEX`, `FULLTEXTCATALOGPROPERTY`,
+`FULLTEXTSERVICEPROPERTY`, `APPLOCK_MODE`, `APPLOCK_TEST`, `ASSEMBLYPROPERTY`,
+`STATS_DATE`, `NEXT VALUE FOR`, and `PRÓXIMO VALOR PARA`.
 
 ### JSON Functions (R7)
 

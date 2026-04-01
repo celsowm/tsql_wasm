@@ -11,6 +11,7 @@ use crate::storage::Storage;
 use crate::error::DbError;
 
 use super::clock::Clock;
+use super::context::{ModuleFrame, ModuleKind};
 
 pub(crate) struct MutationExecutor<'a> {
     pub(crate) catalog: &'a mut dyn Catalog,
@@ -58,6 +59,7 @@ impl<'a> MutationExecutor<'a> {
                 if is_instead_of {
                     trigger_ctx.skip_instead_of = true;
                 }
+                let scope_depth = trigger_ctx.scope_vars.len();
                 trigger_ctx.enter_scope();
 
                 let dbo_schema_id = self.catalog.get_schema_id("dbo").unwrap_or(1);
@@ -111,7 +113,17 @@ impl<'a> MutationExecutor<'a> {
                     storage: self.storage,
                     clock: self.clock,
                 };
+                trigger_ctx.push_module(ModuleFrame {
+                    object_id: trigger.object_id,
+                    schema: trigger.schema.clone(),
+                    name: trigger.name.clone(),
+                    kind: ModuleKind::Trigger,
+                });
                 let res = script_executor.execute_batch(&trigger.body, &mut trigger_ctx);
+                while trigger_ctx.scope_vars.len() > scope_depth {
+                    trigger_ctx.leave_scope();
+                }
+                trigger_ctx.pop_module();
 
                 // Cleanup
                 if let Some((id, _name)) = ins_physical {

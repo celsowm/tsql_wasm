@@ -1,4 +1,5 @@
 pub(crate) mod datetime;
+pub(crate) mod metadata;
 pub(crate) mod logic;
 pub(crate) mod math;
 pub(crate) mod string;
@@ -13,7 +14,7 @@ use crate::types::Value;
 
 use super::aggregates::{dispatch_aggregate, is_aggregate_function};
 use super::clock::Clock;
-use super::context::ExecutionContext;
+use super::context::{ExecutionContext, ModuleFrame, ModuleKind};
 use super::evaluator::eval_expr;
 use super::fuzzy;
 use super::json;
@@ -223,6 +224,24 @@ fn try_system_dispatch(
         }
         "OBJECT_ID" => Some(system::eval_object_id(args, row, ctx, catalog, storage, clock)),
         "COLUMNPROPERTY" => Some(system::eval_columnproperty(args, row, ctx, catalog, storage, clock)),
+        "OBJECT_NAME" => Some(metadata::eval_object_name(args, row, ctx, catalog, storage, clock)),
+        "OBJECT_SCHEMA_NAME" => Some(metadata::eval_object_schema_name(args, row, ctx, catalog, storage, clock)),
+        "OBJECT_DEFINITION" => Some(metadata::eval_object_definition(args, row, ctx, catalog, storage, clock)),
+        "OBJECTPROPERTY" => Some(metadata::eval_objectproperty(args, row, ctx, catalog, storage, clock)),
+        "OBJECTPROPERTYEX" => Some(metadata::eval_objectpropertyex(args, row, ctx, catalog, storage, clock)),
+        "SCHEMA_ID" => Some(metadata::eval_schema_id(args, row, ctx, catalog, storage, clock)),
+        "SCHEMA_NAME" => Some(metadata::eval_schema_name(args, row, ctx, catalog, storage, clock)),
+        "TYPE_ID" => Some(metadata::eval_type_id(args, row, ctx, catalog, storage, clock)),
+        "TYPE_NAME" => Some(metadata::eval_type_name(args, row, ctx, catalog, storage, clock)),
+        "TYPEPROPERTY" => Some(metadata::eval_typeproperty(args, row, ctx, catalog, storage, clock)),
+        "COL_NAME" => Some(metadata::eval_col_name(args, row, ctx, catalog, storage, clock)),
+        "COL_LENGTH" => Some(metadata::eval_col_length(args, row, ctx, catalog, storage, clock)),
+        "INDEX_COL" => Some(metadata::eval_index_col(args, row, ctx, catalog, storage, clock)),
+        "INDEXKEY_PROPERTY" => Some(metadata::eval_indexkey_property(args, row, ctx, catalog, storage, clock)),
+        "INDEXPROPERTY" => Some(metadata::eval_indexproperty(args, row, ctx, catalog, storage, clock)),
+        "DATABASEPROPERTYEX" => Some(metadata::eval_databasepropertyex(args, row, ctx, catalog, storage, clock)),
+        "ORIGINAL_DB_NAME" => Some(metadata::eval_original_db_name(args, ctx)),
+        "@@PROCID" => Some(metadata::eval_procid(ctx)),
         "SCOPE_IDENTITY" => {
             if !args.is_empty() {
                 return Some(Err(DbError::Execution("SCOPE_IDENTITY expects no arguments".into())));
@@ -374,33 +393,47 @@ fn eval_user_scalar_function(
         )));
     }
 
-    ctx.enter_scope();
-    for (param, arg_expr) in routine.params.iter().zip(args.iter()) {
-        let RoutineParamType::Scalar(dt) = &param.param_type else {
-            return Err(DbError::Execution(format!(
-                "function '{}' has unsupported non-scalar parameter '{}'",
-                name, param.name
-            )));
+    ctx.push_module(ModuleFrame {
+        object_id: routine.object_id,
+        schema: routine.schema.clone(),
+        name: routine.name.clone(),
+        kind: ModuleKind::Function,
+    });
+    let scope_depth = ctx.scope_vars.len();
+    let out = (|| {
+        ctx.enter_scope();
+        for (param, arg_expr) in routine.params.iter().zip(args.iter()) {
+            let RoutineParamType::Scalar(dt) = &param.param_type else {
+                return Err(DbError::Execution(format!(
+                    "function '{}' has unsupported non-scalar parameter '{}'",
+                    name, param.name
+                )));
+            };
+            let val = eval_expr(arg_expr, row, ctx, catalog, storage, clock)?;
+            let ty = super::type_mapping::data_type_spec_to_runtime(dt);
+            let coerced = super::value_ops::coerce_value_to_type(val, &ty)?;
+            ctx.variables.insert(param.name.clone(), (ty, coerced));
+            ctx.register_declared_var(&param.name);
+        }
+        let out = match body {
+            crate::ast::FunctionBody::ScalarReturn(expr) => {
+                eval_expr(expr, row, ctx, catalog, storage, clock)
+            }
+            crate::ast::FunctionBody::Scalar(stmts) => {
+                super::evaluator::eval_udf_body(stmts, ctx, catalog, storage, clock)
+            }
+            crate::ast::FunctionBody::InlineTable(_) => Err(DbError::Execution(format!(
+                "inline TVF '{}' cannot be used in scalar context",
+                name
+            ))),
         };
-        let val = eval_expr(arg_expr, row, ctx, catalog, storage, clock)?;
-        let ty = super::type_mapping::data_type_spec_to_runtime(dt);
-        let coerced = super::value_ops::coerce_value_to_type(val, &ty)?;
-        ctx.variables.insert(param.name.clone(), (ty, coerced));
-        ctx.register_declared_var(&param.name);
+        ctx.leave_scope();
+        out
+    })();
+    while ctx.scope_vars.len() > scope_depth {
+        ctx.leave_scope();
     }
-    let out = match body {
-        crate::ast::FunctionBody::ScalarReturn(expr) => {
-            eval_expr(expr, row, ctx, catalog, storage, clock)
-        }
-        crate::ast::FunctionBody::Scalar(stmts) => {
-            super::evaluator::eval_udf_body(stmts, ctx, catalog, storage, clock)
-        }
-        crate::ast::FunctionBody::InlineTable(_) => Err(DbError::Execution(format!(
-            "inline TVF '{}' cannot be used in scalar context",
-            name
-        ))),
-    };
-    ctx.leave_scope();
+    ctx.pop_module();
     out
 }
 

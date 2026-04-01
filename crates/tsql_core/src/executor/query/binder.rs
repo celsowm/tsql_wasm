@@ -7,7 +7,7 @@ use crate::storage::{Storage, StoredRow};
 use crate::types::Value;
 
 use super::super::clock::Clock;
-use super::super::context::ExecutionContext;
+use super::super::context::{ExecutionContext, ModuleFrame, ModuleKind};
 use super::super::evaluator::eval_expr;
 use super::super::model::BoundTable;
 use super::super::query_planner::bind_table as planner_bind_table;
@@ -314,41 +314,64 @@ fn bind_inline_tvf(
     let Some(routine) = catalog.find_routine(schema, fname).cloned() else {
         return Ok(None);
     };
-    let RoutineKind::Function { body, .. } = routine.kind else {
+    let crate::catalog::RoutineDef {
+        object_id,
+        schema: routine_schema,
+        name: routine_name,
+        params,
+        kind,
+        ..
+    } = routine;
+    let RoutineKind::Function { body, .. } = kind else {
         return Ok(None);
     };
     let crate::ast::FunctionBody::InlineTable(query) = body else {
         return Ok(None);
     };
     let arg_exprs = split_csv_top_level_local(args_raw);
-    if arg_exprs.len() != routine.params.len() {
+    if arg_exprs.len() != params.len() {
         return Err(DbError::Execution(format!(
             "TVF '{}.{}' expected {} args, got {}",
             schema,
             fname,
-            routine.params.len(),
+            params.len(),
             arg_exprs.len()
         )));
     }
 
-    ctx.enter_scope();
-    for (param, arg_raw) in routine.params.iter().zip(arg_exprs.iter()) {
-        let RoutineParamType::Scalar(dt) = &param.param_type else {
-            return Err(DbError::Execution(format!(
-                "TVF '{}.{}' has unsupported non-scalar parameter '{}'",
-                schema, fname, param.name
-            )));
-        };
-        let expr = parse_expr_subquery_aware(arg_raw)?;
-        let val = eval_expr(&expr, &[], ctx, catalog, storage, clock)?;
-        let ty = super::super::type_mapping::data_type_spec_to_runtime(dt);
-        let coerced = super::super::value_ops::coerce_value_to_type(val, &ty)?;
-        ctx.variables.insert(param.name.clone(), (ty, coerced));
-        ctx.register_declared_var(&param.name);
-    }
+    ctx.push_module(ModuleFrame {
+        object_id,
+        schema: routine_schema.clone(),
+        name: routine_name.clone(),
+        kind: ModuleKind::Function,
+    });
+    let scope_depth = ctx.scope_vars.len();
+    let result = (|| {
+        ctx.enter_scope();
+        for (param, arg_raw) in params.iter().zip(arg_exprs.iter()) {
+            let RoutineParamType::Scalar(dt) = &param.param_type else {
+                return Err(DbError::Execution(format!(
+                    "TVF '{}.{}' has unsupported non-scalar parameter '{}'",
+                    schema, fname, param.name
+                )));
+            };
+            let expr = parse_expr_subquery_aware(arg_raw)?;
+            let val = eval_expr(&expr, &[], ctx, catalog, storage, clock)?;
+            let ty = super::super::type_mapping::data_type_spec_to_runtime(dt);
+            let coerced = super::super::value_ops::coerce_value_to_type(val, &ty)?;
+            ctx.variables.insert(param.name.clone(), (ty, coerced));
+            ctx.register_declared_var(&param.name);
+        }
 
-    let result = query_executor_proxy(query, ctx)?;
-    ctx.leave_scope();
+        let result = query_executor_proxy(query, ctx)?;
+        ctx.leave_scope();
+        Ok(result)
+    })();
+    while ctx.scope_vars.len() > scope_depth {
+        ctx.leave_scope();
+    }
+    ctx.pop_module();
+    let result = result?;
 
     let table_def = TableDef {
         id: 0,

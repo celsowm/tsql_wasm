@@ -24,10 +24,15 @@ impl VirtualTable for SysRoutines {
         let mut rows = Vec::new();
         for r in catalog.get_routines() {
             let schema_id = catalog.get_schema_id(&r.schema).unwrap_or(1);
-            let object_id = catalog.object_id(&r.schema, &r.name).unwrap_or(-1);
             let (ty, desc) = match &r.kind {
                 crate::catalog::RoutineKind::Procedure { .. } => {
                     ("P ".to_string(), "SQL_STORED_PROCEDURE".to_string())
+                }
+                crate::catalog::RoutineKind::Function {
+                    body: crate::ast::FunctionBody::InlineTable(_),
+                    ..
+                } => {
+                    ("IF".to_string(), "SQL_INLINE_TABLE_VALUED_FUNCTION".to_string())
                 }
                 crate::catalog::RoutineKind::Function { .. } => {
                     ("FN".to_string(), "SQL_SCALAR_FUNCTION".to_string())
@@ -35,7 +40,7 @@ impl VirtualTable for SysRoutines {
             };
             rows.push(StoredRow {
                 values: vec![
-                    Value::Int(object_id),
+                    Value::Int(r.object_id),
                     Value::Int(schema_id as i32),
                     Value::VarChar(r.name.clone()),
                     Value::Char(ty),
