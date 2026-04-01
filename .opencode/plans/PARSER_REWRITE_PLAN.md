@@ -58,6 +58,59 @@ Compatibility constraints:
 3. Mandatory AST generics in the first ship.
 4. Treating `GO` as a server-side SQL statement (it is a client batch separator).
 
+## SOLID Constraints (Must Hold During Rewrite)
+
+1. **SRP**: keep responsibilities isolated by module:
+   - tokenization (`parser/token/*`)
+   - cursor/navigation
+   - statement-family parsers
+   - diagnostics formatting
+2. **OCP**: adding a new statement kind must be possible by adding a new handler module + registration entry, without editing core parser control flow.
+3. **LSP**: any alternate token source / statement handler must preserve parser contracts (same semantic AST for equivalent input, deterministic errors).
+4. **ISP**: keep parsing interfaces minimal (small focused traits, no broad parser “god trait”).
+5. **DIP**: high-level batch parser depends on abstractions (`TokenSource`, `StatementParser`, `ParseDiagnostics`), not concrete tokenizer or formatter implementations.
+
+## Anti-Pattern Guardrails
+
+1. **Big-bang rewrite**
+   - Avoid: replacing parser + AST + executor in one step.
+   - Guardrail: keep incremental phases with green tests at each phase boundary.
+2. **God parser**
+   - Avoid: one central parser file owning all statement logic.
+   - Guardrail: statement-family handler modules only; core parser does cursor + dispatch only.
+3. **Shotgun string scanning**
+   - Avoid: reintroducing ad-hoc `to_uppercase()` + substring heuristics in new code.
+   - Guardrail: all new parsing logic consumes token stream, never raw SQL scans.
+4. **Boolean flag explosion**
+   - Avoid: APIs like `parse_x(..., mode_a, mode_b, mode_c)`.
+   - Guardrail: replace with small config structs/enums where behavior branches are real modes.
+5. **Leaky abstraction**
+   - Avoid: handlers directly depending on tokenizer internals or concrete diagnostics formatter.
+   - Guardrail: depend only on `TokenSource`/cursor and `ParseDiagnostics`.
+6. **Silent fallback parsing**
+   - Avoid: “try parse A, if fail parse B” without preserving the first error.
+   - Guardrail: keep best-error tracking with furthest-span failure for deterministic diagnostics.
+7. **Speculative generalization**
+   - Avoid: introducing generic borrowed AST before parser correctness is stabilized.
+   - Guardrail: keep borrowed/generic AST as explicit follow-up RFC only.
+8. **Utility creep**
+   - Avoid: adding new generic helper scanners similar to `find_keyword_top_level`.
+   - Guardrail: any new helper must be token-based and tied to one parser module ownership.
+9. **Unbounded backtracking**
+   - Avoid: parse strategies that repeatedly rewind large token ranges.
+   - Guardrail: prefer LL-style deterministic branch selection by leading tokens/keywords.
+10. **Test illusion**
+    - Avoid: only testing happy-path statements after migration.
+    - Guardrail: each migrated statement family must include negative/error and ambiguity tests.
+
+Code review checklist for parser PRs:
+
+- No new top-level raw SQL scanners added.
+- New statement support added via handler + registration.
+- Parser control flow unchanged for feature extensions.
+- Errors include stable location and expected/found context.
+- Regression tests include at least one malformed input case.
+
 ## Target Architecture
 
 ```
@@ -72,6 +125,34 @@ Important migration choice:
 
 - First ship keeps owned AST (`String`) to minimize blast radius.
 - Borrowed/generic AST becomes an optional follow-up after parser stability.
+
+Abstractions to enforce SOLID:
+
+```rust
+pub trait TokenSource<'a> {
+    fn peek(&self) -> Option<&Token<'a>>;
+    fn bump(&mut self) -> Option<Token<'a>>;
+}
+
+pub trait ParseDiagnostics {
+    fn expected_found(&mut self, span: Span, expected: &'static str, found: &str);
+}
+
+pub trait StatementParser<'a> {
+    fn starts_with(&self, first: &TokenKind<'a>) -> bool;
+    fn parse(
+        &self,
+        cursor: &mut ParserCursor<'a>,
+        diag: &mut dyn ParseDiagnostics,
+    ) -> Result<Statement, ParseError>;
+}
+```
+
+Dispatch model:
+
+- Core parser owns a registry: `Vec<Box<dyn StatementParser>>` (or keyword-indexed map).
+- Parse loop asks registry for first matching handler.
+- New statements are added via registration, not `match` edits in core loop.
 
 ## Token Model
 
@@ -171,12 +252,14 @@ Exit criteria:
 ### Phase 3: Statement Dispatch Refactor (3-5 days)
 
 1. Introduce token-cursor parser skeleton (`Parser<'a> { tokens, pos }`).
-2. Move dispatch from prefix-string checks to first-token keyword dispatch.
-3. Implement recovery helpers (`skip_semicolons`, `synchronize`).
+2. Introduce `StatementParser` handlers and a parser registry.
+3. Move dispatch from prefix-string checks to registry lookup by first token/keyword.
+4. Implement recovery helpers (`skip_semicolons`, `synchronize`).
 
 Exit criteria:
 
 - `parse_sql_with_quoted_ident` routing no longer depends on giant ordered `starts_with` chain.
+- New statement support can be added by handler + registration only (no core loop changes).
 - No behavior regressions in DML/DDL/procedural smoke tests.
 
 ### Phase 4: Incremental Statement Parser Migration (7-10 days)
@@ -190,7 +273,7 @@ Migrate statement families in this order:
 
 For each family:
 
-- Implement token-based parser.
+- Implement token-based parser as a `StatementParser` handler module.
 - Keep AST shape unchanged.
 - Delete corresponding string scanner helper usage.
 
@@ -202,13 +285,15 @@ Exit criteria:
 ### Phase 5: Span-Aware Errors (2-3 days)
 
 1. Add parse error structure with span and expected/found context.
-2. Bridge to existing `DbError::Parse(String)` for external compatibility.
-3. Format errors with `line:col`.
+2. Add diagnostics adapter implementing `ParseDiagnostics` that formats stable parse strings.
+3. Bridge to existing `DbError::Parse(String)` for external compatibility.
+4. Format errors with `line:col`.
 
 Exit criteria:
 
 - Parse errors include concrete location.
 - Existing callers still receive `DbError`.
+- Diagnostics formatting can be swapped without parser control-flow changes.
 
 ### Phase 6: Cleanup and Deletion (2 days)
 
@@ -242,6 +327,10 @@ If pursued later:
 
 - Start with dual representation (`BorrowedStatement` internal + existing `Statement` public).
 - Add explicit conversion layer and benchmarks.
+- Add LSP contract tests:
+  - borrowed parse -> owned conversion is semantically equal to direct owned parse
+  - same input yields same statement count and statement kinds in both modes
+  - equivalent error class/location for invalid input
 
 ## Key Edge Cases to Keep as Required Tests
 
@@ -316,6 +405,8 @@ fn test_ssms_batch_without_semicolons() {
 4. Error messages include line/column.
 5. `cargo test -p tsql_core` and `cargo test -p tsql_wasm` pass.
 6. Targeted regression tests for non-semicolon batches pass.
+7. New statement parser extension path is registry-based and documented.
+8. Contract tests cover handler substitution + diagnostics adapter behavior.
 
 ## Decision Log (Updated)
 
