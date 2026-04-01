@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::collections::HashSet;
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -197,6 +198,37 @@ where
         let id = self.inner.next_session_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.inner.sessions.insert(id, parking_lot::Mutex::new(SessionRuntime::new()));
         id
+    }
+
+    fn reset_session(&self, session_id: SessionId) -> Result<(), DbError> {
+        let session_mutex = self.inner.sessions.get(&session_id)
+            .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
+        let mut session = session_mutex.lock();
+        let mut physical_tables = HashSet::new();
+        for table in session.tables.temp_map.values() {
+            physical_tables.insert(table.clone());
+        }
+        for table in session.tables.var_map.values() {
+            physical_tables.insert(table.clone());
+        }
+        session.reset();
+        drop(session);
+
+        self.inner.table_locks.lock().release_all_for_session(session_id);
+
+        if !physical_tables.is_empty() {
+            let mut storage = self.inner.storage.write();
+            for table_name in physical_tables {
+                if let Some(table) = storage.catalog.find_table("dbo", &table_name).cloned() {
+                    let _ = storage.catalog.drop_table("dbo", &table_name);
+                    storage.storage.remove_table(table.id);
+                    storage
+                        .table_versions
+                        .remove(&format!("DBO.{}", table_name.to_uppercase()));
+                }
+            }
+        }
+        Ok(())
     }
 
     fn close_session(&self, session_id: SessionId) -> Result<(), DbError> {

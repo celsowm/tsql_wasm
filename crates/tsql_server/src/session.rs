@@ -2,8 +2,9 @@ use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
-use tsql_core::{Database, SessionId, SessionManager, StatementExecutor};
+use tsql_core::{Database, SessionId, StatementExecutor};
 
+use super::pool::{CheckoutError, SessionPool};
 use super::tds::batch::{build_error_response, parse_sql_batch};
 use super::tds::login::parse_login7;
 use super::tds::packet::{
@@ -22,17 +23,19 @@ impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin> AsyncReadWr
 pub struct TdsSession {
     db: Database,
     config: Arc<ServerConfig>,
+    session_pool: Arc<SessionPool>,
     session_id: Option<SessionId>,
     packet_size: u16,
     database: String,
 }
 
 impl TdsSession {
-    pub fn new(db: Database, config: Arc<ServerConfig>) -> Self {
+    pub fn new(db: Database, config: Arc<ServerConfig>, session_pool: Arc<SessionPool>) -> Self {
         let database = config.database.clone();
         Self {
             db,
             config,
+            session_pool,
             session_id: None,
             packet_size: 4096,
             database,
@@ -153,7 +156,16 @@ impl TdsSession {
             self.database = login.database.clone();
         }
 
-        let session_id = self.db.create_session();
+        let session_id = match self.session_pool.checkout(&self.db) {
+            Ok(sid) => sid,
+            Err(CheckoutError::Exhausted) => {
+                let err_resp = build_error_response("session pool exhausted");
+                packet::write_packet(&mut writer, TABULAR_RESULT, &err_resp.data)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                return Ok(());
+            }
+        };
         self.session_id = Some(session_id);
 
         // Build LOGINACK response
@@ -164,9 +176,10 @@ impl TdsSession {
         tokens::write_loginack(&mut b, 0x74000004);
         tokens::write_done(&mut b, tokens::DONE_FINAL, 0, 0);
 
-        packet::write_packet(&mut writer, TABULAR_RESULT, b.as_bytes())
-            .await
-            .map_err(|e| format!("Failed to write LOGINACK: {}", e))?;
+        if let Err(e) = packet::write_packet(&mut writer, TABULAR_RESULT, b.as_bytes()).await {
+            self.session_pool.checkin(&self.db, session_id);
+            return Err(format!("Failed to write LOGINACK: {}", e));
+        }
         log::debug!("Sent LOGINACK response");
 
         // Main loop: handle SQL Batch and other packets
@@ -233,8 +246,8 @@ impl TdsSession {
             }
         }
 
-        if let Some(sid) = self.session_id {
-            let _ = self.db.close_session(sid);
+        if let Some(sid) = self.session_id.take() {
+            self.session_pool.checkin(&self.db, sid);
         }
 
         Ok(())

@@ -52,6 +52,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 i += 1;
                 config.database = args.get(i).cloned().unwrap_or_default();
             }
+            "--pool-min" => {
+                i += 1;
+                config.pool_min_size = args
+                    .get(i)
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(config.pool_min_size);
+            }
+            "--pool-max" => {
+                i += 1;
+                config.pool_max_size = args
+                    .get(i)
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(config.pool_max_size);
+            }
+            "--pool-idle-timeout" => {
+                i += 1;
+                config.pool_idle_timeout_secs = args
+                    .get(i)
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(config.pool_idle_timeout_secs);
+            }
             "--tls" | "-t" => {
                 config.tls_enabled = true;
             }
@@ -127,6 +148,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     );
     println!("Database: {}", config.database);
+    println!(
+        "Session pool: min={}, max={}, idle_timeout={}s",
+        config.pool_min_size,
+        config.pool_max_size,
+        config.pool_idle_timeout_secs
+    );
     println!();
 
     // Create database and seed playground if enabled
@@ -174,6 +201,9 @@ fn print_help() {
     println!("  --user, -u <USER>       Username for authentication (optional)");
     println!("  --password, -P <PASS>   Password for authentication (optional)");
     println!("  --database, -d <DB>     Default database name (default: master)");
+    println!("  --pool-min <N>          Minimum pooled sessions to keep ready (default: 1)");
+    println!("  --pool-max <N>          Maximum pooled sessions allowed (default: 50)");
+    println!("  --pool-idle-timeout <S> Idle timeout in seconds for extra sessions (default: 300)");
     println!("  --tls, -t               Enable TLS (default: enabled)");
     println!("  --no-tls                Disable TLS");
     println!("  --tls-cert <PATH>       TLS certificate file (required if TLS enabled)");
@@ -186,6 +216,7 @@ fn print_help() {
     println!("  tsql-server                         # TLS enabled, no auth");
     println!("  tsql-server --tls-gen               # Generate cert and start server");
     println!("  tsql-server --port 14330            # No auth, port 14330");
+    println!("  tsql-server --pool-min 2 --pool-max 100 --pool-idle-timeout 60");
     println!("  tsql-server -u sa -P Test@12345     # With auth");
     println!("  tsql-server --playground            # Playground mode with sample data");
     println!("  tsql-server --playground --no-tls   # Playground without TLS");

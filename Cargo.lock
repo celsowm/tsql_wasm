@@ -1179,6 +1179,7 @@ dependencies = [
  "chrono",
  "env_logger",
  "log",
+ "parking_lot",
  "rcgen",
  "rustls",
  "rustls-pemfile",

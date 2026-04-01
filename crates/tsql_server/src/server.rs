@@ -3,33 +3,40 @@ use tokio::net::TcpListener;
 
 use tsql_core::Database;
 
+use super::pool::SessionPool;
 use super::session::TdsSession;
 use super::ServerConfig;
 
 pub struct TdsServer {
     db: Database,
     config: Arc<ServerConfig>,
+    session_pool: Arc<SessionPool>,
     listener: Option<TcpListener>,
 }
 
 impl TdsServer {
     pub fn new(config: ServerConfig) -> Self {
+        let session_pool = Arc::new(SessionPool::from_config(&config));
         Self {
             db: Database::new(),
             config: Arc::new(config),
+            session_pool,
             listener: None,
         }
     }
 
     pub fn new_with_database(db: Database, config: ServerConfig) -> Self {
+        let session_pool = Arc::new(SessionPool::from_config(&config));
         Self {
             db,
             config: Arc::new(config),
+            session_pool,
             listener: None,
         }
     }
 
     pub async fn bind(&mut self) -> Result<std::net::SocketAddr, Box<dyn std::error::Error>> {
+        Self::validate_config(&self.config)?;
         let addr = format!("{}:{}", self.config.host, self.config.port);
         let listener = TcpListener::bind(&addr).await?;
         let local_addr = listener.local_addr()?;
@@ -43,6 +50,9 @@ impl TdsServer {
     }
 
     pub async fn run(mut self) -> Result<(), Box<dyn std::error::Error>> {
+        Self::validate_config(&self.config)?;
+        self.session_pool.ensure_min_sessions(&self.db);
+
         let addr = format!("{}:{}", self.config.host, self.config.port);
         let listener = if let Some(l) = self.listener.take() {
             l
@@ -61,9 +71,10 @@ impl TdsServer {
 
                     let db = self.db.clone();
                     let config = self.config.clone();
+                    let session_pool = self.session_pool.clone();
 
                     tokio::spawn(async move {
-                        let session = TdsSession::new(db, config);
+                        let session = TdsSession::new(db, config, session_pool);
                         if let Err(e) = session.handle(stream).await {
                             log::error!("Session error for {}: {}", peer_addr, e);
                         }
@@ -75,5 +86,23 @@ impl TdsServer {
                 }
             }
         }
+    }
+
+    fn validate_config(config: &ServerConfig) -> Result<(), Box<dyn std::error::Error>> {
+        if config.pool_max_size == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "invalid pool config: pool_max_size must be > 0",
+            )
+            .into());
+        }
+        if config.pool_min_size > config.pool_max_size {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "invalid pool config: pool_min_size must be <= pool_max_size",
+            )
+            .into());
+        }
+        Ok(())
     }
 }

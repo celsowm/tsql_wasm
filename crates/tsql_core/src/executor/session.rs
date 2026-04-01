@@ -17,6 +17,7 @@ use super::transaction::TransactionManager;
 
 pub trait SessionManager {
     fn create_session(&self) -> SessionId;
+    fn reset_session(&self, session_id: SessionId) -> Result<(), DbError>;
     fn close_session(&self, session_id: SessionId) -> Result<(), DbError>;
     fn set_session_journal(
         &self,

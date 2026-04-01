@@ -1,5 +1,6 @@
 pub mod session;
 pub mod server;
+pub mod pool;
 pub mod tds;
 pub mod tls;
 pub mod playground;
@@ -22,6 +23,9 @@ pub struct ServerConfig {
     pub tls_enabled: bool,
     pub tls_cert_path: Option<String>,
     pub tls_key_path: Option<String>,
+    pub pool_min_size: usize,
+    pub pool_max_size: usize,
+    pub pool_idle_timeout_secs: u64,
 }
 
 impl Default for ServerConfig {
@@ -35,6 +39,9 @@ impl Default for ServerConfig {
             tls_enabled: true,
             tls_cert_path: None,
             tls_key_path: None,
+            pool_min_size: 1,
+            pool_max_size: 50,
+            pool_idle_timeout_secs: 300,
         }
     }
 }
@@ -78,6 +85,21 @@ impl ServerConfig {
 
     pub fn disable_tls(mut self) -> Self {
         self.tls_enabled = false;
+        self
+    }
+
+    pub fn pool_min_size(mut self, size: usize) -> Self {
+        self.pool_min_size = size;
+        self
+    }
+
+    pub fn pool_max_size(mut self, size: usize) -> Self {
+        self.pool_max_size = size;
+        self
+    }
+
+    pub fn pool_idle_timeout_secs(mut self, secs: u64) -> Self {
+        self.pool_idle_timeout_secs = secs;
         self
     }
 }

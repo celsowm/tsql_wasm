@@ -37,8 +37,6 @@ fn row_to_strings(row: &Row) -> Vec<String> {
 }
 
 async fn start_server() -> u16 {
-    let _ = env_logger::builder().is_test(true).try_init();
-
     let config = ServerConfig {
         host: "127.0.0.1".to_string(),
         port: 0,
@@ -48,7 +46,15 @@ async fn start_server() -> u16 {
         tls_enabled: false,
         tls_cert_path: None,
         tls_key_path: None,
+        pool_min_size: 1,
+        pool_max_size: 50,
+        pool_idle_timeout_secs: 300,
     };
+    start_server_with_config(config).await
+}
+
+async fn start_server_with_config(config: ServerConfig) -> u16 {
+    let _ = env_logger::builder().is_test(true).try_init();
 
     let mut server = TdsServer::new(config);
     let addr = server.bind().await.unwrap();
@@ -293,6 +299,9 @@ async fn test_auth_reject() {
         tls_enabled: false,
         tls_cert_path: None,
         tls_key_path: None,
+        pool_min_size: 1,
+        pool_max_size: 50,
+        pool_idle_timeout_secs: 300,
     };
 
     let mut server = TdsServer::new(config);
@@ -336,6 +345,9 @@ async fn test_auth_accept() {
         tls_enabled: false,
         tls_cert_path: None,
         tls_key_path: None,
+        pool_min_size: 1,
+        pool_max_size: 50,
+        pool_idle_timeout_secs: 300,
     };
 
     let mut server = TdsServer::new(config);
@@ -383,6 +395,9 @@ async fn test_playground_tables() {
         tls_enabled: false,
         tls_cert_path: None,
         tls_key_path: None,
+        pool_min_size: 1,
+        pool_max_size: 50,
+        pool_idle_timeout_secs: 300,
     };
 
     let db = tsql_core::Database::new();
@@ -443,6 +458,9 @@ async fn test_decimal_select() {
         tls_enabled: false,
         tls_cert_path: None,
         tls_key_path: None,
+        pool_min_size: 1,
+        pool_max_size: 50,
+        pool_idle_timeout_secs: 300,
     };
     let db = tsql_core::Database::new();
     let mut server = TdsServer::new_with_database(db, config);
@@ -459,4 +477,103 @@ async fn test_decimal_select() {
 
     let (_, rows) = query_sql(&mut client, "SELECT CAST(123.45 AS DECIMAL(18,2)) as val").await;
     assert_eq!(rows[0][0], "123.45");
+}
+
+#[tokio::test]
+async fn test_session_pool_reuse_resets_session_state() {
+    let config = ServerConfig {
+        host: "127.0.0.1".to_string(),
+        port: 0,
+        auth: None,
+        database: "master".to_string(),
+        packet_size: 4096,
+        tls_enabled: false,
+        tls_cert_path: None,
+        tls_key_path: None,
+        pool_min_size: 1,
+        pool_max_size: 1,
+        pool_idle_timeout_secs: 300,
+    };
+
+    let port = start_server_with_config(config).await;
+
+    let mut client1 = connect(port).await;
+    exec_sql(&mut client1, "CREATE TABLE pool_reset_t (id INT PRIMARY KEY)").await;
+    exec_sql(&mut client1, "INSERT INTO pool_reset_t VALUES (1)").await;
+    exec_sql(&mut client1, "CREATE TABLE #pool_tmp (id INT)").await;
+    exec_sql(&mut client1, "BEGIN TRANSACTION").await;
+    exec_sql(&mut client1, "UPDATE pool_reset_t SET id = 1 WHERE id = 1").await;
+    drop(client1);
+
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    let mut client2 = connect(port).await;
+    exec_sql(&mut client2, "CREATE TABLE #pool_tmp (id INT)").await;
+    exec_sql(&mut client2, "UPDATE pool_reset_t SET id = 1 WHERE id = 1").await;
+}
+
+#[tokio::test]
+async fn test_session_pool_max_size_enforced() {
+    let config = ServerConfig {
+        host: "127.0.0.1".to_string(),
+        port: 0,
+        auth: None,
+        database: "master".to_string(),
+        packet_size: 4096,
+        tls_enabled: false,
+        tls_cert_path: None,
+        tls_key_path: None,
+        pool_min_size: 0,
+        pool_max_size: 1,
+        pool_idle_timeout_secs: 300,
+    };
+
+    let port = start_server_with_config(config).await;
+    let _client1 = connect(port).await;
+
+    let mut tds_config = Config::new();
+    tds_config.host("127.0.0.1");
+    tds_config.port(port);
+    tds_config.trust_cert();
+    tds_config.encryption(tiberius::EncryptionLevel::Off);
+
+    let result = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        let tcp = TcpStream::connect(tds_config.get_addr()).await.unwrap();
+        tcp.set_nodelay(true).unwrap();
+        Client::connect(tds_config, tcp.compat_write()).await
+    })
+    .await
+    .expect("second connection attempt timed out");
+
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_session_pool_idle_timeout_reap_still_allows_checkout() {
+    let config = ServerConfig {
+        host: "127.0.0.1".to_string(),
+        port: 0,
+        auth: None,
+        database: "master".to_string(),
+        packet_size: 4096,
+        tls_enabled: false,
+        tls_cert_path: None,
+        tls_key_path: None,
+        pool_min_size: 0,
+        pool_max_size: 1,
+        pool_idle_timeout_secs: 1,
+    };
+
+    let port = start_server_with_config(config).await;
+
+    let mut client1 = connect(port).await;
+    let (_, rows1) = query_sql(&mut client1, "SELECT 1 as n").await;
+    assert_eq!(rows1[0][0], "1");
+    drop(client1);
+
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    let mut client2 = connect(port).await;
+    let (_, rows2) = query_sql(&mut client2, "SELECT 2 as n").await;
+    assert_eq!(rows2[0][0], "2");
 }
