@@ -2,7 +2,7 @@ use tsql_core::Engine;
 
 #[test]
 fn test_raiserror_severity() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
 
     // Low severity shouldn't abort
     engine.exec("RAISERROR('hello', 10, 1)").unwrap();
@@ -15,7 +15,7 @@ fn test_raiserror_severity() {
 
 #[test]
 fn test_insert_output() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine.exec("CREATE TABLE dbo.Users (Id INT PRIMARY KEY, Name NVARCHAR(100))").unwrap();
 
     let sql = "
@@ -32,7 +32,7 @@ fn test_insert_output() {
 
 #[test]
 fn test_update_output_into() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine.exec("CREATE TABLE dbo.Source (Val INT)").unwrap();
     engine.exec("INSERT INTO dbo.Source VALUES (10), (20)").unwrap();
     engine.exec("CREATE TABLE #Audit (OldVal INT, NewVal INT)").unwrap();

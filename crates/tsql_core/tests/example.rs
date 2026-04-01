@@ -2,7 +2,7 @@ use tsql_core::{parse_sql, Engine};
 
 #[test]
 fn test_example_basic() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
 
     // Criar tabelas
     engine.execute(parse_sql("CREATE TABLE dbo.Users (Id INT IDENTITY(1,1) PRIMARY KEY, Name NVARCHAR(100) NOT NULL, IsActive BIT NOT NULL DEFAULT 1)").unwrap()).unwrap();

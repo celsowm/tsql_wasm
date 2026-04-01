@@ -46,6 +46,7 @@ impl TdsSession {
         let mut needs_tls_upgrade = false;
         let mut login_packet = None;
 
+        log::info!("Starting handshake for incoming connection");
         loop {
             let (header, data) = packet::read_packet(&mut stream)
                 .await
@@ -141,12 +142,19 @@ impl TdsSession {
 
         if let Some(ref creds) = self.config.auth {
             if login.username != creds.user || login.password != creds.password {
+                log::warn!(
+                    "Login rejected for user={} against configured SQL auth",
+                    login.username
+                );
                 let err_resp = build_error_response("Login failed for user.");
                 packet::write_packet(&mut writer, TABULAR_RESULT, &err_resp.data)
                     .await
                     .map_err(|e| e.to_string())?;
                 return Ok(());
             }
+            log::info!("Login accepted for user={}", login.username);
+        } else {
+            log::info!("Login accepted with authentication disabled");
         }
 
         if login.packet_size > 0 {
@@ -268,6 +276,10 @@ impl TdsSession {
                 return Ok(true);
             }
         };
+
+        if !sql.trim().is_empty() {
+            log::info!("SQL batch received:\n{}", sql.trim());
+        }
         self.execute_sql(sql.trim(), writer).await
     }
 
@@ -303,7 +315,7 @@ impl TdsSession {
             return Ok(true);
         }
 
-        log::debug!("SQL: {}", sql);
+        log::info!("Executing SQL:\n{}", sql);
         match StatementExecutor::execute_session_batch_sql_multi(&self.db, session_id, sql) {
             Ok(results) => {
                 let count = results.len();

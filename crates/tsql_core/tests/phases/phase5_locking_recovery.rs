@@ -52,7 +52,7 @@ fn test_phase5_lock_release_on_savepoint_rollback() {
 
 #[test]
 fn test_phase5_recovery_checkpoint_roundtrip() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine
         .execute(parse_sql("CREATE TABLE t (id INT NOT NULL PRIMARY KEY, v INT NOT NULL)").unwrap())
         .unwrap();

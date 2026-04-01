@@ -3,6 +3,7 @@ mod constraints;
 mod routines;
 mod objects;
 mod indexes;
+mod host_info;
 
 use super::VirtualTable;
 
@@ -19,6 +20,8 @@ pub(crate) fn lookup(name: &str) -> Option<Box<dyn VirtualTable>> {
         Some(Box::new(indexes::SysIndexes))
     } else if name.eq_ignore_ascii_case("objects") {
         Some(Box::new(objects::SysObjects))
+    } else if name.eq_ignore_ascii_case("dm_os_host_info") {
+        Some(Box::new(host_info::SysHostInfo))
     } else if name.eq_ignore_ascii_case("check_constraints") {
         Some(Box::new(constraints::SysCheckConstraints))
     } else if name.eq_ignore_ascii_case("routines") {

@@ -2,7 +2,7 @@ use tsql_core::{parse_sql, Engine};
 
 #[test]
 fn debug_view_smoke() {
-    let mut db = Engine::new();
+    let db = Engine::new();
     let stmt = parse_sql("SELECT 1 AS n").expect("parse failed");
     let result = db
         .execute(stmt)

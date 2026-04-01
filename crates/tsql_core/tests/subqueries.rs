@@ -2,7 +2,7 @@ use tsql_core::types::Value;
 use tsql_core::{parse_batch, parse_sql, Engine, QueryResult};
 
 fn setup_engine() -> Engine {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
 
     let batch = parse_batch(
         "CREATE TABLE departments (id INT PRIMARY KEY, name NVARCHAR(100) NOT NULL);

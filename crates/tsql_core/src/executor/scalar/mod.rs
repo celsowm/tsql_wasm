@@ -259,6 +259,7 @@ fn try_system_dispatch(
         "@@TEXTSIZE" => Some(Ok(Value::Int(2147483647))),
         "@@MAX_PRECISION" => Some(Ok(Value::TinyInt(38))),
         "@@DATEFIRST" => Some(Ok(Value::TinyInt(ctx.datefirst as u8))),
+        "@@MICROSOFTVERSION" => Some(Ok(system::eval_microsoft_version())),
         "ERROR_MESSAGE" => Some(system::eval_error_message(ctx)),
         "ERROR_NUMBER" => Some(system::eval_error_number(ctx)),
         "ERROR_SEVERITY" => Some(system::eval_error_severity(ctx)),
@@ -278,6 +279,8 @@ fn try_system_dispatch(
         "QUOTENAME" => Some(system::eval_quotename(args, row, ctx, catalog, storage, clock)),
         "SESSION_USER" => Some(system::eval_session_user(args, ctx)),
         "CURRENT_USER" => Some(system::eval_current_user(args, ctx)),
+        "SERVERPROPERTY" => Some(system::eval_serverproperty(args, row, ctx, catalog, storage, clock)),
+        "CONNECTIONPROPERTY" => Some(system::eval_connectionproperty(args, row, ctx, catalog, storage, clock)),
         _ => None,
     }
 }

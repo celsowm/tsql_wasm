@@ -2,7 +2,7 @@ use tsql_core::Engine;
 
 #[test]
 fn test_try_catch_basic() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
 
     let batch = "
         BEGIN TRY
@@ -23,7 +23,7 @@ fn test_try_catch_basic() {
 
 #[test]
 fn test_try_catch_no_error() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
 
     let batch = "
         BEGIN TRY
@@ -43,7 +43,7 @@ fn test_try_catch_no_error() {
 
 #[test]
 fn test_try_catch_nested() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
 
     let batch = "
         BEGIN TRY
@@ -68,7 +68,7 @@ fn test_try_catch_nested() {
 
 #[test]
 fn test_error_functions_null_outside_catch() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     let res = engine.query("SELECT ERROR_MESSAGE() AS Msg").unwrap();
     assert!(res.rows[0][0].is_null());
 }

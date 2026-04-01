@@ -2,7 +2,7 @@ use tsql_core::Engine;
 
 #[test]
 fn test_after_insert_trigger() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine.exec("CREATE TABLE dbo.Users (Id INT PRIMARY KEY, Name NVARCHAR(100))").unwrap();
     engine.exec("CREATE TABLE dbo.Logs (Msg NVARCHAR(100))").unwrap();
 
@@ -28,7 +28,7 @@ fn test_after_insert_trigger() {
 
 #[test]
 fn test_after_update_trigger() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine.exec("CREATE TABLE dbo.Products (Id INT PRIMARY KEY, Price DECIMAL(10,2))").unwrap();
     engine.exec("CREATE TABLE dbo.Audit (OldPrice DECIMAL(10,2), NewPrice DECIMAL(10,2))").unwrap();
 
@@ -58,7 +58,7 @@ fn test_after_update_trigger() {
 
 #[test]
 fn test_instead_of_insert_trigger() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine.exec("CREATE TABLE dbo.Base (Id INT PRIMARY KEY, Val NVARCHAR(100))").unwrap();
     engine.exec("CREATE TABLE dbo.Audit (Msg NVARCHAR(100))").unwrap();
 
@@ -89,7 +89,7 @@ fn test_instead_of_insert_trigger() {
 
 #[test]
 fn test_qualified_inserted_reference() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine.exec("CREATE TABLE dbo.T (Id INT PRIMARY KEY)").unwrap();
     engine.exec("CREATE TABLE dbo.L (Id INT)").unwrap();
 
@@ -112,7 +112,7 @@ fn test_qualified_inserted_reference() {
 
 #[test]
 fn test_recursive_trigger_prevention() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine.exec("CREATE TABLE dbo.Rec (Id INT PRIMARY KEY, Val INT)").unwrap();
 
     let trigger_sql = "

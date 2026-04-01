@@ -147,6 +147,72 @@ pub(crate) fn eval_ident_current(
     Ok(Value::Null)
 }
 
+pub(crate) fn eval_serverproperty(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("SERVERPROPERTY expects 1 argument".into()));
+    }
+
+    let property = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if property.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let name = property.to_string_value().to_uppercase();
+    Ok(match name.as_str() {
+        "EDITION" => Value::NVarChar("Developer Edition (64-bit)".to_string()),
+        "ENGINEEDITION" => Value::Int(3),
+        "PRODUCTVERSION" => Value::NVarChar("16.0.1000.6".to_string()),
+        "PRODUCTLEVEL" => Value::NVarChar("RTM".to_string()),
+        "PRODUCTUPDATELEVEL" => Value::NVarChar("".to_string()),
+        "MACHINENAME" => Value::NVarChar("localhost".to_string()),
+        "SERVERNAME" => Value::NVarChar("localhost".to_string()),
+        "INSTANCENAME" => Value::Null,
+        "COLLATION" => Value::NVarChar("SQL_Latin1_General_CP1_CI_AS".to_string()),
+        "ISINTEGRATEDSECURITYONLY" => Value::Int(0),
+        "ISXTPSUPPORTED" => Value::Int(0),
+        _ => Value::Null,
+    })
+}
+
+pub(crate) fn eval_connectionproperty(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("CONNECTIONPROPERTY expects 1 argument".into()));
+    }
+
+    let property = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if property.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let name = property.to_string_value().to_uppercase();
+    Ok(match name.as_str() {
+        "NET_TRANSPORT" | "PHYSICAL_NET_TRANSPORT" => Value::NVarChar("TCP".to_string()),
+        "PROTOCOL_TYPE" => Value::NVarChar("TSQL".to_string()),
+        "AUTH_SCHEME" => Value::NVarChar("SQL".to_string()),
+        "LOCAL_NET_ADDRESS" | "CLIENT_NET_ADDRESS" => Value::NVarChar("127.0.0.1".to_string()),
+        "LOCAL_TCP_PORT" => Value::NVarChar("1433".to_string()),
+        _ => Value::Null,
+    })
+}
+
+pub(crate) fn eval_microsoft_version() -> Value {
+    Value::Int(0x1000_0000)
+}
+
 pub(crate) fn deterministic_uuid(state: &mut u64) -> String {
     *state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
     let bytes = state.to_be_bytes();

@@ -15,7 +15,7 @@ fn query(engine: &mut Engine, sql: &str) -> tsql_core::QueryResult {
 
 #[test]
 fn test_sql_variant_variable_and_cast() {
-    let mut e = Engine::new();
+    let e = Engine::new();
     let batch = parse_batch("DECLARE @v SQL_VARIANT = 42; SELECT CAST(@v AS INT) AS v;")
         .expect("parse batch failed");
     let r = e

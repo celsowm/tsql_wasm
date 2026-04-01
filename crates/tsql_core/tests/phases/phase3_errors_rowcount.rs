@@ -20,7 +20,7 @@ fn test_error_taxonomy_codes() {
     assert_eq!(parse_err.class(), ErrorClass::Parse);
     assert_eq!(parse_err.code(), "TSQL_PARSE_ERROR");
 
-    let mut e = Engine::new();
+    let e = Engine::new();
     let semantic_err = e
         .execute(parse_sql("SELECT * FROM dbo.unknown_table").unwrap())
         .unwrap_err();

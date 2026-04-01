@@ -771,6 +771,7 @@ pub(crate) fn parse_data_type(input: &str) -> Result<DataTypeSpec, DbError> {
         "DATETIME2" => Ok(DataTypeSpec::DateTime2),
         "UNIQUEIDENTIFIER" => Ok(DataTypeSpec::UniqueIdentifier),
         "SQL_VARIANT" => Ok(DataTypeSpec::SqlVariant),
+        "SYSNAME" => Ok(DataTypeSpec::NVarChar(128)),
         "DECIMAL" | "NUMERIC" => Ok(DataTypeSpec::Decimal(18, 0)),
         "BINARY" => Ok(DataTypeSpec::Binary(1)),
         "VARBINARY" => Ok(DataTypeSpec::VarBinary(8000)),

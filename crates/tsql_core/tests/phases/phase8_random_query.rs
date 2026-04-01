@@ -360,7 +360,7 @@ fn test_phase8_random_subqueries() {
 /// Test random expression generation
 #[test]
 fn test_phase8_random_expressions() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     let mut rng = SimpleRng::new(22222);
 
     // Test various expression combinations

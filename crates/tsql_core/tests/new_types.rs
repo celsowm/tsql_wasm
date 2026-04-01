@@ -1,4 +1,4 @@
-use tsql_core::{parse_sql, types::Value, Engine};
+use tsql_core::{ast::{DataTypeSpec, Statement}, parse_sql, types::Value, Engine};
 
 fn exec(engine: &mut Engine, sql: &str) {
     let stmt = parse_sql(sql).expect("parse failed");
@@ -174,6 +174,31 @@ fn test_convert_new_types() {
 
     let r = query(&mut engine, "SELECT CONVERT(SMALLINT, 999) AS v");
     assert_eq!(r.rows[0][0], Value::SmallInt(999));
+}
+
+#[test]
+fn test_sysname_type_alias() {
+    let stmt = parse_sql("DECLARE @db sysname").expect("parse failed");
+    match stmt {
+        Statement::Declare(decl) => {
+            assert_eq!(decl.data_type, DataTypeSpec::NVarChar(128));
+        }
+        other => panic!("expected DECLARE, got {:?}", other),
+    }
+
+    let stmt = parse_sql("SELECT CAST('master' AS sysname) AS db").expect("parse failed");
+    match stmt {
+        Statement::Select(_) => {}
+        other => panic!("expected SELECT, got {:?}", other),
+    }
+
+    let stmt = parse_sql("CREATE TABLE dbo.t (name sysname NOT NULL)").expect("parse failed");
+    match stmt {
+        Statement::CreateTable(tbl) => {
+            assert_eq!(tbl.columns[0].data_type, DataTypeSpec::NVarChar(128));
+        }
+        other => panic!("expected CREATE TABLE, got {:?}", other),
+    }
 }
 
 // ========================

@@ -129,7 +129,7 @@ fn parse_type_from_declare(input: &str) -> Result<(DataTypeSpec, &str), DbError>
         return Ok((DataTypeSpec::Float, rest));
     }
 
-    let simple_types: &[(&str, DataTypeSpec)] = &[
+    let simple_types: &[(&str, DataTypeSpec)] = &[  
         ("BIT", DataTypeSpec::Bit),
         ("TINYINT", DataTypeSpec::TinyInt),
         ("SMALLINT", DataTypeSpec::SmallInt),
@@ -147,6 +147,7 @@ fn parse_type_from_declare(input: &str) -> Result<(DataTypeSpec, &str), DbError>
         ("SQL_VARIANT", DataTypeSpec::SqlVariant),
         ("VARCHAR", DataTypeSpec::VarChar(8000)),
         ("NVARCHAR", DataTypeSpec::NVarChar(4000)),
+        ("SYSNAME", DataTypeSpec::NVarChar(128)),
         ("BINARY", DataTypeSpec::Binary(1)),
         ("VARBINARY", DataTypeSpec::VarBinary(8000)),
         ("DECIMAL", DataTypeSpec::Decimal(18, 0)),

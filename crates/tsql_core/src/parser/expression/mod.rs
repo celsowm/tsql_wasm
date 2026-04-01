@@ -127,6 +127,9 @@ impl ExprParser {
             if name.eq_ignore_ascii_case("FLOAT") || name.eq_ignore_ascii_case("REAL") {
                 return Ok(DataTypeSpec::Float);
             }
+            if name.eq_ignore_ascii_case("SYSNAME") {
+                return Ok(DataTypeSpec::NVarChar(128));
+            }
             if name.eq_ignore_ascii_case("BINARY") {
                 return Ok(DataTypeSpec::Binary(first));
             }
@@ -156,6 +159,8 @@ impl ExprParser {
             Ok(DataTypeSpec::VarChar(8000))
         } else if name.eq_ignore_ascii_case("NVARCHAR") {
             Ok(DataTypeSpec::NVarChar(4000))
+        } else if name.eq_ignore_ascii_case("SYSNAME") {
+            Ok(DataTypeSpec::NVarChar(128))
         } else if name.eq_ignore_ascii_case("CHAR") {
             Ok(DataTypeSpec::Char(1))
         } else if name.eq_ignore_ascii_case("NCHAR") {

@@ -2,7 +2,7 @@ use tsql_core::{types::Value, Engine};
 
 #[test]
 fn test_state_restoration_on_savepoint_rollback() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     
     // 1. Setup: Table with identity
     engine.exec("CREATE TABLE t (id INT IDENTITY(1,1) PRIMARY KEY, val INT)").unwrap();
@@ -47,7 +47,7 @@ fn test_state_restoration_on_savepoint_rollback() {
 
 #[test]
 fn test_state_restoration_on_full_rollback() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     
     engine.exec("DECLARE @x INT = 10").unwrap();
     
@@ -61,7 +61,7 @@ fn test_state_restoration_on_full_rollback() {
 
 #[test]
 fn test_table_var_restoration_on_savepoint_rollback() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     
     engine.exec("BEGIN TRANSACTION").unwrap();
     engine.exec("DECLARE @tv TABLE (id INT)").unwrap();
@@ -88,7 +88,7 @@ fn test_table_var_restoration_on_savepoint_rollback() {
 
 #[test]
 fn test_nested_begin_transaction_state_restoration() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     
     engine.exec("DECLARE @x INT = 10").unwrap();
     

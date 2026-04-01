@@ -2,7 +2,7 @@ use tsql_core::{parse_sql, types::Value, Engine};
 
 #[test]
 fn test_basic_flow() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
 
     // CREATE TABLE
     let stmt =
@@ -35,7 +35,7 @@ fn test_basic_flow() {
 
 #[test]
 fn test_join() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
 
     // Criar tabelas
     engine
@@ -75,7 +75,7 @@ fn test_join() {
 
 #[test]
 fn test_group_by() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
 
     engine.execute(parse_sql("CREATE TABLE sales (id INT NOT NULL PRIMARY KEY, category VARCHAR(50), amount INT)").unwrap()).unwrap();
     engine
@@ -102,7 +102,7 @@ fn test_group_by() {
 
 #[test]
 fn test_order_by() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
 
     engine
         .execute(
@@ -134,7 +134,7 @@ fn test_order_by() {
 
 #[test]
 fn test_identity() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
 
     engine
         .execute(
@@ -158,7 +158,7 @@ fn test_identity() {
 
 #[test]
 fn test_default_values() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
 
     engine
         .execute(
@@ -177,7 +177,7 @@ fn test_default_values() {
 
 #[test]
 fn test_top() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
 
     engine
         .execute(parse_sql("CREATE TABLE nums (id INT NOT NULL PRIMARY KEY)").unwrap())

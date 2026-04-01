@@ -223,7 +223,7 @@ fn test_translate_null() {
 
 #[test]
 fn test_translate_mismatched_lengths() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     let stmt = parse_sql("SELECT TRANSLATE('hello', 'ab', 'cde')").expect("parse failed");
     let result = engine.execute(stmt);
     assert!(result.is_err() || result.is_ok());

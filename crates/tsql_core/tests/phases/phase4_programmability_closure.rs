@@ -66,7 +66,7 @@ fn test_temp_table_persists_in_session() {
 #[test]
 fn test_temp_table_isolated_between_engines() {
     let mut e1 = Engine::new();
-    let mut e2 = Engine::new();
+    let e2 = Engine::new();
     exec_batch(
         &mut e1,
         "CREATE TABLE #tmp (v INT); INSERT INTO #tmp VALUES (1);",

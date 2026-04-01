@@ -27,7 +27,7 @@ fn test_phase5_parser_transaction_statements() {
 
 #[test]
 fn test_phase5_begin_commit_persists_changes() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine
         .execute(parse_sql("CREATE TABLE t (id INT NOT NULL PRIMARY KEY)").unwrap())
         .unwrap();
@@ -48,7 +48,7 @@ fn test_phase5_begin_commit_persists_changes() {
 
 #[test]
 fn test_phase5_begin_rollback_discards_changes() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine
         .execute(parse_sql("CREATE TABLE t (id INT NOT NULL PRIMARY KEY)").unwrap())
         .unwrap();
@@ -69,7 +69,7 @@ fn test_phase5_begin_rollback_discards_changes() {
 
 #[test]
 fn test_phase5_savepoint_rollback_restores_partial_state() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine
         .execute(parse_sql("CREATE TABLE t (id INT NOT NULL PRIMARY KEY)").unwrap())
         .unwrap();
@@ -99,7 +99,7 @@ fn test_phase5_savepoint_rollback_restores_partial_state() {
 
 #[test]
 fn test_phase5_commit_without_active_transaction_errors() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     let err = engine.execute(parse_sql("COMMIT").unwrap()).unwrap_err();
     assert!(err
         .to_string()
@@ -108,7 +108,7 @@ fn test_phase5_commit_without_active_transaction_errors() {
 
 #[test]
 fn test_phase5_rollback_without_active_transaction_errors() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     let err = engine.execute(parse_sql("ROLLBACK").unwrap()).unwrap_err();
     assert!(err
         .to_string()
@@ -117,7 +117,7 @@ fn test_phase5_rollback_without_active_transaction_errors() {
 
 #[test]
 fn test_phase5_nested_begin_transaction_supported() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine
         .execute(parse_sql("BEGIN TRANSACTION").unwrap())
         .unwrap();
@@ -130,7 +130,7 @@ fn test_phase5_nested_begin_transaction_supported() {
 
 #[test]
 fn test_phase5_trancount_reflects_depth() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
 
     let result = engine
         .execute(parse_sql("SELECT @@TRANCOUNT").unwrap())
@@ -173,7 +173,7 @@ fn test_phase5_trancount_reflects_depth() {
 
 #[test]
 fn test_phase5_nested_commit_only_outermost_persists() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine
         .execute(parse_sql("CREATE TABLE t (id INT NOT NULL PRIMARY KEY)").unwrap())
         .unwrap();
@@ -204,7 +204,7 @@ fn test_phase5_nested_commit_only_outermost_persists() {
 
 #[test]
 fn test_phase5_nested_rollback_rolls_back_all() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine
         .execute(parse_sql("CREATE TABLE t (id INT NOT NULL PRIMARY KEY)").unwrap())
         .unwrap();
@@ -233,7 +233,7 @@ fn test_phase5_nested_rollback_rolls_back_all() {
 
 #[test]
 fn test_phase5_trancount_in_batch() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
 
     engine.execute(parse_sql("BEGIN TRANSACTION").unwrap()).unwrap();
     let r = engine.execute(parse_sql("SELECT @@TRANCOUNT").unwrap()).unwrap().unwrap();
@@ -254,7 +254,7 @@ fn test_phase5_trancount_in_batch() {
 
 #[test]
 fn test_phase5_set_isolation_level_session_and_tx() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine
         .execute(parse_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ").unwrap())
         .unwrap();
@@ -275,7 +275,7 @@ fn test_phase5_set_isolation_level_session_and_tx() {
 
 #[test]
 fn test_phase5_rollback_unknown_savepoint_errors() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine
         .execute(parse_sql("BEGIN TRANSACTION").unwrap())
         .unwrap();
@@ -287,7 +287,7 @@ fn test_phase5_rollback_unknown_savepoint_errors() {
 
 #[test]
 fn test_phase5_execute_batch_with_transaction_keywords() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     let setup = parse_batch("CREATE TABLE t (id INT NOT NULL PRIMARY KEY);").unwrap();
     engine.execute_batch(setup).unwrap();
 

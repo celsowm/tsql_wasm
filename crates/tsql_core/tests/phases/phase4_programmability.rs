@@ -31,7 +31,7 @@ fn query_batch(engine: &mut Engine, sql: &str) -> tsql_core::QueryResult {
 
 #[test]
 fn test_print() {
-    let mut e = Engine::new();
+    let e = Engine::new();
     let stmts = parse_batch("PRINT 'Hello World'; PRINT 123 + 456").unwrap();
     e.execute_batch(stmts).unwrap();
     assert_eq!(e.print_output(), vec!["Hello World".to_string(), "579".to_string()]);

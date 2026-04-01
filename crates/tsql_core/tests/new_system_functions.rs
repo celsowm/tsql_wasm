@@ -67,6 +67,24 @@ fn test_system_functions_in_select() {
     assert!(matches!(r.rows[0][3], Value::NVarChar(_)));
 }
 
+#[test]
+fn test_sql_server_handshake_probe_functions() {
+    let mut engine = Engine::new();
+    let r = query(
+        &mut engine,
+        "SELECT SERVERPROPERTY('Edition') AS edition, SERVERPROPERTY('EngineEdition') AS engine_edition, SERVERPROPERTY('ProductVersion') AS product_version, @@MICROSOFTVERSION AS microsoft_version, CONNECTIONPROPERTY('net_transport') AS transport",
+    );
+    assert!(matches!(r.rows[0][0], Value::NVarChar(_)));
+    assert_eq!(r.rows[0][1], Value::Int(3));
+    assert_eq!(r.rows[0][2], Value::NVarChar("16.0.1000.6".to_string()));
+    assert!(matches!(r.rows[0][3], Value::Int(_)));
+    assert_eq!(r.rows[0][4], Value::NVarChar("TCP".to_string()));
+
+    let r = query(&mut engine, "SELECT host_platform FROM sys.dm_os_host_info");
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0][0], Value::VarChar("Windows".to_string()));
+}
+
 // ─── HASHBYTES ────────────────────────────────────────────────────────────
 
 #[test]
