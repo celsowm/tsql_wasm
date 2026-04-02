@@ -27,5 +27,10 @@ pub(crate) fn data_type_spec_to_runtime(spec: &DataTypeSpec) -> DataType {
         DataTypeSpec::DateTime2 => DataType::DateTime2,
         DataTypeSpec::UniqueIdentifier => DataType::UniqueIdentifier,
         DataTypeSpec::SqlVariant => DataType::SqlVariant,
+        DataTypeSpec::Numeric(p, s) => DataType::Decimal {
+            precision: *p,
+            scale: *s,
+        },
+        DataTypeSpec::Xml => DataType::Xml,
     }
 }

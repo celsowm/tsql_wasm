@@ -68,7 +68,7 @@ pub enum Statement {
     SetIdentityInsert(SetIdentityInsertStmt),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum IsolationLevel {
     ReadUncommitted,
     ReadCommitted,
@@ -77,7 +77,7 @@ pub enum IsolationLevel {
     Snapshot,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SessionOption {
     AnsiNulls,
     QuotedIdentifier,
@@ -89,7 +89,7 @@ pub enum SessionOption {
     LockTimeout,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SessionOptionValue {
     Bool(bool),
     Int(i32),

@@ -67,6 +67,7 @@ fn coerce_bit(v: bool, ty: &DataType) -> Result<Value, DbError> {
             "cannot convert bit to UNIQUEIDENTIFIER".into(),
         )),
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Bit(v)))),
+        DataType::Xml => Ok(Value::VarChar(int_val.to_string())),
     }
 }
 
@@ -96,6 +97,7 @@ fn coerce_int(v: i64, ty: &DataType) -> Result<Value, DbError> {
             "cannot convert integer to UNIQUEIDENTIFIER".into(),
         )),
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::BigInt(v)))),
+        DataType::Xml => Ok(Value::VarChar(v.to_string())),
     }
 }
 
@@ -391,6 +393,7 @@ fn coerce_string(v: &str, ty: &DataType) -> Result<Value, DbError> {
         DataType::DateTime2 => Ok(Value::DateTime2(v.to_string())),
         DataType::UniqueIdentifier => Ok(Value::UniqueIdentifier(v.to_string())),
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::VarChar(v.to_string())))),
+        DataType::Xml => Ok(Value::VarChar(v.to_string())),
     }
 }
 

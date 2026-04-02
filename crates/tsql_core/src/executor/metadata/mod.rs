@@ -94,6 +94,7 @@ pub(super) fn system_type_id(dt: &DataType) -> i32 {
         DataType::DateTime2 => 42,
         DataType::UniqueIdentifier => 36,
         DataType::SqlVariant => 98,
+        DataType::Xml => 241,
     }
 }
 
@@ -120,6 +121,7 @@ pub(super) fn type_name(dt: &DataType) -> String {
         DataType::DateTime2 => "datetime2".to_string(),
         DataType::UniqueIdentifier => "uniqueidentifier".to_string(),
         DataType::SqlVariant => "sql_variant".to_string(),
+        DataType::Xml => "xml".to_string(),
     }
 }
 
@@ -129,6 +131,7 @@ pub(super) fn type_max_length(dt: &DataType) -> i16 {
         DataType::VarChar { max_len } | DataType::NVarChar { max_len } => *max_len as i16,
         DataType::Binary { len } => *len as i16,
         DataType::VarBinary { max_len } => *max_len as i16,
+        DataType::Xml => -1,
         DataType::Bit => 1,
         DataType::TinyInt => 1,
         DataType::SmallInt => 2,
@@ -153,6 +156,7 @@ pub(super) fn char_max_length(dt: &DataType) -> Value {
         DataType::VarChar { max_len } | DataType::NVarChar { max_len } => Value::Int(*max_len as i32),
         DataType::Binary { len } => Value::Int(*len as i32),
         DataType::VarBinary { max_len } => Value::Int(*max_len as i32),
+        DataType::Xml => Value::Int(-1),
         _ => Value::Null,
     }
 }
@@ -163,6 +167,7 @@ pub(super) fn char_octet_length(dt: &DataType) -> Value {
         DataType::NChar { len } | DataType::NVarChar { max_len: len } => Value::Int(*len as i32 * 2),
         DataType::Binary { len } => Value::Int(*len as i32),
         DataType::VarBinary { max_len } => Value::Int(*max_len as i32),
+        DataType::Xml => Value::Int(-1),
         _ => Value::Null,
     }
 }
@@ -254,6 +259,7 @@ pub(super) fn builtin_types_rows() -> Vec<StoredRow> {
         (42, "datetime2", 8, 27, 7),
         (36, "uniqueidentifier", 16, 0, 0),
         (98, "sql_variant", 8016, 0, 0),
+        (241, "xml", -1, 0, 0),
     ];
 
     types

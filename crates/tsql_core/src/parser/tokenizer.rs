@@ -156,29 +156,49 @@ pub fn tokenize_expr_with_quoted_ident(input: &str, quoted_identifier: bool) -> 
                 }
             }
             '\'' => {
-                let start = i + 1;
+                let mut s = String::new();
                 i += 1;
-                while i < chars.len() && chars[i] != '\'' {
-                    i += 1;
-                }
-                if i >= chars.len() {
-                    return Err(DbError::Parse("unterminated string literal".into()));
-                }
-                out.push(ExprToken::String(chars[start..i].iter().collect()));
-                i += 1;
-            }
-            'N' | 'n' => {
-                if i + 1 < chars.len() && chars[i + 1] == '\'' {
-                    let start = i + 2;
-                    i += 2;
+                loop {
                     while i < chars.len() && chars[i] != '\'' {
+                        s.push(chars[i]);
                         i += 1;
                     }
                     if i >= chars.len() {
-                        return Err(DbError::Parse("unterminated unicode string literal".into()));
+                        return Err(DbError::Parse("unterminated string literal".into()));
                     }
-                    out.push(ExprToken::UnicodeString(chars[start..i].iter().collect()));
                     i += 1;
+                    if i < chars.len() && chars[i] == '\'' {
+                        s.push('\'');
+                        i += 1;
+                        continue;
+                    } else {
+                        break;
+                    }
+                }
+                out.push(ExprToken::String(s));
+            }
+            'N' | 'n' => {
+                if i + 1 < chars.len() && chars[i + 1] == '\'' {
+                    let mut s = String::new();
+                    i += 2;
+                    loop {
+                        while i < chars.len() && chars[i] != '\'' {
+                            s.push(chars[i]);
+                            i += 1;
+                        }
+                        if i >= chars.len() {
+                            return Err(DbError::Parse("unterminated unicode string literal".into()));
+                        }
+                        i += 1;
+                        if i < chars.len() && chars[i] == '\'' {
+                            s.push('\'');
+                            i += 1;
+                            continue;
+                        } else {
+                            break;
+                        }
+                    }
+                    out.push(ExprToken::UnicodeString(s));
                 } else {
                     let ident = read_identifier(&chars, &mut i);
                     push_ident_token(&mut out, ident);

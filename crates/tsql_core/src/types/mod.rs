@@ -23,6 +23,7 @@ pub enum DataType {
     DateTime2,
     UniqueIdentifier,
     SqlVariant,
+    Xml,
 }
 
 impl DataType {
@@ -49,6 +50,7 @@ impl DataType {
             DataType::Binary { .. } => 19,
             DataType::VarBinary { .. } => 20,
             DataType::SqlVariant => 16,
+            DataType::Xml => 21,
         }
     }
 
@@ -59,6 +61,7 @@ impl DataType {
                 | DataType::NVarChar { .. }
                 | DataType::Char { .. }
                 | DataType::NChar { .. }
+                | DataType::Xml
         )
     }
 

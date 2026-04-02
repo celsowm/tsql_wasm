@@ -229,6 +229,8 @@ pub(crate) fn format_data_type_spec(dt: &DataTypeSpec) -> String {
         DataTypeSpec::DateTime2 => "DATETIME2".to_string(),
         DataTypeSpec::UniqueIdentifier => "UNIQUEIDENTIFIER".to_string(),
         DataTypeSpec::SqlVariant => "SQL_VARIANT".to_string(),
+        DataTypeSpec::Numeric(p, s) => format!("NUMERIC({},{})", p, s),
+        DataTypeSpec::Xml => "XML".to_string(),
     }
 }
 

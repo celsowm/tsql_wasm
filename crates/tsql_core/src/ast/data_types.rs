@@ -23,4 +23,6 @@ pub enum DataTypeSpec {
     DateTime2,
     UniqueIdentifier,
     SqlVariant,
+    Numeric(u8, u8),
+    Xml,
 }
