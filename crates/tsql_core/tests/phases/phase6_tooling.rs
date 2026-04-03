@@ -1,6 +1,7 @@
 use tsql_core::ast::{SessionOption, SessionOptionValue, Statement};
+use tsql_core::ast::SessionStatement;
 use tsql_core::types::Value;
-use tsql_core::{parse_sql, Database, Engine, SupportStatus, SessionManager, StatementExecutor, SqlAnalyzer};
+use tsql_core::{parse_sql, Database, Engine, SessionManager, StatementExecutor, SqlAnalyzer};
 
 fn exec(engine: &mut Engine, sql: &str) {
     engine.execute(parse_sql(sql).expect("parse")).expect("exec");
@@ -25,7 +26,7 @@ fn test_phase6_parser_set_options() {
     ];
     for sql in stmts {
         let stmt = parse_sql(sql).expect("parse");
-        assert!(matches!(stmt, Statement::SetOption(_)));
+        assert!(matches!(stmt, Statement::Session(SessionStatement::SetOption(_))));
     }
 }
 
@@ -33,7 +34,7 @@ fn test_phase6_parser_set_options() {
 fn test_phase6_set_option_ast_values() {
     let s = parse_sql("SET DATEFIRST 9").unwrap();
     match s {
-        Statement::SetOption(opt) => {
+        Statement::Session(SessionStatement::SetOption(opt)) => {
             assert_eq!(opt.option, SessionOption::DateFirst);
             assert_eq!(opt.value, SessionOptionValue::Int(9));
         }
@@ -86,17 +87,51 @@ fn test_phase6_xact_abort_rolls_back_transaction() {
 }
 
 #[test]
-fn test_phase6_compatibility_report_spans_status_and_warnings() {
-    let engine = Engine::new();
-    let report = engine.analyze_sql_batch(
-        "SET LANGUAGE portuguese;\nSELECT 1 AS x;\nFOO BAR;",
-    );
-    assert_eq!(report.entries.len(), 3);
-    assert_eq!(report.entries[0].status, SupportStatus::Partial);
-    assert_eq!(report.entries[1].status, SupportStatus::Supported);
-    assert_eq!(report.entries[2].status, SupportStatus::Unsupported);
-    assert_eq!(report.entries[0].span.start_line, 1);
-    assert_eq!(report.entries[2].span.start_line, 3);
+fn test_phase6_trace_warns_on_invalid_datefirst() {
+    let db = Database::new();
+    let session_id = db.session_manager().create_session();
+
+    let trace = db
+        .analyzer()
+        .trace_execute_session_sql(session_id, "SET DATEFIRST 9;")
+        .unwrap();
+
+    assert!(trace.stopped_on_error);
+    assert_eq!(trace.events.len(), 1);
+    let event = &trace.events[0];
+    assert_eq!(event.status, "error");
+    assert!(event
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("DATEFIRST 9")));
+    assert!(event
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("supported range 1..7")));
+}
+
+#[test]
+fn test_phase6_trace_warns_on_non_english_language() {
+    let db = Database::new();
+    let session_id = db.session_manager().create_session();
+
+    let trace = db
+        .analyzer()
+        .trace_execute_session_sql(session_id, "SET LANGUAGE portuguese;")
+        .unwrap();
+
+    assert!(!trace.stopped_on_error);
+    assert_eq!(trace.events.len(), 1);
+    let event = &trace.events[0];
+    assert_eq!(event.status, "ok");
+    assert!(event
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("LANGUAGE 'portuguese'")));
+    assert!(event
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("us_english behavior is modeled")));
 }
 
 #[test]
@@ -109,19 +144,22 @@ fn test_phase6_explain_plan_shape() {
     assert!(plan.operators.iter().any(|op| op.op == "Filter"));
     assert!(plan.operators.iter().any(|op| op.op == "Sort"));
     assert!(plan.read_tables.contains(&"DBO.T".to_string()));
+    assert!(plan.write_tables.is_empty());
 }
 
 #[test]
 fn test_phase6_trace_respects_nocount() {
     let db = Database::new();
-    let sid = db.create_session();
-    db.execute_session(
+    let sid = db.session_manager().create_session();
+    db.executor()
+        .execute_session(
         sid,
         parse_sql("CREATE TABLE t (id INT NOT NULL PRIMARY KEY)").unwrap(),
     )
     .unwrap();
 
     let trace = db
+        .analyzer()
         .trace_execute_session_sql(
             sid,
             "SET NOCOUNT ON; INSERT INTO t (id) VALUES (1); SELECT id FROM t ORDER BY id;",
@@ -206,6 +244,7 @@ fn test_phase6_explain_update_with_set() {
     assert!(update_op.detail.contains("SET"));
     assert!(update_op.detail.contains("name = 'foo'"));
     assert!(update_op.detail.contains("score = 100"));
+    assert!(plan.write_tables.contains(&"DBO.T".to_string()));
 }
 
 #[test]

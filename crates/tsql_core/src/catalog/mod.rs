@@ -587,6 +587,8 @@ impl IndexRegistry for CatalogImpl {
             is_unique: false,
             is_clustered: false,
         });
+        self.index_map
+            .insert((index_schema_id, name.to_lowercase()), self.indexes.len() - 1);
         Ok(())
     }
 
@@ -619,6 +621,7 @@ impl IndexRegistry for CatalogImpl {
         };
 
         self.indexes.remove(pos);
+        self.rebuild_maps();
         Ok(())
     }
 }

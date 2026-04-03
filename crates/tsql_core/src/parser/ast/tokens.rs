@@ -7,7 +7,7 @@ pub enum Token<'a> {
     Keyword(Keyword),
     Identifier(Cow<'a, str>),
     Variable(Cow<'a, str>),
-    Number(f64),
+    Number { value: f64, is_float: bool },
     String(Cow<'a, str>), // Unescaped string
     Operator(Cow<'a, str>),
     LParen,

@@ -50,6 +50,7 @@ impl WasmDb {
         self.inner.session_manager().close_session(session_id).map_err(js_err)
     }
 
+    pub fn exec_session(&mut self, session_id: u64, sql: &str) -> Result<(), JsValue> {
         let stmt = parse_sql(sql).map_err(js_err)?;
         let result = self
             .inner
@@ -89,11 +90,6 @@ impl WasmDb {
         let result =
             result.ok_or_else(|| JsValue::from_str("query() expected a SELECT statement"))?;
         serde_json::to_string(&result.to_json_result())
-            .map_err(|e| JsValue::from_str(&e.to_string()))
-    }
-
-    pub fn analyze_sql_batch(&self, sql: &str) -> Result<String, JsValue> {
-        serde_json::to_string(&self.inner.analyzer().analyze_sql_batch(sql))
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 

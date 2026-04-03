@@ -1,4 +1,4 @@
-use tsql_core::ast::{IsolationLevel, Statement};
+use tsql_core::ast::{IsolationLevel, SessionStatement, Statement, TransactionStatement};
 use tsql_core::parse_sql;
 
 fn assert_parses(sql: &str) -> Statement {
@@ -12,7 +12,7 @@ fn set_isolation_read_uncommitted() {
     let stmt = assert_parses("SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED");
     assert!(matches!(
         stmt,
-        Statement::SetTransactionIsolationLevel(IsolationLevel::ReadUncommitted)
+        Statement::Session(SessionStatement::SetTransactionIsolationLevel(IsolationLevel::ReadUncommitted))
     ));
 }
 
@@ -21,7 +21,7 @@ fn set_isolation_read_committed() {
     let stmt = assert_parses("SET TRANSACTION ISOLATION LEVEL READ COMMITTED");
     assert!(matches!(
         stmt,
-        Statement::SetTransactionIsolationLevel(IsolationLevel::ReadCommitted)
+        Statement::Session(SessionStatement::SetTransactionIsolationLevel(IsolationLevel::ReadCommitted))
     ));
 }
 
@@ -30,7 +30,7 @@ fn set_isolation_repeatable_read() {
     let stmt = assert_parses("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
     assert!(matches!(
         stmt,
-        Statement::SetTransactionIsolationLevel(IsolationLevel::RepeatableRead)
+        Statement::Session(SessionStatement::SetTransactionIsolationLevel(IsolationLevel::RepeatableRead))
     ));
 }
 
@@ -39,7 +39,7 @@ fn set_isolation_serializable() {
     let stmt = assert_parses("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
     assert!(matches!(
         stmt,
-        Statement::SetTransactionIsolationLevel(IsolationLevel::Serializable)
+        Statement::Session(SessionStatement::SetTransactionIsolationLevel(IsolationLevel::Serializable))
     ));
 }
 
@@ -48,7 +48,7 @@ fn set_isolation_snapshot() {
     let stmt = assert_parses("SET TRANSACTION ISOLATION LEVEL SNAPSHOT");
     assert!(matches!(
         stmt,
-        Statement::SetTransactionIsolationLevel(IsolationLevel::Snapshot)
+        Statement::Session(SessionStatement::SetTransactionIsolationLevel(IsolationLevel::Snapshot))
     ));
 }
 
@@ -57,15 +57,15 @@ fn set_isolation_snapshot() {
 #[test]
 fn begin_tran_short() {
     let stmt = assert_parses("BEGIN TRAN");
-    assert!(matches!(stmt, Statement::BeginTransaction(None)));
+    assert!(matches!(stmt, Statement::Transaction(TransactionStatement::Begin(None))));
 }
 
 #[test]
 fn begin_transaction_named() {
     let stmt = assert_parses("BEGIN TRANSACTION MyTx");
     match stmt {
-        Statement::BeginTransaction(Some(name)) => assert_eq!(name, "MyTx"),
-        _ => panic!("expected BeginTransaction(Some)"),
+        Statement::Transaction(TransactionStatement::Begin(Some(name))) => assert_eq!(name, "MyTx"),
+        _ => panic!("expected Begin(Some)"),
     }
 }
 
@@ -73,8 +73,8 @@ fn begin_transaction_named() {
 fn begin_tran_named() {
     let stmt = assert_parses("BEGIN TRAN tx1");
     match stmt {
-        Statement::BeginTransaction(Some(name)) => assert_eq!(name, "tx1"),
-        _ => panic!("expected BeginTransaction(Some)"),
+        Statement::Transaction(TransactionStatement::Begin(Some(name))) => assert_eq!(name, "tx1"),
+        _ => panic!("expected Begin(Some)"),
     }
 }
 
@@ -82,8 +82,8 @@ fn begin_tran_named() {
 fn begin_tran_with_mark() {
     let stmt = assert_parses("BEGIN TRAN MyTx WITH MARK 'backup point'");
     match stmt {
-        Statement::BeginTransaction(Some(name)) => assert_eq!(name, "MyTx"),
-        _ => panic!("expected BeginTransaction(Some) with WITH MARK stripped"),
+        Statement::Transaction(TransactionStatement::Begin(Some(name))) => assert_eq!(name, "MyTx"),
+        _ => panic!("expected Begin(Some) with WITH MARK stripped"),
     }
 }
 
@@ -92,8 +92,8 @@ fn begin_transaction_with_mark_no_desc() {
     // WITH MARK without a description string
     let stmt = assert_parses("BEGIN TRANSACTION LogTx WITH MARK");
     match stmt {
-        Statement::BeginTransaction(Some(name)) => assert_eq!(name, "LogTx"),
-        _ => panic!("expected BeginTransaction(Some)"),
+        Statement::Transaction(TransactionStatement::Begin(Some(name))) => assert_eq!(name, "LogTx"),
+        _ => panic!("expected Begin(Some)"),
     }
 }
 
@@ -102,27 +102,27 @@ fn begin_transaction_with_mark_no_desc() {
 #[test]
 fn commit_bare() {
     let stmt = assert_parses("COMMIT");
-    assert!(matches!(stmt, Statement::CommitTransaction(None)));
+    assert!(matches!(stmt, Statement::Transaction(TransactionStatement::Commit(None))));
 }
 
 #[test]
 fn commit_tran() {
     let stmt = assert_parses("COMMIT TRAN");
-    assert!(matches!(stmt, Statement::CommitTransaction(_)));
+    assert!(matches!(stmt, Statement::Transaction(TransactionStatement::Commit(_))));
 }
 
 #[test]
 fn commit_transaction_keyword() {
     let stmt = assert_parses("COMMIT TRANSACTION");
-    assert!(matches!(stmt, Statement::CommitTransaction(_)));
+    assert!(matches!(stmt, Statement::Transaction(TransactionStatement::Commit(_))));
 }
 
 #[test]
 fn commit_transaction_named() {
     let stmt = assert_parses("COMMIT TRANSACTION MyTx");
     match stmt {
-        Statement::CommitTransaction(Some(name)) => assert_eq!(name, "MyTx"),
-        _ => panic!("expected CommitTransaction(Some)"),
+        Statement::Transaction(TransactionStatement::Commit(Some(name))) => assert_eq!(name, "MyTx"),
+        _ => panic!("expected Commit(Some)"),
     }
 }
 
@@ -130,8 +130,8 @@ fn commit_transaction_named() {
 fn commit_tran_named() {
     let stmt = assert_parses("COMMIT TRAN tx1");
     match stmt {
-        Statement::CommitTransaction(Some(name)) => assert_eq!(name, "tx1"),
-        _ => panic!("expected CommitTransaction(Some)"),
+        Statement::Transaction(TransactionStatement::Commit(Some(name))) => assert_eq!(name, "tx1"),
+        _ => panic!("expected Commit(Some)"),
     }
 }
 
@@ -140,27 +140,27 @@ fn commit_tran_named() {
 #[test]
 fn rollback_bare() {
     let stmt = assert_parses("ROLLBACK");
-    assert!(matches!(stmt, Statement::RollbackTransaction(None)));
+    assert!(matches!(stmt, Statement::Transaction(TransactionStatement::Rollback(None))));
 }
 
 #[test]
 fn rollback_tran() {
     let stmt = assert_parses("ROLLBACK TRAN");
-    assert!(matches!(stmt, Statement::RollbackTransaction(None)));
+    assert!(matches!(stmt, Statement::Transaction(TransactionStatement::Rollback(None))));
 }
 
 #[test]
 fn rollback_transaction_keyword() {
     let stmt = assert_parses("ROLLBACK TRANSACTION");
-    assert!(matches!(stmt, Statement::RollbackTransaction(None)));
+    assert!(matches!(stmt, Statement::Transaction(TransactionStatement::Rollback(None))));
 }
 
 #[test]
 fn rollback_to_savepoint() {
     let stmt = assert_parses("ROLLBACK TRANSACTION sp1");
     match stmt {
-        Statement::RollbackTransaction(Some(name)) => assert_eq!(name, "sp1"),
-        _ => panic!("expected RollbackTransaction with savepoint"),
+        Statement::Transaction(TransactionStatement::Rollback(Some(name))) => assert_eq!(name, "sp1"),
+        _ => panic!("expected Rollback(Some) with savepoint"),
     }
 }
 
@@ -170,8 +170,8 @@ fn rollback_to_savepoint() {
 fn save_transaction() {
     let stmt = assert_parses("SAVE TRANSACTION sp1");
     match stmt {
-        Statement::SaveTransaction(name) => assert_eq!(name, "sp1"),
-        _ => panic!("expected SaveTransaction"),
+        Statement::Transaction(TransactionStatement::Save(name)) => assert_eq!(name, "sp1"),
+        _ => panic!("expected Save"),
     }
 }
 
@@ -179,8 +179,8 @@ fn save_transaction() {
 fn save_tran() {
     let stmt = assert_parses("SAVE TRAN checkpoint");
     match stmt {
-        Statement::SaveTransaction(name) => assert_eq!(name, "checkpoint"),
-        _ => panic!("expected SaveTransaction"),
+        Statement::Transaction(TransactionStatement::Save(name)) => assert_eq!(name, "checkpoint"),
+        _ => panic!("expected Save"),
     }
 }
 
@@ -189,20 +189,20 @@ fn save_tran() {
 #[test]
 fn begin_distributed_transaction() {
     let stmt = assert_parses("BEGIN DISTRIBUTED TRANSACTION");
-    assert!(matches!(stmt, Statement::BeginTransaction(_)));
+    assert!(matches!(stmt, Statement::Transaction(TransactionStatement::Begin(_))));
 }
 
 #[test]
 fn begin_distributed_tran() {
     let stmt = assert_parses("BEGIN DISTRIBUTED TRAN");
-    assert!(matches!(stmt, Statement::BeginTransaction(_)));
+    assert!(matches!(stmt, Statement::Transaction(TransactionStatement::Begin(_))));
 }
 
 #[test]
 fn begin_distributed_transaction_named() {
     let stmt = assert_parses("BEGIN DISTRIBUTED TRANSACTION dtx1");
     match stmt {
-        Statement::BeginTransaction(Some(name)) => assert_eq!(name, "dtx1"),
-        _ => panic!("expected BeginTransaction(Some)"),
+        Statement::Transaction(TransactionStatement::Begin(Some(name))) => assert_eq!(name, "dtx1"),
+        _ => panic!("expected Begin(Some)"),
     }
 }

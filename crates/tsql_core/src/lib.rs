@@ -16,8 +16,8 @@ pub use executor::random::{RandomProvider, SeededRandom, ThreadRng};
 pub use executor::result::QueryResult;
 pub use executor::session::SessionManager;
 pub use executor::tooling::{
-    CompatibilityEntry, CompatibilityIssue, CompatibilityReport, ExecutionTrace, ExplainOperator,
-    ExplainPlan, SessionOptions, SourceSpan, StatementSlice, SupportStatus, TraceStatementEvent,
+    ExecutionTrace, ExplainOperator, ExplainPlan, SessionOptions, SourceSpan, StatementSlice,
+    TraceStatementEvent,
 };
 pub use parser::{parse_batch, parse_sql};
 

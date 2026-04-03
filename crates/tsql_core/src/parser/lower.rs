@@ -1,6 +1,7 @@
 use crate::parser::ast as v2;
 use crate::ast as old;
 use crate::error::DbError;
+use crate::executor::tooling::formatting::format_expr;
 use std::borrow::Cow;
 
 pub fn lower_batch<'a>(v2_stmts: Vec<v2::Statement<'a>>) -> Result<Vec<old::Statement>, DbError> {
@@ -480,6 +481,7 @@ pub fn lower_data_type<'a>(dt: v2::DataType<'a>) -> Result<old::data_types::Data
         v2::DataType::TinyInt => Ok(old::data_types::DataTypeSpec::TinyInt),
         v2::DataType::Bit => Ok(old::data_types::DataTypeSpec::Bit),
         v2::DataType::Float => Ok(old::data_types::DataTypeSpec::Float),
+        v2::DataType::Real => Ok(old::data_types::DataTypeSpec::Float),
         v2::DataType::Decimal(p, s) => Ok(old::data_types::DataTypeSpec::Decimal(p, s)),
         v2::DataType::Numeric(p, s) => Ok(old::data_types::DataTypeSpec::Numeric(p, s)),
         v2::DataType::VarChar(n) => Ok(old::data_types::DataTypeSpec::VarChar(n.unwrap_or(u16::MAX as u32) as u16)),
@@ -622,7 +624,10 @@ fn lower_table_ref_recursive<'a>(tr: v2::TableRef<'a>) -> Result<(old::common::T
         }
         v2::TableRef::TableValuedFunction { name, args, alias } => {
             let func_name = name.last().unwrap().to_string();
-            let arg_strs: Vec<String> = args.into_iter().map(|a| format!("{:?}", a)).collect();
+            let arg_strs: Vec<String> = args
+                .into_iter()
+                .map(|a| lower_expr(a).map(|expr| format_expr(&expr)))
+                .collect::<Result<Vec<_>, _>>()?;
             let full_name = format!("{}({})", func_name, arg_strs.join(", "));
             Ok((old::common::TableRef {
                 factor: old::common::TableFactor::Named(old::common::ObjectName {
@@ -701,11 +706,8 @@ pub fn lower_update<'a>(s: v2::UpdateStmt<'a>) -> Result<old::statements::dml::U
 }
 
 pub fn lower_delete<'a>(s: v2::DeleteStmt<'a>) -> Result<old::statements::dml::DeleteStmt, DbError> {
+    let table = lower_object_name(s.table);
     let (tr, joins) = lower_from_clause_internal(s.from)?;
-    let table = match tr.factor {
-        old::common::TableFactor::Named(ref o) => o.clone(),
-        _ => return Err(DbError::Parse("DELETE target must be an object".into())),
-    };
 
     Ok(old::statements::dml::DeleteStmt {
         table,
@@ -813,11 +815,37 @@ pub fn lower_column_def<'a>(c: v2::ColumnDef<'a>) -> Result<old::statements::ddl
 }
 
 pub fn lower_routine_param<'a>(p: v2::RoutineParam<'a>) -> Result<old::statements::RoutineParam, DbError> {
+    let (param_type, is_readonly) = match p.data_type {
+        v2::DataType::Custom(name) => {
+            if !p.is_readonly {
+                return Err(DbError::Parse(format!(
+                    "table-valued parameter '{}' must be READONLY",
+                    p.name
+                )));
+            }
+            let name_str = name.as_ref();
+            let (schema, type_name) = match name_str.rsplit_once('.') {
+                Some((schema, ty)) => (Some(schema.to_string()), ty.to_string()),
+                None => (None, name_str.to_string()),
+            };
+            (
+                old::statements::RoutineParamType::TableType(old::ObjectName {
+                    schema,
+                    name: type_name,
+                }),
+                true,
+            )
+        }
+        other => (
+            old::statements::RoutineParamType::Scalar(lower_data_type(other)?),
+            p.is_readonly,
+        ),
+    };
     Ok(old::statements::RoutineParam {
         name: p.name.into_owned(),
-        param_type: old::statements::RoutineParamType::Scalar(lower_data_type(p.data_type)?),
+        param_type,
         is_output: p.is_output,
-        is_readonly: false,
+        is_readonly,
         default: p.default.map(lower_expr).transpose()?,
     })
 }

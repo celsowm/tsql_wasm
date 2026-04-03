@@ -1,6 +1,8 @@
 use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
-use crate::ast::{SessionOption, SessionOptionValue, SetOptionStmt};
+
+use crate::ast::{SessionOption, SessionOptionValue, SetOptionStmt, Statement};
 use crate::error::DbError;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,4 +83,29 @@ pub fn apply_set_option(stmt: &SetOptionStmt, options: &mut SessionOptions) -> R
         }
     }
     Ok(SetOptionApply { warnings })
+}
+
+pub fn statement_option_warnings(stmt: &Statement) -> Vec<String> {
+    if let Statement::Session(crate::ast::SessionStatement::SetOption(opt)) = stmt {
+        match (&opt.option, &opt.value) {
+            (SessionOption::DateFirst, SessionOptionValue::Int(v))
+                if !(1..=7).contains(v) =>
+            {
+                return vec![format!(
+                    "DATEFIRST {} is outside the supported range 1..7",
+                    v
+                )]
+            }
+            (SessionOption::Language, SessionOptionValue::Text(v))
+                if !v.eq_ignore_ascii_case("us_english") =>
+            {
+                return vec![format!(
+                    "LANGUAGE '{}' is accepted, but only us_english behavior is modeled",
+                    v
+                )]
+            }
+            _ => {}
+        }
+    }
+    Vec::new()
 }

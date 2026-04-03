@@ -184,10 +184,11 @@ fn postfix_binding_power(_op: &Keyword) -> (u8, ()) {
 
 pub fn parse_primary<'a>(parser: &mut Parser<'a>) -> ParseResult<Expr<'a>> {
     match parser.peek() {
-        Some(Token::Number(n)) => {
+        Some(Token::Number { value: n, is_float }) => {
              let n = *n;
+             let is_float = *is_float;
              let _ = parser.next();
-             if n.fract() == 0.0 {
+             if !is_float && n.fract() == 0.0 {
                  Ok(Expr::Integer(n as i64))
              } else {
                  let val: f64 = n;
@@ -278,13 +279,27 @@ pub fn parse_primary<'a>(parser: &mut Parser<'a>) -> ParseResult<Expr<'a>> {
              let expr = parse_pratt_expr(parser, 12)?;
              Ok(Expr::Unary { op: UnaryOp::Negate, expr: Box::new(expr) })
         }
+        Some(Token::Keyword(k)) if matches!(parser.peek_at(1), Some(Token::LParen) | Some(Token::Dot)) => {
+            let name = Cow::Borrowed(k.as_ref());
+            let _ = parser.next();
+            parse_identifier_or_function(parser, name)
+        }
+        Some(Token::Keyword(k)) => {
+            let name = Cow::Borrowed(k.as_ref());
+            let _ = parser.next();
+            Ok(Expr::Identifier(name))
+        }
         Some(Token::LParen) => {
             let mut open_parens = 0usize;
             while matches!(parser.peek(), Some(Token::LParen)) {
                 let _ = parser.next();
                 open_parens += 1;
             }
-            let expr = parse_expr(parser)?;
+            let expr = if parser.at_keyword(Keyword::Select) {
+                Expr::Subquery(Box::new(crate::parser::parse::statements::query::parse_select(parser)?))
+            } else {
+                parse_expr(parser)?
+            };
             for _ in 0..open_parens {
                 parser.expect_rparen()?;
             }
@@ -342,7 +357,7 @@ pub fn parse_convert<'a>(parser: &mut Parser<'a>) -> ParseResult<Expr<'a>> {
     let mut style = None;
     if matches!(parser.peek(), Some(Token::Comma)) {
         let _ = parser.next();
-        if let Some(Token::Number(s)) = parser.next() {
+        if let Some(Token::Number { value: s, .. }) = parser.next() {
             style = Some(*s as i32);
         } else {
              return parser.backtrack(Expected::Description("number"));
@@ -369,7 +384,7 @@ pub fn parse_try_convert<'a>(parser: &mut Parser<'a>) -> ParseResult<Expr<'a>> {
     let mut style = None;
     if matches!(parser.peek(), Some(Token::Comma)) {
         let _ = parser.next();
-        if let Some(Token::Number(s)) = parser.next() {
+        if let Some(Token::Number { value: s, .. }) = parser.next() {
             style = Some(*s as i32);
         } else {
              return parser.backtrack(Expected::Description("number"));
@@ -380,6 +395,20 @@ pub fn parse_try_convert<'a>(parser: &mut Parser<'a>) -> ParseResult<Expr<'a>> {
 }
 
 fn parse_identifier_or_function<'a>(parser: &mut Parser<'a>, name: Cow<'a, str>) -> ParseResult<Expr<'a>> {
+    let mut parts = vec![name];
+    while matches!(parser.peek(), Some(Token::Dot)) {
+        let _ = parser.next();
+        if let Some(tok) = parser.next() {
+            match tok {
+                Token::Identifier(next_id) => parts.push(next_id.clone()),
+                Token::Keyword(k) => parts.push(Cow::Borrowed(k.as_ref())),
+                _ => return parser.backtrack(Expected::Description("identifier")),
+            }
+        } else {
+            return parser.backtrack(Expected::Description("identifier"));
+        }
+    }
+
     if matches!(parser.peek(), Some(Token::LParen)) {
         let _ = parser.next();
         let args = if matches!(parser.peek(), Some(Token::Star)) {
@@ -391,29 +420,26 @@ fn parse_identifier_or_function<'a>(parser: &mut Parser<'a>, name: Cow<'a, str>)
             parse_comma_list(parser, parse_expr)?
         };
         parser.expect_rparen()?;
+        let function_name = if parts.len() == 1 {
+            parts.remove(0)
+        } else {
+            Cow::Owned(parts.iter().map(|p| p.as_ref()).collect::<Vec<_>>().join("."))
+        };
         if parser.at_keyword(Keyword::Over) {
-            return parse_window_over(parser, name, args);
+            return parse_window_over(parser, function_name, args);
         }
-        Ok(Expr::FunctionCall { name, args })
-    } else {
-        let mut parts = vec![name];
-        while matches!(parser.peek(), Some(Token::Dot)) {
-            let _ = parser.next();
-            if let Some(tok) = parser.next() {
-                match tok {
-                    Token::Identifier(next_id) => parts.push(next_id.clone()),
-                    Token::Keyword(k) => parts.push(Cow::Borrowed(k.as_ref())),
-                    _ => return parser.backtrack(Expected::Description("identifier")),
-                }
-            } else {
-                return parser.backtrack(Expected::Description("identifier"));
-            }
-        }
-        if parts.len() > 1 {
-            Ok(Expr::QualifiedIdentifier(parts))
+        Ok(Expr::FunctionCall { name: function_name, args })
+    } else if parts.len() == 1 {
+        let upper = parts[0].as_ref().to_uppercase();
+        if matches!(upper.as_str(), "CURRENT_TIMESTAMP" | "CURRENT_DATE" | "GETDATE") {
+            Ok(Expr::FunctionCall { name: parts.remove(0), args: vec![] })
         } else {
             Ok(Expr::Identifier(parts.remove(0)))
         }
+    } else if parts.len() > 1 {
+        Ok(Expr::QualifiedIdentifier(parts))
+    } else {
+        Ok(Expr::Identifier(parts.remove(0)))
     }
 }
 
@@ -513,7 +539,7 @@ fn parse_window_frame_bound<'a>(parser: &mut Parser<'a>) -> ParseResult<WindowFr
         parser.expect_keyword(Keyword::Row)?;
         return Ok(WindowFrameBound::CurrentRow);
     }
-    if let Some(Token::Number(n)) = parser.peek() {
+    if let Some(Token::Number { value: n, .. }) = parser.peek() {
         let n = *n as i64;
         let _ = parser.next();
         if parser.at_keyword(Keyword::Preceding) {
@@ -570,17 +596,18 @@ pub fn parse_data_type<'a>(parser: &mut Parser<'a>) -> ParseResult<DataType<'a>>
                 "TINYINT" => Ok(DataType::TinyInt),
                 "BIT" => Ok(DataType::Bit),
                 "FLOAT" => Ok(DataType::Float),
+                "REAL" => Ok(DataType::Real),
                 "DECIMAL" | "NUMERIC" => {
                     let mut p = 18;
                     let mut s = 0;
                     if matches!(parser.peek(), Some(Token::LParen)) {
                         let _ = parser.next();
-                        if let Some(Token::Number(val)) = parser.next() {
+                        if let Some(Token::Number { value: val, .. }) = parser.next() {
                             p = *val as u8;
                         }
                         if matches!(parser.peek(), Some(Token::Comma)) {
                             let _ = parser.next();
-                            if let Some(Token::Number(val)) = parser.next() {
+                            if let Some(Token::Number { value: val, .. }) = parser.next() {
                                 s = *val as u8;
                             }
                         }
@@ -588,34 +615,92 @@ pub fn parse_data_type<'a>(parser: &mut Parser<'a>) -> ParseResult<DataType<'a>>
                     }
                     if upper == "DECIMAL" { Ok(DataType::Decimal(p, s)) } else { Ok(DataType::Numeric(p, s)) }
                 }
+                "CHAR" => {
+                    let mut size = None;
+                    if matches!(parser.peek(), Some(Token::LParen)) {
+                        let _ = parser.next();
+                        if let Some(Token::Number { value: s, .. }) = parser.next() {
+                            size = Some(*s as u32);
+                        }
+                        parser.expect_rparen()?;
+                    }
+                    Ok(DataType::Char(size))
+                }
                 "VARCHAR" => {
                     let mut size = None;
                     if matches!(parser.peek(), Some(Token::LParen)) {
                         let _ = parser.next();
-                        if let Some(Token::Number(s)) = parser.next() {
+                        if let Some(Token::Number { value: s, .. }) = parser.next() {
                             size = Some(*s as u32);
                         }
                         parser.expect_rparen()?;
                     }
                     Ok(DataType::VarChar(size))
                 }
+                "NCHAR" => {
+                    let mut size = None;
+                    if matches!(parser.peek(), Some(Token::LParen)) {
+                        let _ = parser.next();
+                        if let Some(Token::Number { value: s, .. }) = parser.next() {
+                            size = Some(*s as u32);
+                        }
+                        parser.expect_rparen()?;
+                    }
+                    Ok(DataType::NChar(size))
+                }
                 "NVARCHAR" => {
                     let mut size = None;
                     if matches!(parser.peek(), Some(Token::LParen)) {
                         let _ = parser.next();
-                        if let Some(Token::Number(s)) = parser.next() {
+                        if let Some(Token::Number { value: s, .. }) = parser.next() {
                             size = Some(*s as u32);
                         }
                         parser.expect_rparen()?;
                     }
                     Ok(DataType::NVarChar(size))
                 }
+                "BINARY" => {
+                    let mut size = None;
+                    if matches!(parser.peek(), Some(Token::LParen)) {
+                        let _ = parser.next();
+                        if let Some(Token::Number { value: s, .. }) = parser.next() {
+                            size = Some(*s as u32);
+                        }
+                        parser.expect_rparen()?;
+                    }
+                    Ok(DataType::Binary(size))
+                }
+                "VARBINARY" => {
+                    let mut size = None;
+                    if matches!(parser.peek(), Some(Token::LParen)) {
+                        let _ = parser.next();
+                        if let Some(Token::Number { value: s, .. }) = parser.next() {
+                            size = Some(*s as u32);
+                        }
+                        parser.expect_rparen()?;
+                    }
+                    Ok(DataType::VarBinary(size))
+                }
+                "MONEY" => Ok(DataType::Money),
+                "SMALLMONEY" => Ok(DataType::SmallMoney),
+                "UNIQUEIDENTIFIER" => Ok(DataType::UniqueIdentifier),
                 "SYSNAME" => Ok(DataType::NVarChar(Some(128))),
                 "DATE" => Ok(DataType::Date),
                 "DATETIME" => Ok(DataType::DateTime),
                 "DATETIME2" => Ok(DataType::DateTime2),
                 "TIME" => Ok(DataType::Time),
-                _ => Ok(DataType::Custom(id.clone())),
+                _ => {
+                    let mut parts = vec![id.clone()];
+                    while matches!(parser.peek(), Some(Token::Dot)) {
+                        let _ = parser.next();
+                        match parser.next() {
+                            Some(Token::Identifier(next_id)) => parts.push(next_id.clone()),
+                            Some(Token::Keyword(k)) => parts.push(Cow::Borrowed(k.as_ref())),
+                            _ => return parser.backtrack(Expected::Description("identifier")),
+                        }
+                    }
+                    Ok(DataType::Custom(Cow::Owned(parts.iter().map(|p| p.as_ref()).collect::<Vec<_>>().join("."))))
+                }
             }
         }
         Some(Token::Keyword(kw)) => {
@@ -626,17 +711,18 @@ pub fn parse_data_type<'a>(parser: &mut Parser<'a>) -> ParseResult<DataType<'a>>
                 Keyword::TinyInt => Ok(DataType::TinyInt),
                 Keyword::Bit => Ok(DataType::Bit),
                 Keyword::Float => Ok(DataType::Float),
+                Keyword::Real => Ok(DataType::Real),
                 Keyword::Decimal | Keyword::Numeric => {
                     let mut p = 18;
                     let mut s = 0;
                     if matches!(parser.peek(), Some(Token::LParen)) {
                         let _ = parser.next();
-                        if let Some(Token::Number(val)) = parser.next() {
+                        if let Some(Token::Number { value: val, .. }) = parser.next() {
                             p = *val as u8;
                         }
                         if matches!(parser.peek(), Some(Token::Comma)) {
                             let _ = parser.next();
-                            if let Some(Token::Number(val)) = parser.next() {
+                            if let Some(Token::Number { value: val, .. }) = parser.next() {
                                 s = *val as u8;
                             }
                         }
@@ -648,28 +734,75 @@ pub fn parse_data_type<'a>(parser: &mut Parser<'a>) -> ParseResult<DataType<'a>>
                         _ => unreachable!(),
                     }
                 }
+                Keyword::Char => {
+                    let mut size = None;
+                    if matches!(parser.peek(), Some(Token::LParen)) {
+                        let _ = parser.next();
+                        if let Some(Token::Number { value: s, .. }) = parser.next() {
+                            size = Some(*s as u32);
+                        }
+                        parser.expect_rparen()?;
+                    }
+                    Ok(DataType::Char(size))
+                }
                 Keyword::Varchar => {
                     let mut size = None;
                     if matches!(parser.peek(), Some(Token::LParen)) {
                         let _ = parser.next();
-                        if let Some(Token::Number(s)) = parser.next() {
+                        if let Some(Token::Number { value: s, .. }) = parser.next() {
                             size = Some(*s as u32);
                         }
                         parser.expect_rparen()?;
                     }
                     Ok(DataType::VarChar(size))
                 }
+                Keyword::NChar => {
+                    let mut size = None;
+                    if matches!(parser.peek(), Some(Token::LParen)) {
+                        let _ = parser.next();
+                        if let Some(Token::Number { value: s, .. }) = parser.next() {
+                            size = Some(*s as u32);
+                        }
+                        parser.expect_rparen()?;
+                    }
+                    Ok(DataType::NChar(size))
+                }
                 Keyword::Nvarchar => {
                     let mut size = None;
                     if matches!(parser.peek(), Some(Token::LParen)) {
                         let _ = parser.next();
-                        if let Some(Token::Number(s)) = parser.next() {
+                        if let Some(Token::Number { value: s, .. }) = parser.next() {
                             size = Some(*s as u32);
                         }
                         parser.expect_rparen()?;
                     }
                     Ok(DataType::NVarChar(size))
                 }
+                Keyword::Binary => {
+                    let mut size = None;
+                    if matches!(parser.peek(), Some(Token::LParen)) {
+                        let _ = parser.next();
+                        if let Some(Token::Number { value: s, .. }) = parser.next() {
+                            size = Some(*s as u32);
+                        }
+                        parser.expect_rparen()?;
+                    }
+                    Ok(DataType::Binary(size))
+                }
+                Keyword::Varbinary => {
+                    let mut size = None;
+                    if matches!(parser.peek(), Some(Token::LParen)) {
+                        let _ = parser.next();
+                        if let Some(Token::Number { value: s, .. }) = parser.next() {
+                            size = Some(*s as u32);
+                        }
+                        parser.expect_rparen()?;
+                    }
+                    Ok(DataType::VarBinary(size))
+                }
+                Keyword::Money => Ok(DataType::Money),
+                Keyword::SmallMoney => Ok(DataType::SmallMoney),
+                Keyword::UniqueIdentifier => Ok(DataType::UniqueIdentifier),
                 Keyword::SysName => Ok(DataType::NVarChar(Some(128))),
                 Keyword::Date => Ok(DataType::Date),
                 Keyword::DateTime => Ok(DataType::DateTime),
@@ -688,7 +821,7 @@ pub fn is_same_token<'a>(a: &Token<'a>, b: &Token<'a>) -> bool {
         (Token::Identifier(i1), Token::Identifier(i2)) => i1 == i2,
         (Token::Variable(v1), Token::Variable(v2)) => v1 == v2,
         (Token::String(s1), Token::String(s2)) => s1 == s2,
-        (Token::Number(n1), Token::Number(n2)) => n1 == n2,
+        (Token::Number { value: n1, is_float: f1 }, Token::Number { value: n2, is_float: f2 }) => n1 == n2 && f1 == f2,
         (Token::Operator(o1), Token::Operator(o2)) => o1 == o2,
         _ => core::mem::discriminant(a) == core::mem::discriminant(b),
     }

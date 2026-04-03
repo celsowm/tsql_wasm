@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use crate::ast::{DdlStatement, DmlStatement, Statement};
 use super::formatting::{format_expr, format_join, format_select_columns};
-use super::compatibility::{collect_read_tables, collect_write_tables, normalize_object_name, select_from_name};
+use super::{collect_read_tables, collect_write_tables, normalize_object_name, select_from_name};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExplainOperator {

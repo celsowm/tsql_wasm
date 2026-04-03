@@ -51,7 +51,11 @@ pub fn parse_create_function<'a>(parser: &mut Parser<'a>) -> ParseResult<CreateS
 
     parser.expect_keyword(Keyword::Returns)?;
     let mut returns = None;
-    if !parser.at_keyword(Keyword::Table) {
+    let mut is_table_return = false;
+    if parser.at_keyword(Keyword::Table) {
+        let _ = parser.next();
+        is_table_return = true;
+    } else {
         returns = Some(crate::parser::parse::expressions::parse_data_type(parser)?);
     }
 
@@ -63,6 +67,12 @@ pub fn parse_create_function<'a>(parser: &mut Parser<'a>) -> ParseResult<CreateS
             Statement::Procedural(ProceduralStatement::BeginEnd(stmts)) => FunctionBody::Block(stmts),
             _ => unreachable!(),
         }
+    } else if is_table_return {
+        parser.expect_keyword(Keyword::Return)?;
+        parser.expect_lparen()?;
+        let query = crate::parser::parse::statements::query::parse_select(parser)?;
+        parser.expect_rparen()?;
+        FunctionBody::Table(query)
     } else if parser.at_keyword(Keyword::Return) {
         let _ = parser.next();
         let expr = crate::parser::parse::expressions::parse_expr(parser)?;

@@ -361,7 +361,11 @@ impl<'a> ExecutionContext<'a> {
     }
 
     pub fn current_scope_identity(&self) -> Option<i64> {
-        self.session.identity_stack.last().and_then(|v| *v)
+        match self.session.identity_stack.last().and_then(|v| *v) {
+            Some(v) => Some(v),
+            None if self.session.identity_stack.len() == 1 => *self.session.last_identity,
+            None => None,
+        }
     }
 
     pub fn push_module(&mut self, module: ModuleFrame) {

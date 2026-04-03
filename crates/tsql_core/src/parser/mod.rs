@@ -57,7 +57,7 @@ pub mod utils {
             ast::Token::Variable(v) => v.to_string(),
             ast::Token::Keyword(k) => k.to_string(),
             ast::Token::Operator(op) => op.to_string(),
-            ast::Token::Number(n) => n.to_string(),
+            ast::Token::Number { value: n, .. } => n.to_string(),
             ast::Token::LParen => "(".to_string(),
             ast::Token::RParen => ")".to_string(),
             ast::Token::Comma => ",".to_string(),

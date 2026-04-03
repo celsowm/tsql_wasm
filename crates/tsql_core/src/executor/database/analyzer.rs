@@ -9,9 +9,9 @@ use crate::storage::Storage;
 
 use super::super::locks::{SessionId};
 use super::super::tooling::{
-    analyze_sql_batch, collect_read_tables as collect_read_tables_tooling,
+    collect_read_tables as collect_read_tables_tooling,
     collect_write_tables as collect_write_tables_tooling, explain_statement, split_sql_statements,
-    statement_compat_warnings, CompatibilityReport, ExecutionTrace, ExplainPlan, SessionOptions,
+    statement_option_warnings, ExecutionTrace, ExplainPlan, SessionOptions,
     TraceStatementEvent,
 };
 use super::{RandomSeed, SqlAnalyzer, StatementExecutor};
@@ -42,10 +42,6 @@ where
         Ok(session.options.clone())
     }
 
-    fn analyze_sql_batch(&self, sql: &str) -> CompatibilityReport {
-        analyze_sql_batch(sql)
-    }
-
     fn explain_sql(&self, sql: &str) -> Result<ExplainPlan, DbError> {
         let stmt = parse_sql(sql)?;
         Ok(explain_statement(&stmt))
@@ -63,7 +59,7 @@ where
         for slice in slices {
             match parse_sql(&slice.sql) {
                 Ok(stmt) => {
-                    let mut warnings = statement_compat_warnings(&stmt);
+                    let mut warnings = statement_option_warnings(&stmt);
                     let mut read_tables: Vec<String> =
                         collect_read_tables_tooling(&stmt).into_iter().collect();
                     let mut write_tables: Vec<String> =

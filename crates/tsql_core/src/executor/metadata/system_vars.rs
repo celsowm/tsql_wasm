@@ -20,6 +20,14 @@ static SYSTEM_VARIABLES: &[SystemVariable] = &[
     SystemVariable { name: "@@MAX_PRECISION", handler: |_| Value::TinyInt(38) },
     SystemVariable { name: "@@DATEFIRST", handler: |ctx| Value::TinyInt(ctx.datefirst as u8) },
     SystemVariable { name: "@@TRANCOUNT", handler: |ctx| Value::Int(ctx.frame.trancount as i32) },
+    SystemVariable { name: "@@IDENTITY", handler: |ctx| match ctx.current_scope_identity().or(*ctx.session.last_identity) {
+        Some(id) => Value::BigInt(id),
+        None => Value::Null,
+    } },
+    SystemVariable { name: "@@PROCID", handler: |ctx| match ctx.current_procid() {
+        Some(id) => Value::Int(id),
+        None => Value::Null,
+    } },
     SystemVariable { name: "@@SERVERNAME", handler: |_| Value::NVarChar("localhost".into()) },
     SystemVariable { name: "@@SERVICENAME", handler: |_| Value::NVarChar("MSSQLSERVER".into()) },
     SystemVariable { name: "@@SPID", handler: |ctx| Value::SmallInt(ctx.session_id() as i16) },

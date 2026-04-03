@@ -12,7 +12,7 @@ use super::super::journal::Journal;
 use super::super::locks::SessionId;
 use super::super::result::QueryResult;
 use super::super::session::SessionManager;
-use super::super::tooling::{CompatibilityReport, ExecutionTrace, ExplainPlan, SessionOptions};
+use super::super::tooling::{ExecutionTrace, ExplainPlan, SessionOptions};
 use super::persistence::DatabaseInner;
 use super::{CheckpointManager, SqlAnalyzer, StatementExecutor};
 
@@ -147,10 +147,6 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
 
     pub fn session_options(&self) -> SessionOptions {
         self.db.analyzer().session_options(self.default_session).unwrap_or_default()
-    }
-
-    pub fn analyze_sql_batch(&self, sql: &str) -> CompatibilityReport {
-        self.db.analyzer().analyze_sql_batch(sql)
     }
 
     pub fn explain_sql(&self, sql: &str) -> Result<ExplainPlan, DbError> {

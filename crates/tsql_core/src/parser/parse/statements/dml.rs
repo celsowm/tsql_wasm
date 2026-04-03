@@ -135,15 +135,24 @@ pub fn parse_delete<'a>(parser: &mut Parser<'a>) -> ParseResult<DeleteStmt<'a>> 
         parser.expect_rparen()?;
     }
 
-    let mut target_alias = None;
-    if !matches!(parser.peek(), Some(Token::Keyword(Keyword::From))) {
-        if let Some(Token::Identifier(id)) = parser.next() {
-            target_alias = Some(id.clone());
-        }
+    if matches!(parser.peek(), Some(Token::Keyword(Keyword::From))) {
+        let _ = parser.next();
     }
-    
-    parser.expect_keyword(Keyword::From)?;
-    let from = crate::parser::parse::expressions::parse_comma_list(parser, crate::parser::parse::statements::query::parse_table_ref)?;
+
+    let target = crate::parser::parse::statements::query::parse_table_ref(parser)?;
+    let table = match &target {
+        TableRef::Table { name, .. } => name.clone(),
+        _ => return parser.backtrack(Expected::Description("table name")),
+    };
+
+    let mut from = vec![target.clone()];
+    if matches!(parser.peek(), Some(Token::Keyword(Keyword::From))) {
+        let _ = parser.next();
+        from.extend(crate::parser::parse::expressions::parse_comma_list(
+            parser,
+            crate::parser::parse::statements::query::parse_table_ref,
+        )?);
+    }
     
     let mut output = None;
     let mut output_into = None;
@@ -160,7 +169,7 @@ pub fn parse_delete<'a>(parser: &mut Parser<'a>) -> ParseResult<DeleteStmt<'a>> 
         selection = Some(crate::parser::parse::expressions::parse_expr(parser)?);
     }
     
-    Ok(DeleteStmt { target_alias, top, from, selection, output, output_into })
+    Ok(DeleteStmt { table, top, from, selection, output, output_into })
 }
 
 pub fn parse_output_clause<'a>(parser: &mut Parser<'a>) -> ParseResult<(Vec<OutputColumn<'a>>, Option<Vec<Cow<'a, str>>>)> {

@@ -11,7 +11,14 @@ pub fn lex<'a>(input: &mut &'a str, quoted_identifier: bool) -> ModalResult<Vec<
         parse_whitespace.map(|_| None),
         parse_comment.map(|_| None),
         parse_binary_literal.map(|hex| Some(Token::BinaryLiteral(Cow::Borrowed(hex)))),
-        parse_number.map(|n| Some(Token::Number(n))),
+        |input: &mut _| {
+            let start = *input;
+            parse_number(input).map(|n| {
+                let consumed = &start[..start.len() - input.len()];
+                let is_float = consumed.contains('.') || consumed.contains('e') || consumed.contains('E');
+                Some(Token::Number { value: n, is_float })
+            })
+        },
         parse_string.map(|s| Some(Token::String(Cow::Owned(unescape_string(s))))),
         |i: &mut _| if !quoted_identifier {
             parse_quoted_identifier(i).map(|s| Some(Token::String(Cow::Owned(unescape_quoted_identifier(s)))))
@@ -45,10 +52,23 @@ fn parse_whitespace<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
 }
 
 fn parse_comment<'a>(input: &mut &'a str) -> ModalResult<()> {
-    alt((
-        ("--", take_while(0.., |c| c != '\n'), opt('\n')).map(|_| ()),
-        ("/*", winnow::token::take_until(0.., "*/"), "*/").map(|_| ())
-    )).parse_next(input)
+    if input.starts_with("--") {
+        let rest = &input[2..];
+        let next_is_ws = rest.chars().next().map(|c| c.is_whitespace()).unwrap_or(true);
+        if rest.is_empty() || next_is_ws {
+            *input = rest;
+            take_while(0.., |c| c != '\n').parse_next(input)?;
+            opt('\n').parse_next(input)?;
+            return Ok(());
+        }
+    }
+    if input.starts_with("/*") {
+        ("/*", winnow::token::take_until(0.., "*/"), "*/")
+            .map(|_| ())
+            .parse_next(input)
+    } else {
+        Err(winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new()))
+    }
 }
 
 fn parse_number<'a>(input: &mut &'a str) -> ModalResult<f64> {

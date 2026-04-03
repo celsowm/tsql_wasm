@@ -1,12 +1,15 @@
-use tsql_core::{ast::Statement, parse_sql};
+use tsql_core::{
+    ast::{DdlStatement, ProceduralStatement, Statement},
+    parse_sql,
+};
 
 #[test]
 fn parse_create_and_drop_type() {
     let stmt = parse_sql("CREATE TYPE dbo.IntList AS TABLE (id INT)").unwrap();
-    assert!(matches!(stmt, Statement::CreateType(_)));
+    assert!(matches!(stmt, Statement::Ddl(DdlStatement::CreateType(_))));
 
     let stmt = parse_sql("DROP TYPE dbo.IntList").unwrap();
-    assert!(matches!(stmt, Statement::DropType(_)));
+    assert!(matches!(stmt, Statement::Ddl(DdlStatement::DropType(_))));
 }
 
 #[test]
@@ -21,5 +24,5 @@ fn parse_sp_executesql_tvp_decl() {
     let stmt =
         parse_sql("EXEC sp_executesql N'SELECT 1', N'@items dbo.IntList READONLY', @items = @tvp")
             .unwrap();
-    assert!(matches!(stmt, Statement::SpExecuteSql(_)));
+    assert!(matches!(stmt, Statement::Procedural(ProceduralStatement::SpExecuteSql(_))));
 }

@@ -57,8 +57,11 @@ fn coerce_bit(v: bool, ty: &DataType) -> Result<Value, DbError> {
         DataType::NChar { .. } | DataType::NVarChar { .. } => {
             Ok(Value::NVarChar(int_val.to_string()))
         }
-        DataType::Binary { .. } | DataType::VarBinary { .. } => {
+        DataType::Binary { .. } => {
             Ok(Value::Binary(int_val.to_le_bytes().to_vec()))
+        }
+        DataType::VarBinary { .. } => {
+            Ok(Value::VarBinary(int_val.to_le_bytes().to_vec()))
         }
         DataType::DateTime | DataType::DateTime2 | DataType::Date | DataType::Time => Err(
             DbError::Execution(format!("cannot convert bit to {:?}", ty)),
@@ -87,8 +90,11 @@ fn coerce_int(v: i64, ty: &DataType) -> Result<Value, DbError> {
         DataType::SmallMoney => Ok(Value::SmallMoney(v * 10000)),
         DataType::Char { .. } | DataType::VarChar { .. } => Ok(Value::VarChar(v.to_string())),
         DataType::NChar { .. } | DataType::NVarChar { .. } => Ok(Value::NVarChar(v.to_string())),
-        DataType::Binary { .. } | DataType::VarBinary { .. } => {
+        DataType::Binary { .. } => {
             Ok(Value::Binary(v.to_le_bytes().to_vec()))
+        }
+        DataType::VarBinary { .. } => {
+            Ok(Value::VarBinary(v.to_le_bytes().to_vec()))
         }
         DataType::DateTime | DataType::DateTime2 | DataType::Date | DataType::Time => Err(
             DbError::Execution(format!("cannot convert integer to {:?}", ty)),
@@ -253,6 +259,8 @@ fn coerce_float(bits: u64, ty: &DataType) -> Result<Value, DbError> {
         DataType::NChar { .. } | DataType::NVarChar { .. } => {
             Ok(Value::NVarChar(crate::types::format_float(f)))
         }
+        DataType::Binary { .. } => Ok(Value::Binary((f as i64).to_le_bytes().to_vec())),
+        DataType::VarBinary { .. } => Ok(Value::VarBinary((f as i64).to_le_bytes().to_vec())),
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Float(bits)))),
         _ => Err(DbError::Execution(format!("cannot convert FLOAT to {:?}", ty))),
     }
@@ -315,6 +323,8 @@ fn coerce_money(raw: i128, ty: &DataType) -> Result<Value, DbError> {
         DataType::NChar { .. } | DataType::NVarChar { .. } => {
             Ok(Value::NVarChar(crate::types::format_money(raw)))
         }
+        DataType::Binary { .. } => Ok(Value::Binary(raw.to_le_bytes().to_vec())),
+        DataType::VarBinary { .. } => Ok(Value::VarBinary(raw.to_le_bytes().to_vec())),
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Money(raw)))),
         _ => Err(DbError::Execution(format!("cannot convert MONEY to {:?}", ty))),
     }

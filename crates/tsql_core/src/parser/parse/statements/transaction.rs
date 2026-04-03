@@ -16,6 +16,18 @@ pub fn parse_begin_transaction<'a>(parser: &mut Parser<'a>) -> ParseResult<State
     } else {
         None
     };
+
+    if parser.at_keyword(Keyword::With) {
+        let _ = parser.next();
+        parser.expect_keyword(Keyword::Mark)?;
+        if parser.at_keyword(Keyword::As) {
+            let _ = parser.next();
+        }
+        if matches!(parser.peek(), Some(Token::String(_))) {
+            let _ = parser.next();
+        }
+    }
+
     Ok(Statement::Transaction(TransactionStatement::Begin(name)))
 }
 

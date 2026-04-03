@@ -106,7 +106,7 @@ where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
     S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
-    let mut ctx = ExecutionContext::new(
+    let ctx = ExecutionContext::new(
         &mut session.variables,
         &mut session.identities.last_identity,
         &mut session.identities.scope_stack,
@@ -131,7 +131,6 @@ where
         session.host_name.clone(),
     );
 
-    ctx.enter_scope();
     ctx
 }
 
@@ -246,6 +245,7 @@ where
         let session_ref = &mut *session_ptr;
         build_execution_context(session_id, session_ref, state)
     };
+    ctx.enter_scope();
     let exec_res = unsafe {
         let session_ref = &mut *session_ptr;
         let tx_manager = &mut session_ref.tx_manager;
@@ -293,6 +293,7 @@ where
         let session_ref = &mut *session_ptr;
         build_execution_context(session_id, session_ref, state)
     };
+    ctx.enter_scope();
     let exec_res = unsafe {
         let session_ref = &mut *session_ptr;
         let tx_manager = &mut session_ref.tx_manager;
@@ -362,11 +363,7 @@ where
             },
         )
     };
-    let dropped_physical = ctx.leave_scope_collect_table_vars();
     drop(ctx);
-    unsafe {
-        cleanup_scope_tables(state, &mut *session_ptr, dropped_physical);
-    }
     exec_res?;
     Ok(res)
 }

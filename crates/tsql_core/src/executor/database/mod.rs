@@ -12,7 +12,7 @@ use crate::storage::InMemoryStorage;
 use crate::executor::locks::SessionId;
 use super::result::QueryResult;
 use super::session::SharedState;
-use super::tooling::{CompatibilityReport, ExecutionTrace, ExplainPlan, SessionOptions};
+use super::tooling::{ExecutionTrace, ExplainPlan, SessionOptions};
 use std::sync::Arc;
 
 pub trait CheckpointManager {
@@ -51,7 +51,6 @@ pub trait StatementExecutor {
 }
 
 pub trait SqlAnalyzer {
-    fn analyze_sql_batch(&self, sql: &str) -> CompatibilityReport;
     fn explain_sql(&self, sql: &str) -> Result<ExplainPlan, DbError>;
     fn trace_execute_session_sql(
         &self,

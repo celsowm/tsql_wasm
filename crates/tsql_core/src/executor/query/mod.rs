@@ -222,32 +222,36 @@ impl<'a> QueryExecutor<'a> {
             .iter()
             .any(|item| has_window_function(&item.expr));
 
-        if !plan.order_by.is_empty() && !plan.order_satisfied_by_scan && !has_aggregate && !has_window {
-            let projection_columns: Vec<String> = plan.projection.iter().map(|item| {
-                super::projection::expand_projection_columns(&[item.clone()], None)
-            }).flatten().collect();
-            
-            let needs_pre_sort = plan.order_by.iter().any(|ob| {
+        let projection_columns: Vec<String> = plan
+            .projection
+            .iter()
+            .map(|item| super::projection::expand_projection_columns(&[item.clone()], None))
+            .flatten()
+            .collect();
+
+        let needs_pre_sort = !plan.order_by.is_empty()
+            && !plan.order_satisfied_by_scan
+            && !has_aggregate
+            && plan.order_by.iter().any(|ob| {
                 let idx = super::projection::resolve_projected_order_index(&projection_columns, ob);
                 idx.is_none()
             });
-            
-            if needs_pre_sort {
-                let order_by = &plan.order_by;
-                source_rows.sort_by(|a, b| {
-                    for item in order_by {
-                        let va = super::evaluator::eval_expr(&item.expr, a, ctx, self.catalog, self.storage, self.clock)
-                            .unwrap_or(crate::types::Value::Null);
-                        let vb = super::evaluator::eval_expr(&item.expr, b, ctx, self.catalog, self.storage, self.clock)
-                            .unwrap_or(crate::types::Value::Null);
-                        let ord = super::value_ops::compare_values(&va, &vb);
-                        if ord != std::cmp::Ordering::Equal {
-                            return if item.asc { ord } else { ord.reverse() };
-                        }
+
+        if needs_pre_sort {
+            let order_by = &plan.order_by;
+            source_rows.sort_by(|a, b| {
+                for item in order_by {
+                    let va = super::evaluator::eval_expr(&item.expr, a, ctx, self.catalog, self.storage, self.clock)
+                        .unwrap_or(crate::types::Value::Null);
+                    let vb = super::evaluator::eval_expr(&item.expr, b, ctx, self.catalog, self.storage, self.clock)
+                        .unwrap_or(crate::types::Value::Null);
+                    let ord = super::value_ops::compare_values(&va, &vb);
+                    if ord != std::cmp::Ordering::Equal {
+                        return if item.asc { ord } else { ord.reverse() };
                     }
-                    std::cmp::Ordering::Equal
-                });
-            }
+                }
+                std::cmp::Ordering::Equal
+            });
         }
 
         let result = if !plan.group_by.is_empty() || has_aggregate {
@@ -283,7 +287,7 @@ impl<'a> QueryExecutor<'a> {
             final_rows = super::projection::deduplicate_projected_rows(final_rows);
         }
 
-        if !plan.order_by.is_empty() && !plan.order_satisfied_by_scan {
+        if !plan.order_by.is_empty() && !plan.order_satisfied_by_scan && !needs_pre_sort {
             let columns = &result.columns;
             let order_by_refs = &plan.order_by;
 

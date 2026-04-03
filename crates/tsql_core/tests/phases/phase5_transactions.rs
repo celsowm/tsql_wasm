@@ -1,27 +1,27 @@
-use tsql_core::ast::{IsolationLevel, Statement};
+use tsql_core::ast::{IsolationLevel, SessionStatement, Statement, TransactionStatement};
 use tsql_core::{parse_batch, parse_sql, types::Value, Engine};
 
 #[test]
 fn test_phase5_parser_transaction_statements() {
     assert!(matches!(
         parse_sql("BEGIN TRANSACTION tx1").unwrap(),
-        Statement::BeginTransaction(Some(_))
+        Statement::Transaction(TransactionStatement::Begin(Some(_)))
     ));
     assert!(matches!(
         parse_sql("COMMIT TRANSACTION").unwrap(),
-        Statement::CommitTransaction(_)
+        Statement::Transaction(TransactionStatement::Commit(_))
     ));
     assert!(matches!(
         parse_sql("ROLLBACK TRANSACTION sp1").unwrap(),
-        Statement::RollbackTransaction(Some(_))
+        Statement::Transaction(TransactionStatement::Rollback(Some(_)))
     ));
     assert!(matches!(
         parse_sql("SAVE TRANSACTION sp1").unwrap(),
-        Statement::SaveTransaction(_)
+        Statement::Transaction(TransactionStatement::Save(_))
     ));
     assert!(matches!(
         parse_sql("SET TRANSACTION ISOLATION LEVEL SNAPSHOT").unwrap(),
-        Statement::SetTransactionIsolationLevel(IsolationLevel::Snapshot)
+        Statement::Session(SessionStatement::SetTransactionIsolationLevel(IsolationLevel::Snapshot))
     ));
 }
 

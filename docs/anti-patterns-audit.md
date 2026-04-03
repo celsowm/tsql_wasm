@@ -59,7 +59,7 @@ P0 items 1-9 have been addressed in the current tree. The cleanup/session-reset 
 | S2 | **`ScriptExecutor::execute()` is a 250-line dispatcher + DDL/DML/procedural executor** | `script/mod.rs` | One method matches ~40 statement variants, creates `SchemaExecutor` inline, builds `RoutineDef`/`TriggerDef` objects, and handles cursor registration. It's a router, a factory, and an executor in one. |
 | S3 | **`dispatch.rs` handles locking, execution, durability, dirty reads, and rollback** | `database/dispatch.rs` | `execute_non_transaction_statement()` is a ~230-line function that acquires locks, selects isolation strategy, builds workspace snapshots, runs scripts, persists checkpoints, handles errors, and releases locks. Each is a separate concern. |
 | S4 | **`CatalogImpl` is both a data store and a domain service** | `catalog/mod.rs` | It stores all schema objects (tables, indexes, routines, views, triggers, types) AND provides allocation logic, lookup logic, and mutation logic. Adding any new object type requires modifying this single struct. |
-| S5 | **`tooling.rs` is a 1200+ line grab-bag** | `tooling.rs` | Contains `SessionOptions`, `CompatibilityReport`, `ExplainPlan`, `ExecutionTrace`, SQL analysis, statement slicing, SET option handling, and routine formatting — all unrelated features in one file. |
+| S5 | **`tooling/` still bundles multiple concerns** | `tooling/` | The old grab-bag has been split, but the area still spans session options, naming helpers, table-usage collectors, explain/trace, and formatting concerns that must stay separated. |
 | S6 | **`SchemaExecutor` handles DDL + constraint logic + row migration** | `schema.rs` | `create_table()` builds columns, processes constraints (PK, FK, unique, check, default), and manages storage. `alter_table()` also migrates existing row data. Table creation and row data migration are separate responsibilities. |
 
 ### O — Open/Closed Principle
@@ -69,7 +69,7 @@ P0 items 1-9 have been addressed in the current tree. The cleanup/session-reset 
 | O1 | **`eval_udf_body` hardcodes concrete storage types** | `evaluator.rs:65-77` | Uses `as_any().downcast_ref::<InMemoryStorage>()` and `downcast_ref::<RedbStorage>()`. Adding a new `Storage` implementation requires modifying this function. Should use a `clone_boxed()` method on the trait instead. |
 | O2 | **`ScriptExecutor::execute()` requires modification for every new statement type** | `script/mod.rs` | Every new T-SQL statement type requires adding a branch to this giant match. There's no dispatch table, visitor pattern, or statement handler registry. |
 | O3 | **`resolve_identifier` hardcodes all `@@` globals** | `identifier.rs:12-28` | Every new system variable requires adding a match arm. A lookup table or registry would make this extensible without modification. |
-| O4 | **`Statement` enum growth forces changes across the entire executor** | `script/mod.rs`, `dispatch.rs`, `table_util.rs`, `tooling.rs` | Adding a statement requires touching the AST enum, parser, script executor, transaction exec, table_util collectors, and tooling analyzer — 6+ files minimum. |
+| O4 | **`Statement` enum growth forces changes across the entire executor** | `script/mod.rs`, `dispatch.rs`, `table_util.rs`, `tooling/` | Adding a statement requires touching the AST enum, parser, script executor, transaction exec, table_util collectors, and tooling helpers — 6+ files minimum. |
 | O5 | **`DbError` enum requires modification for new error categories** | `error.rs` | `Parse`, `Semantic`, `Execution`, `Storage`, `Deadlock` — adding a new error class (e.g., `Timeout`, `Permission`) requires changing the enum and all match arms (`class()`, `code()`). |
 
 ### L — Liskov Substitution Principle
@@ -143,7 +143,7 @@ Fix bugs #1-9. These can produce wrong results or corrupt state.
 1. **Split `Catalog` trait** into `SchemaRegistry`, `TableRegistry`, `RoutineRegistry`, `ViewRegistry`, `TriggerRegistry` (I1, S4)
 2. **Add `clone_boxed()` to `Catalog` and `Storage` traits**, remove `as_any()`/`as_any_mut()` (L2, L3, O1, D1)
 3. **Separate `Storage` from `CheckpointableStorage`** via a sub-trait (I2)
-4. **Split `tooling.rs`** into `session_options.rs`, `compatibility.rs`, `explain.rs`, `trace.rs` (S5)
+4. **Keep `tooling/` split by responsibility**: session options, object-name helpers, table-usage collectors, explain, trace, formatting (S5)
 5. **Extract `SchemaExecutor` creation** into `ScriptExecutor` as a helper method to DRY the 8 inline constructions (D3)
 6. **Split `DatabaseInner` traits** into separate service structs or use delegation instead of one god implementor (I4)
 7. **Move `@@` globals to a registry/lookup table** instead of hardcoded match arms (O3)

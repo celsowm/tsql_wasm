@@ -226,7 +226,7 @@ pub struct UpdateAssignment<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DeleteStmt<'a> {
-    pub target_alias: Option<Cow<'a, str>>,
+    pub table: Vec<Cow<'a, str>>,
     pub top: Option<Expr<'a>>,
     pub from: Vec<TableRef<'a>>,
     pub selection: Option<Expr<'a>>,
@@ -277,6 +277,7 @@ pub struct RoutineParam<'a> {
     pub name: Cow<'a, str>,
     pub data_type: DataType<'a>,
     pub is_output: bool,
+    pub is_readonly: bool,
     pub default: Option<Expr<'a>>,
 }
 

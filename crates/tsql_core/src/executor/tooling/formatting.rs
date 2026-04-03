@@ -1,4 +1,5 @@
 use crate::ast::{BinaryOp, DataTypeSpec, Expr, FunctionBody, JoinClause, JoinType, ObjectName, OrderByExpr, RoutineParam, RoutineParamType, SelectItem, SelectStmt, Statement, TableFactor, TableRef, TriggerEvent, UnaryOp};
+use super::normalize_table_ref;
 
 pub(crate) fn format_data_type_spec(dt: &DataTypeSpec) -> String {
     match dt {
@@ -657,8 +658,8 @@ pub(crate) fn format_join(join: &JoinClause) -> String {
         JoinType::Cross => "CROSS JOIN",
     };
     if let Some(on_expr) = &join.on {
-        format!("{} {} ON {}", join_type, super::compatibility::normalize_table_ref(&join.table), format_expr(on_expr))
+        format!("{} {} ON {}", join_type, normalize_table_ref(&join.table), format_expr(on_expr))
     } else {
-        format!("{} {}", join_type, super::compatibility::normalize_table_ref(&join.table))
+        format!("{} {}", join_type, normalize_table_ref(&join.table))
     }
 }

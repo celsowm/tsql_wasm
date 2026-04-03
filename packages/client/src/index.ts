@@ -22,27 +22,6 @@ export type SourceSpan = {
   end_col: number;
 };
 
-export type CompatibilityIssue = {
-  code: string;
-  message: string;
-};
-
-export type SupportStatus = "Supported" | "Partial" | "Unsupported";
-
-export type CompatibilityEntry = {
-  index: number;
-  sql: string;
-  normalized_sql: string;
-  span: SourceSpan;
-  status: SupportStatus;
-  feature_tags: string[];
-  issues: CompatibilityIssue[];
-};
-
-export type CompatibilityReport = {
-  entries: CompatibilityEntry[];
-};
-
 export type ExplainOperator = {
   op: string;
   detail: string;
@@ -111,11 +90,6 @@ export class TsqlDatabase {
   async query(sql: string): Promise<QueryResult> {
     const json = this.db.query(sql);
     return JSON.parse(json) as QueryResult;
-  }
-
-  async analyze(sql: string): Promise<CompatibilityReport> {
-    const json = (this.db as any).analyze_sql_batch(sql);
-    return JSON.parse(json) as CompatibilityReport;
   }
 
   async explain(sql: string): Promise<ExplainPlan> {

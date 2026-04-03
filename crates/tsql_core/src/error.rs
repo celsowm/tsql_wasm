@@ -45,6 +45,16 @@ impl DbError {
             DbError::Deadlock(_) => 1205,
         }
     }
+
+    pub fn code(&self) -> &'static str {
+        match self {
+            DbError::Parse(_) => "TSQL_PARSE_ERROR",
+            DbError::Semantic(_) => "TSQL_SEMANTIC_ERROR",
+            DbError::Execution(_) => "TSQL_EXECUTION_ERROR",
+            DbError::Storage(_) => "TSQL_STORAGE_ERROR",
+            DbError::Deadlock(_) => "TSQL_DEADLOCK_ERROR",
+        }
+    }
 }
 
 /// Represents the outcome of executing a SQL statement.
