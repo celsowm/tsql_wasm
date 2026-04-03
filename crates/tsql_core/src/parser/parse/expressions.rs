@@ -1,6 +1,6 @@
 use crate::parser::ast::*;
 use crate::parser::state::Parser;
-use crate::parser::error::{ParseError, ParseResult, Expected};
+use crate::parser::error::{ParseResult, Expected};
 use crate::parser::token::Keyword;
 use std::borrow::Cow;
 
@@ -812,17 +812,5 @@ pub fn parse_data_type<'a>(parser: &mut Parser<'a>) -> ParseResult<DataType<'a>>
             }
         }
         _ => parser.backtrack(Expected::Description("data type")),
-    }
-}
-
-pub fn is_same_token<'a>(a: &Token<'a>, b: &Token<'a>) -> bool {
-    match (a, b) {
-        (Token::Keyword(k1), Token::Keyword(k2)) => k1 == k2,
-        (Token::Identifier(i1), Token::Identifier(i2)) => i1 == i2,
-        (Token::Variable(v1), Token::Variable(v2)) => v1 == v2,
-        (Token::String(s1), Token::String(s2)) => s1 == s2,
-        (Token::Number { value: n1, is_float: f1 }, Token::Number { value: n2, is_float: f2 }) => n1 == n2 && f1 == f2,
-        (Token::Operator(o1), Token::Operator(o2)) => o1 == o2,
-        _ => core::mem::discriminant(a) == core::mem::discriminant(b),
     }
 }

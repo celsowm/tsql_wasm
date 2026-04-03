@@ -1,7 +1,7 @@
 use crate::parser::ast::*;
 use crate::parser::token::Keyword;
 use crate::parser::state::Parser;
-use crate::parser::error::{ParseError, ParseResult, Expected};
+use crate::parser::error::{ParseResult, Expected};
 
 pub fn parse_begin_transaction<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
     if let Some(Token::Keyword(k)) = parser.peek() {

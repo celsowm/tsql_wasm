@@ -1,7 +1,7 @@
 use crate::parser::ast::*;
 use crate::parser::token::Keyword;
 use crate::parser::state::Parser;
-use crate::parser::error::{ParseError, ParseResult, Expected};
+use crate::parser::error::{ParseResult, Expected};
 
 pub fn parse_if<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
     let condition = crate::parser::parse::expressions::parse_expr(parser)?;
@@ -18,12 +18,6 @@ pub fn parse_if<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
         then_stmt: Box::new(then_stmt),
         else_stmt: else_stmt.map(Box::new),
     }))
-}
-
-pub fn parse_while<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
-    let condition = crate::parser::parse::expressions::parse_expr(parser)?;
-    let stmt = crate::parser::parse::parse_statement(parser)?;
-    Ok(Statement::Procedural(ProceduralStatement::While { condition, stmt: Box::new(stmt) }))
 }
 
 pub fn parse_begin_end<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
@@ -78,20 +72,4 @@ pub fn parse_try_catch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>
     }
 
     Ok(Statement::Procedural(ProceduralStatement::TryCatch { try_body, catch_body }))
-}
-
-pub fn parse_return<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
-    let expr = if !parser.is_empty() && !matches!(parser.peek(), Some(Token::Semicolon) | Some(Token::Go) | Some(Token::Keyword(_))) {
-         let saved = parser.save();
-         if crate::parser::parse::expressions::parse_expr(parser).is_ok() {
-              parser.restore(saved);
-              Some(crate::parser::parse::expressions::parse_expr(parser)?)
-         } else {
-              parser.restore(saved);
-              None
-         }
-    } else {
-         None
-    };
-    Ok(Statement::Procedural(ProceduralStatement::Return(expr)))
 }

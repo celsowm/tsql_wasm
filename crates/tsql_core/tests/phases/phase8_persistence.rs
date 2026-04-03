@@ -1,5 +1,5 @@
 use tsql_core::types::Value;
-use tsql_core::{parse_sql, Database, Engine, SessionManager, StatementExecutor};
+use tsql_core::{parse_sql, Database, Engine};
 
 fn exec(engine: &mut Engine, sql: &str) {
     engine.execute(parse_sql(sql).expect("parse")).expect("exec");

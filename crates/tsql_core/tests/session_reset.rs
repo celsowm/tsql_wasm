@@ -1,4 +1,4 @@
-use tsql_core::{parse_sql, Database, SessionManager, SqlAnalyzer, StatementExecutor};
+use tsql_core::{parse_sql, Database, SessionManager, SqlAnalyzer};
 
 #[test]
 fn test_reset_session_clears_runtime_and_releases_locks() {

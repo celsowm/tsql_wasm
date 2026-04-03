@@ -1,15 +1,7 @@
 use crate::parser::ast::*;
 use crate::parser::token::Keyword;
 use crate::parser::state::Parser;
-use crate::parser::error::{ParseError, ParseResult, Expected};
-use std::borrow::Cow;
-
-pub fn parse_declare_cursor<'a>(parser: &mut Parser<'a>, name: Cow<'a, str>) -> ParseResult<Statement<'a>> {
-    parser.expect_keyword(Keyword::Cursor)?;
-    parser.expect_keyword(Keyword::For)?;
-    let query = crate::parser::parse::statements::query::parse_select(parser)?;
-    Ok(Statement::Procedural(ProceduralStatement::DeclareCursor { name, query }))
-}
+use crate::parser::error::{ParseResult, Expected};
 
 pub fn parse_open_cursor<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
     if let Some(Token::Identifier(id)) = parser.next() {

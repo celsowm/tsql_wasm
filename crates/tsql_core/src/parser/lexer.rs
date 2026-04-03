@@ -1,4 +1,4 @@
-use crate::parser::ast::{Token, is_keyword};
+use crate::parser::ast::Token;
 use crate::parser::token::Keyword;
 use winnow::prelude::*;
 use winnow::token::{take_while, any};

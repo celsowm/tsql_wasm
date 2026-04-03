@@ -1,6 +1,6 @@
 use tsql_core::ast::IsolationLevel;
 use tsql_core::types::Value;
-use tsql_core::{parse_sql, Database, SessionManager, StatementExecutor};
+use tsql_core::{parse_sql, Database};
 
 #[derive(Clone, Copy)]
 enum Step<'a> {

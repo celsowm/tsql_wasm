@@ -1,11 +1,11 @@
 use crate::parser::ast::*;
 use crate::parser::token::Keyword;
 use crate::parser::state::Parser;
-use crate::parser::error::{ParseError, ParseResult, Expected};
+use crate::parser::error::{ParseResult, Expected};
 use std::borrow::Cow;
 
 // Re-export canonical implementations from control_flow.rs
-pub use super::control_flow::{parse_if, parse_begin_end, parse_try_catch, parse_while, parse_return};
+pub use super::control_flow::{parse_if, parse_begin_end, parse_try_catch};
 
 pub fn parse_declare<'a>(parser: &mut Parser<'a>) -> ParseResult<Vec<DeclareVar<'a>>> {
     let mut vars = Vec::new();

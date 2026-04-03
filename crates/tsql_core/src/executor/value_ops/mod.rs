@@ -3,5 +3,5 @@ pub mod comparison;
 pub mod formatting;
 
 pub use coercion::coerce_value_to_type;
-pub use comparison::{compare_values, truthy, value_key};
+pub use comparison::{compare_values, truthy};
 pub use formatting::convert_with_style;

@@ -1,7 +1,7 @@
 use crate::parser::ast::*;
 use crate::parser::token::Keyword;
 use crate::parser::state::Parser;
-use crate::parser::error::{ParseError, ParseResult, Expected};
+use crate::parser::error::{ParseResult, Expected};
 use std::borrow::Cow;
 
 pub use super::create::{parse_create_table, parse_create_view, parse_create_procedure, parse_create_function, parse_create_trigger};
@@ -364,10 +364,6 @@ fn parse_referential_action<'a>(parser: &mut Parser<'a>) -> ParseResult<Referent
         },
         _ => parser.backtrack(Expected::Description("referential action")),
     }
-}
-
-fn parse_begin_end<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
-    crate::parser::parse::statements::other::parse_begin_end(parser)
 }
 
 fn parse_multipart_name<'a>(parser: &mut Parser<'a>) -> ParseResult<Vec<Cow<'a, str>>> {

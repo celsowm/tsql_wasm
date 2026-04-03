@@ -8,7 +8,7 @@ use super::clock::Clock;
 use super::context::ExecutionContext;
 use super::evaluator::eval_constant_expr;
 use super::model::JoinedRow;
-use super::value_ops::{compare_values, value_key};
+use super::value_ops::compare_values;
 use crate::catalog::Catalog;
 use crate::storage::Storage;
 

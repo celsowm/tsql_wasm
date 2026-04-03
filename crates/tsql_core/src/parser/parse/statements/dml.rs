@@ -1,7 +1,7 @@
 use crate::parser::ast::*;
 use crate::parser::token::Keyword;
 use crate::parser::state::Parser;
-use crate::parser::error::{ParseError, ParseResult, Expected};
+use crate::parser::error::{ParseResult, Expected};
 use std::borrow::Cow;
 
 pub fn parse_insert<'a>(parser: &mut Parser<'a>) -> ParseResult<InsertStmt<'a>> {

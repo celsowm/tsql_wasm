@@ -1,7 +1,7 @@
 ﻿use std::cmp::Ordering;
 use std::collections::HashSet;
 
-use crate::ast::{BinaryOp, Expr, JoinType, OrderByExpr, SelectStmt, TableFactor, TableRef};
+use crate::ast::{BinaryOp, Expr, JoinType, OrderByExpr, SelectStmt, TableRef};
 use crate::catalog::Catalog;
 use crate::error::DbError;
 use crate::types::Value;

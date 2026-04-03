@@ -29,25 +29,12 @@ impl<'a> Parser<'a> {
         Some(tok)
     }
 
-    pub fn position(&self) -> usize {
-        self.position
-    }
-
     pub fn is_empty(&self) -> bool {
         self.position >= self.tokens.len()
     }
 
     pub fn at_keyword(&self, kw: Keyword) -> bool {
         matches!(self.peek(), Some(Token::Keyword(k)) if *k == kw)
-    }
-
-    pub fn eat_keyword(&mut self, kw: Keyword) -> bool {
-        if self.at_keyword(kw) {
-            self.position += 1;
-            true
-        } else {
-            false
-        }
     }
 
     pub fn expect_keyword(&mut self, kw: Keyword) -> ParseResult<()> {
@@ -100,10 +87,6 @@ impl<'a> Parser<'a> {
 
     pub fn backtrack<T>(&self, expected: Expected) -> ParseResult<T> {
         Err(self.error(expected))
-    }
-
-    pub fn slice_from(&self, start: usize) -> &'a [Token<'a>] {
-        &self.tokens[start..]
     }
 
     pub fn save(&self) -> usize {

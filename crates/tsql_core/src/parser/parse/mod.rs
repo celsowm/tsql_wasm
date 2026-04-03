@@ -4,15 +4,15 @@ pub mod statements;
 use crate::parser::ast::*;
 use crate::parser::parse::expressions::parse_expr;
 use crate::parser::state::Parser;
-use crate::parser::error::{ParseError, ParseResult, Expected};
+use crate::parser::error::{ParseResult, Expected};
 use crate::parser::token::Keyword;
 use std::borrow::Cow;
 
 pub use crate::parser::parse::expressions::{parse_data_type, parse_comma_list};
-pub use crate::parser::parse::statements::query::{parse_select, parse_select_body, parse_table_ref, parse_multipart_name as multipart_name};
+pub use crate::parser::parse::statements::query::{parse_select, parse_multipart_name as multipart_name};
 pub use crate::parser::parse::statements::other::{parse_declare, parse_set, parse_if, parse_begin_end, parse_exec_dispatch, parse_try_catch};
 pub use crate::parser::parse::statements::dml::{parse_insert, parse_update, parse_delete, parse_merge};
-pub use crate::parser::parse::statements::ddl::{parse_create, parse_column_def, parse_table_body, parse_create_index, parse_create_type, parse_create_schema};
+pub use crate::parser::parse::statements::ddl::{parse_create, parse_table_body, parse_create_index, parse_create_type, parse_create_schema};
 pub use crate::parser::parse::statements::drop::parse_drop;
 pub use crate::parser::parse::statements::alter::parse_alter;
 

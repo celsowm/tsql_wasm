@@ -1,4 +1,4 @@
-use tsql_core::{parse_sql, Database, Engine, SessionManager, StatementExecutor, CheckpointManager};
+use tsql_core::{parse_sql, Database, Engine};
 
 #[test]
 fn test_phase5_lock_release_on_savepoint_rollback() {

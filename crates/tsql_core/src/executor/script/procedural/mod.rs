@@ -19,7 +19,6 @@ impl<'a> ScriptExecutor<'a> {
         ctx: &mut ExecutionContext<'_>,
     ) -> crate::error::StmtResult<Option<crate::executor::result::QueryResult>> {
         use crate::catalog::{RoutineDef, RoutineKind, TriggerDef};
-        use crate::executor::context::{ModuleFrame, ModuleKind};
         use crate::error::StmtOutcome;
         use crate::executor::model::Cursor;
         use crate::executor::result::QueryResult;

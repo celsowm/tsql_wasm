@@ -1,4 +1,4 @@
-use tsql_core::{PersistentDatabase, StatementExecutor, SessionManager};
+use tsql_core::PersistentDatabase;
 use tsql_core::types::Value;
 use tempfile::tempdir;
 

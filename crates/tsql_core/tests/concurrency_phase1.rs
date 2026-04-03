@@ -1,6 +1,6 @@
 use std::thread;
 use std::sync::Arc;
-use tsql_core::{Database, SessionManager, StatementExecutor, parse_sql};
+use tsql_core::{parse_sql, Database};
 use tsql_core::types::Value;
 
 #[test]

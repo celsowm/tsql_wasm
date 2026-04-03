@@ -1,4 +1,4 @@
-use tsql_core::{parse_sql, Engine, Database, SessionManager, StatementExecutor};
+use tsql_core::{parse_sql, Database, Engine};
 use std::time::Instant;
 
 fn exec(engine: &mut Engine, sql: &str) {

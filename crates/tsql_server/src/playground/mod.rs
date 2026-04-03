@@ -7,7 +7,7 @@ mod schema;
 mod data;
 mod views;
 
-use tsql_core::{Database, SessionManager, StatementExecutor};
+use tsql_core::{Database, StatementExecutor};
 
 /// Seeds the database with playground schema and data
 pub fn seed_playground(db: &Database) -> Result<(), tsql_core::DbError> {
