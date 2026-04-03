@@ -6,11 +6,75 @@ use std::borrow::Cow;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Statement<'a> {
+    Dml(DmlStatement<'a>),
+    Ddl(DdlStatement<'a>),
+    Procedural(ProceduralStatement<'a>),
+    Transaction(TransactionStatement<'a>),
+    Cursor(CursorStatement<'a>),
+    Session(SessionStatement<'a>),
+    WithCte {
+        ctes: Vec<CteDef<'a>>,
+        body: Box<Statement<'a>>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum DmlStatement<'a> {
     Select(Box<SelectStmt<'a>>),
     Insert(Box<InsertStmt<'a>>),
     Update(Box<UpdateStmt<'a>>),
     Delete(Box<DeleteStmt<'a>>),
+    Merge(Box<MergeStmt<'a>>),
+    SelectAssign {
+        assignments: Vec<SelectAssignTarget<'a>>,
+        from: Option<Vec<TableRef<'a>>>,
+        selection: Option<Expr<'a>>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum DdlStatement<'a> {
+    Create(Box<CreateStmt<'a>>),
+    AlterTable {
+        table: Vec<Cow<'a, str>>,
+        action: AlterTableAction<'a>,
+    },
+    TruncateTable(Vec<Cow<'a, str>>),
+    DropTable(Vec<Cow<'a, str>>),
+    DropView(Vec<Cow<'a, str>>),
+    DropProcedure(Vec<Cow<'a, str>>),
+    DropFunction(Vec<Cow<'a, str>>),
+    DropTrigger(Vec<Cow<'a, str>>),
+    DropIndex {
+        name: Vec<Cow<'a, str>>,
+        table: Vec<Cow<'a, str>>,
+    },
+    DropType(Vec<Cow<'a, str>>),
+    DropSchema(Cow<'a, str>),
+    CreateIndex {
+        name: Vec<Cow<'a, str>>,
+        table: Vec<Cow<'a, str>>,
+        columns: Vec<Cow<'a, str>>,
+    },
+    CreateType {
+        name: Vec<Cow<'a, str>>,
+        columns: Vec<ColumnDef<'a>>,
+    },
+    CreateSchema(Cow<'a, str>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ProceduralStatement<'a> {
     Declare(Vec<DeclareVar<'a>>),
+    DeclareTableVar {
+        name: Cow<'a, str>,
+        columns: Vec<ColumnDef<'a>>,
+        constraints: Vec<TableConstraint<'a>>,
+    },
+    DeclareCursor {
+        name: Cow<'a, str>,
+        query: SelectStmt<'a>,
+    },
     Set {
         variable: Cow<'a, str>,
         expr: Expr<'a>,
@@ -25,87 +89,18 @@ pub enum Statement<'a> {
         condition: Expr<'a>,
         stmt: Box<Statement<'a>>,
     },
-    Print(Expr<'a>),
     Break,
     Continue,
     Return(Option<Expr<'a>>),
-    Create(Box<CreateStmt<'a>>),
-    BeginTransaction(Option<Cow<'a, str>>),
-    CommitTransaction(Option<Cow<'a, str>>),
-    RollbackTransaction(Option<Cow<'a, str>>),
-    SaveTransaction(Cow<'a, str>),
-    SetTransactionIsolationLevel(old::IsolationLevel),
-    SetOption {
-        option: old::SessionOption,
-        value: old::SessionOptionValue,
-    },
-    SetIdentityInsert {
-        table: Vec<Cow<'a, str>>,
-        on: bool,
-    },
-    DropTable(Vec<Cow<'a, str>>),
-    DropView(Vec<Cow<'a, str>>),
-    DropProcedure(Vec<Cow<'a, str>>),
-    TruncateTable(Vec<Cow<'a, str>>),
-    WithCte {
-        ctes: Vec<CteDef<'a>>,
-        body: Box<Statement<'a>>,
-    },
-    Merge(Box<MergeStmt<'a>>),
-    // Phase 5: DDL
-    AlterTable {
-        table: Vec<Cow<'a, str>>,
-        action: AlterTableAction<'a>,
-    },
-    CreateIndex {
-        name: Vec<Cow<'a, str>>,
-        table: Vec<Cow<'a, str>>,
-        columns: Vec<Cow<'a, str>>,
-    },
-    DropIndex {
-        name: Vec<Cow<'a, str>>,
-        table: Vec<Cow<'a, str>>,
-    },
-    CreateType {
-        name: Vec<Cow<'a, str>>,
-        columns: Vec<ColumnDef<'a>>,
-    },
-    DropType(Vec<Cow<'a, str>>),
-    CreateSchema(Cow<'a, str>),
-    DropSchema(Cow<'a, str>),
-    DropFunction(Vec<Cow<'a, str>>),
-    DropTrigger(Vec<Cow<'a, str>>),
-    // Phase 6: Procedural
-    TryCatch {
-        try_body: Vec<Statement<'a>>,
-        catch_body: Vec<Statement<'a>>,
-    },
+    Print(Expr<'a>),
     Raiserror {
         message: Expr<'a>,
         severity: Expr<'a>,
         state: Expr<'a>,
     },
-    DeclareTableVar {
-        name: Cow<'a, str>,
-        columns: Vec<ColumnDef<'a>>,
-        constraints: Vec<TableConstraint<'a>>,
-    },
-    DeclareCursor {
-        name: Cow<'a, str>,
-        query: SelectStmt<'a>,
-    },
-    OpenCursor(Cow<'a, str>),
-    FetchCursor {
-        name: Cow<'a, str>,
-        direction: FetchDirection<'a>,
-        into_vars: Option<Vec<Cow<'a, str>>>,
-    },
-    CloseCursor(Cow<'a, str>),
-    DeallocateCursor(Cow<'a, str>),
-    SelectAssign {
-        assignments: Vec<SelectAssignTarget<'a>>,
-        from: Option<Vec<TableRef<'a>>>,
-        selection: Option<Expr<'a>>,
+    TryCatch {
+        try_body: Vec<Statement<'a>>,
+        catch_body: Vec<Statement<'a>>,
     },
     ExecDynamic {
         sql_expr: Expr<'a>,
@@ -118,6 +113,39 @@ pub enum Statement<'a> {
         sql_expr: Expr<'a>,
         params_def: Option<Expr<'a>>,
         args: Vec<ExecArg<'a>>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TransactionStatement<'a> {
+    Begin(Option<Cow<'a, str>>),
+    Commit(Option<Cow<'a, str>>),
+    Rollback(Option<Cow<'a, str>>),
+    Save(Cow<'a, str>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum CursorStatement<'a> {
+    Open(Cow<'a, str>),
+    Fetch {
+        name: Cow<'a, str>,
+        direction: FetchDirection<'a>,
+        into_vars: Option<Vec<Cow<'a, str>>>,
+    },
+    Close(Cow<'a, str>),
+    Deallocate(Cow<'a, str>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SessionStatement<'a> {
+    SetTransactionIsolationLevel(crate::ast::IsolationLevel),
+    SetOption {
+        option: crate::ast::SessionOption,
+        value: crate::ast::SessionOptionValue,
+    },
+    SetIdentityInsert {
+        table: Vec<Cow<'a, str>>,
+        on: bool,
     },
 }
 

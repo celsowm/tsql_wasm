@@ -1,7 +1,7 @@
 ﻿use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use crate::ast::{DropTableStmt, IsolationLevel, ObjectName, Statement};
+use crate::ast::{DropTableStmt, IsolationLevel, ObjectName, Statement, SessionStatement, DmlStatement};
 use crate::catalog::Catalog;
 use crate::error::{DbError, StmtOutcome, StmtResult};
 use crate::storage::Storage;
@@ -35,7 +35,7 @@ where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
     S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
-    if let Statement::SetOption(opt) = &stmt {
+    if let Statement::Session(SessionStatement::SetOption(opt)) = &stmt {
         let apply = apply_set_option(opt, session_options)?;
         ctx.ansi_nulls = session_options.ansi_nulls;
         ctx.datefirst = session_options.datefirst;
@@ -45,7 +45,7 @@ where
         return Ok(StmtOutcome::Ok(None));
     }
 
-    if let Statement::SetIdentityInsert(ref id_stmt) = stmt {
+    if let Statement::Session(SessionStatement::SetIdentityInsert(ref id_stmt)) = stmt {
         let table_name = id_stmt.table.name.to_uppercase();
         if id_stmt.on {
             session_options.identity_insert.insert(table_name);
@@ -60,7 +60,7 @@ where
         .as_ref()
         .map(|tx| tx.isolation_level)
         .unwrap_or(tx_manager.session_isolation_level);
-    let is_select = matches!(stmt, Statement::Select(_));
+    let is_select = matches!(stmt, Statement::Dml(DmlStatement::Select(_)));
     let read_uncommitted_dirty = isolation_level == IsolationLevel::ReadUncommitted && is_select;
     let read_committed_select = isolation_level == IsolationLevel::ReadCommitted && is_select;
 

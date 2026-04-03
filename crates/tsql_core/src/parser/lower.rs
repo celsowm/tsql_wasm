@@ -9,206 +9,59 @@ pub fn lower_batch<'a>(v2_stmts: Vec<v2::Statement<'a>>) -> Result<Vec<old::Stat
 
 pub fn lower_statement<'a>(v2_stmt: v2::Statement<'a>) -> Result<old::Statement, DbError> {
     match v2_stmt {
-        v2::Statement::Select(s) => {
+        v2::Statement::Dml(dml) => lower_dml(dml),
+        v2::Statement::Ddl(ddl) => lower_ddl(ddl),
+        v2::Statement::Procedural(proc) => lower_procedural(proc),
+        v2::Statement::Transaction(txn) => lower_transaction(txn),
+        v2::Statement::Cursor(cursor) => lower_cursor(cursor),
+        v2::Statement::Session(session) => lower_session(session),
+        v2::Statement::WithCte { ctes, body } => {
+            let ctes = ctes.into_iter().map(lower_cte_def).collect::<Result<_, _>>()?;
+            let body = Box::new(lower_statement(*body)?);
+            Ok(old::Statement::WithCte(old::statements::procedural::WithCteStmt {
+                recursive: false,
+                ctes,
+                body,
+            }))
+        }
+    }
+}
+
+fn lower_cte_def<'a>(cte: v2::CteDef<'a>) -> Result<old::statements::procedural::CteDef, DbError> {
+    Ok(old::statements::procedural::CteDef {
+        name: cte.name.into_owned(),
+        query: lower_statement(v2::Statement::Dml(v2::DmlStatement::Select(Box::new(cte.query))))?,
+    })
+}
+
+fn lower_dml<'a>(dml: v2::DmlStatement<'a>) -> Result<old::Statement, DbError> {
+    match dml {
+        v2::DmlStatement::Select(s) => {
             if let Some(ref op) = s.set_op {
                 let mut left_v2 = (*s).clone();
                 left_v2.set_op = None;
                 let left = lower_select(left_v2)?;
                 let right = lower_select(op.right.clone())?;
-                return Ok(old::Statement::SetOp(old::statements::query::SetOpStmt {
-                    left: Box::new(old::Statement::Select(left)),
-                    op: match op.kind {
-                        v2::SetOpKind::Union => old::statements::query::SetOpKind::Union,
-                        v2::SetOpKind::UnionAll => old::statements::query::SetOpKind::UnionAll,
-                        v2::SetOpKind::Intersect => old::statements::query::SetOpKind::Intersect,
-                        v2::SetOpKind::Except => old::statements::query::SetOpKind::Except,
-                    },
-                    right: Box::new(old::Statement::Select(right)),
-                }));
+                let kind = match op.kind {
+                    v2::SetOpKind::Union => old::statements::query::SetOpKind::Union,
+                    v2::SetOpKind::UnionAll => old::statements::query::SetOpKind::UnionAll,
+                    v2::SetOpKind::Intersect => old::statements::query::SetOpKind::Intersect,
+                    v2::SetOpKind::Except => old::statements::query::SetOpKind::Except,
+                };
+                let set_op = old::statements::query::SetOpStmt {
+                    left: Box::new(old::Statement::Dml(old::statements::DmlStatement::Select(left))),
+                    op: kind,
+                    right: Box::new(old::Statement::Dml(old::statements::DmlStatement::Select(right))),
+                };
+                return Ok(old::Statement::Dml(old::statements::DmlStatement::SetOp(set_op)));
             }
-            Ok(old::Statement::Select(lower_select(*s)?))
+            Ok(old::Statement::Dml(old::statements::DmlStatement::Select(lower_select(*s)?)))
         }
-        v2::Statement::Insert(s) => Ok(old::Statement::Insert(lower_insert(*s)?)),
-        v2::Statement::Update(s) => Ok(old::Statement::Update(lower_update(*s)?)),
-        v2::Statement::Delete(s) => Ok(old::Statement::Delete(lower_delete(*s)?)),
-        v2::Statement::Merge(s) => Ok(old::Statement::Merge(lower_merge(*s)?)),
-        v2::Statement::Declare(vars) => {
-            if vars.len() == 1 {
-                let var = vars.into_iter().next().unwrap();
-                Ok(old::Statement::Declare(old::statements::procedural::DeclareStmt {
-                    name: var.name.into_owned(),
-                    data_type: lower_data_type(var.data_type)?,
-                    default: var.initial_value.map(lower_expr).transpose()?,
-                }))
-            } else {
-                let mut stmts = Vec::new();
-                for var in vars {
-                    stmts.push(old::Statement::Declare(old::statements::procedural::DeclareStmt {
-                        name: var.name.into_owned(),
-                        data_type: lower_data_type(var.data_type)?,
-                        default: var.initial_value.map(lower_expr).transpose()?,
-                    }));
-                }
-                Ok(old::Statement::BeginEnd(stmts))
-            }
-        }
-        v2::Statement::Set { variable, expr } => Ok(old::Statement::Set(old::statements::procedural::SetStmt {
-            name: variable.into_owned(),
-            expr: lower_expr(expr)?,
-        })),
-        v2::Statement::If { condition, then_stmt, else_stmt } => {
-            let then_body = match lower_statement(*then_stmt)? {
-                old::Statement::BeginEnd(stmts) => stmts,
-                other => vec![other],
-            };
-            let else_body = match else_stmt {
-                Some(s) => Some(match lower_statement(*s)? {
-                    old::Statement::BeginEnd(stmts) => stmts,
-                    other => vec![other],
-                }),
-                None => None,
-            };
-            Ok(old::Statement::If(old::statements::procedural::IfStmt {
-                condition: lower_expr(condition)?,
-                then_body,
-                else_body,
-            }))
-        }
-        v2::Statement::BeginEnd(stmts) => {
-            Ok(old::Statement::BeginEnd(stmts.into_iter().map(lower_statement).collect::<Result<Vec<_>, _>>()?))
-        }
-        v2::Statement::While { condition, stmt } => {
-            let body = match lower_statement(*stmt)? {
-                old::Statement::BeginEnd(stmts) => stmts,
-                other => vec![other],
-            };
-            Ok(old::Statement::While(old::statements::procedural::WhileStmt {
-                condition: lower_expr(condition)?,
-                body,
-            }))
-        }
-        v2::Statement::Print(expr) => Ok(old::Statement::Print(lower_expr(expr)?)),
-        v2::Statement::Break => Ok(old::Statement::Break),
-        v2::Statement::Continue => Ok(old::Statement::Continue),
-        v2::Statement::Return(expr) => Ok(old::Statement::Return(expr.map(lower_expr).transpose()?)),
-        v2::Statement::Create(s) => lower_create(*s),
-        v2::Statement::BeginTransaction(name) => Ok(old::Statement::BeginTransaction(name.map(|n| n.into_owned()))),
-        v2::Statement::CommitTransaction(name) => Ok(old::Statement::CommitTransaction(name.map(|n| n.into_owned()))),
-        v2::Statement::RollbackTransaction(name) => Ok(old::Statement::RollbackTransaction(name.map(|n| n.into_owned()))),
-        v2::Statement::SaveTransaction(name) => Ok(old::Statement::SaveTransaction(name.into_owned())),
-        v2::Statement::SetTransactionIsolationLevel(iso) => Ok(old::Statement::SetTransactionIsolationLevel(iso)),
-        v2::Statement::SetOption { option, value } => Ok(old::Statement::SetOption(old::statements::procedural::SetOptionStmt { 
-            option, 
-            value
-        })),
-        v2::Statement::SetIdentityInsert { table, on } => Ok(old::Statement::SetIdentityInsert(old::statements::SetIdentityInsertStmt {
-            table: lower_object_name(table),
-            on,
-        })),
-        v2::Statement::DropTable(table) => Ok(old::Statement::DropTable(old::statements::ddl::DropTableStmt {
-            name: lower_object_name(table),
-        })),
-        v2::Statement::DropView(name) => Ok(old::Statement::DropView(old::statements::ddl::DropViewStmt {
-            name: lower_object_name(name),
-        })),
-        v2::Statement::DropProcedure(name) => Ok(old::Statement::DropProcedure(old::statements::procedural::DropProcedureStmt {
-            name: lower_object_name(name),
-        })),
-        v2::Statement::TruncateTable(table) => Ok(old::Statement::TruncateTable(old::statements::ddl::TruncateTableStmt {
-            name: lower_object_name(table),
-        })),
-        v2::Statement::WithCte { ctes, body } => {
-            let mut old_ctes = Vec::new();
-            for cte in ctes {
-                old_ctes.push(old::statements::procedural::CteDef {
-                    name: cte.name.into_owned(),
-                    query: lower_statement(v2::Statement::Select(Box::new(cte.query)))?,
-                });
-            }
-            Ok(old::Statement::WithCte(old::statements::procedural::WithCteStmt {
-                recursive: false,
-                ctes: old_ctes,
-                body: Box::new(lower_statement(*body)?),
-            }))
-        }
-        v2::Statement::AlterTable { table, action } => {
-            Ok(old::Statement::AlterTable(old::statements::ddl::AlterTableStmt {
-                table: lower_object_name(table),
-                action: lower_alter_action(action)?,
-            }))
-        }
-        v2::Statement::CreateIndex { name, table, columns } => {
-            Ok(old::Statement::CreateIndex(old::statements::ddl::CreateIndexStmt {
-                name: lower_object_name(name),
-                table: lower_object_name(table),
-                columns: columns.into_iter().map(|c| c.into_owned()).collect(),
-            }))
-        }
-        v2::Statement::DropIndex { name, table } => {
-            Ok(old::Statement::DropIndex(old::statements::ddl::DropIndexStmt {
-                name: lower_object_name(name),
-                table: lower_object_name(table),
-            }))
-        }
-        v2::Statement::CreateType { name, columns } => {
-            Ok(old::Statement::CreateType(old::statements::ddl::CreateTypeStmt {
-                name: lower_object_name(name),
-                columns: columns.into_iter().map(lower_column_def).collect::<Result<Vec<_>, _>>()?,
-                table_constraints: Vec::new(),
-            }))
-        }
-        v2::Statement::DropType(name) => Ok(old::Statement::DropType(old::statements::ddl::DropTypeStmt {
-            name: lower_object_name(name),
-        })),
-        v2::Statement::CreateSchema(name) => Ok(old::Statement::CreateSchema(old::statements::ddl::CreateSchemaStmt {
-            name: name.into_owned(),
-        })),
-        v2::Statement::DropSchema(name) => Ok(old::Statement::DropSchema(old::statements::ddl::DropSchemaStmt {
-            name: name.into_owned(),
-        })),
-        v2::Statement::DropFunction(name) => Ok(old::Statement::DropFunction(old::statements::procedural::DropFunctionStmt {
-            name: lower_object_name(name),
-        })),
-        v2::Statement::DropTrigger(name) => Ok(old::Statement::DropTrigger(old::statements::procedural::DropTriggerStmt {
-            name: lower_object_name(name),
-        })),
-        v2::Statement::TryCatch { try_body, catch_body } => {
-            Ok(old::Statement::TryCatch(old::statements::procedural::TryCatchStmt {
-                try_body: try_body.into_iter().map(lower_statement).collect::<Result<Vec<_>, _>>()?,
-                catch_body: catch_body.into_iter().map(lower_statement).collect::<Result<Vec<_>, _>>()?,
-            }))
-        }
-        v2::Statement::Raiserror { message, severity, state } => {
-            Ok(old::Statement::Raiserror(old::statements::procedural::RaiserrorStmt {
-                message: lower_expr(message)?,
-                severity: lower_expr(severity)?,
-                state: lower_expr(state)?,
-            }))
-        }
-        v2::Statement::DeclareTableVar { name, columns, constraints } => {
-            Ok(old::Statement::DeclareTableVar(old::statements::procedural::DeclareTableVarStmt {
-                name: name.into_owned(),
-                columns: columns.into_iter().map(lower_column_def).collect::<Result<Vec<_>, _>>()?,
-                table_constraints: constraints.into_iter().map(lower_table_constraint).collect(),
-            }))
-        }
-        v2::Statement::DeclareCursor { name, query } => {
-            Ok(old::Statement::DeclareCursor(old::statements::procedural::DeclareCursorStmt {
-                name: name.into_owned(),
-                query: lower_select(query)?,
-            }))
-        }
-        v2::Statement::OpenCursor(name) => Ok(old::Statement::OpenCursor(name.into_owned())),
-        v2::Statement::FetchCursor { name, direction, into_vars } => {
-            Ok(old::Statement::FetchCursor(old::statements::procedural::FetchCursorStmt {
-                name: name.into_owned(),
-                direction: lower_fetch_direction(direction)?,
-                into: into_vars.map(|v| v.into_iter().map(|i| i.into_owned()).collect()),
-            }))
-        }
-        v2::Statement::CloseCursor(name) => Ok(old::Statement::CloseCursor(name.into_owned())),
-        v2::Statement::DeallocateCursor(name) => Ok(old::Statement::DeallocateCursor(name.into_owned())),
-        v2::Statement::SelectAssign { assignments, from, selection } => {
+        v2::DmlStatement::Insert(s) => Ok(old::Statement::Dml(old::statements::DmlStatement::Insert(lower_insert(*s)?))),
+        v2::DmlStatement::Update(s) => Ok(old::Statement::Dml(old::statements::DmlStatement::Update(lower_update(*s)?))),
+        v2::DmlStatement::Delete(s) => Ok(old::Statement::Dml(old::statements::DmlStatement::Delete(lower_delete(*s)?))),
+        v2::DmlStatement::Merge(s) => Ok(old::Statement::Dml(old::statements::DmlStatement::Merge(lower_merge(*s)?))),
+        v2::DmlStatement::SelectAssign { assignments, from, selection } => {
             let mut joins = Vec::new();
             let from_tr = if let Some(from_refs) = from {
                 let (tr, mut j) = lower_from_clause_internal(from_refs)?;
@@ -217,7 +70,7 @@ pub fn lower_statement<'a>(v2_stmt: v2::Statement<'a>) -> Result<old::Statement,
             } else {
                 None
             };
-            Ok(old::Statement::SelectAssign(old::statements::procedural::SelectAssignStmt {
+            Ok(old::Statement::Dml(old::statements::DmlStatement::SelectAssign(old::statements::procedural::SelectAssignStmt {
                 targets: assignments.into_iter().map(|a| Ok(old::statements::procedural::SelectAssignTarget {
                     variable: a.variable.into_owned(),
                     expr: lower_expr(a.expr)?,
@@ -225,26 +78,213 @@ pub fn lower_statement<'a>(v2_stmt: v2::Statement<'a>) -> Result<old::Statement,
                 from: from_tr,
                 joins,
                 selection: selection.map(lower_expr).transpose()?,
-            }))
+            })))
         }
-        v2::Statement::ExecDynamic { sql_expr } => {
-            Ok(old::Statement::ExecDynamic(old::statements::procedural::ExecStmt {
+    }
+}
+
+fn lower_ddl<'a>(ddl: v2::DdlStatement<'a>) -> Result<old::Statement, DbError> {
+    match ddl {
+        v2::DdlStatement::Create(s) => lower_create(*s),
+        v2::DdlStatement::AlterTable { table, action } => {
+            Ok(old::Statement::Ddl(old::statements::DdlStatement::AlterTable(old::statements::ddl::AlterTableStmt {
+                table: lower_object_name(table),
+                action: lower_alter_action(action)?,
+            })))
+        }
+        v2::DdlStatement::TruncateTable(table) => Ok(old::Statement::Ddl(old::statements::DdlStatement::TruncateTable(old::statements::ddl::TruncateTableStmt {
+            name: lower_object_name(table),
+        }))),
+        v2::DdlStatement::DropTable(table) => Ok(old::Statement::Ddl(old::statements::DdlStatement::DropTable(old::statements::ddl::DropTableStmt {
+            name: lower_object_name(table),
+        }))),
+        v2::DdlStatement::DropView(name) => Ok(old::Statement::Ddl(old::statements::DdlStatement::DropView(old::statements::ddl::DropViewStmt {
+            name: lower_object_name(name),
+        }))),
+        v2::DdlStatement::DropProcedure(name) => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::DropProcedure(old::statements::procedural::DropProcedureStmt {
+            name: lower_object_name(name),
+        }))),
+        v2::DdlStatement::DropFunction(name) => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::DropFunction(old::statements::procedural::DropFunctionStmt {
+            name: lower_object_name(name),
+        }))),
+        v2::DdlStatement::DropTrigger(name) => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::DropTrigger(old::statements::procedural::DropTriggerStmt {
+            name: lower_object_name(name),
+        }))),
+        v2::DdlStatement::DropIndex { name, table } => {
+            Ok(old::Statement::Ddl(old::statements::DdlStatement::DropIndex(old::statements::ddl::DropIndexStmt {
+                name: lower_object_name(name),
+                table: lower_object_name(table),
+            })))
+        }
+        v2::DdlStatement::DropType(name) => Ok(old::Statement::Ddl(old::statements::DdlStatement::DropType(old::statements::ddl::DropTypeStmt {
+            name: lower_object_name(name),
+        }))),
+        v2::DdlStatement::DropSchema(name) => Ok(old::Statement::Ddl(old::statements::DdlStatement::DropSchema(old::statements::ddl::DropSchemaStmt {
+            name: name.into_owned(),
+        }))),
+        v2::DdlStatement::CreateIndex { name, table, columns } => {
+            Ok(old::Statement::Ddl(old::statements::DdlStatement::CreateIndex(old::statements::ddl::CreateIndexStmt {
+                name: lower_object_name(name),
+                table: lower_object_name(table),
+                columns: columns.into_iter().map(|c| c.into_owned()).collect(),
+            })))
+        }
+        v2::DdlStatement::CreateType { name, columns } => {
+            Ok(old::Statement::Ddl(old::statements::DdlStatement::CreateType(old::statements::ddl::CreateTypeStmt {
+                name: lower_object_name(name),
+                columns: columns.into_iter().map(lower_column_def).collect::<Result<Vec<_>, _>>()?,
+                table_constraints: Vec::new(),
+            })))
+        }
+        v2::DdlStatement::CreateSchema(name) => Ok(old::Statement::Ddl(old::statements::DdlStatement::CreateSchema(old::statements::ddl::CreateSchemaStmt {
+            name: name.into_owned(),
+        }))),
+    }
+}
+
+fn lower_procedural<'a>(proc: v2::ProceduralStatement<'a>) -> Result<old::Statement, DbError> {
+    match proc {
+        v2::ProceduralStatement::Declare(vars) => {
+            if vars.len() == 1 {
+                let var = vars.into_iter().next().unwrap();
+                Ok(old::Statement::Procedural(old::statements::ProceduralStatement::Declare(old::statements::procedural::DeclareStmt {
+                    name: var.name.into_owned(),
+                    data_type: lower_data_type(var.data_type)?,
+                    default: var.initial_value.map(lower_expr).transpose()?,
+                })))
+            } else {
+                let mut stmts = Vec::new();
+                for var in vars {
+                    stmts.push(old::Statement::Procedural(old::statements::ProceduralStatement::Declare(old::statements::procedural::DeclareStmt {
+                        name: var.name.into_owned(),
+                        data_type: lower_data_type(var.data_type)?,
+                        default: var.initial_value.map(lower_expr).transpose()?,
+                    })));
+                }
+                Ok(old::Statement::Procedural(old::statements::ProceduralStatement::BeginEnd(stmts)))
+            }
+        }
+        v2::ProceduralStatement::DeclareTableVar { name, columns, constraints } => {
+            Ok(old::Statement::Procedural(old::statements::ProceduralStatement::DeclareTableVar(old::statements::procedural::DeclareTableVarStmt {
+                name: name.into_owned(),
+                columns: columns.into_iter().map(lower_column_def).collect::<Result<Vec<_>, _>>()?,
+                table_constraints: constraints.into_iter().map(lower_table_constraint).collect(),
+            })))
+        }
+        v2::ProceduralStatement::DeclareCursor { name, query } => {
+            Ok(old::Statement::Procedural(old::statements::ProceduralStatement::DeclareCursor(old::statements::procedural::DeclareCursorStmt {
+                name: name.into_owned(),
+                query: lower_select(query)?,
+            })))
+        }
+        v2::ProceduralStatement::Set { variable, expr } => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::Set(old::statements::procedural::SetStmt {
+            name: variable.into_owned(),
+            expr: lower_expr(expr)?,
+        }))),
+        v2::ProceduralStatement::If { condition, then_stmt, else_stmt } => {
+            let then_body = match lower_statement(*then_stmt)? {
+                old::Statement::Procedural(old::statements::ProceduralStatement::BeginEnd(stmts)) => stmts,
+                other => vec![other],
+            };
+            let else_body = match else_stmt {
+                Some(s) => Some(match lower_statement(*s)? {
+                    old::Statement::Procedural(old::statements::ProceduralStatement::BeginEnd(stmts)) => stmts,
+                    other => vec![other],
+                }),
+                None => None,
+            };
+            Ok(old::Statement::Procedural(old::statements::ProceduralStatement::If(old::statements::procedural::IfStmt {
+                condition: lower_expr(condition)?,
+                then_body,
+                else_body,
+            })))
+        }
+        v2::ProceduralStatement::BeginEnd(stmts) => {
+            Ok(old::Statement::Procedural(old::statements::ProceduralStatement::BeginEnd(stmts.into_iter().map(lower_statement).collect::<Result<Vec<_>, _>>()?)))
+        }
+        v2::ProceduralStatement::While { condition, stmt } => {
+            let body = match lower_statement(*stmt)? {
+                old::Statement::Procedural(old::statements::ProceduralStatement::BeginEnd(stmts)) => stmts,
+                other => vec![other],
+            };
+            Ok(old::Statement::Procedural(old::statements::ProceduralStatement::While(old::statements::procedural::WhileStmt {
+                condition: lower_expr(condition)?,
+                body,
+            })))
+        }
+        v2::ProceduralStatement::Break => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::Break)),
+        v2::ProceduralStatement::Continue => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::Continue)),
+        v2::ProceduralStatement::Return(expr) => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::Return(expr.map(lower_expr).transpose()?))),
+        v2::ProceduralStatement::Print(expr) => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::Print(lower_expr(expr)?))),
+        v2::ProceduralStatement::Raiserror { message, severity, state } => {
+            Ok(old::Statement::Procedural(old::statements::ProceduralStatement::Raiserror(old::statements::procedural::RaiserrorStmt {
+                message: lower_expr(message)?,
+                severity: lower_expr(severity)?,
+                state: lower_expr(state)?,
+            })))
+        }
+        v2::ProceduralStatement::TryCatch { try_body, catch_body } => {
+            Ok(old::Statement::Procedural(old::statements::ProceduralStatement::TryCatch(old::statements::procedural::TryCatchStmt {
+                try_body: try_body.into_iter().map(lower_statement).collect::<Result<Vec<_>, _>>()?,
+                catch_body: catch_body.into_iter().map(lower_statement).collect::<Result<Vec<_>, _>>()?,
+            })))
+        }
+        v2::ProceduralStatement::ExecDynamic { sql_expr } => {
+            Ok(old::Statement::Procedural(old::statements::ProceduralStatement::ExecDynamic(old::statements::procedural::ExecStmt {
                 sql_expr: lower_expr(sql_expr)?,
-            }))
+            })))
         }
-        v2::Statement::ExecProcedure { name, args } => {
-            Ok(old::Statement::ExecProcedure(old::statements::procedural::ExecProcedureStmt {
+        v2::ProceduralStatement::ExecProcedure { name, args } => {
+            Ok(old::Statement::Procedural(old::statements::ProceduralStatement::ExecProcedure(old::statements::procedural::ExecProcedureStmt {
                 name: lower_object_name(name),
                 args: args.into_iter().map(lower_exec_arg).collect::<Result<Vec<_>, _>>()?,
-            }))
+            })))
         }
-        v2::Statement::SpExecuteSql { sql_expr, params_def, args } => {
-            Ok(old::Statement::SpExecuteSql(old::statements::procedural::SpExecuteSqlStmt {
+        v2::ProceduralStatement::SpExecuteSql { sql_expr, params_def, args } => {
+            Ok(old::Statement::Procedural(old::statements::ProceduralStatement::SpExecuteSql(old::statements::procedural::SpExecuteSqlStmt {
                 sql_expr: lower_expr(sql_expr)?,
                 params_def: params_def.map(lower_expr).transpose()?,
                 args: args.into_iter().map(lower_exec_arg).collect::<Result<Vec<_>, _>>()?,
-            }))
+            })))
         }
+    }
+}
+
+fn lower_transaction<'a>(txn: v2::TransactionStatement<'a>) -> Result<old::Statement, DbError> {
+    match txn {
+        v2::TransactionStatement::Begin(name) => Ok(old::Statement::Transaction(old::statements::TransactionStatement::Begin(name.map(|n| n.into_owned())))),
+        v2::TransactionStatement::Commit(name) => Ok(old::Statement::Transaction(old::statements::TransactionStatement::Commit(name.map(|n| n.into_owned())))),
+        v2::TransactionStatement::Rollback(name) => Ok(old::Statement::Transaction(old::statements::TransactionStatement::Rollback(name.map(|n| n.into_owned())))),
+        v2::TransactionStatement::Save(name) => Ok(old::Statement::Transaction(old::statements::TransactionStatement::Save(name.into_owned()))),
+    }
+}
+
+fn lower_cursor<'a>(cursor: v2::CursorStatement<'a>) -> Result<old::Statement, DbError> {
+    match cursor {
+        v2::CursorStatement::Open(name) => Ok(old::Statement::Cursor(old::statements::CursorStatement::OpenCursor(name.into_owned()))),
+        v2::CursorStatement::Fetch { name, direction, into_vars } => {
+            Ok(old::Statement::Cursor(old::statements::CursorStatement::FetchCursor(old::statements::procedural::FetchCursorStmt {
+                name: name.into_owned(),
+                direction: lower_fetch_direction(direction)?,
+                into: into_vars.map(|v| v.into_iter().map(|i| i.into_owned()).collect()),
+            })))
+        }
+        v2::CursorStatement::Close(name) => Ok(old::Statement::Cursor(old::statements::CursorStatement::CloseCursor(name.into_owned()))),
+        v2::CursorStatement::Deallocate(name) => Ok(old::Statement::Cursor(old::statements::CursorStatement::DeallocateCursor(name.into_owned()))),
+    }
+}
+
+fn lower_session<'a>(session: v2::SessionStatement<'a>) -> Result<old::Statement, DbError> {
+    match session {
+        v2::SessionStatement::SetTransactionIsolationLevel(iso) => Ok(old::Statement::Session(old::statements::SessionStatement::SetTransactionIsolationLevel(iso))),
+        v2::SessionStatement::SetOption { option, value } => Ok(old::Statement::Session(old::statements::SessionStatement::SetOption(old::statements::procedural::SetOptionStmt {
+            option,
+            value,
+        }))),
+        v2::SessionStatement::SetIdentityInsert { table, on } => Ok(old::Statement::Session(old::statements::SessionStatement::SetIdentityInsert(old::statements::SetIdentityInsertStmt {
+            table: lower_object_name(table),
+            on,
+        }))),
     }
 }
 
@@ -372,7 +412,7 @@ pub fn lower_unary_op(op: v2::UnaryOp) -> old::expressions::UnaryOp {
     match op {
         v2::UnaryOp::Negate => old::expressions::UnaryOp::Negate,
         v2::UnaryOp::Not => old::expressions::UnaryOp::Not,
-        v2::UnaryOp::BitwiseNot => old::expressions::UnaryOp::Not, // fallback
+        v2::UnaryOp::BitwiseNot => old::expressions::UnaryOp::Not,
     }
 }
 
@@ -457,7 +497,7 @@ pub fn lower_data_type<'a>(dt: v2::DataType<'a>) -> Result<old::data_types::Data
         v2::DataType::UniqueIdentifier => Ok(old::data_types::DataTypeSpec::UniqueIdentifier),
         v2::DataType::SqlVariant => Ok(old::data_types::DataTypeSpec::SqlVariant),
         v2::DataType::Xml => Ok(old::data_types::DataTypeSpec::Xml),
-        v2::DataType::Custom(_) => Ok(old::data_types::DataTypeSpec::VarChar(255)), // Fallback
+        v2::DataType::Custom(_) => Ok(old::data_types::DataTypeSpec::VarChar(255)),
         _ => Err(DbError::Parse(format!("Data type {:?} not supported in old AST", dt))),
     }
 }
@@ -526,7 +566,7 @@ fn lower_table_ref_recursive<'a>(tr: v2::TableRef<'a>) -> Result<(old::common::T
     match tr {
         v2::TableRef::Table { name, alias, hints } => {
             Ok((old::common::TableRef {
-                name: old::common::TableName::Object(lower_object_name(name)),
+                factor: old::common::TableFactor::Named(lower_object_name(name)),
                 alias: alias.map(|a| a.into_owned()),
                 pivot: None,
                 unpivot: None,
@@ -535,7 +575,7 @@ fn lower_table_ref_recursive<'a>(tr: v2::TableRef<'a>) -> Result<(old::common::T
         }
         v2::TableRef::Subquery { subquery, alias } => {
             Ok((old::common::TableRef {
-                name: old::common::TableName::Subquery(Box::new(lower_select(*subquery)?)),
+                factor: old::common::TableFactor::Derived(Box::new(lower_select(*subquery)?)),
                 alias: Some(alias.into_owned()),
                 pivot: None,
                 unpivot: None,
@@ -581,13 +621,11 @@ fn lower_table_ref_recursive<'a>(tr: v2::TableRef<'a>) -> Result<(old::common::T
             Ok((tr, joins))
         }
         v2::TableRef::TableValuedFunction { name, args, alias } => {
-            // Convert to a table reference with the function call as part of the name
-            // The old AST doesn't have a separate TVF variant, so we encode it as a table name
             let func_name = name.last().unwrap().to_string();
             let arg_strs: Vec<String> = args.into_iter().map(|a| format!("{:?}", a)).collect();
             let full_name = format!("{}({})", func_name, arg_strs.join(", "));
             Ok((old::common::TableRef {
-                name: old::common::TableName::Object(old::common::ObjectName {
+                factor: old::common::TableFactor::Named(old::common::ObjectName {
                     schema: if name.len() > 1 { Some(name[0].to_string()) } else { None },
                     name: full_name,
                 }),
@@ -609,14 +647,14 @@ pub fn lower_insert<'a>(s: v2::InsertStmt<'a>) -> Result<old::statements::dml::I
                 rows.into_iter().map(|r| r.into_iter().map(lower_expr).collect::<Result<Vec<_>, _>>()).collect::<Result<Vec<_>, _>>()?
             ),
             v2::InsertSource::Select(sel) => old::statements::dml::InsertSource::Select(Box::new(lower_select(*sel)?)),
-            v2::InsertSource::Exec { procedure, args } => old::statements::dml::InsertSource::Exec(Box::new(old::Statement::ExecProcedure(old::statements::procedural::ExecProcedureStmt {
+            v2::InsertSource::Exec { procedure, args } => old::statements::dml::InsertSource::Exec(Box::new(old::Statement::Procedural(old::statements::ProceduralStatement::ExecProcedure(old::statements::procedural::ExecProcedureStmt {
                 name: lower_object_name(procedure),
                 args: args.into_iter().map(|e| Ok(old::statements::procedural::ExecArgument {
                     name: None, 
                     expr: lower_expr(e)?,
                     is_output: false,
                 })).collect::<Result<Vec<_>, DbError>>()?,
-            }))),
+            })))),
             v2::InsertSource::DefaultValues => old::statements::dml::InsertSource::DefaultValues,
         },
         output: s.output.map(|cols| cols.into_iter().map(lower_output_column).collect()),
@@ -626,8 +664,8 @@ pub fn lower_insert<'a>(s: v2::InsertStmt<'a>) -> Result<old::statements::dml::I
 
 pub fn lower_update<'a>(s: v2::UpdateStmt<'a>) -> Result<old::statements::dml::UpdateStmt, DbError> {
     let (table_tr, mut extra_joins) = lower_table_ref_recursive(s.table)?;
-    let table = match table_tr.name {
-        old::common::TableName::Object(ref o) => o.clone(),
+    let table = match table_tr.factor {
+        old::common::TableFactor::Named(ref o) => o.clone(),
         _ => return Err(DbError::Parse("UPDATE target must be an object".into())),
     };
     
@@ -664,8 +702,8 @@ pub fn lower_update<'a>(s: v2::UpdateStmt<'a>) -> Result<old::statements::dml::U
 
 pub fn lower_delete<'a>(s: v2::DeleteStmt<'a>) -> Result<old::statements::dml::DeleteStmt, DbError> {
     let (tr, joins) = lower_from_clause_internal(s.from)?;
-    let table = match tr.name {
-        old::common::TableName::Object(ref o) => o.clone(),
+    let table = match tr.factor {
+        old::common::TableFactor::Named(ref o) => o.clone(),
         _ => return Err(DbError::Parse("DELETE target must be an object".into())),
     };
 
@@ -718,21 +756,21 @@ pub fn lower_merge<'a>(s: v2::MergeStmt<'a>) -> Result<old::statements::dml::Mer
 
 pub fn lower_create<'a>(s: v2::CreateStmt<'a>) -> Result<old::Statement, DbError> {
     match s {
-        v2::CreateStmt::Table { name, columns, constraints } => Ok(old::Statement::CreateTable(old::statements::ddl::CreateTableStmt {
+        v2::CreateStmt::Table { name, columns, constraints } => Ok(old::Statement::Ddl(old::statements::DdlStatement::CreateTable(old::statements::ddl::CreateTableStmt {
             name: lower_object_name(name),
             columns: columns.into_iter().map(lower_column_def).collect::<Result<Vec<_>, _>>()?,
             table_constraints: constraints.into_iter().map(lower_table_constraint).collect(),
-        })),
-        v2::CreateStmt::View { name, query } => Ok(old::Statement::CreateView(old::statements::ddl::CreateViewStmt {
+        }))),
+        v2::CreateStmt::View { name, query } => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::CreateView(old::statements::ddl::CreateViewStmt {
             name: lower_object_name(name),
             query: lower_select(query)?,
-        })),
-        v2::CreateStmt::Procedure { name, params, body } => Ok(old::Statement::CreateProcedure(old::statements::procedural::CreateProcedureStmt {
+        }))),
+        v2::CreateStmt::Procedure { name, params, body } => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::CreateProcedure(old::statements::procedural::CreateProcedureStmt {
             name: lower_object_name(name),
             params: params.into_iter().map(lower_routine_param).collect::<Result<Vec<_>, _>>()?,
             body: body.into_iter().map(lower_statement).collect::<Result<Vec<_>, _>>()?,
-        })),
-        v2::CreateStmt::Function { name, params, returns, body } => Ok(old::Statement::CreateFunction(old::statements::procedural::CreateFunctionStmt {
+        }))),
+        v2::CreateStmt::Function { name, params, returns, body } => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::CreateFunction(old::statements::procedural::CreateFunctionStmt {
             name: lower_object_name(name),
             params: params.into_iter().map(lower_routine_param).collect::<Result<Vec<_>, _>>()?,
             returns: returns.map(lower_data_type).transpose()?,
@@ -741,14 +779,14 @@ pub fn lower_create<'a>(s: v2::CreateStmt<'a>) -> Result<old::Statement, DbError
                 v2::FunctionBody::Block(stmts) => old::statements::procedural::FunctionBody::Scalar(stmts.into_iter().map(lower_statement).collect::<Result<Vec<_>, _>>()?),
                 v2::FunctionBody::Table(sel) => old::statements::procedural::FunctionBody::InlineTable(lower_select(sel)?),
             },
-        })),
-        v2::CreateStmt::Trigger { name, table, events, is_instead_of, body } => Ok(old::Statement::CreateTrigger(old::statements::procedural::CreateTriggerStmt {
+        }))),
+        v2::CreateStmt::Trigger { name, table, events, is_instead_of, body } => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::CreateTrigger(old::statements::procedural::CreateTriggerStmt {
             name: lower_object_name(name),
             table: lower_object_name(table),
             events,
             is_instead_of,
             body: body.into_iter().map(lower_statement).collect::<Result<Vec<_>, _>>()?,
-        })),
+        }))),
     }
 }
 

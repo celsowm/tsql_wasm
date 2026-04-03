@@ -1,4 +1,5 @@
 use crate::parser::ast::{Token, is_keyword};
+use crate::parser::token::Keyword;
 use winnow::prelude::*;
 use winnow::token::{take_while, any};
 use winnow::combinator::{alt, repeat, opt};
@@ -26,8 +27,8 @@ pub fn lex<'a>(input: &mut &'a str, quoted_identifier: bool) -> ModalResult<Vec<
         parse_identifier.map(|id| {
             if id.eq_ignore_ascii_case("GO") {
                 Token::Go
-            } else if is_keyword(id) {
-                Token::Keyword(Cow::Borrowed(id))
+            } else if let Some(kw) = Keyword::from_str(id) {
+                Token::Keyword(kw)
             } else {
                 Token::Identifier(Cow::Borrowed(id))
             }

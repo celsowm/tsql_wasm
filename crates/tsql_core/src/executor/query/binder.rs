@@ -1,5 +1,5 @@
-﻿use crate::ast::RoutineParamType;
-use crate::ast::{SelectStmt, TableName, TableRef};
+use crate::ast::RoutineParamType;
+use crate::ast::{SelectStmt, TableFactor, TableRef};
 use crate::catalog::{Catalog, ColumnDef, RoutineKind, TableDef};
 use crate::error::DbError;
 use crate::parser::parse_expr_subquery_aware;
@@ -21,7 +21,7 @@ pub(crate) fn bind_table(
     ctx: &mut ExecutionContext,
     query_executor_proxy: impl Fn(SelectStmt, &mut ExecutionContext) -> Result<QueryResult, DbError>,
 ) -> Result<BoundTable, DbError> {
-    if let TableName::Subquery(ref select) = tref.name {
+    if let TableFactor::Derived(ref select) = tref.factor {
         let alias = tref
             .alias
             .clone()
@@ -93,9 +93,9 @@ fn bind_builtin_tvf(
     tref: &TableRef,
     ctx: &mut ExecutionContext,
 ) -> Result<Option<BoundTable>, DbError> {
-    let name = match &tref.name {
-        TableName::Object(o) => &o.name,
-        TableName::Subquery(_) => return Ok(None),
+    let name = match &tref.factor {
+        TableFactor::Named(o) => &o.name,
+        TableFactor::Derived(_) => return Ok(None),
     };
     let upper = name.to_uppercase();
 
@@ -232,10 +232,10 @@ fn bind_view(
     ctx: &mut ExecutionContext,
     query_executor_proxy: &impl Fn(SelectStmt, &mut ExecutionContext) -> Result<QueryResult, DbError>,
 ) -> Result<Option<BoundTable>, DbError> {
-    let schema = tref.name.schema_or_dbo();
-    let name = match &tref.name {
-        TableName::Object(o) => &o.name,
-        TableName::Subquery(_) => return Ok(None),
+    let schema = tref.factor.as_object_name().map(|o| o.schema_or_dbo()).unwrap_or("dbo");
+    let name = match &tref.factor {
+        TableFactor::Named(o) => &o.name,
+        TableFactor::Derived(_) => return Ok(None),
     };
 
     let Some(view) = catalog.find_view(schema, name).cloned() else {
@@ -243,7 +243,7 @@ fn bind_view(
     };
 
     let view_query = match view.query {
-        crate::ast::Statement::Select(s) => s,
+        crate::ast::Statement::Dml(crate::ast::DmlStatement::Select(s)) => s,
         _ => return Err(DbError::Execution("view query must be SELECT".into())),
     };
 
@@ -298,9 +298,9 @@ fn bind_inline_tvf(
     ctx: &mut ExecutionContext,
     query_executor_proxy: &impl Fn(SelectStmt, &mut ExecutionContext) -> Result<QueryResult, DbError>,
 ) -> Result<Option<BoundTable>, DbError> {
-    let name = match &tref.name {
-        TableName::Object(o) => &o.name,
-        TableName::Subquery(_) => return Ok(None),
+    let name = match &tref.factor {
+        TableFactor::Named(o) => &o.name,
+        TableFactor::Derived(_) => return Ok(None),
     };
     let Some(open) = name.find('(') else {
         return Ok(None);
@@ -310,7 +310,7 @@ fn bind_inline_tvf(
     }
     let fname = name[..open].trim();
     let args_raw = &name[open + 1..name.len() - 1];
-    let schema = tref.name.schema_or_dbo();
+    let schema = tref.factor.as_object_name().map(|o| o.schema_or_dbo()).unwrap_or("dbo");
     let Some(routine) = catalog.find_routine(schema, fname).cloned() else {
         return Ok(None);
     };

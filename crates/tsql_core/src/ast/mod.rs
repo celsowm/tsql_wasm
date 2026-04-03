@@ -14,4 +14,5 @@ pub use statements::query::*;
 pub use statements::{
     IsolationLevel, RoutineParam, RoutineParamType, SessionOption, SessionOptionValue,
     SetIdentityInsertStmt, Statement,
+    DmlStatement, DdlStatement, ProceduralStatement, TransactionStatement, CursorStatement, SessionStatement,
 };

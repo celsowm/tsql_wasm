@@ -17,7 +17,7 @@ impl<'a> ScriptExecutor<'a> {
         for cte_def in &stmt.ctes {
             if stmt.recursive {
                 // Recursive CTE logic
-                if let crate::ast::Statement::SetOp(set_op) = &cte_def.query {
+                if let crate::ast::Statement::Dml(crate::ast::DmlStatement::SetOp(set_op)) = &cte_def.query {
                     if let crate::ast::SetOpKind::UnionAll = set_op.op {
                         let anchor_stmt = *set_op.left.clone();
                         let recursive_stmt = *set_op.right.clone();

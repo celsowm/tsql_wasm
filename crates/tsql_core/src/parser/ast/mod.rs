@@ -10,3 +10,7 @@ pub use expressions::*;
 pub use statements::other::*;
 pub use statements::query::*;
 pub use tokens::*;
+
+pub mod token {
+    pub use super::super::token::*;
+}

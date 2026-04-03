@@ -1,7 +1,7 @@
 ﻿use std::cmp::Ordering;
 use std::collections::HashSet;
 
-use crate::ast::{BinaryOp, Expr, JoinType, OrderByExpr, SelectStmt, TableRef};
+use crate::ast::{BinaryOp, Expr, JoinType, OrderByExpr, SelectStmt, TableFactor, TableRef};
 use crate::catalog::Catalog;
 use crate::error::DbError;
 use crate::types::Value;
@@ -235,8 +235,8 @@ pub fn bind_table(
     catalog: &dyn Catalog,
     ctx: &mut ExecutionContext,
 ) -> Result<BoundTable, DbError> {
-    match &tref.name {
-        crate::ast::TableName::Subquery(_) => {
+    match &tref.factor {
+        crate::ast::TableFactor::Derived(_) => {
             // This should be handled by the caller (QueryExecutor) which has access to self
             return Err(DbError::Execution("Subquery binding requires QueryExecutor context".into()));
         }
@@ -244,24 +244,26 @@ pub fn bind_table(
     }
 
     let mut tref = tref;
-    if let Some(mapped) = ctx.resolve_table_name(tref.name.name()) {
-        match &mut tref.name {
-            crate::ast::TableName::Object(o) => {
+    if let Some(mapped) = ctx.resolve_table_name(tref.factor.as_object_name().map(|o| o.name.as_str()).unwrap_or("")) {
+        match &mut tref.factor {
+            crate::ast::TableFactor::Named(o) => {
                 o.name = mapped;
                 if o.schema.is_none() {
                     o.schema = Some("dbo".to_string());
                 }
             }
-            crate::ast::TableName::Subquery(_) => {}
+            crate::ast::TableFactor::Derived(_) => {}
         }
     } else {
         // Fallback for regular tables that don't start with @ or #
-        if !tref.name.name().starts_with('@') && !tref.name.name().starts_with('#') {
-            // Keep original name
+        if let Some(name) = tref.factor.as_object_name() {
+            if !name.name.starts_with('@') && !name.name.starts_with('#') {
+                // Keep original name
+            }
         }
     }
-    let schema = tref.name.schema_or_dbo();
-    let name = tref.name.name();
+    let schema = tref.factor.as_object_name().map(|o| o.schema_or_dbo()).unwrap_or("dbo");
+    let name = tref.factor.as_object_name().map(|o| o.name.as_str()).unwrap_or("");
 
     if let Some(cte) = resolve_cte_table(&ctx.ctes, schema, name) {
         return Ok(BoundTable {
@@ -518,11 +520,13 @@ fn required_columns_from_logical(plan: &LogicalPlan) -> Vec<String> {
     fn collect(plan: &LogicalPlan, out: &mut HashSet<String>) {
         match plan {
             LogicalPlan::Scan { table } => {
-                out.insert(format!(
-                    "{}.{}",
-                    table.name.schema_or_dbo().to_uppercase(),
-                    table.name.name().to_uppercase()
-                ));
+                if let Some(o) = table.factor.as_object_name() {
+                    out.insert(format!(
+                        "{}.{}",
+                        o.schema_or_dbo().to_uppercase(),
+                        o.name.to_uppercase()
+                    ));
+                }
             }
             LogicalPlan::Pivot { input, spec, .. } => {
                 collect(input, out);
@@ -539,7 +543,9 @@ fn required_columns_from_logical(plan: &LogicalPlan) -> Vec<String> {
             }
             LogicalPlan::Join { left, join } => {
                 collect(left, out);
-                out.insert(join.table.name.name().to_uppercase());
+                if let Some(o) = join.table.factor.as_object_name() {
+                    out.insert(o.name.to_uppercase());
+                }
             }
             LogicalPlan::Filter { input, predicate } => {
                 collect(input, out);

@@ -1,4 +1,4 @@
-﻿pub mod ddl;
+pub mod ddl;
 pub mod dml;
 pub mod procedural;
 pub mod query;
@@ -13,27 +13,46 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Statement {
-    BeginTransaction(Option<String>),
-    CommitTransaction(Option<String>),
-    RollbackTransaction(Option<String>),
-    SaveTransaction(String),
-    SetTransactionIsolationLevel(IsolationLevel),
-    CreateTable(CreateTableStmt),
-    CreateIndex(CreateIndexStmt),
-    DropIndex(DropIndexStmt),
-    DropTable(DropTableStmt),
-    CreateType(CreateTypeStmt),
-    DropType(DropTypeStmt),
-    CreateSchema(CreateSchemaStmt),
-    DropSchema(DropSchemaStmt),
-    Insert(InsertStmt),
+    Dml(DmlStatement),
+    Ddl(DdlStatement),
+    Procedural(ProceduralStatement),
+    Transaction(TransactionStatement),
+    Cursor(CursorStatement),
+    Session(SessionStatement),
+    WithCte(WithCteStmt),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DmlStatement {
     Select(SelectStmt),
+    Insert(InsertStmt),
     Update(UpdateStmt),
     Delete(DeleteStmt),
+    Merge(MergeStmt),
     SetOp(SetOpStmt),
+    SelectAssign(SelectAssignStmt),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DdlStatement {
+    CreateTable(CreateTableStmt),
+    CreateIndex(CreateIndexStmt),
+    CreateType(CreateTypeStmt),
+    CreateSchema(CreateSchemaStmt),
+    DropTable(DropTableStmt),
+    DropView(DropViewStmt),
+    DropProcedure(DropProcedureStmt),
+    DropFunction(DropFunctionStmt),
+    DropTrigger(DropTriggerStmt),
+    DropIndex(DropIndexStmt),
+    DropType(DropTypeStmt),
+    DropSchema(DropSchemaStmt),
     TruncateTable(TruncateTableStmt),
     AlterTable(AlterTableStmt),
-    WithCte(WithCteStmt),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ProceduralStatement {
     Declare(DeclareStmt),
     Set(SetStmt),
     SetOption(SetOptionStmt),
@@ -46,25 +65,37 @@ pub enum Statement {
     ExecDynamic(ExecStmt),
     ExecProcedure(ExecProcedureStmt),
     SpExecuteSql(SpExecuteSqlStmt),
-    SelectAssign(SelectAssignStmt),
-    DeclareTableVar(DeclareTableVarStmt),
-    CreateProcedure(CreateProcedureStmt),
-    DropProcedure(DropProcedureStmt),
-    CreateFunction(CreateFunctionStmt),
-    DropFunction(DropFunctionStmt),
-    CreateView(CreateViewStmt),
-    DropView(DropViewStmt),
-    Merge(MergeStmt),
     Print(Expr),
+    DeclareTableVar(DeclareTableVarStmt),
     DeclareCursor(DeclareCursorStmt),
+    CreateProcedure(CreateProcedureStmt),
+    CreateFunction(CreateFunctionStmt),
+    CreateView(CreateViewStmt),
+    CreateTrigger(CreateTriggerStmt),
+    Raiserror(RaiserrorStmt),
+    TryCatch(TryCatchStmt),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TransactionStatement {
+    Begin(Option<String>),
+    Commit(Option<String>),
+    Rollback(Option<String>),
+    Save(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CursorStatement {
     OpenCursor(String),
     FetchCursor(FetchCursorStmt),
     CloseCursor(String),
     DeallocateCursor(String),
-    CreateTrigger(CreateTriggerStmt),
-    DropTrigger(DropTriggerStmt),
-    Raiserror(RaiserrorStmt),
-    TryCatch(TryCatchStmt),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SessionStatement {
+    SetTransactionIsolationLevel(IsolationLevel),
+    SetOption(SetOptionStmt),
     SetIdentityInsert(SetIdentityInsertStmt),
 }
 

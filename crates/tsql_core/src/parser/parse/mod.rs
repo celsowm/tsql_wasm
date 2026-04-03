@@ -1,0 +1,377 @@
+pub mod expressions;
+pub mod statements;
+
+use crate::parser::ast::*;
+use crate::parser::parse::expressions::parse_expr;
+use crate::parser::state::Parser;
+use crate::parser::error::{ParseError, ParseResult, Expected};
+use crate::parser::token::Keyword;
+use std::borrow::Cow;
+
+pub use crate::parser::parse::expressions::{parse_data_type, parse_comma_list};
+pub use crate::parser::parse::statements::query::{parse_select, parse_select_body, parse_table_ref, parse_multipart_name as multipart_name};
+pub use crate::parser::parse::statements::other::{parse_declare, parse_set, parse_if, parse_begin_end, parse_exec_dispatch, parse_try_catch};
+pub use crate::parser::parse::statements::dml::{parse_insert, parse_update, parse_delete, parse_merge};
+pub use crate::parser::parse::statements::ddl::{parse_create, parse_column_def, parse_table_body, parse_create_index, parse_create_type, parse_create_schema};
+pub use crate::parser::parse::statements::drop::parse_drop;
+pub use crate::parser::parse::statements::alter::parse_alter;
+
+pub fn parse_batch<'a>(parser: &mut Parser<'a>) -> ParseResult<Vec<Statement<'a>>> {
+    let mut statements = Vec::new();
+    while !parser.is_empty() {
+        while matches!(parser.peek(), Some(Token::Semicolon)) {
+            let _ = parser.next();
+        }
+        if parser.is_empty() { break; }
+        if matches!(parser.peek(), Some(Token::Go)) {
+            let _ = parser.next();
+            continue;
+        }
+        statements.push(parse_statement(parser)?);
+    }
+    Ok(statements)
+}
+
+pub fn parse_statement<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+    if parser.at_keyword(Keyword::With) {
+        let _ = parser.next();
+        let ctes = parse_comma_list(parser, parse_cte_def)?;
+        let body = parse_statement(parser)?;
+        return Ok(Statement::WithCte { ctes, body: Box::new(body) });
+    }
+
+    match parser.peek() {
+        Some(Token::Keyword(k)) => match *k {
+            Keyword::Select => {
+                let s = parse_select(parser)?;
+                if let Some(assigns) = try_select_assign(&s) {
+                    Ok(Statement::Dml(DmlStatement::SelectAssign {
+                        assignments: assigns,
+                        from: s.from,
+                        selection: s.selection,
+                    }))
+                } else {
+                    Ok(Statement::Dml(DmlStatement::Select(Box::new(s))))
+                }
+            }
+            Keyword::Insert => {
+                let _ = parser.next();
+                Ok(Statement::Dml(DmlStatement::Insert(Box::new(parse_insert(parser)?))))
+            }
+            Keyword::Update => {
+                let _ = parser.next();
+                Ok(Statement::Dml(DmlStatement::Update(Box::new(parse_update(parser)?))))
+            }
+            Keyword::Delete => {
+                let _ = parser.next();
+                Ok(Statement::Dml(DmlStatement::Delete(Box::new(parse_delete(parser)?))))
+            }
+            Keyword::Create => {
+                let _ = parser.next();
+                if parser.at_keyword(Keyword::Index) {
+                    let _ = parser.next();
+                    return parse_create_index(parser);
+                }
+                if parser.at_keyword(Keyword::Type) {
+                    let _ = parser.next();
+                    return parse_create_type(parser);
+                }
+                if parser.at_keyword(Keyword::Schema) {
+                    let _ = parser.next();
+                    return parse_create_schema(parser);
+                }
+                Ok(Statement::Ddl(DdlStatement::Create(Box::new(parse_create(parser)?))))
+            }
+            Keyword::Drop => {
+                let _ = parser.next();
+                parse_drop(parser)
+            }
+            Keyword::Truncate => {
+                let _ = parser.next();
+                parser.expect_keyword(Keyword::Table)?;
+                let table = multipart_name(parser)?;
+                Ok(Statement::Ddl(DdlStatement::TruncateTable(table)))
+            }
+            Keyword::Alter => {
+                let _ = parser.next();
+                parse_alter(parser)
+            }
+            Keyword::Declare => {
+                let _ = parser.next();
+                parse_declare_dispatch(parser)
+            }
+            Keyword::Merge => {
+                let _ = parser.next();
+                Ok(Statement::Dml(DmlStatement::Merge(Box::new(parse_merge(parser)?))))
+            }
+            Keyword::Set => {
+                let _ = parser.next();
+                parse_set_dispatch(parser)
+            }
+            Keyword::If => {
+                let _ = parser.next();
+                Ok(parse_if(parser)?)
+            }
+            Keyword::While => {
+                let _ = parser.next();
+                let condition = parse_expr(parser)?;
+                let stmt = parse_statement(parser)?;
+                Ok(Statement::Procedural(ProceduralStatement::While { condition, stmt: Box::new(stmt) }))
+            }
+            Keyword::Exec | Keyword::Execute => {
+                let _ = parser.next();
+                Ok(parse_exec_dispatch(parser)?)
+            }
+            Keyword::Print => {
+                let _ = parser.next();
+                Ok(Statement::Procedural(ProceduralStatement::Print(parse_expr(parser)?)))
+            }
+            Keyword::RaiseError => {
+                let _ = parser.next();
+                parser.expect_lparen()?;
+                let message = parse_expr(parser)?;
+                parser.expect_comma()?;
+                let severity = parse_expr(parser)?;
+                parser.expect_comma()?;
+                let state = parse_expr(parser)?;
+                parser.expect_rparen()?;
+                Ok(Statement::Procedural(ProceduralStatement::Raiserror { message, severity, state }))
+            }
+            Keyword::Break => {
+                let _ = parser.next();
+                Ok(Statement::Procedural(ProceduralStatement::Break))
+            }
+            Keyword::Continue => {
+                let _ = parser.next();
+                Ok(Statement::Procedural(ProceduralStatement::Continue))
+            }
+            Keyword::Return => {
+                let _ = parser.next();
+                let expr = if !parser.is_empty() && !matches!(parser.peek(), Some(Token::Semicolon) | Some(Token::Go)) {
+                    Some(parse_expr(parser)?)
+                } else {
+                    None
+                };
+                Ok(Statement::Procedural(ProceduralStatement::Return(expr)))
+            }
+            Keyword::Begin => {
+                let _ = parser.next();
+                parse_begin_dispatch(parser)
+            }
+            Keyword::Commit => {
+                let _ = parser.next();
+                statements::transaction::parse_commit_transaction(parser)
+            }
+            Keyword::Rollback => {
+                let _ = parser.next();
+                statements::transaction::parse_rollback_transaction(parser)
+            }
+            Keyword::Save => {
+                let _ = parser.next();
+                statements::transaction::parse_save_transaction(parser)
+            }
+            Keyword::Open => {
+                let _ = parser.next();
+                statements::cursor::parse_open_cursor(parser)
+            }
+            Keyword::Close => {
+                let _ = parser.next();
+                statements::cursor::parse_close_cursor(parser)
+            }
+            Keyword::Deallocate => {
+                let _ = parser.next();
+                statements::cursor::parse_deallocate_cursor(parser)
+            }
+            Keyword::Fetch => {
+                let _ = parser.next();
+                statements::cursor::parse_fetch_cursor(parser)
+            }
+            _ => parser.backtrack(Expected::Description("statement keyword")),
+        },
+        _ => parser.backtrack(Expected::Description("statement keyword")),
+    }
+}
+
+fn parse_declare_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+    if let Some(Token::Variable(var_name)) = parser.peek() {
+        let var_name = var_name.clone();
+        if parser.peek_at(1).map(|t| matches!(t, Token::Keyword(Keyword::Table))).unwrap_or(false) {
+            let _ = parser.next();
+            let _ = parser.next();
+            parser.expect_lparen()?;
+            let (columns, constraints) = parse_table_body(parser)?;
+            parser.expect_rparen()?;
+            return Ok(Statement::Procedural(ProceduralStatement::DeclareTableVar { name: var_name, columns, constraints }));
+        }
+    }
+    if let Some(Token::Identifier(cursor_name)) = parser.peek() {
+        if parser.peek_at(1).map(|t| matches!(t, Token::Keyword(Keyword::Cursor))).unwrap_or(false) {
+            let cursor_name = cursor_name.clone();
+            let _ = parser.next();
+            let _ = parser.next();
+            parser.expect_keyword(Keyword::For)?;
+            let query = parse_select(parser)?;
+            return Ok(Statement::Procedural(ProceduralStatement::DeclareCursor { name: cursor_name, query }));
+        }
+    }
+    Ok(Statement::Procedural(ProceduralStatement::Declare(parse_declare(parser)?)))
+}
+
+fn parse_set_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+    if parser.at_keyword(Keyword::LockTimeout) {
+        let _ = parser.next();
+        let val = if let Some(Token::Number(n)) = parser.next() {
+            *n as i32
+        } else {
+            return parser.backtrack(Expected::Description("number"));
+        };
+        return Ok(Statement::Session(SessionStatement::SetOption {
+            option: crate::ast::SessionOption::LockTimeout,
+            value: crate::ast::SessionOptionValue::Int(val)
+        }));
+    }
+    if parser.at_keyword(Keyword::Transaction) {
+        let _ = parser.next();
+        parser.expect_keyword(Keyword::Isolation)?;
+        parser.expect_keyword(Keyword::Level)?;
+        let mut level_keywords = Vec::new();
+        while let Some(Token::Keyword(k)) = parser.peek() {
+            if matches!(k, Keyword::Read | Keyword::Uncommitted | Keyword::Committed | Keyword::Repeatable | Keyword::Serializable | Keyword::Snapshot) {
+                level_keywords.push(*k);
+                let _ = parser.next();
+            } else {
+                break;
+            }
+        }
+        let iso = match level_keywords.as_slice() {
+            [Keyword::Read, Keyword::Uncommitted] => crate::ast::IsolationLevel::ReadUncommitted,
+            [Keyword::Read, Keyword::Committed] => crate::ast::IsolationLevel::ReadCommitted,
+            [Keyword::Repeatable, Keyword::Read] => crate::ast::IsolationLevel::RepeatableRead,
+            [Keyword::Serializable] => crate::ast::IsolationLevel::Serializable,
+            [Keyword::Snapshot] => crate::ast::IsolationLevel::Snapshot,
+            _ => crate::ast::IsolationLevel::ReadCommitted,
+        };
+        return Ok(Statement::Session(SessionStatement::SetTransactionIsolationLevel(iso)));
+    }
+    if parser.at_keyword(Keyword::NoCount) {
+        let _ = parser.next();
+        let val = match parser.next() {
+            Some(Token::Keyword(k)) if *k == Keyword::On => true,
+            Some(Token::Keyword(k)) if *k == Keyword::Off => false,
+            _ => return parser.backtrack(Expected::Description("ON or OFF")),
+        };
+        return Ok(Statement::Session(SessionStatement::SetOption {
+            option: crate::ast::SessionOption::NoCount,
+            value: crate::ast::SessionOptionValue::Bool(val)
+        }));
+    }
+    if parser.at_keyword(Keyword::Identity) {
+        let _ = parser.next();
+        if parser.at_keyword(Keyword::Insert) {
+            let _ = parser.next();
+        }
+        let table = multipart_name(parser)?;
+        let on = match parser.next() {
+            Some(Token::Keyword(k)) if *k == Keyword::On => true,
+            Some(Token::Keyword(k)) if *k == Keyword::Off => false,
+            _ => return parser.backtrack(Expected::Description("ON or OFF")),
+        };
+        return Ok(Statement::Session(SessionStatement::SetIdentityInsert { table, on }));
+    }
+    Ok(parse_set(parser)?)
+}
+
+fn parse_begin_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+    if parser.at_keyword(Keyword::Distributed) {
+        let _ = parser.next();
+    }
+    if let Some(Token::Keyword(k2)) = parser.peek() {
+        if *k2 == Keyword::Try {
+            let _ = parser.next();
+            return parse_try_catch(parser);
+        }
+        if matches!(k2, Keyword::Tran | Keyword::Transaction) {
+            return statements::transaction::parse_begin_transaction(parser);
+        }
+    }
+    parse_begin_end(parser)
+}
+
+fn parse_cte_def<'a>(parser: &mut Parser<'a>) -> ParseResult<CteDef<'a>> {
+    let name = if let Some(tok) = parser.next() {
+        match tok {
+            Token::Identifier(id) => id.clone(),
+            Token::Keyword(k) => Cow::Owned(k.as_ref().to_string()),
+            _ => return parser.backtrack(Expected::Description("identifier or keyword")),
+        }
+    } else {
+        return parser.backtrack(Expected::Description("identifier or keyword"));
+    };
+
+    let mut columns = Vec::new();
+    if matches!(parser.peek(), Some(Token::LParen)) {
+        let _ = parser.next();
+        columns = parse_comma_list(parser, |p| {
+            if let Some(tok) = p.next() {
+                match tok {
+                    Token::Identifier(id) => Ok(id.clone()),
+                    Token::Keyword(k) => Ok(Cow::Owned(k.as_ref().to_string())),
+                    _ => p.backtrack(Expected::Description("column name")),
+                }
+            } else {
+                p.backtrack(Expected::Description("column name"))
+            }
+        })?;
+        parser.expect_rparen()?;
+    }
+
+    parser.expect_keyword(Keyword::As)?;
+    parser.expect_lparen()?;
+    let query = parse_select(parser)?;
+    parser.expect_rparen()?;
+
+    Ok(CteDef { name, columns, query })
+}
+
+pub fn parse_routine_param<'a>(parser: &mut Parser<'a>) -> ParseResult<RoutineParam<'a>> {
+    let name = if let Some(tok) = parser.next() {
+        match tok {
+            Token::Variable(v) => v.clone(),
+            _ => return parser.backtrack(Expected::Description("variable")),
+        }
+    } else {
+        return parser.backtrack(Expected::Description("variable"));
+    };
+    let data_type = parse_data_type(parser)?;
+    let mut is_output = false;
+    if matches!(parser.peek(), Some(Token::Keyword(k)) if matches!(k, Keyword::Output | Keyword::Out)) {
+        let _ = parser.next();
+        is_output = true;
+    }
+    let mut default = None;
+    if let Some(Token::Operator(op)) = parser.peek() {
+        if op.as_ref() == "=" {
+            let _ = parser.next();
+            default = Some(parse_expr(parser)?);
+        }
+    }
+    Ok(RoutineParam { name, data_type, is_output, default })
+}
+
+fn try_select_assign<'a>(select: &SelectStmt<'a>) -> Option<Vec<SelectAssignTarget<'a>>> {
+    let mut assigns = Vec::new();
+    for item in &select.projection {
+        if let Expr::Binary { left, op: BinaryOp::Eq, right } = &item.expr {
+            if let Expr::Variable(v) = &**left {
+                assigns.push(SelectAssignTarget {
+                    variable: v.clone(),
+                    expr: (**right).clone(),
+                });
+                continue;
+            }
+        }
+        return None;
+    }
+    if assigns.is_empty() { return None; }
+    Some(assigns)
+}

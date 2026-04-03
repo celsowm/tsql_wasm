@@ -197,7 +197,7 @@ impl<'a> SchemaExecutor<'a> {
             object_id: self.catalog.alloc_object_id(),
             schema,
             name: view_name,
-            query: crate::ast::Statement::Select(query),
+            query: crate::ast::Statement::Dml(crate::ast::DmlStatement::Select(query)),
             definition_sql: String::new(),
         };
         view.definition_sql = format_view_definition(&view);

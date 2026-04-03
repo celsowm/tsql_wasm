@@ -1,8 +1,8 @@
-﻿use std::collections::HashSet;
+use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::ast::{BinaryOp, DataTypeSpec, Expr, FunctionBody, JoinClause, JoinType, ObjectName, OrderByExpr, RoutineParam, RoutineParamType, SelectItem, SelectStmt, SessionOption, SessionOptionValue, SetOptionStmt, Statement, TableName, TableRef, TriggerEvent, UnaryOp};
+use crate::ast::{BinaryOp, DataTypeSpec, Expr, FunctionBody, JoinClause, JoinType, ObjectName, OrderByExpr, RoutineParam, RoutineParamType, SelectItem, SelectStmt, SessionOption, SessionOptionValue, SetOptionStmt, Statement, TableFactor, TableRef, TriggerEvent, UnaryOp};
 use crate::parser::parse_sql;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -378,9 +378,9 @@ pub(crate) fn format_object_name(name: &ObjectName) -> String {
 }
 
 fn format_table_ref(table: &TableRef) -> String {
-    let mut out = match &table.name {
-        TableName::Object(o) => format_object_name(o),
-        TableName::Subquery(stmt) => format!("({})", format_select_stmt(stmt)),
+    let mut out = match &table.factor {
+        TableFactor::Named(o) => format_object_name(o),
+        TableFactor::Derived(stmt) => format!("({})", format_select_stmt(stmt)),
     };
     if let Some(alias) = &table.alias {
         out.push_str(" AS ");
@@ -1224,9 +1224,9 @@ fn collect_tables_from_select(stmt: &SelectStmt, out: &mut std::collections::Has
 }
 
 fn normalize_table_ref(table: &TableRef) -> String {
-    match &table.name {
-        crate::ast::TableName::Object(o) => normalize_object_name(o),
-        crate::ast::TableName::Subquery(_) => "(SUBQUERY)".to_string(),
+    match &table.factor {
+        crate::ast::TableFactor::Named(o) => normalize_object_name(o),
+        crate::ast::TableFactor::Derived(_) => "(DERIVED)".to_string(),
     }
 }
 

@@ -1,6 +1,6 @@
-﻿use std::collections::HashSet;
+use std::collections::HashSet;
 
-use crate::ast::{SelectItem, SelectStmt, UpdateStmt};
+use crate::ast::{SelectItem, SelectStmt, TableFactor, UpdateStmt};
 use crate::error::DbError;
 
 use super::super::context::ExecutionContext;
@@ -30,10 +30,10 @@ impl<'a> MutationExecutor<'a> {
             let target_name = &stmt.table.name;
             let mut found = None;
             for tref in &from_clause.tables {
-                let tname = tref.name.name();
+                let tname = tref.factor.as_object_name().map(|o| o.name.as_str()).unwrap_or("");
                 let alias = tref.alias.as_ref().map(|s| s.as_str()).unwrap_or(tname);
-                if alias.eq_ignore_ascii_case(target_name) || (!tref.name.is_subquery() && tname.eq_ignore_ascii_case(target_name)) {
-                    let schema = tref.name.schema_or_dbo();
+                if alias.eq_ignore_ascii_case(target_name) || (!tref.factor.is_derived() && tname.eq_ignore_ascii_case(target_name)) {
+                    let schema = tref.factor.as_object_name().map(|o| o.schema_or_dbo()).unwrap_or("dbo");
                     let t = match self.catalog.find_table(schema, tname) {
                         Some(t) => t,
                         None => {
@@ -52,10 +52,10 @@ impl<'a> MutationExecutor<'a> {
             }
             if found.is_none() {
                 for jcl in &from_clause.joins {
-                    let tname = jcl.table.name.name();
+                    let tname = jcl.table.factor.as_object_name().map(|o| o.name.as_str()).unwrap_or("");
                     let alias = jcl.table.alias.as_ref().map(|s| s.as_str()).unwrap_or(tname);
-                    if alias.eq_ignore_ascii_case(target_name) || (!jcl.table.name.is_subquery() && tname.eq_ignore_ascii_case(target_name)) {
-                        let schema = jcl.table.name.schema_or_dbo();
+                    if alias.eq_ignore_ascii_case(target_name) || (!jcl.table.factor.is_derived() && tname.eq_ignore_ascii_case(target_name)) {
+                        let schema = jcl.table.factor.as_object_name().map(|o| o.schema_or_dbo()).unwrap_or("dbo");
                         let t = match self.catalog.find_table(schema, tname) {
                             Some(t) => t,
                             None => {
@@ -110,18 +110,18 @@ impl<'a> MutationExecutor<'a> {
             from: stmt.from.as_ref().and_then(|f| f.tables.get(0).cloned()).or_else(|| {
                 let name = if stmt.from.is_some() {
                     if stmt.from.as_ref().map(|f| f.tables.is_empty()).unwrap_or(true) {
-                         crate::ast::TableName::Object(stmt.table.clone())
+                         TableFactor::Named(stmt.table.clone())
                     } else {
-                        crate::ast::TableName::Object(crate::ast::ObjectName {
+                        TableFactor::Named(crate::ast::ObjectName {
                             schema: table.schema_or_dbo().to_string().into(),
                             name: resolved_name,
                         })
                     }
                 } else {
-                    crate::ast::TableName::Object(stmt.table.clone())
+                    TableFactor::Named(stmt.table.clone())
                 };
                 Some(crate::ast::TableRef {
-                    name,
+                    factor: name,
                     alias: None,
                     pivot: None,
                     unpivot: None,
