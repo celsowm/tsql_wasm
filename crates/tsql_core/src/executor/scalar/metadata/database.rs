@@ -29,9 +29,10 @@ pub(crate) fn eval_databasepropertyex(
     }
     let db_name = db_val.to_string_value();
     let active_db = ctx
-        .session_database
+        .metadata
+        .database
         .as_ref()
-        .unwrap_or(&ctx.session_original_database);
+        .unwrap_or(&ctx.metadata.original_database);
     if !active_db.eq_ignore_ascii_case(&db_name) {
         return Ok(Value::Null);
     }
@@ -58,5 +59,5 @@ pub(crate) fn eval_original_db_name(
             "ORIGINAL_DB_NAME expects no arguments".into(),
         ));
     }
-    Ok(Value::NVarChar(ctx.session_original_database.clone()))
+    Ok(Value::NVarChar(ctx.metadata.original_database.clone()))
 }

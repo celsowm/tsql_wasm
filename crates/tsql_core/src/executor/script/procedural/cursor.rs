@@ -12,9 +12,9 @@ impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_open_cursor(
         &mut self,
         name: String,
-        ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
-        let mut cursor = ctx.cursors.get(&name).cloned().ok_or_else(|| {
+        let mut cursor = ctx.session.cursors.get(&name).cloned().ok_or_else(|| {
             DbError::Semantic(format!("cursor '{}' not declared", name))
         })?;
         let query = cursor.query.clone().ok_or_else(|| {
@@ -28,38 +28,38 @@ impl<'a> ScriptExecutor<'a> {
         .execute_select(query, ctx)?;
         cursor.query_result = result;
         cursor.current_row = -1;
-        ctx.cursors.insert(name, cursor);
+        ctx.session.cursors.insert(name, cursor);
         Ok(None)
     }
 
     pub(crate) fn execute_close_cursor(
         &mut self,
         name: String,
-        ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
-        let mut cursor = ctx.cursors.get(&name).cloned().ok_or_else(|| {
+        let mut cursor = ctx.session.cursors.get(&name).cloned().ok_or_else(|| {
             DbError::Semantic(format!("cursor '{}' not declared", name))
         })?;
         cursor.current_row = -1;
-        ctx.cursors.insert(name, cursor);
+        ctx.session.cursors.insert(name, cursor);
         Ok(None)
     }
 
     pub(crate) fn execute_deallocate_cursor(
         &mut self,
         name: String,
-        ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
-        ctx.cursors.remove(&name);
+        ctx.session.cursors.remove(&name);
         Ok(None)
     }
 
     pub(crate) fn execute_fetch_cursor(
         &mut self,
         stmt: FetchCursorStmt,
-        ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
-        let mut cursor = ctx.cursors.get(&stmt.name).cloned().ok_or_else(|| {
+        let mut cursor = ctx.session.cursors.get(&stmt.name).cloned().ok_or_else(|| {
             DbError::Semantic(format!("cursor '{}' not declared", stmt.name))
         })?;
 
@@ -97,7 +97,7 @@ impl<'a> ScriptExecutor<'a> {
         }
 
         if cursor.current_row >= 0 && cursor.current_row < row_count {
-            *ctx.fetch_status = 0;
+            *ctx.session.fetch_status = 0;
             if let Some(into_vars) = stmt.into {
                 let row = &cursor.query_result.rows[cursor.current_row as usize];
                 if into_vars.len() != row.len() {
@@ -108,7 +108,7 @@ impl<'a> ScriptExecutor<'a> {
                     )));
                 }
                 for (idx, var_name) in into_vars.iter().enumerate() {
-                    if let Some((ty, var)) = ctx.variables.get_mut(var_name) {
+                    if let Some((ty, var)) = ctx.session.variables.get_mut(var_name) {
                         *var = coerce_value_to_type(row[idx].clone(), ty)?;
                     } else {
                         return Err(DbError::Semantic(format!(
@@ -119,7 +119,7 @@ impl<'a> ScriptExecutor<'a> {
                 }
             }
         } else {
-            *ctx.fetch_status = -1;
+            *ctx.session.fetch_status = -1;
             // Adjust current_row to stay just outside boundaries for subsequent relative/next/prior
             if cursor.current_row < 0 {
                 cursor.current_row = -1;
@@ -128,7 +128,7 @@ impl<'a> ScriptExecutor<'a> {
             }
         }
 
-        ctx.cursors.insert(stmt.name, cursor);
+        ctx.session.cursors.insert(stmt.name, cursor);
         Ok(None)
     }
 }

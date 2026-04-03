@@ -54,7 +54,7 @@ impl SessionPool {
         }
 
         for _ in 0..to_create {
-            let session_id = db.create_session();
+            let session_id = db.session_manager().create_session();
             let mut state = self.state.lock();
             state.available.push(IdleSession {
                 id: session_id,
@@ -95,7 +95,7 @@ impl SessionPool {
         }
 
         for sid in to_close {
-            let _ = db.close_session(sid);
+            let _ = db.session_manager().close_session(sid);
         }
 
         if let Some(sid) = idle_id {
@@ -103,15 +103,15 @@ impl SessionPool {
         }
 
         if create_new {
-            return Ok(db.create_session());
+            return Ok(db.session_manager().create_session());
         }
 
         Err(CheckoutError::Exhausted)
     }
 
     pub fn checkin(&self, db: &Database, session_id: SessionId) {
-        if db.reset_session(session_id).is_err() {
-            let _ = db.close_session(session_id);
+        if db.session_manager().reset_session(session_id).is_err() {
+            let _ = db.session_manager().close_session(session_id);
             let mut state = self.state.lock();
             state.created_sessions = state.created_sessions.saturating_sub(1);
             return;

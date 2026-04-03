@@ -1,4 +1,4 @@
-﻿use serde::de::DeserializeOwned;
+use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::ast::{IsolationLevel, Statement};
@@ -21,8 +21,8 @@ where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
     S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
-    pub db: DatabaseInner<C, S>,
-    pub default_session: SessionId,
+    db: DatabaseInner<C, S>,
+    pub(crate) default_session: SessionId,
 }
 
 impl<C, S> std::fmt::Debug for EngineInner<C, S>
@@ -46,7 +46,7 @@ impl Default for EngineInner<CatalogImpl, InMemoryStorage> {
 impl EngineInner<CatalogImpl, InMemoryStorage> {
     pub fn new() -> Self {
         let db = DatabaseInner::new();
-        let default_session = db.create_session();
+        let default_session = db.session_manager().create_session();
         Self {
             db,
             default_session,
@@ -55,7 +55,7 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
 
     pub fn from_checkpoint(payload: &str) -> Result<Self, DbError> {
         let db = DatabaseInner::from_checkpoint(payload)?;
-        let default_session = db.create_session();
+        let default_session = db.session_manager().create_session();
         Ok(Self {
             db,
             default_session,
@@ -70,7 +70,7 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
         durability: Box<dyn DurabilitySink<CatalogImpl>>,
     ) -> Self {
         let db = DatabaseInner::new_with_durability(durability);
-        let default_session = db.create_session();
+        let default_session = db.session_manager().create_session();
         Self {
             db,
             default_session,
@@ -82,13 +82,13 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
     }
 
     pub fn execute(&self, stmt: Statement) -> Result<Option<QueryResult>, DbError> {
-        StatementExecutor::execute_session(&self.db, self.default_session, stmt)
+        self.db.executor().execute_session(self.default_session, stmt)
     }
 
     pub fn exec(&self, sql: &str) -> Result<(), DbError> {
         let quoted_ident = self.session_options().quoted_identifier;
         let stmt = parse_sql_with_quoted_ident(sql, quoted_ident)?;
-        let res = StatementExecutor::execute_session(&self.db, self.default_session, stmt)?;
+        let res = self.db.executor().execute_session(self.default_session, stmt)?;
         if res.is_some() {
             return Err(DbError::Execution("exec() received a query statement; use query()".into()));
         }
@@ -98,7 +98,7 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
     pub fn query(&self, sql: &str) -> Result<QueryResult, DbError> {
         let quoted_ident = self.session_options().quoted_identifier;
         let stmt = parse_sql_with_quoted_ident(sql, quoted_ident)?;
-        let res = StatementExecutor::execute_session(&self.db, self.default_session, stmt)?;
+        let res = self.db.executor().execute_session(self.default_session, stmt)?;
         res.ok_or_else(|| DbError::Execution("query() expected a result set".into()))
     }
 
@@ -106,7 +106,7 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
         &self,
         stmts: Vec<Statement>,
     ) -> Result<Option<QueryResult>, DbError> {
-        StatementExecutor::execute_session_batch(&self.db, self.default_session, stmts)
+        self.db.executor().execute_session_batch(self.default_session, stmts)
     }
 
     pub fn execute_session_batch_sql(
@@ -114,11 +114,11 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
         session_id: SessionId,
         sql: &str,
     ) -> Result<Option<QueryResult>, DbError> {
-        StatementExecutor::execute_session_batch_sql(&self.db, session_id, sql)
+        self.db.executor().execute_session_batch_sql(session_id, sql)
     }
 
     pub fn set_journal(&self, journal: Box<dyn Journal>) {
-        let _ = self.db.set_session_journal(self.default_session, journal);
+        let _ = self.db.session_manager().set_session_journal(self.default_session, journal);
     }
 
     pub fn set_durability_sink(
@@ -129,36 +129,36 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
     }
 
     pub fn export_checkpoint(&self) -> Result<String, DbError> {
-        CheckpointManager::export_checkpoint(&self.db)
+        self.db.checkpoint_manager().export_checkpoint()
     }
 
     pub fn import_checkpoint(&self, payload: &str) -> Result<(), DbError> {
-        CheckpointManager::import_checkpoint(&self.db, payload)
+        self.db.checkpoint_manager().import_checkpoint(payload)
     }
 
     pub fn session_isolation_level(&self) -> IsolationLevel {
-        SqlAnalyzer::session_isolation_level(&self.db, self.default_session)
+        self.db.analyzer().session_isolation_level(self.default_session)
             .unwrap_or(IsolationLevel::ReadCommitted)
     }
 
     pub fn transaction_is_active(&self) -> bool {
-        SqlAnalyzer::transaction_is_active(&self.db, self.default_session).unwrap_or(false)
+        self.db.analyzer().transaction_is_active(self.default_session).unwrap_or(false)
     }
 
     pub fn session_options(&self) -> SessionOptions {
-        SqlAnalyzer::session_options(&self.db, self.default_session).unwrap_or_default()
+        self.db.analyzer().session_options(self.default_session).unwrap_or_default()
     }
 
     pub fn analyze_sql_batch(&self, sql: &str) -> CompatibilityReport {
-        SqlAnalyzer::analyze_sql_batch(&self.db, sql)
+        self.db.analyzer().analyze_sql_batch(sql)
     }
 
     pub fn explain_sql(&self, sql: &str) -> Result<ExplainPlan, DbError> {
-        SqlAnalyzer::explain_sql(&self.db, sql)
+        self.db.analyzer().explain_sql(sql)
     }
 
     pub fn trace_execute_sql(&self, sql: &str) -> Result<ExecutionTrace, DbError> {
-        SqlAnalyzer::trace_execute_session_sql(&self.db, self.default_session, sql)
+        self.db.analyzer().trace_execute_session_sql(self.default_session, sql)
     }
 
     pub fn print_output(&self) -> Vec<String> {
@@ -170,13 +170,13 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
 impl<C, S> EngineInner<C, S>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     pub fn create_session(&self) -> SessionId {
-        self.db.create_session()
+        self.db.session_manager().create_session()
     }
 
     pub fn close_session(&self, session_id: SessionId) -> Result<(), DbError> {
-        self.db.close_session(session_id)
+        self.db.session_manager().close_session(session_id)
     }
 }

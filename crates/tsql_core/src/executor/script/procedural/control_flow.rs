@@ -1,4 +1,4 @@
-﻿use crate::ast::{IfStmt, WhileStmt};
+use crate::ast::{IfStmt, WhileStmt};
 use crate::error::{StmtOutcome, StmtResult};
 use crate::executor::context::ExecutionContext;
 use crate::executor::result::QueryResult;
@@ -8,7 +8,7 @@ impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_if(
         &mut self,
         stmt: IfStmt,
-        ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext<'_>,
     ) -> StmtResult<Option<QueryResult>> {
         let cond = crate::executor::evaluator::eval_expr(
             &stmt.condition,
@@ -31,9 +31,9 @@ impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_while(
         &mut self,
         stmt: WhileStmt,
-        ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext<'_>,
     ) -> StmtResult<Option<QueryResult>> {
-        ctx.loop_depth += 1;
+        ctx.frame.loop_depth += 1;
         let loop_result = (|| {
             let mut last_batch: StmtResult<Option<QueryResult>> = Ok(StmtOutcome::Ok(None));
             loop {
@@ -69,14 +69,14 @@ impl<'a> ScriptExecutor<'a> {
             }
             last_batch
         })();
-        ctx.loop_depth -= 1;
+        ctx.frame.loop_depth -= 1;
         loop_result
     }
 
     pub(crate) fn execute_return(
         &mut self,
         expr: Option<crate::ast::Expr>,
-        ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext<'_>,
     ) -> StmtResult<Option<QueryResult>> {
         let value = if let Some(ref e) = expr {
             Some(crate::executor::evaluator::eval_expr(

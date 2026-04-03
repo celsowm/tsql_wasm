@@ -1,4 +1,4 @@
-﻿use crate::ast::Expr;
+use crate::ast::Expr;
 use crate::ast::{DataTypeSpec, FunctionBody, RoutineParam, Statement, TriggerEvent};
 use crate::error::DbError;
 use crate::types::DataType;
@@ -80,6 +80,7 @@ pub struct IndexDef {
 pub struct TableDef {
     pub id: u32,
     pub schema_id: u32,
+    pub schema_name: String,
     pub name: String,
     pub columns: Vec<ColumnDef>,
     pub check_constraints: Vec<CheckConstraintDef>,
@@ -88,7 +89,7 @@ pub struct TableDef {
 
 impl TableDef {
     pub fn schema_or_dbo(&self) -> &str {
-        "dbo" // TODO: Look up actual schema name from catalog
+        &self.schema_name
     }
 }
 
@@ -151,23 +152,35 @@ pub struct TriggerDef {
     pub definition_sql: String,
 }
 
-pub trait Catalog: std::fmt::Debug + Send + Sync {
-    fn get_schemas(&self) -> &[SchemaDef];
-    fn get_tables(&self) -> &[TableDef];
-    fn get_indexes(&self) -> &[IndexDef];
-    fn get_routines(&self) -> &[RoutineDef];
-    fn get_tables_mut(&mut self) -> &mut Vec<TableDef>;
-    fn get_indexes_mut(&mut self) -> &mut Vec<IndexDef>;
+pub trait IdAllocator {
     fn alloc_table_id(&mut self) -> u32;
     fn alloc_object_id(&mut self) -> i32;
     fn alloc_column_id(&mut self) -> u32;
     fn alloc_index_id(&mut self) -> u32;
+    fn alloc_schema_id(&mut self) -> u32;
+}
+
+pub trait SchemaRegistry {
+    fn get_schemas(&self) -> &[SchemaDef];
     fn get_schema_id(&self, name: &str) -> Option<u32>;
-    fn find_table(&self, schema: &str, name: &str) -> Option<&TableDef>;
-    fn find_table_mut(&mut self, schema: &str, name: &str) -> Option<&mut TableDef>;
     fn create_schema(&mut self, name: &str) -> Result<(), DbError>;
     fn drop_schema(&mut self, name: &str) -> Result<(), DbError>;
+}
+
+pub trait TableRegistry {
+    fn get_tables(&self) -> &[TableDef];
+    fn find_table(&self, schema: &str, name: &str) -> Option<&TableDef>;
+    fn find_table_mut(&mut self, schema: &str, name: &str) -> Option<&mut TableDef>;
+    fn register_table(&mut self, table: TableDef);
+    fn unregister_table_by_id(&mut self, id: u32);
     fn drop_table(&mut self, schema: &str, name: &str) -> Result<u32, DbError>;
+    fn next_identity_value(&mut self, table_id: u32, column_name: &str) -> Result<i64, DbError>;
+}
+
+pub trait IndexRegistry {
+    fn get_indexes(&self) -> &[IndexDef];
+    fn register_index(&mut self, index: IndexDef);
+    fn drop_index_by_table_id(&mut self, table_id: u32);
     fn create_index(
         &mut self,
         schema: &str,
@@ -175,6 +188,7 @@ pub trait Catalog: std::fmt::Debug + Send + Sync {
         table_schema: &str,
         table_name: &str,
         columns: &[String],
+        // Using TableRegistry to find tables instead of passing them
     ) -> Result<(), DbError>;
     fn drop_index(
         &mut self,
@@ -183,8 +197,11 @@ pub trait Catalog: std::fmt::Debug + Send + Sync {
         table_schema: &str,
         table_name: &str,
     ) -> Result<(), DbError>;
-    fn object_id(&self, schema: &str, name: &str) -> Option<i32>;
-    fn next_identity_value(&mut self, table_id: u32, column_name: &str) -> Result<i64, DbError>;
+}
+
+pub trait RoutineRegistry {
+    fn get_routines(&self) -> &[RoutineDef];
+    fn find_routine(&self, schema: &str, name: &str) -> Option<&RoutineDef>;
     fn create_routine(&mut self, routine: RoutineDef) -> Result<(), DbError>;
     fn drop_routine(
         &mut self,
@@ -192,38 +209,83 @@ pub trait Catalog: std::fmt::Debug + Send + Sync {
         name: &str,
         expect_function: bool,
     ) -> Result<(), DbError>;
-    fn find_routine(&self, schema: &str, name: &str) -> Option<&RoutineDef>;
+}
+
+pub trait TypeRegistry {
+    fn get_table_types(&self) -> &[TableTypeDef];
+    fn find_table_type(&self, schema: &str, name: &str) -> Option<&TableTypeDef>;
     fn create_table_type(&mut self, def: TableTypeDef) -> Result<(), DbError>;
     fn drop_table_type(&mut self, schema: &str, name: &str) -> Result<(), DbError>;
-    fn find_table_type(&self, schema: &str, name: &str) -> Option<&TableTypeDef>;
-    fn get_table_types(&self) -> &[TableTypeDef];
+}
+
+pub trait ViewRegistry {
+    fn get_views(&self) -> &[ViewDef];
+    fn find_view(&self, schema: &str, name: &str) -> Option<&ViewDef>;
     fn create_view(&mut self, view: ViewDef) -> Result<(), DbError>;
     fn drop_view(&mut self, schema: &str, name: &str) -> Result<(), DbError>;
-    fn find_view(&self, schema: &str, name: &str) -> Option<&ViewDef>;
+}
+
+pub trait TriggerRegistry {
+    fn get_triggers(&self) -> &[TriggerDef];
+    fn find_triggers_for_table(&self, schema: &str, name: &str) -> Vec<&TriggerDef>;
     fn create_trigger(&mut self, trigger: TriggerDef) -> Result<(), DbError>;
     fn drop_trigger(&mut self, schema: &str, name: &str) -> Result<(), DbError>;
-    fn find_triggers_for_table(&self, schema: &str, name: &str) -> Vec<&TriggerDef>;
-    fn get_views(&self) -> &[ViewDef];
-    fn get_triggers(&self) -> &[TriggerDef];
-    fn as_any(&self) -> &dyn std::any::Any;
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
+
+pub trait ObjectResolver {
+    fn object_id(&self, schema: &str, name: &str) -> Option<i32>;
+}
+
+pub trait Catalog:
+    IdAllocator
+    + SchemaRegistry
+    + TableRegistry
+    + IndexRegistry
+    + RoutineRegistry
+    + TypeRegistry
+    + ViewRegistry
+    + TriggerRegistry
+    + ObjectResolver
+    + std::fmt::Debug
+    + Send
+    + Sync
+{
+    fn clone_boxed(&self) -> Box<dyn Catalog>;
+    fn rebuild_maps(&mut self) {}
+}
+
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CatalogImpl {
-    pub schemas: Vec<SchemaDef>,
-    pub tables: Vec<TableDef>,
-    pub indexes: Vec<IndexDef>,
-    pub routines: Vec<RoutineDef>,
-    pub table_types: Vec<TableTypeDef>,
-    pub views: Vec<ViewDef>,
-    pub triggers: Vec<TriggerDef>,
+    schemas: Vec<SchemaDef>,
+    tables: Vec<TableDef>,
+    indexes: Vec<IndexDef>,
+    routines: Vec<RoutineDef>,
+    table_types: Vec<TableTypeDef>,
+    views: Vec<ViewDef>,
+    triggers: Vec<TriggerDef>,
     next_schema_id: u32,
     next_table_id: u32,
     next_column_id: u32,
     next_index_id: u32,
     #[serde(default = "default_next_object_id")]
     next_object_id: i32,
+
+    #[serde(skip)]
+    schema_map: HashMap<String, usize>,
+    #[serde(skip)]
+    table_map: HashMap<(u32, String), usize>,
+    #[serde(skip)]
+    routine_map: HashMap<(String, String), usize>,
+    #[serde(skip)]
+    type_map: HashMap<(String, String), usize>,
+    #[serde(skip)]
+    view_map: HashMap<(String, String), usize>,
+    #[serde(skip)]
+    trigger_map: HashMap<(String, String), usize>,
+    #[serde(skip)]
+    index_map: HashMap<(u32, String), usize>,
 }
 
 impl CatalogImpl {
@@ -234,13 +296,53 @@ impl CatalogImpl {
             id: dbo_id,
             name: "dbo".to_string(),
         });
+        c.rebuild_maps();
         c
     }
 
-    fn alloc_schema_id(&mut self) -> u32 {
-        let id = self.next_schema_id;
-        self.next_schema_id += 1;
-        id
+    pub fn rebuild_maps(&mut self) {
+        self.schema_map = self
+            .schemas
+            .iter()
+            .enumerate()
+            .map(|(i, s)| (s.name.to_lowercase(), i))
+            .collect();
+        self.table_map = self
+            .tables
+            .iter()
+            .enumerate()
+            .map(|(i, t)| ((t.schema_id, t.name.to_lowercase()), i))
+            .collect();
+        self.routine_map = self
+            .routines
+            .iter()
+            .enumerate()
+            .map(|(i, r)| ((r.schema.to_lowercase(), r.name.to_lowercase()), i))
+            .collect();
+        self.type_map = self
+            .table_types
+            .iter()
+            .enumerate()
+            .map(|(i, t)| ((t.schema.to_lowercase(), t.name.to_lowercase()), i))
+            .collect();
+        self.view_map = self
+            .views
+            .iter()
+            .enumerate()
+            .map(|(i, v)| ((v.schema.to_lowercase(), v.name.to_lowercase()), i))
+            .collect();
+        self.trigger_map = self
+            .triggers
+            .iter()
+            .enumerate()
+            .map(|(i, t)| ((t.schema.to_lowercase(), t.name.to_lowercase()), i))
+            .collect();
+        self.index_map = self
+            .indexes
+            .iter()
+            .enumerate()
+            .map(|(i, idx)| ((idx.schema_id, idx.name.to_lowercase()), i))
+            .collect();
     }
 }
 
@@ -259,6 +361,13 @@ impl Default for CatalogImpl {
             next_column_id: 1,
             next_index_id: 234567890,
             next_object_id: -1,
+            schema_map: HashMap::new(),
+            table_map: HashMap::new(),
+            routine_map: HashMap::new(),
+            type_map: HashMap::new(),
+            view_map: HashMap::new(),
+            trigger_map: HashMap::new(),
+            index_map: HashMap::new(),
         }
     }
 }
@@ -267,31 +376,7 @@ fn default_next_object_id() -> i32 {
     -1
 }
 
-impl Catalog for CatalogImpl {
-    fn get_schemas(&self) -> &[SchemaDef] {
-        &self.schemas
-    }
-
-    fn get_tables(&self) -> &[TableDef] {
-        &self.tables
-    }
-
-    fn get_indexes(&self) -> &[IndexDef] {
-        &self.indexes
-    }
-
-    fn get_routines(&self) -> &[RoutineDef] {
-        &self.routines
-    }
-
-    fn get_tables_mut(&mut self) -> &mut Vec<TableDef> {
-        &mut self.tables
-    }
-
-    fn get_indexes_mut(&mut self) -> &mut Vec<IndexDef> {
-        &mut self.indexes
-    }
-
+impl IdAllocator for CatalogImpl {
     fn alloc_table_id(&mut self) -> u32 {
         let id = self.next_table_id;
         self.next_table_id += 1;
@@ -316,25 +401,21 @@ impl Catalog for CatalogImpl {
         id
     }
 
+    fn alloc_schema_id(&mut self) -> u32 {
+        let id = self.next_schema_id;
+        self.next_schema_id += 1;
+        id
+    }
+}
+
+impl SchemaRegistry for CatalogImpl {
+    fn get_schemas(&self) -> &[SchemaDef] {
+        &self.schemas
+    }
+
     fn get_schema_id(&self, name: &str) -> Option<u32> {
-        self.schemas
-            .iter()
-            .find(|s| s.name.eq_ignore_ascii_case(name))
-            .map(|s| s.id)
-    }
-
-    fn find_table(&self, schema: &str, name: &str) -> Option<&TableDef> {
-        let schema_id = self.get_schema_id(schema)?;
-        self.tables
-            .iter()
-            .find(|t| t.schema_id == schema_id && t.name.eq_ignore_ascii_case(name))
-    }
-
-    fn find_table_mut(&mut self, schema: &str, name: &str) -> Option<&mut TableDef> {
-        let schema_id = self.get_schema_id(schema)?;
-        self.tables
-            .iter_mut()
-            .find(|t| t.schema_id == schema_id && t.name.eq_ignore_ascii_case(name))
+        let idx = self.schema_map.get(&name.to_lowercase())?;
+        Some(self.schemas[*idx].id)
     }
 
     fn create_schema(&mut self, name: &str) -> Result<(), DbError> {
@@ -345,10 +426,12 @@ impl Catalog for CatalogImpl {
             )));
         }
         let id = self.alloc_schema_id();
+        let idx = self.schemas.len();
         self.schemas.push(SchemaDef {
             id,
             name: name.to_string(),
         });
+        self.schema_map.insert(name.to_lowercase(), idx);
         Ok(())
     }
 
@@ -366,7 +449,38 @@ impl Catalog for CatalogImpl {
         }
 
         self.schemas.retain(|s| s.id != schema_id);
+        self.rebuild_maps();
         Ok(())
+    }
+}
+
+impl TableRegistry for CatalogImpl {
+    fn get_tables(&self) -> &[TableDef] {
+        &self.tables
+    }
+
+    fn find_table(&self, schema: &str, name: &str) -> Option<&TableDef> {
+        let schema_id = self.get_schema_id(schema)?;
+        let idx = self.table_map.get(&(schema_id, name.to_lowercase()))?;
+        Some(&self.tables[*idx])
+    }
+
+    fn find_table_mut(&mut self, schema: &str, name: &str) -> Option<&mut TableDef> {
+        let schema_id = self.get_schema_id(schema)?;
+        let idx = self.table_map.get(&(schema_id, name.to_lowercase()))?;
+        Some(&mut self.tables[*idx])
+    }
+
+    fn register_table(&mut self, table: TableDef) {
+        let idx = self.tables.len();
+        self.table_map
+            .insert((table.schema_id, table.name.to_lowercase()), idx);
+        self.tables.push(table);
+    }
+
+    fn unregister_table_by_id(&mut self, id: u32) {
+        self.tables.retain(|t| t.id != id);
+        self.rebuild_maps();
     }
 
     fn drop_table(&mut self, schema: &str, name: &str) -> Result<u32, DbError> {
@@ -374,16 +488,53 @@ impl Catalog for CatalogImpl {
             .get_schema_id(schema)
             .ok_or_else(|| DbError::Semantic(format!("schema '{}' not found", schema)))?;
 
-        let pos = self
-            .tables
-            .iter()
-            .position(|t| t.schema_id == schema_id && t.name.eq_ignore_ascii_case(name))
+        let idx = *self
+            .table_map
+            .get(&(schema_id, name.to_lowercase()))
             .ok_or_else(|| DbError::Semantic(format!("table '{}.{}' not found", schema, name)))?;
 
-        let table_id = self.tables[pos].id;
-        self.tables.remove(pos);
+        let table_id = self.tables[idx].id;
+        self.tables.remove(idx);
         self.indexes.retain(|idx| idx.table_id != table_id);
+        self.rebuild_maps();
         Ok(table_id)
+    }
+
+    fn next_identity_value(&mut self, table_id: u32, column_name: &str) -> Result<i64, DbError> {
+        let table = self
+            .tables
+            .iter_mut()
+            .find(|t| t.id == table_id)
+            .ok_or_else(|| DbError::Semantic(format!("table ID {} not found", table_id)))?;
+
+        let col = table
+            .columns
+            .iter_mut()
+            .find(|c| c.name.eq_ignore_ascii_case(column_name))
+            .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", column_name)))?;
+
+        if let Some(identity) = &mut col.identity {
+            Ok(identity.next_value())
+        } else {
+            Err(DbError::Execution(format!(
+                "column '{}' is not an IDENTITY column",
+                column_name
+            )))
+        }
+    }
+}
+
+impl IndexRegistry for CatalogImpl {
+    fn get_indexes(&self) -> &[IndexDef] {
+        &self.indexes
+    }
+
+    fn register_index(&mut self, index: IndexDef) {
+        self.indexes.push(index);
+    }
+
+    fn drop_index_by_table_id(&mut self, table_id: u32) {
+        self.indexes.retain(|idx| idx.table_id != table_id);
     }
 
     fn create_index(
@@ -470,69 +621,32 @@ impl Catalog for CatalogImpl {
         self.indexes.remove(pos);
         Ok(())
     }
+}
 
-    fn object_id(&self, schema: &str, name: &str) -> Option<i32> {
-        if let Some(table) = self.find_table(schema, name) {
-            return Some(table.id as i32);
-        }
-        if let Some(schema_id) = self.get_schema_id(schema) {
-            if let Some(idx) = self
-                .indexes
-                .iter()
-                .find(|idx| idx.schema_id == schema_id && idx.name.eq_ignore_ascii_case(name))
-            {
-                return Some(idx.id as i32);
-            }
-        }
-        if let Some(routine) = self.find_routine(schema, name) {
-            return Some(routine.object_id);
-        }
-        if let Some(view) = self.find_view(schema, name) {
-            return Some(view.object_id);
-        }
-        if let Some(trigger) = self
-            .triggers
-            .iter()
-            .find(|t| t.schema.eq_ignore_ascii_case(schema) && t.name.eq_ignore_ascii_case(name))
-        {
-            return Some(trigger.object_id);
-        }
-        None
+impl RoutineRegistry for CatalogImpl {
+    fn get_routines(&self) -> &[RoutineDef] {
+        &self.routines
     }
 
-    fn next_identity_value(&mut self, table_id: u32, column_name: &str) -> Result<i64, DbError> {
-        let table = self
-            .tables
-            .iter_mut()
-            .find(|t| t.id == table_id)
-            .ok_or_else(|| DbError::Semantic(format!("table ID {} not found", table_id)))?;
-
-        let col = table
-            .columns
-            .iter_mut()
-            .find(|c| c.name.eq_ignore_ascii_case(column_name))
-            .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", column_name)))?;
-
-        if let Some(identity) = &mut col.identity {
-            Ok(identity.next_value())
-        } else {
-            Err(DbError::Execution(format!(
-                "column '{}' is not an IDENTITY column",
-                column_name
-            )))
-        }
+    fn find_routine(&self, schema: &str, name: &str) -> Option<&RoutineDef> {
+        let idx = self
+            .routine_map
+            .get(&(schema.to_lowercase(), name.to_lowercase()))?;
+        Some(&self.routines[*idx])
     }
 
     fn create_routine(&mut self, routine: RoutineDef) -> Result<(), DbError> {
-        if self.routines.iter().any(|r| {
-            r.schema.eq_ignore_ascii_case(&routine.schema)
-                && r.name.eq_ignore_ascii_case(&routine.name)
-        }) {
+        if self.find_routine(&routine.schema, &routine.name).is_some() {
             return Err(DbError::Semantic(format!(
                 "routine '{}.{}' already exists",
                 routine.schema, routine.name
             )));
         }
+        let idx = self.routines.len();
+        self.routine_map.insert(
+            (routine.schema.to_lowercase(), routine.name.to_lowercase()),
+            idx,
+        );
         self.routines.push(routine);
         Ok(())
     }
@@ -543,9 +657,11 @@ impl Catalog for CatalogImpl {
         name: &str,
         expect_function: bool,
     ) -> Result<(), DbError> {
-        let Some(pos) = self.routines.iter().position(|r| {
-            r.schema.eq_ignore_ascii_case(schema) && r.name.eq_ignore_ascii_case(name)
-        }) else {
+        let Some(idx) = self
+            .routine_map
+            .get(&(schema.to_lowercase(), name.to_lowercase()))
+            .copied()
+        else {
             let kind = if expect_function {
                 "function"
             } else {
@@ -557,57 +673,72 @@ impl Catalog for CatalogImpl {
             )));
         };
 
-        let is_function = matches!(self.routines[pos].kind, RoutineKind::Function { .. });
+        let is_function = matches!(self.routines[idx].kind, RoutineKind::Function { .. });
         if is_function != expect_function {
             return Err(DbError::Semantic(format!(
                 "'{}.{}' has different routine kind",
                 schema, name
             )));
         }
-        self.routines.remove(pos);
+        self.routines.remove(idx);
+        self.rebuild_maps();
         Ok(())
     }
+}
 
-    fn find_routine(&self, schema: &str, name: &str) -> Option<&RoutineDef> {
-        self.routines
-            .iter()
-            .find(|r| r.schema.eq_ignore_ascii_case(schema) && r.name.eq_ignore_ascii_case(name))
+impl TypeRegistry for CatalogImpl {
+    fn get_table_types(&self) -> &[TableTypeDef] {
+        &self.table_types
+    }
+
+    fn find_table_type(&self, schema: &str, name: &str) -> Option<&TableTypeDef> {
+        let idx = self
+            .type_map
+            .get(&(schema.to_lowercase(), name.to_lowercase()))?;
+        Some(&self.table_types[*idx])
     }
 
     fn create_table_type(&mut self, def: TableTypeDef) -> Result<(), DbError> {
-        if self.table_types.iter().any(|t| {
-            t.schema.eq_ignore_ascii_case(&def.schema) && t.name.eq_ignore_ascii_case(&def.name)
-        }) {
+        if self.find_table_type(&def.schema, &def.name).is_some() {
             return Err(DbError::Semantic(format!(
                 "type '{}.{}' already exists",
                 def.schema, def.name
             )));
         }
+        let idx = self.table_types.len();
+        self.type_map
+            .insert((def.schema.to_lowercase(), def.name.to_lowercase()), idx);
         self.table_types.push(def);
         Ok(())
     }
 
     fn drop_table_type(&mut self, schema: &str, name: &str) -> Result<(), DbError> {
-        let Some(pos) = self.table_types.iter().position(|t| {
-            t.schema.eq_ignore_ascii_case(schema) && t.name.eq_ignore_ascii_case(name)
-        }) else {
+        let Some(idx) = self
+            .type_map
+            .get(&(schema.to_lowercase(), name.to_lowercase()))
+            .copied()
+        else {
             return Err(DbError::Semantic(format!(
                 "type '{}.{}' not found",
                 schema, name
             )));
         };
-        self.table_types.remove(pos);
+        self.table_types.remove(idx);
+        self.rebuild_maps();
         Ok(())
     }
+}
 
-    fn find_table_type(&self, schema: &str, name: &str) -> Option<&TableTypeDef> {
-        self.table_types
-            .iter()
-            .find(|t| t.schema.eq_ignore_ascii_case(schema) && t.name.eq_ignore_ascii_case(name))
+impl ViewRegistry for CatalogImpl {
+    fn get_views(&self) -> &[ViewDef] {
+        &self.views
     }
 
-    fn get_table_types(&self) -> &[TableTypeDef] {
-        &self.table_types
+    fn find_view(&self, schema: &str, name: &str) -> Option<&ViewDef> {
+        let idx = self
+            .view_map
+            .get(&(schema.to_lowercase(), name.to_lowercase()))?;
+        Some(&self.views[*idx])
     }
 
     fn create_view(&mut self, view: ViewDef) -> Result<(), DbError> {
@@ -617,52 +748,27 @@ impl Catalog for CatalogImpl {
                 view.schema, view.name
             )));
         }
+        let idx = self.views.len();
+        self.view_map
+            .insert((view.schema.to_lowercase(), view.name.to_lowercase()), idx);
         self.views.push(view);
         Ok(())
     }
 
     fn drop_view(&mut self, schema: &str, name: &str) -> Result<(), DbError> {
-        let pos = self
-            .views
-            .iter()
-            .position(|v| {
-                v.schema.eq_ignore_ascii_case(schema) && v.name.eq_ignore_ascii_case(name)
-            })
+        let idx = *self
+            .view_map
+            .get(&(schema.to_lowercase(), name.to_lowercase()))
             .ok_or_else(|| DbError::Semantic(format!("view '{}.{}' not found", schema, name)))?;
-        self.views.remove(pos);
+        self.views.remove(idx);
+        self.rebuild_maps();
         Ok(())
     }
+}
 
-    fn find_view(&self, schema: &str, name: &str) -> Option<&ViewDef> {
-        self.views
-            .iter()
-            .find(|v| v.schema.eq_ignore_ascii_case(schema) && v.name.eq_ignore_ascii_case(name))
-    }
-
-    fn create_trigger(&mut self, trigger: TriggerDef) -> Result<(), DbError> {
-        if self.triggers.iter().any(|t| {
-            t.schema.eq_ignore_ascii_case(&trigger.schema)
-                && t.name.eq_ignore_ascii_case(&trigger.name)
-        }) {
-            return Err(DbError::Semantic(format!(
-                "trigger '{}.{}' already exists",
-                trigger.schema, trigger.name
-            )));
-        }
-        self.triggers.push(trigger);
-        Ok(())
-    }
-
-    fn drop_trigger(&mut self, schema: &str, name: &str) -> Result<(), DbError> {
-        let pos = self
-            .triggers
-            .iter()
-            .position(|t| {
-                t.schema.eq_ignore_ascii_case(schema) && t.name.eq_ignore_ascii_case(name)
-            })
-            .ok_or_else(|| DbError::Semantic(format!("trigger '{}.{}' not found", schema, name)))?;
-        self.triggers.remove(pos);
-        Ok(())
+impl TriggerRegistry for CatalogImpl {
+    fn get_triggers(&self) -> &[TriggerDef] {
+        &self.triggers
     }
 
     fn find_triggers_for_table(&self, schema: &str, name: &str) -> Vec<&TriggerDef> {
@@ -675,19 +781,69 @@ impl Catalog for CatalogImpl {
             .collect()
     }
 
-    fn get_views(&self) -> &[ViewDef] {
-        &self.views
+    fn create_trigger(&mut self, trigger: TriggerDef) -> Result<(), DbError> {
+        if self
+            .trigger_map
+            .get(&(trigger.schema.to_lowercase(), trigger.name.to_lowercase()))
+            .is_some()
+        {
+            return Err(DbError::Semantic(format!(
+                "trigger '{}.{}' already exists",
+                trigger.schema, trigger.name
+            )));
+        }
+        let idx = self.triggers.len();
+        self.trigger_map.insert(
+            (trigger.schema.to_lowercase(), trigger.name.to_lowercase()),
+            idx,
+        );
+        self.triggers.push(trigger);
+        Ok(())
     }
 
-    fn get_triggers(&self) -> &[TriggerDef] {
-        &self.triggers
+    fn drop_trigger(&mut self, schema: &str, name: &str) -> Result<(), DbError> {
+        let idx = *self
+            .trigger_map
+            .get(&(schema.to_lowercase(), name.to_lowercase()))
+            .ok_or_else(|| DbError::Semantic(format!("trigger '{}.{}' not found", schema, name)))?;
+        self.triggers.remove(idx);
+        self.rebuild_maps();
+        Ok(())
+    }
+}
+
+impl ObjectResolver for CatalogImpl {
+    fn object_id(&self, schema: &str, name: &str) -> Option<i32> {
+        if let Some(table) = self.find_table(schema, name) {
+            return Some(table.id as i32);
+        }
+        if let Some(schema_id) = self.get_schema_id(schema) {
+            if let Some(idx) = self
+                .index_map
+                .get(&(schema_id, name.to_lowercase()))
+            {
+                return Some(self.indexes[*idx].id as i32);
+            }
+        }
+        if let Some(routine) = self.find_routine(schema, name) {
+            return Some(routine.object_id);
+        }
+        if let Some(view) = self.find_view(schema, name) {
+            return Some(view.object_id);
+        }
+        let trigger_idx = self
+            .trigger_map
+            .get(&(schema.to_lowercase(), name.to_lowercase()))?;
+        Some(self.triggers[*trigger_idx].object_id)
+    }
+}
+
+impl Catalog for CatalogImpl {
+    fn clone_boxed(&self) -> Box<dyn Catalog> {
+        Box::new(self.clone())
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
+    fn rebuild_maps(&mut self) {
+        self.rebuild_maps();
     }
 }

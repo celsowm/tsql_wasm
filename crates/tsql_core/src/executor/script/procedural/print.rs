@@ -8,7 +8,7 @@ impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_print(
         &mut self,
         expr: Expr,
-        ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<crate::executor::result::QueryResult>, DbError> {
         let val = eval_expr(
             &expr,
@@ -18,7 +18,7 @@ impl<'a> ScriptExecutor<'a> {
             self.storage,
             self.clock,
         )?;
-        ctx.print_output.push(val.to_string_value());
+        ctx.session.print_output.push(val.to_string_value());
         Ok(None)
     }
 }

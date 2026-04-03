@@ -1,4 +1,4 @@
-﻿pub mod redb_storage;
+pub mod redb_storage;
 pub use redb_storage::RedbStorage;
 
 use std::collections::HashMap;
@@ -29,10 +29,13 @@ pub trait Storage: std::fmt::Debug + Send + Sync {
     fn remove_table(&mut self, table_id: u32);
     fn ensure_table(&mut self, table_id: u32);
 
+    fn clone_boxed(&self) -> Box<dyn Storage>;
+}
+
+pub trait CheckpointableStorage: Storage {
     fn get_checkpoint_data(&self) -> StorageCheckpointData;
     fn restore_from_checkpoint(&mut self, data: StorageCheckpointData) -> Result<(), DbError>;
-    fn as_any(&self) -> &dyn std::any::Any;
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+    fn clone_checkpointable(&self) -> Box<dyn CheckpointableStorage>;
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -77,10 +80,12 @@ impl Storage for InMemoryStorage {
     }
 
     fn update_rows(&mut self, table_id: u32, rows: Vec<StoredRow>) -> Result<(), DbError> {
-        self.tables
-            .insert(table_id, rows)
-            .ok_or_else(|| DbError::Storage(format!("table {} not found in storage", table_id)))?;
-        Ok(())
+        if self.tables.contains_key(&table_id) {
+            self.tables.insert(table_id, rows);
+            Ok(())
+        } else {
+            Err(DbError::Storage(format!("table {} not found in storage", table_id)))
+        }
     }
 
     fn clear_table(&mut self, table_id: u32) -> Result<(), DbError> {
@@ -92,14 +97,20 @@ impl Storage for InMemoryStorage {
         }
     }
 
+    fn ensure_table(&mut self, table_id: u32) {
+        self.tables.entry(table_id).or_insert_with(Vec::new);
+    }
+
     fn remove_table(&mut self, table_id: u32) {
         self.tables.remove(&table_id);
     }
 
-    fn ensure_table(&mut self, table_id: u32) {
-        self.tables.entry(table_id).or_default();
+    fn clone_boxed(&self) -> Box<dyn Storage> {
+        Box::new(self.clone())
     }
+}
 
+impl CheckpointableStorage for InMemoryStorage {
     fn get_checkpoint_data(&self) -> StorageCheckpointData {
         StorageCheckpointData::InMemory(self.tables.clone())
     }
@@ -113,11 +124,7 @@ impl Storage for InMemoryStorage {
         }
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
+    fn clone_checkpointable(&self) -> Box<dyn CheckpointableStorage> {
+        Box::new(self.clone())
     }
 }

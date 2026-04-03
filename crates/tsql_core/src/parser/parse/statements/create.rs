@@ -23,13 +23,13 @@ pub fn parse_create_procedure<'a>(parser: &mut Parser<'a>) -> ParseResult<Create
     let name = parse_multipart_name(parser)?;
     let mut params = Vec::new();
     if matches!(parser.peek(), Some(Token::Variable(_))) {
-        params = crate::parser::parse::parse_routine_param(parser)?;
+        params = crate::parser::parse::parse_comma_list(parser, crate::parser::parse::parse_routine_param)?;
     }
     parser.expect_keyword(Keyword::As)?;
     let body = if parser.at_keyword(Keyword::Begin) {
         let _ = parser.next();
         match super::other::parse_begin_end(parser)? {
-            Statement::BeginEnd(stmts) => stmts,
+            Statement::Procedural(ProceduralStatement::BeginEnd(stmts)) => stmts,
             _ => unreachable!(),
         }
     } else {
@@ -44,7 +44,7 @@ pub fn parse_create_function<'a>(parser: &mut Parser<'a>) -> ParseResult<CreateS
     if matches!(parser.peek(), Some(Token::LParen)) {
         let _ = parser.next();
         if !matches!(parser.peek(), Some(Token::RParen)) {
-            params = crate::parser::parse::parse_routine_param(parser)?;
+            params = crate::parser::parse::parse_comma_list(parser, crate::parser::parse::parse_routine_param)?;
         }
         parser.expect_rparen()?;
     }
@@ -60,7 +60,7 @@ pub fn parse_create_function<'a>(parser: &mut Parser<'a>) -> ParseResult<CreateS
     let body = if parser.at_keyword(Keyword::Begin) {
         let _ = parser.next();
         match super::other::parse_begin_end(parser)? {
-            Statement::BeginEnd(stmts) => FunctionBody::Block(stmts),
+            Statement::Procedural(ProceduralStatement::BeginEnd(stmts)) => FunctionBody::Block(stmts),
             _ => unreachable!(),
         }
     } else if parser.at_keyword(Keyword::Return) {
@@ -110,7 +110,7 @@ pub fn parse_create_trigger<'a>(parser: &mut Parser<'a>) -> ParseResult<CreateSt
     let body = if parser.at_keyword(Keyword::Begin) {
         let _ = parser.next();
         match super::other::parse_begin_end(parser)? {
-            Statement::BeginEnd(stmts) => stmts,
+            Statement::Procedural(ProceduralStatement::BeginEnd(stmts)) => stmts,
             _ => unreachable!(),
         }
     } else {

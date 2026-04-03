@@ -1,4 +1,4 @@
-﻿use serde::de::DeserializeOwned;
+use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::ast::IsolationLevel;
@@ -14,30 +14,29 @@ use super::super::tooling::{
     statement_compat_warnings, CompatibilityReport, ExecutionTrace, ExplainPlan, SessionOptions,
     TraceStatementEvent,
 };
-use super::persistence::DatabaseInner;
-use super::{RandomSeed, SqlAnalyzer};
+use super::{RandomSeed, SqlAnalyzer, StatementExecutor};
 
-impl<C, S> SqlAnalyzer for DatabaseInner<C, S>
+impl<C, S> SqlAnalyzer for super::SqlAnalyzerService<C, S>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     fn session_isolation_level(&self, session_id: SessionId) -> Result<IsolationLevel, DbError> {
-        let session_mutex = self.inner.sessions.get(&session_id)
+        let session_mutex = self.state.sessions.get(&session_id)
             .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
         let session = session_mutex.lock();
         Ok(session.tx_manager.session_isolation_level)
     }
 
     fn transaction_is_active(&self, session_id: SessionId) -> Result<bool, DbError> {
-        let session_mutex = self.inner.sessions.get(&session_id)
+        let session_mutex = self.state.sessions.get(&session_id)
             .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
         let session = session_mutex.lock();
         Ok(session.tx_manager.active.is_some())
     }
 
     fn session_options(&self, session_id: SessionId) -> Result<SessionOptions, DbError> {
-        let session_mutex = self.inner.sessions.get(&session_id)
+        let session_mutex = self.state.sessions.get(&session_id)
             .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
         let session = session_mutex.lock();
         Ok(session.options.clone())
@@ -72,8 +71,8 @@ where
                     read_tables.sort();
                     write_tables.sort();
 
-                    use super::StatementExecutor;
-                    match self.execute_session(session_id, stmt) {
+                    let executor = super::StatementExecutorService { state: self.state.clone() };
+                    match executor.execute_session(session_id, stmt) {
                         Ok(result) => {
                             let options = self.session_options(session_id)?;
                             let row_count = if options.nocount {
@@ -138,13 +137,14 @@ where
     }
 }
 
-impl<C, S> RandomSeed for DatabaseInner<C, S>
+
+impl<C, S> RandomSeed for super::SqlAnalyzerService<C, S>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     fn set_session_seed(&self, session_id: SessionId, seed: u64) -> Result<(), DbError> {
-        let session_mutex = self.inner.sessions.get(&session_id)
+        let session_mutex = self.state.sessions.get(&session_id)
             .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
         let mut session = session_mutex.lock();
         session.random_state = seed;

@@ -1,4 +1,4 @@
-﻿use super::super::ScriptExecutor;
+use super::super::ScriptExecutor;
 use crate::ast::{ExecProcedureStmt, RoutineParamType, SpExecuteSqlStmt};
 use crate::catalog::{RoutineKind, TableTypeDef};
 use crate::error::{DbError, StmtOutcome};
@@ -59,7 +59,7 @@ impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_procedure(
         &mut self,
         stmt: ExecProcedureStmt,
-        ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<crate::executor::result::QueryResult>, DbError> {
         let schema = stmt.name.schema_or_dbo().to_string();
         let Some(routine) = self.catalog.find_routine(&schema, &stmt.name.name).cloned() else {
@@ -88,7 +88,7 @@ impl<'a> ScriptExecutor<'a> {
             name: routine_name.clone(),
             kind: ModuleKind::Procedure,
         });
-        let scope_depth = ctx.scope_vars.len();
+        let scope_depth = ctx.frame.scope_vars.len();
         let result = (|| {
             ctx.enter_scope();
             let mut output_bindings: Vec<(String, String)> = vec![];
@@ -105,7 +105,7 @@ impl<'a> ScriptExecutor<'a> {
                         let val = eval_expr(def, &[], ctx, self.catalog, self.storage, self.clock)?;
                         let ty = crate::executor::type_mapping::data_type_spec_to_runtime(dt);
                         let coerced = coerce_value_to_type(val, &ty)?;
-                        ctx.variables.insert(param.name.clone(), (ty, coerced));
+                        ctx.session.variables.insert(param.name.clone(), (ty, coerced));
                         ctx.register_declared_var(&param.name);
                         continue;
                     }
@@ -119,7 +119,7 @@ impl<'a> ScriptExecutor<'a> {
                         let val = eval_expr(&arg.expr, &[], ctx, self.catalog, self.storage, self.clock)?;
                         let ty = crate::executor::type_mapping::data_type_spec_to_runtime(dt);
                         let coerced = coerce_value_to_type(val, &ty)?;
-                        ctx.variables.insert(param.name.clone(), (ty, coerced));
+                        ctx.session.variables.insert(param.name.clone(), (ty, coerced));
                         ctx.register_declared_var(&param.name);
                         if param.is_output && arg.is_output {
                             if let crate::ast::Expr::Identifier(ref caller) = arg.expr {
@@ -160,13 +160,13 @@ impl<'a> ScriptExecutor<'a> {
             let proc_result = self.execute_batch(&body, ctx);
             let mut out_values: Vec<(String, Value)> = vec![];
             for (inner_name, caller_var) in &output_bindings {
-                if let Some((_, v)) = ctx.variables.get(inner_name) {
+                if let Some((_, v)) = ctx.session.variables.get(inner_name) {
                     out_values.push((caller_var.clone(), v.clone()));
                 }
             }
             self.leave_scope_and_cleanup(ctx)?;
             for (caller_var, val) in out_values {
-                if let Some((ty, out_var)) = ctx.variables.get_mut(&caller_var) {
+                if let Some((ty, out_var)) = ctx.session.variables.get_mut(&caller_var) {
                     *out_var = coerce_value_to_type(val, ty)?;
                 }
             }
@@ -177,7 +177,7 @@ impl<'a> ScriptExecutor<'a> {
                 Err(e) => Err(e),
             }
         })();
-        while ctx.scope_vars.len() > scope_depth {
+        while ctx.frame.scope_vars.len() > scope_depth {
             ctx.leave_scope();
         }
         ctx.pop_module();
@@ -187,7 +187,7 @@ impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_sp_executesql(
         &mut self,
         stmt: SpExecuteSqlStmt,
-        ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<crate::executor::result::QueryResult>, DbError> {
         let sql_val = eval_expr(
             &stmt.sql_expr,
@@ -206,7 +206,7 @@ impl<'a> ScriptExecutor<'a> {
             vec![]
         };
 
-        let scope_depth = ctx.scope_vars.len();
+        let scope_depth = ctx.frame.scope_vars.len();
         let result = (|| {
             ctx.enter_scope();
             let mut output_vars = vec![];
@@ -227,7 +227,7 @@ impl<'a> ScriptExecutor<'a> {
                                 eval_expr(&arg.expr, &[], ctx, self.catalog, self.storage, self.clock)?;
                             let ty = crate::executor::type_mapping::data_type_spec_to_runtime(dt);
                             let coerced = coerce_value_to_type(val, &ty)?;
-                            ctx.variables.insert(key.clone(), (ty, coerced));
+                            ctx.session.variables.insert(key.clone(), (ty, coerced));
                             ctx.register_declared_var(&key);
                             if arg.is_output {
                                 if let crate::ast::Expr::Identifier(ref caller_var) = arg.expr {
@@ -265,7 +265,7 @@ impl<'a> ScriptExecutor<'a> {
                         let val =
                             eval_expr(&arg.expr, &[], ctx, self.catalog, self.storage, self.clock)?;
                         let ty = val.data_type().unwrap_or(crate::types::DataType::Int);
-                        ctx.variables.insert(key.clone(), (ty, val.clone()));
+                        ctx.session.variables.insert(key.clone(), (ty, val.clone()));
                         ctx.register_declared_var(&key);
                         if arg.is_output {
                             if let crate::ast::Expr::Identifier(ref caller_var) = arg.expr {
@@ -280,13 +280,13 @@ impl<'a> ScriptExecutor<'a> {
 
             let mut outs = vec![];
             for (inner, outer) in output_vars {
-                if let Some((_, v)) = ctx.variables.get(&inner) {
+                if let Some((_, v)) = ctx.session.variables.get(&inner) {
                     outs.push((outer, v.clone()));
                 }
             }
             self.leave_scope_and_cleanup(ctx)?;
             for (outer, val) in outs {
-                if let Some((ty, out)) = ctx.variables.get_mut(&outer) {
+                if let Some((ty, out)) = ctx.session.variables.get_mut(&outer) {
                     *out = coerce_value_to_type(val, ty)?;
                 }
             }
@@ -297,7 +297,7 @@ impl<'a> ScriptExecutor<'a> {
                 Err(e) => Err(e),
             }
         })();
-        while ctx.scope_vars.len() > scope_depth {
+        while ctx.frame.scope_vars.len() > scope_depth {
             ctx.leave_scope();
         }
         result

@@ -22,7 +22,7 @@ pub struct RecoveryCheckpoint<C> {
 
 impl<C> RecoveryCheckpoint<C>
 where
-    C: Serialize + DeserializeOwned,
+    C: Catalog + Serialize + DeserializeOwned,
 {
     pub fn to_json(&self) -> Result<String, DbError> {
         serde_json::to_string(self)
@@ -30,8 +30,10 @@ where
     }
 
     pub fn from_json(payload: &str) -> Result<Self, DbError> {
-        serde_json::from_str(payload)
-            .map_err(|e| DbError::Execution(format!("failed to decode checkpoint: {}", e)))
+        let mut cp: Self = serde_json::from_str(payload)
+            .map_err(|e| DbError::Execution(format!("failed to decode checkpoint: {}", e)))?;
+        cp.catalog.rebuild_maps();
+        Ok(cp)
     }
 }
 
@@ -74,7 +76,7 @@ pub struct InMemoryDurability<C> {
 impl<C> InMemoryDurability<C> {
     pub fn latest_json(&self) -> Result<Option<String>, DbError>
     where
-        C: Serialize + DeserializeOwned,
+        C: Catalog + Serialize + DeserializeOwned,
     {
         self.latest
             .as_ref()

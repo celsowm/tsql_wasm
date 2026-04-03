@@ -1,4 +1,3 @@
-﻿use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 use super::cte::CteStorage;
@@ -23,51 +22,60 @@ pub struct ModuleFrame {
     pub kind: ModuleKind,
 }
 
-#[derive(Debug, Clone)]
-pub enum ControlFlow {
-    Break,
-    Continue,
-    Return(Option<Value>),
+
+pub struct SessionStateRefs<'a> {
+    pub variables: &'a mut Variables,
+    pub last_identity: &'a mut Option<i64>,
+    pub identity_stack: &'a mut Vec<Option<i64>>,
+    pub temp_map: &'a mut HashMap<String, String>,
+    pub var_map: &'a mut HashMap<String, String>,
+    pub var_counter: &'a mut u64,
+    pub random_state: &'a mut u64,
+    pub cursors: &'a mut HashMap<String, Cursor>,
+    pub fetch_status: &'a mut i32,
+    pub print_output: &'a mut Vec<String>,
+}
+
+pub struct SessionMetadata {
+    pub id: super::locks::SessionId,
+    pub database: Option<String>,
+    pub original_database: String,
+    pub user: Option<String>,
+    pub app_name: Option<String>,
+    pub host_name: Option<String>,
+}
+
+pub struct FrameState {
+    pub depth: usize,
+    pub loop_depth: usize,
+    pub trancount: u32,
+    pub xact_state: i8,
+    pub trigger_depth: usize,
+    pub module_stack: Vec<ModuleFrame>,
+    pub table_vars: Vec<HashMap<String, String>>,
+    pub readonly_table_vars: Vec<HashSet<String>>,
+    pub scope_vars: Vec<Vec<String>>,
+}
+
+pub struct RowContext {
+    pub outer_row: Option<JoinedRow>,
+    pub apply_stack: Vec<JoinedRow>,
+    pub current_group: Option<super::model::Group>,
+    pub window_context: Option<HashMap<crate::ast::Expr, Value>>,
 }
 
 pub struct ExecutionContext<'a> {
-    pub variables: &'a mut Variables,
-    pub outer_row: Option<JoinedRow>,
-    pub depth: usize,
+    pub session: SessionStateRefs<'a>,
+    pub metadata: SessionMetadata,
+    pub frame: FrameState,
+    pub row: RowContext,
     pub ctes: CteStorage,
-    pub loop_depth: usize,
-    pub pending_control: RefCell<Option<ControlFlow>>,
-    pub session_last_identity: &'a mut Option<i64>,
-    pub scope_identity_stack: &'a mut Vec<Option<i64>>,
-    pub table_vars: Vec<HashMap<String, String>>,
-    pub readonly_table_vars: Vec<HashSet<String>>,
-    pub temp_table_map: &'a mut HashMap<String, String>,
-    pub session_table_var_map: &'a mut HashMap<String, String>,
-    pub table_var_counter: &'a mut u64,
-    pub module_stack: Vec<ModuleFrame>,
-    pub scope_vars: Vec<Vec<String>>,
     pub ansi_nulls: bool,
     pub datefirst: i32,
-    pub random_state: &'a mut u64,
-    pub apply_row_stack: Vec<JoinedRow>,
-    pub current_group: Option<super::model::Group>,
-    pub window_context: Option<HashMap<crate::ast::Expr, Value>>,
-    pub print_output: &'a mut Vec<String>,
-    pub cursors: &'a mut HashMap<String, Cursor>,
-    pub fetch_status: &'a mut i32,
-    pub trigger_depth: usize,
+    pub dirty_buffer: Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>>,
+    pub identity_insert: HashSet<String>,
     pub skip_instead_of: bool,
     pub last_error: Option<DbError>,
-    pub trancount: u32,
-    pub xact_state: i8,
-    pub identity_insert: HashSet<String>,
-    pub dirty_buffer: Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>>,
-    pub session_id: super::locks::SessionId,
-    pub session_database: Option<String>,
-    pub session_original_database: String,
-    pub session_user: Option<String>,
-    pub session_app_name: Option<String>,
-    pub session_host_name: Option<String>,
 }
 
 impl<'a> ExecutionContext<'a> {
@@ -87,130 +95,126 @@ impl<'a> ExecutionContext<'a> {
         dirty_buffer: Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>>,
         session_id: super::locks::SessionId,
         session_original_database: String,
+        user: Option<String>,
+        app_name: Option<String>,
+        host_name: Option<String>,
     ) -> Self {
         Self {
-            variables,
-            outer_row: None,
-            depth: 0,
+            session: SessionStateRefs {
+                variables,
+                last_identity: session_last_identity,
+                identity_stack: scope_identity_stack,
+                temp_map: temp_table_map,
+                var_map: session_table_var_map,
+                var_counter: table_var_counter,
+                random_state,
+                cursors,
+                fetch_status,
+                print_output,
+            },
+            metadata: SessionMetadata {
+                id: session_id,
+                database: None,
+                original_database: session_original_database,
+                user,
+                app_name,
+                host_name,
+            },
+            frame: FrameState {
+                depth: 0,
+                loop_depth: 0,
+                trancount: 0,
+                xact_state: 0,
+                trigger_depth: 0,
+                module_stack: vec![],
+                scope_vars: vec![vec![]],
+                table_vars: vec![HashMap::new()],
+                readonly_table_vars: vec![HashSet::new()],
+            },
+            row: RowContext {
+                outer_row: None,
+                apply_stack: vec![],
+                current_group: None,
+                window_context: None,
+            },
             ctes: CteStorage::new(),
-            loop_depth: 0,
-            pending_control: RefCell::new(None),
-            session_last_identity,
-            scope_identity_stack,
-            table_vars: vec![HashMap::new()],
-            readonly_table_vars: vec![HashSet::new()],
-            temp_table_map,
-            session_table_var_map,
-            scope_vars: vec![vec![]],
-            table_var_counter,
-            module_stack: vec![],
             ansi_nulls,
             datefirst,
-            random_state,
-            apply_row_stack: vec![],
-            current_group: None,
-            window_context: None,
-            print_output,
-            cursors,
-            fetch_status,
-            trigger_depth: 0,
+            dirty_buffer,
+            identity_insert: HashSet::new(),
             skip_instead_of: false,
             last_error: None,
-            trancount: 0,
-            xact_state: 0,
-            identity_insert: HashSet::new(),
-            dirty_buffer,
-            session_id,
-            session_database: None,
-            session_original_database,
-            session_user: None,
-            session_app_name: None,
-            session_host_name: None,
         }
     }
 
+    // Delegation properties for backward compatibility (can be removed later)
+    #[inline] pub fn variables(&self) -> &Variables { self.session.variables }
+    #[inline] pub fn variables_mut(&mut self) -> &mut Variables { self.session.variables }
+    #[inline] pub fn session_id(&self) -> super::locks::SessionId { self.metadata.id }
+    #[inline] pub fn loop_depth(&self) -> usize { self.frame.loop_depth }
+    #[inline] pub fn loop_depth_mut(&mut self) -> &mut usize { &mut self.frame.loop_depth }
+    #[inline] pub fn trancount(&self) -> u32 { self.frame.trancount }
+    #[inline] pub fn xact_state(&self) -> i8 { self.frame.xact_state }
+    #[inline] pub fn trigger_depth(&self) -> usize { self.frame.trigger_depth }
+    #[inline] pub fn trigger_depth_mut(&mut self) -> &mut usize { &mut self.frame.trigger_depth }
+    #[inline] pub fn outer_row(&self) -> &Option<JoinedRow> { &self.row.outer_row }
+    #[inline] pub fn outer_row_mut(&mut self) -> &mut Option<JoinedRow> { &mut self.row.outer_row }
+    #[inline] pub fn current_group(&self) -> &Option<super::model::Group> { &self.row.current_group }
+    #[inline] pub fn current_group_mut(&mut self) -> &mut Option<super::model::Group> { &mut self.row.current_group }
+
     pub fn subquery(&mut self) -> ExecutionContext<'_> {
         ExecutionContext {
-            variables: self.variables,
-            outer_row: self.outer_row.clone(),
-            depth: self.depth + 1,
+            session: SessionStateRefs {
+                variables: self.session.variables,
+                last_identity: self.session.last_identity,
+                identity_stack: self.session.identity_stack,
+                temp_map: self.session.temp_map,
+                var_map: self.session.var_map,
+                var_counter: self.session.var_counter,
+                random_state: self.session.random_state,
+                cursors: self.session.cursors,
+                fetch_status: self.session.fetch_status,
+                print_output: self.session.print_output,
+            },
+            metadata: SessionMetadata {
+                id: self.metadata.id,
+                database: self.metadata.database.clone(),
+                original_database: self.metadata.original_database.clone(),
+                user: self.metadata.user.clone(),
+                app_name: self.metadata.app_name.clone(),
+                host_name: self.metadata.host_name.clone(),
+            },
+            frame: FrameState {
+                depth: self.frame.depth + 1,
+                loop_depth: self.frame.loop_depth,
+                trancount: self.frame.trancount,
+                xact_state: self.frame.xact_state,
+                trigger_depth: self.frame.trigger_depth,
+                module_stack: self.frame.module_stack.clone(),
+                table_vars: self.frame.table_vars.clone(),
+                readonly_table_vars: self.frame.readonly_table_vars.clone(),
+                scope_vars: self.frame.scope_vars.clone(),
+            },
+            row: RowContext {
+                outer_row: self.row.outer_row.clone(),
+                apply_stack: self.row.apply_stack.clone(),
+                current_group: self.row.current_group.clone(),
+                window_context: self.row.window_context.clone(),
+            },
             ctes: self.ctes.clone(),
-            loop_depth: self.loop_depth,
-            pending_control: RefCell::new(None),
-            session_last_identity: self.session_last_identity,
-            scope_identity_stack: self.scope_identity_stack,
-            table_vars: self.table_vars.clone(),
-            readonly_table_vars: self.readonly_table_vars.clone(),
-            temp_table_map: self.temp_table_map,
-            session_table_var_map: self.session_table_var_map,
-            scope_vars: self.scope_vars.clone(),
-            table_var_counter: self.table_var_counter,
-            module_stack: self.module_stack.clone(),
             ansi_nulls: self.ansi_nulls,
             datefirst: self.datefirst,
-            random_state: self.random_state,
-            apply_row_stack: self.apply_row_stack.clone(),
-            current_group: self.current_group.clone(),
-            window_context: self.window_context.clone(),
-            print_output: self.print_output,
-            cursors: self.cursors,
-            fetch_status: self.fetch_status,
-            trigger_depth: self.trigger_depth,
+            dirty_buffer: self.dirty_buffer.clone(),
+            identity_insert: self.identity_insert.clone(),
             skip_instead_of: self.skip_instead_of,
             last_error: self.last_error.clone(),
-            trancount: self.trancount,
-            xact_state: self.xact_state,
-            identity_insert: self.identity_insert.clone(),
-            dirty_buffer: self.dirty_buffer.clone(),
-            session_id: self.session_id,
-            session_database: self.session_database.clone(),
-            session_original_database: self.session_original_database.clone(),
-            session_user: self.session_user.clone(),
-            session_app_name: self.session_app_name.clone(),
-            session_host_name: self.session_host_name.clone(),
         }
     }
 
     pub fn with_outer_row(&mut self, row: JoinedRow) -> ExecutionContext<'_> {
-        ExecutionContext {
-            variables: self.variables,
-            outer_row: Some(row),
-            depth: self.depth + 1,
-            ctes: self.ctes.clone(),
-            loop_depth: self.loop_depth,
-            pending_control: RefCell::new(None),
-            session_last_identity: self.session_last_identity,
-            scope_identity_stack: self.scope_identity_stack,
-            table_vars: self.table_vars.clone(),
-            readonly_table_vars: self.readonly_table_vars.clone(),
-            temp_table_map: self.temp_table_map,
-            session_table_var_map: self.session_table_var_map,
-            scope_vars: self.scope_vars.clone(),
-            table_var_counter: self.table_var_counter,
-            module_stack: self.module_stack.clone(),
-            ansi_nulls: self.ansi_nulls,
-            datefirst: self.datefirst,
-            random_state: self.random_state,
-            apply_row_stack: self.apply_row_stack.clone(),
-            current_group: self.current_group.clone(),
-            window_context: self.window_context.clone(),
-            print_output: self.print_output,
-            cursors: self.cursors,
-            fetch_status: self.fetch_status,
-            trigger_depth: self.trigger_depth,
-            skip_instead_of: self.skip_instead_of,
-            last_error: self.last_error.clone(),
-            trancount: self.trancount,
-            xact_state: self.xact_state,
-            identity_insert: self.identity_insert.clone(),
-            dirty_buffer: self.dirty_buffer.clone(),
-            session_id: self.session_id,
-            session_database: self.session_database.clone(),
-            session_original_database: self.session_original_database.clone(),
-            session_user: self.session_user.clone(),
-            session_app_name: self.session_app_name.clone(),
-            session_host_name: self.session_host_name.clone(),
-        }
+        let mut sub = self.subquery();
+        sub.row.outer_row = Some(row);
+        sub
     }
 
     pub fn with_outer_row_extended(
@@ -218,60 +222,17 @@ impl<'a> ExecutionContext<'a> {
         _current_row: JoinedRow,
         outer_row: JoinedRow,
     ) -> ExecutionContext<'_> {
-        ExecutionContext {
-            variables: self.variables,
-            outer_row: Some(outer_row),
-            depth: self.depth + 1,
-            ctes: self.ctes.clone(),
-            loop_depth: self.loop_depth,
-            pending_control: RefCell::new(None),
-            session_last_identity: self.session_last_identity,
-            scope_identity_stack: self.scope_identity_stack,
-            table_vars: self.table_vars.clone(),
-            readonly_table_vars: self.readonly_table_vars.clone(),
-            temp_table_map: self.temp_table_map,
-            session_table_var_map: self.session_table_var_map,
-            scope_vars: self.scope_vars.clone(),
-            table_var_counter: self.table_var_counter,
-            module_stack: self.module_stack.clone(),
-            ansi_nulls: self.ansi_nulls,
-            datefirst: self.datefirst,
-            random_state: self.random_state,
-            apply_row_stack: self.apply_row_stack.clone(),
-            current_group: self.current_group.clone(),
-            window_context: self.window_context.clone(),
-            print_output: self.print_output,
-            cursors: self.cursors,
-            fetch_status: self.fetch_status,
-            trigger_depth: self.trigger_depth,
-            skip_instead_of: self.skip_instead_of,
-            last_error: self.last_error.clone(),
-            trancount: self.trancount,
-            xact_state: self.xact_state,
-            identity_insert: self.identity_insert.clone(),
-            dirty_buffer: self.dirty_buffer.clone(),
-            session_id: self.session_id,
-            session_database: self.session_database.clone(),
-            session_original_database: self.session_original_database.clone(),
-            session_user: self.session_user.clone(),
-            session_app_name: self.session_app_name.clone(),
-            session_host_name: self.session_host_name.clone(),
-        }
+        let mut sub = self.subquery();
+        sub.row.outer_row = Some(outer_row);
+        sub
     }
 
-    pub fn set_control(&self, cf: ControlFlow) {
-        *self.pending_control.borrow_mut() = Some(cf);
-    }
-
-    pub fn take_control(&self) -> Option<ControlFlow> {
-        self.pending_control.borrow_mut().take()
-    }
 
     pub fn enter_scope(&mut self) {
-        self.scope_vars.push(vec![]);
-        self.table_vars.push(HashMap::new());
-        self.readonly_table_vars.push(HashSet::new());
-        self.scope_identity_stack.push(None);
+        self.frame.scope_vars.push(vec![]);
+        self.frame.table_vars.push(HashMap::new());
+        self.frame.readonly_table_vars.push(HashSet::new());
+        self.session.identity_stack.push(None);
     }
 
     pub fn leave_scope(&mut self) {
@@ -279,44 +240,45 @@ impl<'a> ExecutionContext<'a> {
     }
 
     pub fn leave_scope_collect_table_vars(&mut self) -> Vec<String> {
-        if let Some(vars) = self.scope_vars.pop() {
+        if let Some(vars) = self.frame.scope_vars.pop() {
             for name in vars {
-                self.variables.remove(&name);
+                self.session.variables.remove(&name);
             }
         }
         let mut dropped_physical = Vec::new();
-        if self.table_vars.len() > 1 {
-            if let Some(scope) = self.table_vars.pop() {
+        if self.frame.table_vars.len() > 1 {
+            if let Some(scope) = self.frame.table_vars.pop() {
                 for (logical, physical) in scope {
                     dropped_physical.push(physical.clone());
                     if self
-                        .session_table_var_map
+                        .session
+                        .var_map
                         .get(&logical)
                         .map(|current| current.eq_ignore_ascii_case(&physical))
                         .unwrap_or(false)
                     {
                         let mut restored: Option<String> = None;
-                        for outer in self.table_vars.iter().rev() {
+                        for outer in self.frame.table_vars.iter().rev() {
                             if let Some(mapped) = outer.get(&logical) {
                                 restored = Some(mapped.clone());
                                 break;
                             }
                         }
                         if let Some(mapped) = restored {
-                            self.session_table_var_map.insert(logical.clone(), mapped);
+                            self.session.var_map.insert(logical.clone(), mapped);
                         } else {
-                            self.session_table_var_map.remove(&logical);
+                            self.session.var_map.remove(&logical);
                         }
                     }
                 }
             }
         }
-        if self.readonly_table_vars.len() > 1 {
-            let _ = self.readonly_table_vars.pop();
+        if self.frame.readonly_table_vars.len() > 1 {
+            let _ = self.frame.readonly_table_vars.pop();
         }
         // Preserve identity value when leaving scope (propagate to parent)
-        if let Some(val) = self.scope_identity_stack.pop() {
-            if let Some(last) = self.scope_identity_stack.last_mut() {
+        if let Some(val) = self.session.identity_stack.pop() {
+            if let Some(last) = self.session.identity_stack.last_mut() {
                 if val.is_some() {
                     *last = val;
                 }
@@ -326,21 +288,22 @@ impl<'a> ExecutionContext<'a> {
     }
 
     pub fn register_declared_var(&mut self, name: &str) {
-        if let Some(scope) = self.scope_vars.last_mut() {
+        if let Some(scope) = self.frame.scope_vars.last_mut() {
             scope.push(name.to_string());
         }
     }
 
     pub fn register_table_var(&mut self, logical_name: &str, physical_name: &str) {
-        if let Some(scope) = self.table_vars.last_mut() {
+        if let Some(scope) = self.frame.table_vars.last_mut() {
             scope.insert(logical_name.to_uppercase(), physical_name.to_string());
         }
-        self.session_table_var_map
+        self.session
+            .var_map
             .insert(logical_name.to_uppercase(), physical_name.to_string());
     }
 
     pub fn mark_table_var_readonly(&mut self, logical_name: &str) {
-        if let Some(scope) = self.readonly_table_vars.last_mut() {
+        if let Some(scope) = self.frame.readonly_table_vars.last_mut() {
             scope.insert(logical_name.to_uppercase());
         }
     }
@@ -350,7 +313,7 @@ impl<'a> ExecutionContext<'a> {
         if upper.starts_with("DBO.") {
             upper = upper["DBO.".len()..].to_string();
         }
-        self.readonly_table_vars
+        self.frame.readonly_table_vars
             .iter()
             .rev()
             .any(|scope| scope.contains(&upper))
@@ -363,17 +326,17 @@ impl<'a> ExecutionContext<'a> {
         }
 
         // 1. Mapped names (temp tables #t and pseudo-tables like INSERTED)
-        if let Some(mapped) = self.temp_table_map.get(&upper) {
+        if let Some(mapped) = self.session.temp_map.get(&upper) {
             return Some(mapped.clone());
         }
 
         // 2. Scoped names (table variables @vars OR pseudo-tables like INSERTED)
-        for scope in self.table_vars.iter().rev() {
+        for scope in self.frame.table_vars.iter().rev() {
             if let Some(name) = scope.get(&upper) {
                 return Some(name.clone());
             }
         }
-        if let Some(name) = self.session_table_var_map.get(&upper) {
+        if let Some(name) = self.session.var_map.get(&upper) {
             return Some(name.clone());
         }
 
@@ -381,36 +344,36 @@ impl<'a> ExecutionContext<'a> {
     }
 
     pub fn push_apply_row(&mut self, row: JoinedRow) {
-        self.apply_row_stack.push(row);
+        self.row.apply_stack.push(row);
     }
 
     pub fn pop_apply_row(&mut self) {
-        self.apply_row_stack.pop();
+        self.row.apply_stack.pop();
     }
 
     pub fn set_last_identity(&mut self, val: i64) {
-        *self.session_last_identity = Some(val);
-        if let Some(last) = self.scope_identity_stack.last_mut() {
+        *self.session.last_identity = Some(val);
+        if let Some(last) = self.session.identity_stack.last_mut() {
             *last = Some(val);
         } else {
-            self.scope_identity_stack.push(Some(val));
+            self.session.identity_stack.push(Some(val));
         }
     }
 
     pub fn current_scope_identity(&self) -> Option<i64> {
-        self.scope_identity_stack.last().and_then(|v| *v)
+        self.session.identity_stack.last().and_then(|v| *v)
     }
 
     pub fn push_module(&mut self, module: ModuleFrame) {
-        self.module_stack.push(module);
+        self.frame.module_stack.push(module);
     }
 
     pub fn pop_module(&mut self) {
-        self.module_stack.pop();
+        self.frame.module_stack.pop();
     }
 
     pub fn current_module(&self) -> Option<&ModuleFrame> {
-        self.module_stack.last()
+        self.frame.module_stack.last()
     }
 
     pub fn current_procid(&self) -> Option<i32> {
@@ -418,12 +381,12 @@ impl<'a> ExecutionContext<'a> {
     }
 
     pub fn next_table_var_id(&mut self) -> u64 {
-        *self.table_var_counter += 1;
-        *self.table_var_counter
+        *self.session.var_counter += 1;
+        *self.session.var_counter
     }
 
     pub fn get_window_value(&self, expr: &crate::ast::Expr) -> Option<Value> {
-        self.window_context
+        self.row.window_context
             .as_ref()
             .and_then(|m| m.get(expr).cloned())
     }
@@ -433,22 +396,22 @@ impl<'a> ExecutionContext<'a> {
         options: &super::tooling::SessionOptions,
     ) -> super::session::SessionSnapshot {
         super::session::SessionSnapshot {
-            variables: self.variables.clone(),
+            variables: self.session.variables.clone(),
             identities: super::session::IdentityState {
-                last_identity: *self.session_last_identity,
-                scope_stack: self.scope_identity_stack.clone(),
+                last_identity: *self.session.last_identity,
+                scope_stack: self.session.identity_stack.clone(),
             },
             tables: super::session::TableState {
-                temp_map: self.temp_table_map.clone(),
-                var_map: self.session_table_var_map.clone(),
-                var_counter: *self.table_var_counter,
+                temp_map: self.session.temp_map.clone(),
+                var_map: self.session.var_map.clone(),
+                var_counter: *self.session.var_counter,
             },
             cursors: super::session::CursorState {
-                map: self.cursors.clone(),
-                fetch_status: *self.fetch_status,
+                map: self.session.cursors.clone(),
+                fetch_status: *self.session.fetch_status,
             },
             options: options.clone(),
-            random_state: *self.random_state,
+            random_state: *self.session.random_state,
         }
     }
 
@@ -457,16 +420,16 @@ impl<'a> ExecutionContext<'a> {
         snapshot: super::session::SessionSnapshot,
         options: &mut super::tooling::SessionOptions,
     ) {
-        *self.variables = snapshot.variables;
-        *self.session_last_identity = snapshot.identities.last_identity;
-        *self.scope_identity_stack = snapshot.identities.scope_stack;
-        *self.temp_table_map = snapshot.tables.temp_map;
-        *self.session_table_var_map = snapshot.tables.var_map;
-        *self.table_var_counter = snapshot.tables.var_counter;
-        *self.cursors = snapshot.cursors.map;
-        *self.fetch_status = snapshot.cursors.fetch_status;
+        *self.session.variables = snapshot.variables;
+        *self.session.last_identity = snapshot.identities.last_identity;
+        *self.session.identity_stack = snapshot.identities.scope_stack;
+        *self.session.temp_map = snapshot.tables.temp_map;
+        *self.session.var_map = snapshot.tables.var_map;
+        *self.session.var_counter = snapshot.tables.var_counter;
+        *self.session.cursors = snapshot.cursors.map;
+        *self.session.fetch_status = snapshot.cursors.fetch_status;
         *options = snapshot.options;
-        *self.random_state = snapshot.random_state;
+        *self.session.random_state = snapshot.random_state;
         self.ansi_nulls = options.ansi_nulls;
         self.datefirst = options.datefirst;
     }

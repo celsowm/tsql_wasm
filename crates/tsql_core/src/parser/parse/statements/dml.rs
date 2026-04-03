@@ -49,12 +49,12 @@ pub fn parse_insert<'a>(parser: &mut Parser<'a>) -> ParseResult<InsertStmt<'a>> 
 
     let source = match k {
         Keyword::Values => {
-             let rows = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
-                 parser.expect_lparen()?;
-                 let vals = crate::parser::parse::expressions::parse_comma_list(p, crate::parser::parse::expressions::parse_expr)?;
-                 parser.expect_rparen()?;
-                 Ok(vals)
-             })?;
+                let rows = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
+                    p.expect_lparen()?;
+                    let vals = crate::parser::parse::expressions::parse_comma_list(p, crate::parser::parse::expressions::parse_expr)?;
+                    p.expect_rparen()?;
+                    Ok(vals)
+                })?;
              InsertSource::Values(rows)
         }
         Keyword::Select => {
@@ -258,17 +258,17 @@ pub fn parse_merge<'a>(parser: &mut Parser<'a>) -> ParseResult<MergeStmt<'a>> {
         parser.expect_keyword(Keyword::Then)?;
 
         let action = match parser.peek() {
-            Some(tok) if tok.eq_ignore_ascii_case("UPDATE") => {
+            Some(Token::Keyword(Keyword::Update)) => {
                 let _ = parser.next();
                 parser.expect_keyword(Keyword::Set)?;
                 let assignments = crate::parser::parse::expressions::parse_comma_list(parser, parse_update_assignment)?;
                 MergeAction::Update { assignments }
             }
-            Some(tok) if tok.eq_ignore_ascii_case("DELETE") => {
+            Some(Token::Keyword(Keyword::Delete)) => {
                 let _ = parser.next();
                 MergeAction::Delete
             }
-            Some(tok) if tok.eq_ignore_ascii_case("INSERT") => {
+            Some(Token::Keyword(Keyword::Insert)) => {
                 let _ = parser.next();
                 let mut columns = Vec::new();
                 if matches!(parser.peek(), Some(Token::LParen)) {

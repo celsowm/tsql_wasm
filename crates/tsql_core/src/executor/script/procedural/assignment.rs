@@ -14,7 +14,7 @@ impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_select_assign(
         &mut self,
         stmt: SelectAssignStmt,
-        ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
         if stmt.targets.is_empty() {
             return Ok(None);
@@ -29,7 +29,7 @@ impl<'a> ScriptExecutor<'a> {
                     self.storage,
                     self.clock,
                 )?;
-                if let Some((ty, var)) = ctx.variables.get_mut(&t.variable) {
+                if let Some((ty, var)) = ctx.session.variables.get_mut(&t.variable) {
                     *var = coerce_value_to_type(val, ty)?;
                 } else {
                     return Err(DbError::Semantic(format!(
@@ -71,7 +71,7 @@ impl<'a> ScriptExecutor<'a> {
         .execute_select(q, ctx)?;
         if let Some(last) = result.rows.last() {
             for (idx, t) in stmt.targets.iter().enumerate() {
-                if let Some((ty, var)) = ctx.variables.get_mut(&t.variable) {
+                if let Some((ty, var)) = ctx.session.variables.get_mut(&t.variable) {
                     *var = coerce_value_to_type(last[idx].clone(), ty)?;
                 } else {
                     return Err(DbError::Semantic(format!(

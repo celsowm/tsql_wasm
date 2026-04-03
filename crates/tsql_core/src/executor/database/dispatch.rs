@@ -1,7 +1,7 @@
-﻿use serde::de::DeserializeOwned;
+use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use crate::ast::{DropTableStmt, IsolationLevel, ObjectName, Statement, SessionStatement, DmlStatement};
+use crate::ast::{IsolationLevel, Statement, SessionStatement, DmlStatement};
 use crate::catalog::Catalog;
 use crate::error::{DbError, StmtOutcome, StmtResult};
 use crate::storage::Storage;
@@ -12,7 +12,6 @@ use super::super::dirty_buffer;
 use super::super::journal::{Journal, JournalEvent};
 use super::super::locks::{LockTable, SessionId, TxWorkspace};
 use super::super::result::QueryResult;
-use super::super::schema::SchemaExecutor;
 use super::super::script::ScriptExecutor;
 use super::super::session::{SessionSnapshot, SharedState};
 use super::super::table_util::collect_write_tables;
@@ -33,7 +32,7 @@ pub(crate) fn execute_non_transaction_statement<C, S>(
 ) -> StmtResult<Option<QueryResult>>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     if let Statement::Session(SessionStatement::SetOption(opt)) = &stmt {
         let apply = apply_set_option(opt, session_options)?;
@@ -97,7 +96,7 @@ where
                     }
                     let tid = table_def.id;
                     if let Ok(committed_rows) = storage_guard.storage.get_rows(tid) {
-                        let _ = workspace.storage.update_rows(tid, committed_rows);
+                        workspace.storage.update_rows(tid, committed_rows)?;
                     }
                 }
                 for table_def in storage_guard.catalog.get_tables() {
@@ -106,7 +105,7 @@ where
                         continue;
                     }
                     if workspace.catalog.find_table(table_def.schema_or_dbo(), &table_def.name).is_none() {
-                        workspace.catalog.get_tables_mut().push(table_def.clone());
+                        workspace.catalog.register_table(table_def.clone());
                     }
                 }
             }
@@ -227,25 +226,4 @@ where
         state.table_locks.lock().release_all_for_session(session_id);
         out
     }
-}
-
-pub(crate) fn cleanup_scope_table_vars(
-    catalog: &mut dyn Catalog,
-    storage: &mut dyn Storage,
-    ctx: &mut ExecutionContext,
-) -> Result<(), DbError> {
-    let dropped_physical = ctx.leave_scope_collect_table_vars();
-    for physical in dropped_physical {
-        if catalog.find_table("dbo", &physical).is_none() {
-            continue;
-        }
-        let mut schema = SchemaExecutor { catalog, storage };
-        schema.drop_table(DropTableStmt {
-            name: ObjectName {
-                schema: Some("dbo".to_string()),
-                name: physical,
-            },
-        })?;
-    }
-    Ok(())
 }

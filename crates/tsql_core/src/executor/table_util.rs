@@ -1,18 +1,18 @@
-﻿use std::collections::HashSet;
+use std::collections::HashSet;
 
-use crate::ast::{ObjectName, SelectStmt, Statement, TableRef};
+use crate::ast::{DdlStatement, DmlStatement, ObjectName, SelectStmt, Statement, TableRef};
 
 pub(crate) fn collect_read_tables(stmt: &Statement) -> HashSet<String> {
     let mut out = HashSet::new();
     match stmt {
-        Statement::Select(s) => collect_tables_from_select(s, &mut out),
-        Statement::Update(s) => {
+        Statement::Dml(DmlStatement::Select(s)) => collect_tables_from_select(s, &mut out),
+        Statement::Dml(DmlStatement::Update(s)) => {
             out.insert(normalize_table_name(&s.table));
         }
-        Statement::Delete(s) => {
+        Statement::Dml(DmlStatement::Delete(s)) => {
             out.insert(normalize_table_name(&s.table));
         }
-        Statement::SelectAssign(s) => {
+        Statement::Dml(DmlStatement::SelectAssign(s)) => {
             if let Some(from) = &s.from {
                 out.insert(normalize_table_ref(from));
             }
@@ -20,7 +20,7 @@ pub(crate) fn collect_read_tables(stmt: &Statement) -> HashSet<String> {
                 out.insert(normalize_table_ref(&join.table));
             }
         }
-        Statement::SetOp(s) => {
+        Statement::Dml(DmlStatement::SetOp(s)) => {
             collect_tables_from_statement(&s.left, &mut out);
             collect_tables_from_statement(&s.right, &mut out);
         }
@@ -30,8 +30,10 @@ pub(crate) fn collect_read_tables(stmt: &Statement) -> HashSet<String> {
             }
             out.extend(collect_read_tables(&stmt.body));
         }
-        Statement::Merge(s) => {
-            out.insert(s.target.name.name().to_uppercase());
+        Statement::Dml(DmlStatement::Merge(s)) => {
+            if let Some(name) = s.target.name_as_object() {
+                out.insert(normalize_table_name(name));
+            }
             match &s.source {
                 crate::ast::MergeSource::Table(tr) => {
                     out.insert(normalize_table_ref(tr));
@@ -48,8 +50,8 @@ pub(crate) fn collect_read_tables(stmt: &Statement) -> HashSet<String> {
 
 fn collect_tables_from_statement(stmt: &Statement, out: &mut HashSet<String>) {
     match stmt {
-        Statement::Select(s) => collect_tables_from_select(s, out),
-        Statement::SetOp(s) => {
+        Statement::Dml(DmlStatement::Select(s)) => collect_tables_from_select(s, out),
+        Statement::Dml(DmlStatement::SetOp(s)) => {
             collect_tables_from_statement(&s.left, out);
             collect_tables_from_statement(&s.right, out);
         }
@@ -75,41 +77,52 @@ fn collect_tables_from_select(select: &SelectStmt, out: &mut HashSet<String>) {
 pub(crate) fn collect_write_tables(stmt: &Statement) -> HashSet<String> {
     let mut out = HashSet::new();
     match stmt {
-        Statement::Insert(s) => {
+        Statement::Dml(DmlStatement::Insert(s)) => {
             out.insert(normalize_table_name(&s.table));
         }
-        Statement::Update(s) => {
+        Statement::Dml(DmlStatement::Update(s)) => {
             out.insert(normalize_table_name(&s.table));
         }
-        Statement::Delete(s) => {
+        Statement::Dml(DmlStatement::Delete(s)) => {
             out.insert(normalize_table_name(&s.table));
         }
-        Statement::CreateTable(s) => {
+        Statement::Ddl(DdlStatement::CreateTable(s)) => {
             out.insert(s.name.name.to_uppercase());
         }
-        Statement::DropTable(s) => {
+        Statement::Ddl(DdlStatement::DropTable(s)) => {
             out.insert(s.name.name.to_uppercase());
         }
-        Statement::AlterTable(s) => {
+        Statement::Ddl(DdlStatement::AlterTable(s)) => {
             out.insert(s.table.name.to_uppercase());
         }
-        Statement::TruncateTable(s) => {
+        Statement::Ddl(DdlStatement::TruncateTable(s)) => {
             out.insert(s.name.name.to_uppercase());
         }
-        Statement::CreateIndex(s) => {
+        Statement::Ddl(DdlStatement::CreateIndex(s)) => {
             out.insert(s.table.name.to_uppercase());
         }
-        Statement::DropIndex(s) => {
+        Statement::Ddl(DdlStatement::DropIndex(s)) => {
             out.insert(s.table.name.to_uppercase());
         }
-        Statement::CreateSchema(_) | Statement::DropSchema(_) => {
+        Statement::Ddl(DdlStatement::CreateSchema(_)) | Statement::Ddl(DdlStatement::DropSchema(_)) => {
             out.insert("__GLOBAL__".to_string());
         }
-        Statement::CreateProcedure(_) | Statement::DropProcedure(_) | Statement::CreateFunction(_) | Statement::DropFunction(_) | Statement::CreateTrigger(_) | Statement::DropTrigger(_) | Statement::CreateView(_) | Statement::DropView(_) => {
+        Statement::Ddl(DdlStatement::DropView(_))
+        | Statement::Ddl(DdlStatement::DropProcedure(_))
+        | Statement::Ddl(DdlStatement::DropFunction(_))
+        | Statement::Ddl(DdlStatement::DropTrigger(_))
+        | Statement::Ddl(DdlStatement::CreateType(_))
+        | Statement::Ddl(DdlStatement::DropType(_))
+        | Statement::Procedural(crate::ast::ProceduralStatement::CreateProcedure(_))
+        | Statement::Procedural(crate::ast::ProceduralStatement::CreateFunction(_))
+        | Statement::Procedural(crate::ast::ProceduralStatement::CreateView(_))
+        | Statement::Procedural(crate::ast::ProceduralStatement::CreateTrigger(_)) => {
             out.insert("__GLOBAL__".to_string());
         }
-        Statement::Merge(s) => {
-            out.insert(s.target.name.name().to_uppercase());
+        Statement::Dml(DmlStatement::Merge(s)) => {
+            if let Some(name) = s.target.name_as_object() {
+                out.insert(normalize_table_name(name));
+            }
         }
         _ => {}
     }
@@ -121,16 +134,16 @@ pub(crate) fn normalize_table_name(name: &ObjectName) -> String {
 }
 
 pub(crate) fn normalize_table_ref(table_ref: &TableRef) -> String {
-    table_ref.name.name().to_uppercase()
+    table_ref
+        .name_as_object()
+        .map(normalize_table_name)
+        .unwrap_or_else(|| "(DERIVED)".to_string())
 }
 
 pub(crate) fn is_transaction_statement(stmt: &Statement) -> bool {
     matches!(
         stmt,
-        Statement::BeginTransaction(_)
-            | Statement::CommitTransaction(_)
-            | Statement::RollbackTransaction(_)
-            | Statement::SaveTransaction(_)
-            | Statement::SetTransactionIsolationLevel(_)
+        Statement::Transaction(_)
+            | Statement::Session(crate::ast::SessionStatement::SetTransactionIsolationLevel(_))
     )
 }

@@ -256,6 +256,46 @@ impl Value {
             _ => None,
         }
     }
+
+    pub fn to_f64(&self) -> Option<f64> {
+        match self {
+            Value::Float(v) => Some(f64::from_bits(*v)),
+            Value::TinyInt(n) => Some(*n as f64),
+            Value::SmallInt(n) => Some(*n as f64),
+            Value::Int(n) => Some(*n as f64),
+            Value::BigInt(n) => Some(*n as f64),
+            Value::Decimal(raw, scale) => {
+                let divisor = 10f64.powi(*scale as i32);
+                Some(*raw as f64 / divisor)
+            }
+            Value::Money(raw) => Some(*raw as f64 / 10000.0),
+            Value::SmallMoney(raw) => Some(*raw as f64 / 10000.0),
+            Value::Bit(v) => Some(if *v { 1.0 } else { 0.0 }),
+            Value::VarChar(s) | Value::NVarChar(s) | Value::Char(s) | Value::NChar(s) => s.parse::<f64>().ok(),
+            Value::SqlVariant(v) => v.to_f64(),
+            _ => None,
+        }
+    }
+
+    pub fn to_decimal_parts(&self) -> (i128, u8) {
+        match self {
+            Value::Decimal(raw, scale) => (*raw, *scale),
+            Value::Bit(b) => (if *b { 1 } else { 0 }, 0),
+            Value::TinyInt(v) => (*v as i128, 0),
+            Value::SmallInt(v) => (*v as i128, 0),
+            Value::Int(v) => (*v as i128, 0),
+            Value::BigInt(v) => (*v as i128, 0),
+            Value::Float(v) => {
+                let f = f64::from_bits(*v);
+                let scale = 6u8;
+                ((f * 10f64.powi(scale as i32)) as i128, scale)
+            }
+            Value::Money(v) => (*v, 4),
+            Value::SmallMoney(v) => (*v as i128, 4),
+            Value::SqlVariant(v) => v.to_decimal_parts(),
+            _ => (0, 0),
+        }
+    }
 }
 
 pub fn format_decimal(raw: i128, scale: u8) -> String {

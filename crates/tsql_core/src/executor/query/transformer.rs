@@ -93,6 +93,7 @@ pub(crate) fn execute_pivot(
     let pivot_table_def = TableDef {
         id: 0,
         schema_id: 1,
+        schema_name: "dbo".to_string(),
         name: pivot.alias.clone(),
         columns: pivot_columns,
         check_constraints: vec![],
@@ -283,6 +284,7 @@ pub(crate) fn execute_unpivot(
     let unpivot_table_def = TableDef {
         id: 0,
         schema_id: 1,
+        schema_name: "dbo".to_string(),
         name: unpivot.alias.clone(),
         columns: output_columns,
         check_constraints: vec![],
@@ -355,6 +357,7 @@ pub(crate) fn execute_apply(
                 let null_table = TableDef {
                     id: 0,
                     schema_id: 1,
+                    schema_name: "dbo".to_string(),
                     name: apply.alias.clone(),
                     columns: sub_result
                         .columns
@@ -391,6 +394,7 @@ pub(crate) fn execute_apply(
             let apply_table = TableDef {
                 id: 0,
                 schema_id: 1,
+                schema_name: "dbo".to_string(),
                 name: apply.alias.clone(),
                 columns: sub_result
                     .columns

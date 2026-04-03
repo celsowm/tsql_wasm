@@ -1,4 +1,4 @@
-﻿use std::cmp::Ordering;
+use std::cmp::Ordering;
 
 use crate::ast::Expr;
 use crate::catalog::Catalog;
@@ -237,7 +237,7 @@ impl<'a> GroupExecutor<'a> {
             Some(&group.rows[0])
         };
 
-        ctx.current_group = Some(group.clone());
+        ctx.row.current_group = Some(group.clone());
         for item in projection {
             match &item.expr {
                 Expr::Wildcard => {
@@ -258,7 +258,7 @@ impl<'a> GroupExecutor<'a> {
                 }
             }
         }
-        ctx.current_group = None;
+        ctx.row.current_group = None;
         Ok(out)
     }
 }

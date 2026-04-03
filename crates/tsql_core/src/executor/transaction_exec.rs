@@ -1,6 +1,6 @@
 ﻿use std::collections::HashSet;
 
-use crate::ast::Statement;
+use crate::ast::{DdlStatement, DmlStatement, SessionStatement, Statement, TransactionStatement};
 use crate::catalog::Catalog;
 use crate::error::DbError;
 use crate::storage::Storage;
@@ -27,10 +27,10 @@ pub(crate) fn execute_transaction_statement<C, S>(
 ) -> Result<Option<super::result::QueryResult>, DbError>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     match stmt {
-        Statement::BeginTransaction(name) => {
+        Statement::Transaction(TransactionStatement::Begin(name)) => {
             if tx_manager.depth == 0 {
                 let (workspace_catalog, workspace_storage, commit_ts, table_versions) = {
                     let storage_guard = state.storage.read();
@@ -61,7 +61,7 @@ where
             }
             Ok(None)
         }
-        Statement::CommitTransaction(_) => {
+        Statement::Transaction(TransactionStatement::Commit(_)) => {
             if tx_manager.depth == 0 {
                 return Err(DbError::Execution(
                     "COMMIT without active transaction".into(),
@@ -132,7 +132,7 @@ where
             journal.record(JournalEvent::Commit);
             Ok(None)
         }
-        Statement::RollbackTransaction(savepoint) => {
+        Statement::Transaction(TransactionStatement::Rollback(savepoint)) => {
             {
                 let workspace = workspace_slot.as_mut().ok_or_else(|| {
                     DbError::Execution("ROLLBACK without active transaction".into())
@@ -173,7 +173,7 @@ where
             journal.record(JournalEvent::Rollback { savepoint });
             Ok(None)
         }
-        Statement::SaveTransaction(name) => {
+        Statement::Transaction(TransactionStatement::Save(name)) => {
             let workspace = workspace_slot.as_ref().ok_or_else(|| {
                 DbError::Execution("SAVE TRANSACTION without active transaction".into())
             })?;
@@ -182,7 +182,7 @@ where
             journal.record(JournalEvent::Savepoint { name });
             Ok(None)
         }
-        Statement::SetTransactionIsolationLevel(level) => {
+        Statement::Session(SessionStatement::SetTransactionIsolationLevel(level)) => {
             tx_manager.set_isolation_level(level)?;
             journal.record(JournalEvent::SetIsolationLevel {
                 isolation_level: level,
@@ -205,7 +205,7 @@ pub(crate) fn force_xact_abort<C, S>(
     session_options: &mut super::tooling::SessionOptions,
 ) where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     if tx_manager.active.is_none() {
         return;
@@ -261,23 +261,23 @@ pub(crate) fn register_write_intent<C, S>(
     stmt: &Statement,
 ) where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static,
+    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static,
 {
     if tx_manager.active.is_none() {
         return;
     }
 
     let (kind, table) = match stmt {
-        Statement::Insert(s) => (WriteIntentKind::Insert, Some(s.table.name.clone())),
-        Statement::Update(s) => (WriteIntentKind::Update, Some(s.table.name.clone())),
-        Statement::Delete(s) => (WriteIntentKind::Delete, Some(s.table.name.clone())),
-        Statement::CreateTable(s) => (WriteIntentKind::Ddl, Some(s.name.name.clone())),
-        Statement::DropTable(s) => (WriteIntentKind::Ddl, Some(s.name.name.clone())),
-        Statement::AlterTable(s) => (WriteIntentKind::Ddl, Some(s.table.name.clone())),
-        Statement::TruncateTable(s) => (WriteIntentKind::Ddl, Some(s.name.name.clone())),
-        Statement::CreateIndex(s) => (WriteIntentKind::Ddl, Some(s.table.name.clone())),
-        Statement::DropIndex(s) => (WriteIntentKind::Ddl, Some(s.table.name.clone())),
-        Statement::CreateSchema(_) | Statement::DropSchema(_) => (WriteIntentKind::Ddl, None),
+        Statement::Dml(DmlStatement::Insert(s)) => (WriteIntentKind::Insert, Some(s.table.name.clone())),
+        Statement::Dml(DmlStatement::Update(s)) => (WriteIntentKind::Update, Some(s.table.name.clone())),
+        Statement::Dml(DmlStatement::Delete(s)) => (WriteIntentKind::Delete, Some(s.table.name.clone())),
+        Statement::Ddl(DdlStatement::CreateTable(s)) => (WriteIntentKind::Ddl, Some(s.name.name.clone())),
+        Statement::Ddl(DdlStatement::DropTable(s)) => (WriteIntentKind::Ddl, Some(s.name.name.clone())),
+        Statement::Ddl(DdlStatement::AlterTable(s)) => (WriteIntentKind::Ddl, Some(s.table.name.clone())),
+        Statement::Ddl(DdlStatement::TruncateTable(s)) => (WriteIntentKind::Ddl, Some(s.name.name.clone())),
+        Statement::Ddl(DdlStatement::CreateIndex(s)) => (WriteIntentKind::Ddl, Some(s.table.name.clone())),
+        Statement::Ddl(DdlStatement::DropIndex(s)) => (WriteIntentKind::Ddl, Some(s.table.name.clone())),
+        Statement::Ddl(DdlStatement::CreateSchema(_)) | Statement::Ddl(DdlStatement::DropSchema(_)) => (WriteIntentKind::Ddl, None),
         _ => return,
     };
 

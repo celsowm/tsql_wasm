@@ -325,14 +325,14 @@ impl<'a> WindowExecutor<'a> {
                 window_map.insert(expr.clone(), values[idx].clone());
             }
 
-            ctx.window_context = Some(window_map);
+            ctx.row.window_context = Some(window_map);
             let mut projected_row = Vec::with_capacity(projection.len());
             for item in projection {
                 projected_row.push(eval_expr(&item.expr, row, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null));
             }
             final_projected_rows.push(projected_row);
         }
-        ctx.window_context = None;
+        ctx.row.window_context = None;
 
         let mut column_types = vec![crate::types::DataType::VarChar { max_len: 4000 }; projection.len()];
         for col_idx in 0..projection.len() {

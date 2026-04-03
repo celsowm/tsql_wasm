@@ -1,4 +1,4 @@
-﻿pub(crate) mod analyzer;
+pub(crate) mod analyzer;
 pub(crate) mod execution;
 pub(crate) mod dispatch;
 pub(crate) mod engine;
@@ -9,9 +9,11 @@ use crate::catalog::CatalogImpl;
 use crate::error::DbError;
 use crate::storage::InMemoryStorage;
 
-use super::locks::SessionId;
+use crate::executor::locks::SessionId;
 use super::result::QueryResult;
+use super::session::SharedState;
 use super::tooling::{CompatibilityReport, ExecutionTrace, ExplainPlan, SessionOptions};
+use std::sync::Arc;
 
 pub trait CheckpointManager {
     fn export_checkpoint(&self) -> Result<String, DbError>;
@@ -39,6 +41,13 @@ pub trait StatementExecutor {
         session_id: SessionId,
         sql: &str,
     ) -> Result<Vec<Option<QueryResult>>, DbError>;
+    fn set_session_metadata(
+        &self,
+        session_id: SessionId,
+        user: Option<String>,
+        app_name: Option<String>,
+        host_name: Option<String>,
+    ) -> Result<(), DbError>;
 }
 
 pub trait SqlAnalyzer {
@@ -56,6 +65,22 @@ pub trait SqlAnalyzer {
 
 pub trait RandomSeed {
     fn set_session_seed(&self, session_id: SessionId, seed: u64) -> Result<(), DbError>;
+}
+
+pub struct StatementExecutorService<C, S> {
+    pub(crate) state: Arc<SharedState<C, S>>,
+}
+
+pub struct CheckpointManagerService<C, S> {
+    pub(crate) state: Arc<SharedState<C, S>>,
+}
+
+pub struct SqlAnalyzerService<C, S> {
+    pub(crate) state: Arc<SharedState<C, S>>,
+}
+
+pub struct SessionManagerService<C, S> {
+    pub(crate) state: Arc<SharedState<C, S>>,
 }
 
 pub use persistence::DatabaseInner;

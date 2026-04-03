@@ -1,4 +1,4 @@
-﻿use std::cmp::Ordering;
+use std::cmp::Ordering;
 
 use crate::ast::{Expr, OrderByExpr, SelectItem, TopSpec};
 use crate::error::DbError;
@@ -98,18 +98,19 @@ pub fn compare_projected_rows(
     b: &[Value],
     columns: &[String],
     order_by: &[OrderByExpr],
-) -> Ordering {
+) -> Result<Ordering, DbError> {
     for item in order_by {
-        let idx = resolve_projected_order_index(columns, item).unwrap_or(0);
+        let idx = resolve_projected_order_index(columns, item)
+            .ok_or_else(|| DbError::Semantic(format!("invalid column in ORDER BY: {}", expr_label(&item.expr))))?;
         let ord = compare_values(
             a.get(idx).unwrap_or(&Value::Null),
             b.get(idx).unwrap_or(&Value::Null),
         );
         if ord != Ordering::Equal {
-            return if item.asc { ord } else { ord.reverse() };
+            return Ok(if item.asc { ord } else { ord.reverse() });
         }
     }
-    Ordering::Equal
+    Ok(Ordering::Equal)
 }
 
 pub fn resolve_projected_order_index(columns: &[String], item: &OrderByExpr) -> Option<usize> {
@@ -125,12 +126,11 @@ pub fn resolve_projected_order_index(columns: &[String], item: &OrderByExpr) -> 
 }
 
 pub fn deduplicate_projected_rows(rows: Vec<Vec<Value>>) -> Vec<Vec<Value>> {
-    let mut seen: Vec<String> = Vec::new();
+    use std::collections::HashSet;
+    let mut seen = HashSet::new();
     let mut result = Vec::new();
     for row in rows {
-        let key = row.iter().map(value_key).collect::<Vec<_>>().join("|");
-        if !seen.contains(&key) {
-            seen.push(key);
+        if seen.insert(row.clone()) {
             result.push(row);
         }
     }

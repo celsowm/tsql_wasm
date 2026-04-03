@@ -1,4 +1,4 @@
-﻿pub(crate) mod binder;
+pub(crate) mod binder;
 pub(crate) mod transformer;
 pub(crate) mod projection;
 
@@ -286,8 +286,20 @@ impl<'a> QueryExecutor<'a> {
         if !plan.order_by.is_empty() && !plan.order_satisfied_by_scan {
             let columns = &result.columns;
             let order_by_refs = &plan.order_by;
+
+            // Pre-validate order by columns to ensure they can be resolved
+            for item in order_by_refs {
+                if super::projection::resolve_projected_order_index(columns, item).is_none() {
+                    return Err(DbError::Semantic(format!(
+                        "invalid column in ORDER BY: {}",
+                        super::projection::expr_label(&item.expr)
+                    )));
+                }
+            }
+
             final_rows.sort_by(|a, b| {
                 super::projection::compare_projected_rows(a, b, columns, order_by_refs)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             });
         }
 

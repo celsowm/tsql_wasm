@@ -1,4 +1,4 @@
-﻿mod delete;
+mod delete;
 mod insert;
 pub(crate) mod output;
 mod update;
@@ -40,7 +40,7 @@ impl<'a> MutationExecutor<'a> {
         is_instead_of: bool,
         inserted_rows: &[crate::storage::StoredRow],
         deleted_rows: &[crate::storage::StoredRow],
-        ctx: &mut super::context::ExecutionContext,
+        ctx: &mut super::context::ExecutionContext<'_>,
     ) -> Result<(), crate::error::DbError> {
         let triggers: Vec<crate::catalog::TriggerDef> = self.catalog
             .find_triggers_for_table(table.schema_or_dbo(), &table.name)
@@ -50,16 +50,16 @@ impl<'a> MutationExecutor<'a> {
 
         for trigger in triggers {
             if trigger.events.contains(&event) && trigger.is_instead_of == is_instead_of {
-                if ctx.trigger_depth >= 16 {
+                if ctx.trigger_depth() >= 16 {
                     return Err(DbError::Execution("Maximum trigger nesting level (16) exceeded.".into()));
                 }
                 // Setup inserted/deleted pseudo-tables
                 let mut trigger_ctx = ctx.subquery();
-                trigger_ctx.trigger_depth += 1;
+                trigger_ctx.frame.trigger_depth += 1;
                 if is_instead_of {
                     trigger_ctx.skip_instead_of = true;
                 }
-                let scope_depth = trigger_ctx.scope_vars.len();
+                let scope_depth = trigger_ctx.frame.scope_vars.len();
                 trigger_ctx.enter_scope();
 
                 let dbo_schema_id = self.catalog.get_schema_id("dbo").unwrap_or(1);
@@ -71,18 +71,19 @@ impl<'a> MutationExecutor<'a> {
                     let ins_table = crate::catalog::TableDef {
                         id: table_id,
                         schema_id: dbo_schema_id,
+                        schema_name: "dbo".to_string(),
                         name: ins_name.clone(),
                         columns: table.columns.clone(),
                         check_constraints: vec![],
                         foreign_keys: vec![],
                     };
-                    self.catalog.get_tables_mut().push(ins_table);
+                    self.catalog.register_table(ins_table);
                     self.storage.ensure_table(table_id);
                     for row in inserted_rows {
                         self.storage.insert_row(table_id, row.clone())?;
                     }
-                    trigger_ctx.temp_table_map.insert("INSERTED".to_string(), ins_name.clone());
-                    trigger_ctx.temp_table_map.insert("INSERTED".to_uppercase(), ins_name.clone());
+                    trigger_ctx.session.temp_map.insert("INSERTED".to_string(), ins_name.clone());
+                    trigger_ctx.session.temp_map.insert("INSERTED".to_uppercase(), ins_name.clone());
                     ins_physical = Some((table_id, ins_name));
                 }
 
@@ -93,18 +94,19 @@ impl<'a> MutationExecutor<'a> {
                     let del_table = crate::catalog::TableDef {
                         id: table_id,
                         schema_id: dbo_schema_id,
+                        schema_name: "dbo".to_string(),
                         name: del_name.clone(),
                         columns: table.columns.clone(),
                         check_constraints: vec![],
                         foreign_keys: vec![],
                     };
-                    self.catalog.get_tables_mut().push(del_table);
+                    self.catalog.register_table(del_table);
                     self.storage.ensure_table(table_id);
                     for row in deleted_rows {
                         self.storage.insert_row(table_id, row.clone())?;
                     }
-                    trigger_ctx.temp_table_map.insert("DELETED".to_string(), del_name.clone());
-                    trigger_ctx.temp_table_map.insert("DELETED".to_uppercase(), del_name.clone());
+                    trigger_ctx.session.temp_map.insert("DELETED".to_string(), del_name.clone());
+                    trigger_ctx.session.temp_map.insert("DELETED".to_uppercase(), del_name.clone());
                     del_physical = Some((table_id, del_name));
                 }
 
@@ -120,18 +122,18 @@ impl<'a> MutationExecutor<'a> {
                     kind: ModuleKind::Trigger,
                 });
                 let res = script_executor.execute_batch(&trigger.body, &mut trigger_ctx);
-                while trigger_ctx.scope_vars.len() > scope_depth {
+                while trigger_ctx.frame.scope_vars.len() > scope_depth {
                     trigger_ctx.leave_scope();
                 }
                 trigger_ctx.pop_module();
 
                 // Cleanup
                 if let Some((id, _name)) = ins_physical {
-                    self.catalog.get_tables_mut().retain(|t| t.id != id);
+                    self.catalog.unregister_table_by_id(id);
                     let _ = self.storage.clear_table(id);
                 }
                 if let Some((id, _name)) = del_physical {
-                    self.catalog.get_tables_mut().retain(|t| t.id != id);
+                    self.catalog.unregister_table_by_id(id);
                     let _ = self.storage.clear_table(id);
                 }
 
@@ -145,31 +147,31 @@ impl<'a> MutationExecutor<'a> {
 
     pub(crate) fn push_dirty_insert(
         &self,
-        ctx: &mut super::context::ExecutionContext,
+        ctx: &mut super::context::ExecutionContext<'_>,
         table_name: &str,
         row: &crate::storage::StoredRow,
     ) {
         if let Some(db) = &ctx.dirty_buffer {
-            db.lock().push_op(
-                ctx.session_id,
-                table_name.to_string(),
-                super::dirty_buffer::DirtyOp::Insert { row: row.clone() },
-            );
-        }
+                    db.lock().push_op(
+                        ctx.session_id(),
+                        table_name.to_string(),
+                        super::dirty_buffer::DirtyOp::Insert { row: row.clone() },
+                    );
+                }
     }
 
     pub(crate) fn push_dirty_update(
         &self,
-        ctx: &mut super::context::ExecutionContext,
+        ctx: &mut super::context::ExecutionContext<'_>,
         table_name: &str,
         row_index: usize,
         new_row: &crate::storage::StoredRow,
     ) {
         if let Some(db) = &ctx.dirty_buffer {
-            db.lock().push_op(
-                ctx.session_id,
-                table_name.to_string(),
-                super::dirty_buffer::DirtyOp::Update {
+                    db.lock().push_op(
+                        ctx.session_id(),
+                        table_name.to_string(),
+                        super::dirty_buffer::DirtyOp::Update {
                     row_index,
                     new_row: new_row.clone(),
                 },
@@ -179,44 +181,44 @@ impl<'a> MutationExecutor<'a> {
 
     pub(crate) fn push_dirty_delete(
         &self,
-        ctx: &mut super::context::ExecutionContext,
+        ctx: &mut super::context::ExecutionContext<'_>,
         table_name: &str,
         row_index: usize,
     ) {
         if let Some(db) = &ctx.dirty_buffer {
-            db.lock().push_op(
-                ctx.session_id,
-                table_name.to_string(),
-                super::dirty_buffer::DirtyOp::Delete { row_index },
+                    db.lock().push_op(
+                        ctx.session_id(),
+                        table_name.to_string(),
+                        super::dirty_buffer::DirtyOp::Delete { row_index },
             );
         }
     }
 
     pub(crate) fn push_dirty_truncate(
         &self,
-        ctx: &mut super::context::ExecutionContext,
+        ctx: &mut super::context::ExecutionContext<'_>,
         table_name: &str,
     ) {
         if let Some(db) = &ctx.dirty_buffer {
-            db.lock().push_op(
-                ctx.session_id,
-                table_name.to_string(),
-                super::dirty_buffer::DirtyOp::Truncate,
+                    db.lock().push_op(
+                        ctx.session_id(),
+                        table_name.to_string(),
+                        super::dirty_buffer::DirtyOp::Truncate,
             );
         }
     }
 
     pub(crate) fn push_dirty_replace(
         &self,
-        ctx: &mut super::context::ExecutionContext,
+        ctx: &mut super::context::ExecutionContext<'_>,
         table_name: &str,
         rows: Vec<crate::storage::StoredRow>,
     ) {
         if let Some(db) = &ctx.dirty_buffer {
-            db.lock().push_op(
-                ctx.session_id,
-                table_name.to_string(),
-                super::dirty_buffer::DirtyOp::ReplaceTable { rows },
+                    db.lock().push_op(
+                        ctx.session_id(),
+                        table_name.to_string(),
+                        super::dirty_buffer::DirtyOp::ReplaceTable { rows },
             );
         }
     }
@@ -225,7 +227,7 @@ impl<'a> MutationExecutor<'a> {
         &mut self,
         target: &crate::ast::ObjectName,
         output_result: &crate::executor::result::QueryResult,
-        ctx: &mut super::context::ExecutionContext,
+        ctx: &mut super::context::ExecutionContext<'_>,
     ) -> Result<(), crate::error::DbError> {
         let mut target_name = target.name.clone();
         let mut target_schema = target.schema_or_dbo().to_string();

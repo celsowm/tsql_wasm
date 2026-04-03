@@ -101,13 +101,13 @@ fn lower_ddl<'a>(ddl: v2::DdlStatement<'a>) -> Result<old::Statement, DbError> {
         v2::DdlStatement::DropView(name) => Ok(old::Statement::Ddl(old::statements::DdlStatement::DropView(old::statements::ddl::DropViewStmt {
             name: lower_object_name(name),
         }))),
-        v2::DdlStatement::DropProcedure(name) => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::DropProcedure(old::statements::procedural::DropProcedureStmt {
+        v2::DdlStatement::DropProcedure(name) => Ok(old::Statement::Ddl(old::statements::DdlStatement::DropProcedure(old::statements::procedural::DropProcedureStmt {
             name: lower_object_name(name),
         }))),
-        v2::DdlStatement::DropFunction(name) => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::DropFunction(old::statements::procedural::DropFunctionStmt {
+        v2::DdlStatement::DropFunction(name) => Ok(old::Statement::Ddl(old::statements::DdlStatement::DropFunction(old::statements::procedural::DropFunctionStmt {
             name: lower_object_name(name),
         }))),
-        v2::DdlStatement::DropTrigger(name) => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::DropTrigger(old::statements::procedural::DropTriggerStmt {
+        v2::DdlStatement::DropTrigger(name) => Ok(old::Statement::Ddl(old::statements::DdlStatement::DropTrigger(old::statements::procedural::DropTriggerStmt {
             name: lower_object_name(name),
         }))),
         v2::DdlStatement::DropIndex { name, table } => {

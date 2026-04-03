@@ -176,6 +176,16 @@ impl TdsSession {
         };
         self.session_id = Some(session_id);
 
+        // Set session metadata
+        if let Err(e) = self.db.executor().set_session_metadata(
+            session_id,
+            Some(login.username.clone()),
+            Some(login.app_name.clone()),
+            Some(login.hostname.clone()),
+        ) {
+            log::error!("Failed to set session metadata: {}", e);
+        }
+
         // Build LOGINACK response
         let mut b = PacketBuilder::with_capacity(256);
         tokens::write_envchange_packet_size(&mut b, self.packet_size, self.packet_size);
@@ -316,7 +326,7 @@ impl TdsSession {
         }
 
         log::info!("Executing SQL:\n{}", sql);
-        match StatementExecutor::execute_session_batch_sql_multi(&self.db, session_id, sql) {
+        match self.db.executor().execute_session_batch_sql_multi(session_id, sql) {
             Ok(results) => {
                 let count = results.len();
                 let mut b = PacketBuilder::with_capacity(4096);

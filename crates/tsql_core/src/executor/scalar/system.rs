@@ -280,7 +280,7 @@ pub(crate) fn eval_db_name(
     if !args.is_empty() {
         // DB_NAME(database_id) - for now always return current db
     }
-    Ok(Value::NVarChar(ctx.session_database.clone().unwrap_or_else(|| "master".to_string())))
+    Ok(Value::NVarChar(ctx.metadata.database.clone().unwrap_or_else(|| "master".to_string())))
 }
 
 pub(crate) fn eval_db_id(
@@ -300,7 +300,7 @@ pub(crate) fn eval_suser_sname(
     if args.len() > 1 {
         return Err(DbError::Execution("SUSER_SNAME expects 0 or 1 arguments".into()));
     }
-    Ok(Value::NVarChar(ctx.session_user.clone().unwrap_or_else(|| "sa".to_string())))
+    Ok(Value::NVarChar(ctx.metadata.user.clone().unwrap_or_else(|| "sa".to_string())))
 }
 
 pub(crate) fn eval_suser_id(
@@ -340,7 +340,7 @@ pub(crate) fn eval_app_name(
     if !args.is_empty() {
         return Err(DbError::Execution("APP_NAME expects no arguments".into()));
     }
-    Ok(Value::NVarChar(ctx.session_app_name.clone().unwrap_or_else(|| "tsql_wasm".to_string())))
+    Ok(Value::NVarChar(ctx.metadata.app_name.clone().unwrap_or_else(|| "tsql_wasm".to_string())))
 }
 
 pub(crate) fn eval_host_name(
@@ -350,7 +350,7 @@ pub(crate) fn eval_host_name(
     if !args.is_empty() {
         return Err(DbError::Execution("HOST_NAME expects no arguments".into()));
     }
-    Ok(Value::NVarChar(ctx.session_host_name.clone().unwrap_or_else(|| "localhost".to_string())))
+    Ok(Value::NVarChar(ctx.metadata.host_name.clone().unwrap_or_else(|| "localhost".to_string())))
 }
 
 pub(crate) fn eval_system_user(
@@ -360,7 +360,7 @@ pub(crate) fn eval_system_user(
     if !args.is_empty() {
         return Err(DbError::Execution("SYSTEM_USER expects no arguments".into()));
     }
-    Ok(Value::NVarChar(ctx.session_user.clone().unwrap_or_else(|| "sa".to_string())))
+    Ok(Value::NVarChar(ctx.metadata.user.clone().unwrap_or_else(|| "sa".to_string())))
 }
 
 pub(crate) fn eval_original_login(
@@ -370,7 +370,7 @@ pub(crate) fn eval_original_login(
     if !args.is_empty() {
         return Err(DbError::Execution("ORIGINAL_LOGIN expects no arguments".into()));
     }
-    Ok(Value::NVarChar(ctx.session_user.clone().unwrap_or_else(|| "sa".to_string())))
+    Ok(Value::NVarChar(ctx.metadata.user.clone().unwrap_or_else(|| "sa".to_string())))
 }
 
 pub(crate) fn eval_session_user(

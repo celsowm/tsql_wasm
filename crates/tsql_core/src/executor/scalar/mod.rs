@@ -16,6 +16,7 @@ use super::aggregates::{dispatch_aggregate, is_aggregate_function};
 use super::clock::Clock;
 use super::context::{ExecutionContext, ModuleFrame, ModuleKind};
 use super::evaluator::eval_expr;
+use super::metadata::system_vars;
 use super::fuzzy;
 use super::json;
 use super::model::ContextTable;
@@ -25,13 +26,13 @@ pub(crate) fn eval_function(
     name: &str,
     args: &[Expr],
     row: &[ContextTable],
-    ctx: &mut ExecutionContext,
+    ctx: &mut ExecutionContext<'_>,
     catalog: &dyn Catalog,
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if is_aggregate_function(name) {
-        if let Some(group) = ctx.current_group.clone() {
+        if let Some(group) = ctx.current_group().clone() {
             if let Some(res) = dispatch_aggregate(name, args, &group, ctx, catalog, storage, clock)
             {
                 return res;
@@ -90,7 +91,7 @@ fn try_datetime_dispatch(
     name: &str,
     args: &[Expr],
     row: &[ContextTable],
-    ctx: &mut ExecutionContext,
+    ctx: &mut ExecutionContext<'_>,
     catalog: &dyn Catalog,
     storage: &dyn Storage,
     clock: &dyn Clock,
@@ -125,7 +126,7 @@ fn try_string_dispatch(
     name: &str,
     args: &[Expr],
     row: &[ContextTable],
-    ctx: &mut ExecutionContext,
+    ctx: &mut ExecutionContext<'_>,
     catalog: &dyn Catalog,
     storage: &dyn Storage,
     clock: &dyn Clock,
@@ -168,7 +169,7 @@ fn try_math_dispatch(
     name: &str,
     args: &[Expr],
     row: &[ContextTable],
-    ctx: &mut ExecutionContext,
+    ctx: &mut ExecutionContext<'_>,
     catalog: &dyn Catalog,
     storage: &dyn Storage,
     clock: &dyn Clock,
@@ -205,7 +206,7 @@ fn try_system_dispatch(
     name: &str,
     args: &[Expr],
     row: &[ContextTable],
-    ctx: &mut ExecutionContext,
+    ctx: &mut ExecutionContext<'_>,
     catalog: &dyn Catalog,
     storage: &dyn Storage,
     clock: &dyn Clock,
@@ -215,11 +216,11 @@ fn try_system_dispatch(
             if !args.is_empty() {
                 return Some(Err(DbError::Execution("NEWID expects no arguments".into())));
             }
-            let uuid = system::deterministic_uuid(&mut *ctx.random_state);
+            let uuid = system::deterministic_uuid(&mut *ctx.session.random_state);
             Some(Ok(Value::UniqueIdentifier(uuid)))
         }
         "RAND" => {
-            let val = system::deterministic_rand(&mut *ctx.random_state);
+            let val = system::deterministic_rand(&mut *ctx.session.random_state);
             Some(Ok(Value::Decimal((val * 1_000_000_000.0) as i128, 9)))
         }
         "OBJECT_ID" => Some(system::eval_object_id(args, row, ctx, catalog, storage, clock)),
@@ -255,7 +256,7 @@ fn try_system_dispatch(
             if !args.is_empty() {
                 return Some(Err(DbError::Execution("@@IDENTITY expects no arguments".into())));
             }
-            Some(Ok(match *ctx.session_last_identity {
+            Some(Ok(match *ctx.session.last_identity {
                 Some(v) => Value::BigInt(v),
                 None => Value::Null,
             }))
@@ -265,15 +266,15 @@ fn try_system_dispatch(
         "@@SERVERNAME" => Some(Ok(Value::NVarChar("localhost".into()))),
         "@@SERVICENAME" => Some(Ok(Value::NVarChar("MSSQLSERVER".into()))),
         "@@SPID" => Some(Ok(Value::SmallInt(1))),
-        "@@TRANCOUNT" => Some(Ok(Value::Int(ctx.trancount as i32))),
+        "@@TRANCOUNT" => Some(Ok(Value::Int(ctx.trancount() as i32))),
         "XACT_STATE" => {
             if !args.is_empty() {
                 return Some(Err(DbError::Execution("XACT_STATE expects no arguments".into())));
             }
-            Some(Ok(Value::Int(ctx.xact_state as i32)))
+            Some(Ok(Value::Int(ctx.xact_state() as i32)))
         }
         "@@ERROR" => Some(Ok(Value::Int(0))),
-        "@@FETCH_STATUS" => Some(Ok(Value::Int(*ctx.fetch_status))),
+        "@@FETCH_STATUS" => Some(Ok(Value::Int(*ctx.session.fetch_status))),
         "@@LANGUAGE" => Some(Ok(Value::NVarChar("us_english".into()))),
         "@@TEXTSIZE" => Some(Ok(Value::Int(2147483647))),
         "@@MAX_PRECISION" => Some(Ok(Value::TinyInt(38))),
@@ -300,6 +301,11 @@ fn try_system_dispatch(
         "CURRENT_USER" => Some(system::eval_current_user(args, ctx)),
         "SERVERPROPERTY" => Some(system::eval_serverproperty(args, row, ctx, catalog, storage, clock)),
         "CONNECTIONPROPERTY" => Some(system::eval_connectionproperty(args, row, ctx, catalog, storage, clock)),
+        _ if name.starts_with("@@") => match system_vars::resolve_system_variable(name, ctx) {
+            Ok(Some(val)) => Some(Ok(val)),
+            Ok(None) => None,
+            Err(err) => Some(Err(err)),
+        },
         _ => None,
     }
 }
@@ -308,7 +314,7 @@ fn try_json_dispatch(
     name: &str,
     args: &[Expr],
     row: &[ContextTable],
-    ctx: &mut ExecutionContext,
+    ctx: &mut ExecutionContext<'_>,
     catalog: &dyn Catalog,
     storage: &dyn Storage,
     clock: &dyn Clock,
@@ -328,7 +334,7 @@ fn try_regexp_dispatch(
     name: &str,
     args: &[Expr],
     row: &[ContextTable],
-    ctx: &mut ExecutionContext,
+    ctx: &mut ExecutionContext<'_>,
     catalog: &dyn Catalog,
     storage: &dyn Storage,
     clock: &dyn Clock,
@@ -347,7 +353,7 @@ fn try_fuzzy_dispatch(
     name: &str,
     args: &[Expr],
     row: &[ContextTable],
-    ctx: &mut ExecutionContext,
+    ctx: &mut ExecutionContext<'_>,
     catalog: &dyn Catalog,
     storage: &dyn Storage,
     clock: &dyn Clock,
@@ -361,11 +367,11 @@ fn try_fuzzy_dispatch(
     }
 }
 
-fn eval_user_scalar_function(
+fn eval_user_scalar_function<'a>(
     name: &str,
     args: &[Expr],
     row: &[ContextTable],
-    ctx: &mut ExecutionContext,
+    ctx: &mut ExecutionContext<'_>,
     catalog: &dyn Catalog,
     storage: &dyn Storage,
     clock: &dyn Clock,
@@ -399,7 +405,7 @@ fn eval_user_scalar_function(
         name: routine.name.clone(),
         kind: ModuleKind::Function,
     });
-    let scope_depth = ctx.scope_vars.len();
+    let scope_depth = ctx.frame.scope_vars.len();
     let out = (|| {
         ctx.enter_scope();
         for (param, arg_expr) in routine.params.iter().zip(args.iter()) {
@@ -412,7 +418,7 @@ fn eval_user_scalar_function(
             let val = eval_expr(arg_expr, row, ctx, catalog, storage, clock)?;
             let ty = super::type_mapping::data_type_spec_to_runtime(dt);
             let coerced = super::value_ops::coerce_value_to_type(val, &ty)?;
-            ctx.variables.insert(param.name.clone(), (ty, coerced));
+            ctx.session.variables.insert(param.name.clone(), (ty, coerced));
             ctx.register_declared_var(&param.name);
         }
         let out = match body {
@@ -430,7 +436,7 @@ fn eval_user_scalar_function(
         ctx.leave_scope();
         out
     })();
-    while ctx.scope_vars.len() > scope_depth {
+    while ctx.frame.scope_vars.len() > scope_depth {
         ctx.leave_scope();
     }
     ctx.pop_module();

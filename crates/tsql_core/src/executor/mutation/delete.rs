@@ -15,7 +15,7 @@ impl<'a> MutationExecutor<'a> {
     pub(crate) fn execute_delete_with_context(
         &mut self,
         mut stmt: DeleteStmt,
-        ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
         if let Some(mapped) = ctx.resolve_table_name(&stmt.table.name) {
             stmt.table.name = mapped;

@@ -1,4 +1,4 @@
-﻿use std::collections::HashMap;
+use std::collections::HashMap;
 use crate::catalog::Catalog;
 use crate::storage::{Storage, StoredRow};
 
@@ -107,7 +107,7 @@ where
 fn merge_catalog<C: Catalog + Clone>(target: &mut C, source: &C) {
     for table in source.get_tables() {
         if target.find_table(table.schema_or_dbo(), &table.name).is_none() {
-            target.get_tables_mut().push(table.clone());
+            target.register_table(table.clone());
         }
     }
     // Could also merge routines, triggers, etc. if needed

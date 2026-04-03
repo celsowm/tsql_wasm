@@ -31,6 +31,7 @@ pub(crate) fn bind_table(
         let table_def = TableDef {
             id: 0,
             schema_id: 1,
+            schema_name: "dbo".to_string(),
             name: alias.clone(),
             columns: result
                 .columns
@@ -211,6 +212,7 @@ fn bind_builtin_tvf(
     let table_def = TableDef {
         id: 0,
         schema_id: 1,
+        schema_name: "dbo".to_string(),
         name: "STRING_SPLIT".to_string(),
         columns,
         check_constraints: vec![],
@@ -252,6 +254,7 @@ fn bind_view(
     let table_def = TableDef {
         id: 0,
         schema_id: 1,
+        schema_name: schema.to_string(),
         name: name.clone(),
         columns: result
             .columns
@@ -345,7 +348,7 @@ fn bind_inline_tvf(
         name: routine_name.clone(),
         kind: ModuleKind::Function,
     });
-    let scope_depth = ctx.scope_vars.len();
+    let scope_depth = ctx.frame.scope_vars.len();
     let result = (|| {
         ctx.enter_scope();
         for (param, arg_raw) in params.iter().zip(arg_exprs.iter()) {
@@ -359,7 +362,7 @@ fn bind_inline_tvf(
             let val = eval_expr(&expr, &[], ctx, catalog, storage, clock)?;
             let ty = super::super::type_mapping::data_type_spec_to_runtime(dt);
             let coerced = super::super::value_ops::coerce_value_to_type(val, &ty)?;
-            ctx.variables.insert(param.name.clone(), (ty, coerced));
+            ctx.session.variables.insert(param.name.clone(), (ty, coerced));
             ctx.register_declared_var(&param.name);
         }
 
@@ -367,7 +370,7 @@ fn bind_inline_tvf(
         ctx.leave_scope();
         Ok(result)
     })();
-    while ctx.scope_vars.len() > scope_depth {
+    while ctx.frame.scope_vars.len() > scope_depth {
         ctx.leave_scope();
     }
     ctx.pop_module();
@@ -376,6 +379,7 @@ fn bind_inline_tvf(
     let table_def = TableDef {
         id: 0,
         schema_id: 1,
+        schema_name: "dbo".to_string(),
         name: fname.to_string(),
         columns: result
             .columns

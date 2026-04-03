@@ -8,7 +8,7 @@ impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_try_catch(
         &mut self,
         stmt: TryCatchStmt,
-        ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext<'_>,
     ) -> StmtResult<Option<QueryResult>> {
         match self.execute_batch(&stmt.try_body, ctx) {
             Ok(outcome) => {

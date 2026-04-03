@@ -1,4 +1,4 @@
-﻿use thiserror::Error;
+use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorClass {
@@ -36,13 +36,13 @@ impl DbError {
         }
     }
 
-    pub fn code(&self) -> &'static str {
+    pub fn number(&self) -> i32 {
         match self {
-            DbError::Parse(_) => "TSQL_PARSE_ERROR",
-            DbError::Semantic(_) => "TSQL_SEMANTIC_ERROR",
-            DbError::Execution(_) => "TSQL_EXECUTION_ERROR",
-            DbError::Storage(_) => "TSQL_STORAGE_ERROR",
-            DbError::Deadlock(_) => "TSQL_DEADLOCK_ERROR",
+            DbError::Parse(_) => 102,
+            DbError::Semantic(_) => 207, // Invalid column name
+            DbError::Execution(_) => 50000,
+            DbError::Storage(_) => 50001,
+            DbError::Deadlock(_) => 1205,
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿use crate::ast::{
+use crate::ast::{
     AlterTableAction, AlterTableStmt, CreateIndexStmt, CreateSchemaStmt, CreateTableStmt,
     CreateTypeStmt, DropIndexStmt, DropSchemaStmt, DropTableStmt, DropTypeStmt,
     TableConstraintSpec,
@@ -76,6 +76,7 @@ impl<'a> SchemaExecutor<'a> {
         let mut table = TableDef {
             id: table_id,
             schema_id,
+            schema_name: schema_name.clone(),
             name: stmt.name.name,
             columns,
             check_constraints: vec![],
@@ -169,7 +170,7 @@ impl<'a> SchemaExecutor<'a> {
         table.check_constraints = table_checks;
         table.foreign_keys = table_fks;
 
-        self.catalog.get_tables_mut().push(table);
+        self.catalog.register_table(table);
         self.storage.ensure_table(table_id);
         Ok(())
     }

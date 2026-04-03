@@ -10,7 +10,7 @@ impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_with_cte(
         &mut self,
         stmt: WithCteStmt,
-        ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
         let old_ctes = ctx.ctes.clone();
 
@@ -36,6 +36,7 @@ impl<'a> ScriptExecutor<'a> {
                         let table_def = TableDef {
                             id: 0,
                             schema_id: 1,
+                            schema_name: "dbo".to_string(),
                             name: cte_def.name.clone(),
                             columns: result.columns.iter().enumerate().map(|(i, name)| {
                                 crate::catalog::ColumnDef {
@@ -121,6 +122,7 @@ impl<'a> ScriptExecutor<'a> {
                 let table_def = TableDef {
                     id: 0,
                     schema_id: 1,
+                    schema_name: "dbo".to_string(),
                     name: cte_def.name.clone(),
                     columns: result
                         .columns

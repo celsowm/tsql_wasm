@@ -2,6 +2,9 @@ pub mod ddl;
 pub mod dml;
 pub mod procedural;
 pub mod query;
+pub mod visitor;
+
+pub use visitor::*;
 
 use crate::ast::data_types::DataTypeSpec;
 use crate::ast::expressions::Expr;

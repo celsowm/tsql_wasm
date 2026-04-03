@@ -1,4 +1,4 @@
-﻿use crate::ast::Expr;
+use crate::ast::Expr;
 use crate::catalog::Catalog;
 use crate::error::{DbError, StmtOutcome};
 use crate::storage::Storage;
@@ -55,26 +55,16 @@ pub(crate) fn eval_constant_expr(
     eval_expr(expr, &row, ctx, catalog, storage, clock)
 }
 
-pub(crate) fn eval_udf_body(
+pub(crate) fn eval_udf_body<'a>(
     stmts: &[crate::ast::Statement],
-    ctx: &mut ExecutionContext,
-    catalog: &dyn Catalog,
-    storage: &dyn Storage,
-    clock: &dyn Clock,
+    ctx: &mut ExecutionContext<'_>,
+    catalog: &'a dyn Catalog,
+    storage: &'a dyn Storage,
+    clock: &'a dyn Clock,
 ) -> Result<Value, DbError> {
-    let mut catalog_owned = if let Some(impl_ref) = catalog.as_any().downcast_ref::<crate::catalog::CatalogImpl>() {
-        Box::new(impl_ref.clone()) as Box<dyn Catalog>
-    } else {
-        return Err(DbError::Execution("UDF requires cloneable catalog".into()));
-    };
+    let mut catalog_owned = catalog.clone_boxed();
+    let mut storage_owned = storage.clone_boxed();
 
-    let mut storage_owned = if let Some(impl_ref) = storage.as_any().downcast_ref::<crate::storage::InMemoryStorage>() {
-        Box::new(impl_ref.clone()) as Box<dyn Storage>
-    } else if let Some(impl_ref) = storage.as_any().downcast_ref::<crate::storage::RedbStorage>() {
-        Box::new(impl_ref.clone()) as Box<dyn Storage>
-    } else {
-        return Err(DbError::Execution("UDF requires cloneable storage".into()));
-    };
 
     let mut executor = ScriptExecutor {
         catalog: catalog_owned.as_mut(),

@@ -1,5 +1,4 @@
-﻿use std::sync::Arc;
-use std::collections::HashSet;
+use std::sync::Arc;
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -9,9 +8,10 @@ use crate::error::DbError;
 use crate::storage::Storage;
 
 use super::super::durability::{DurabilitySink, RecoveryCheckpoint};
-use super::super::locks::SessionId;
-use super::super::session::{SessionRuntime, SharedState, SharedStorage};
-use super::CheckpointManager;
+use super::super::session::{SharedState, SharedStorage};
+
+mod checkpoint;
+mod session;
 
 #[derive(Clone)]
 pub struct DatabaseInner<C, S>
@@ -43,7 +43,7 @@ impl DatabaseInner<CatalogImpl, crate::storage::RedbStorage> {
 impl<C, S> DatabaseInner<C, S>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     pub fn new() -> Self {
         let mut catalog = C::default();
@@ -100,12 +100,29 @@ where
         let mut guard = self.inner.durability.lock();
         *guard = durability;
     }
+
+    pub fn executor(&self) -> super::StatementExecutorService<C, S> {
+        super::StatementExecutorService { state: self.inner.clone() }
+    }
+
+    pub fn checkpoint_manager(&self) -> super::CheckpointManagerService<C, S> {
+        super::CheckpointManagerService { state: self.inner.clone() }
+    }
+
+    pub fn analyzer(&self) -> super::SqlAnalyzerService<C, S> {
+        super::SqlAnalyzerService { state: self.inner.clone() }
+    }
+
+    pub fn session_manager(&self) -> super::SessionManagerService<C, S> {
+        super::SessionManagerService { state: self.inner.clone() }
+    }
 }
+
 
 impl<C, S> SharedState<C, S>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     pub fn from_checkpoint(
         checkpoint: RecoveryCheckpoint<C>,
@@ -170,88 +187,5 @@ where
             commit_ts: storage.commit_ts,
             table_versions: storage.table_versions.clone(),
         }
-    }
-}
-
-impl<C, S> CheckpointManager for DatabaseInner<C, S>
-where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
-{
-    fn export_checkpoint(&self) -> Result<String, DbError> {
-        self.inner.to_checkpoint().to_json()
-    }
-
-    fn import_checkpoint(&self, payload: &str) -> Result<(), DbError> {
-        let checkpoint = RecoveryCheckpoint::<C>::from_json(payload)?;
-        self.inner.apply_checkpoint(checkpoint);
-        Ok(())
-    }
-}
-
-impl<C, S> super::super::session::SessionManager for DatabaseInner<C, S>
-where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
-{
-    fn create_session(&self) -> SessionId {
-        let id = self.inner.next_session_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        self.inner.sessions.insert(id, parking_lot::Mutex::new(SessionRuntime::new()));
-        id
-    }
-
-    fn reset_session(&self, session_id: SessionId) -> Result<(), DbError> {
-        let session_mutex = self.inner.sessions.get(&session_id)
-            .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
-        let mut session = session_mutex.lock();
-        let mut physical_tables = HashSet::new();
-        for table in session.tables.temp_map.values() {
-            physical_tables.insert(table.clone());
-        }
-        for table in session.tables.var_map.values() {
-            physical_tables.insert(table.clone());
-        }
-        session.reset();
-        drop(session);
-
-        self.inner.table_locks.lock().release_all_for_session(session_id);
-
-        if !physical_tables.is_empty() {
-            let mut storage = self.inner.storage.write();
-            for table_name in physical_tables {
-                if let Some(table) = storage.catalog.find_table("dbo", &table_name).cloned() {
-                    let _ = storage.catalog.drop_table("dbo", &table_name);
-                    storage.storage.remove_table(table.id);
-                    storage
-                        .table_versions
-                        .remove(&format!("DBO.{}", table_name.to_uppercase()));
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn close_session(&self, session_id: SessionId) -> Result<(), DbError> {
-        self.inner.table_locks.lock().release_all_for_session(session_id);
-        let removed = self.inner.sessions.remove(&session_id);
-        if removed.is_none() {
-            return Err(DbError::Execution(format!(
-                "session {} not found",
-                session_id
-            )));
-        }
-        Ok(())
-    }
-
-    fn set_session_journal(
-        &self,
-        session_id: SessionId,
-        journal: Box<dyn super::super::journal::Journal>,
-    ) -> Result<(), DbError> {
-        let session_mutex = self.inner.sessions.get(&session_id)
-            .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
-        let mut session = session_mutex.lock();
-        session.journal = journal;
-        Ok(())
     }
 }

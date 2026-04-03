@@ -1,10 +1,11 @@
-﻿mod sys;
+mod sys;
 mod info_schema_tables;
 mod info_schema_columns;
 mod info_schema_routines;
 mod info_schema_constraints;
 mod info_schema_empty;
 mod info_schema_dispatch;
+pub(crate) mod system_vars;
 
 use crate::catalog::{Catalog, ColumnDef, TableDef};
 use crate::storage::StoredRow;
@@ -30,14 +31,13 @@ pub(crate) fn resolve_virtual_table(
     vt.map(|v| (v.definition(), v.rows(catalog)))
 }
 
-// ── Shared helpers ───────────────────────────────────────────────────
-
 pub(crate) const DB_CATALOG: &str = "tsql_wasm";
 
 pub(super) fn virtual_table_def(name: &str, cols: Vec<(&str, DataType, bool)>) -> TableDef {
     TableDef {
         id: 0,
         schema_id: 0,
+        schema_name: "dbo".to_string(),
         name: name.to_string(),
         columns: cols
             .into_iter()
@@ -153,7 +153,9 @@ pub(super) fn type_max_length(dt: &DataType) -> i16 {
 pub(super) fn char_max_length(dt: &DataType) -> Value {
     match dt {
         DataType::Char { len } | DataType::NChar { len } => Value::Int(*len as i32),
-        DataType::VarChar { max_len } | DataType::NVarChar { max_len } => Value::Int(*max_len as i32),
+        DataType::VarChar { max_len } | DataType::NVarChar { max_len } => {
+            Value::Int(*max_len as i32)
+        }
         DataType::Binary { len } => Value::Int(*len as i32),
         DataType::VarBinary { max_len } => Value::Int(*max_len as i32),
         DataType::Xml => Value::Int(-1),
@@ -164,7 +166,9 @@ pub(super) fn char_max_length(dt: &DataType) -> Value {
 pub(super) fn char_octet_length(dt: &DataType) -> Value {
     match dt {
         DataType::Char { len } | DataType::VarChar { max_len: len } => Value::Int(*len as i32),
-        DataType::NChar { len } | DataType::NVarChar { max_len: len } => Value::Int(*len as i32 * 2),
+        DataType::NChar { len } | DataType::NVarChar { max_len: len } => {
+            Value::Int(*len as i32 * 2)
+        }
         DataType::Binary { len } => Value::Int(*len as i32),
         DataType::VarBinary { max_len } => Value::Int(*max_len as i32),
         DataType::Xml => Value::Int(-1),
@@ -190,10 +194,14 @@ pub(super) fn numeric_precision(dt: &DataType) -> Value {
 pub(super) fn numeric_precision_radix(dt: &DataType) -> Value {
     match dt {
         DataType::Float => Value::SmallInt(2),
-        DataType::Bit | DataType::TinyInt | DataType::SmallInt | DataType::Int
-        | DataType::BigInt | DataType::Decimal { .. } | DataType::Money | DataType::SmallMoney => {
-            Value::SmallInt(10)
-        }
+        DataType::Bit
+        | DataType::TinyInt
+        | DataType::SmallInt
+        | DataType::Int
+        | DataType::BigInt
+        | DataType::Decimal { .. }
+        | DataType::Money
+        | DataType::SmallMoney => Value::SmallInt(10),
         _ => Value::Null,
     }
 }
@@ -221,17 +229,22 @@ pub(super) fn datetime_precision_val(dt: &DataType) -> Value {
 
 pub(super) fn charset_name(dt: &DataType) -> Value {
     match dt {
-        DataType::Char { .. } | DataType::VarChar { .. } => Value::VarChar("iso_1".to_string()),
-        DataType::NChar { .. } | DataType::NVarChar { .. } => Value::VarChar("UNICODE".to_string()),
+        DataType::Char { .. } | DataType::VarChar { .. } => {
+            Value::VarChar("iso_1".to_string())
+        }
+        DataType::NChar { .. } | DataType::NVarChar { .. } => {
+            Value::VarChar("UNICODE".to_string())
+        }
         _ => Value::Null,
     }
 }
 
 pub(super) fn collation_name_val(dt: &DataType) -> Value {
     match dt {
-        DataType::Char { .. } | DataType::VarChar { .. } | DataType::NChar { .. } | DataType::NVarChar { .. } => {
-            Value::VarChar("SQL_Latin1_General_CP1_CI_AS".to_string())
-        }
+        DataType::Char { .. }
+        | DataType::VarChar { .. }
+        | DataType::NChar { .. }
+        | DataType::NVarChar { .. } => Value::VarChar("SQL_Latin1_General_CP1_CI_AS".to_string()),
         _ => Value::Null,
     }
 }

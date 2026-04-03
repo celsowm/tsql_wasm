@@ -1,4 +1,4 @@
-﻿use crate::ast::MergeStmt;
+use crate::ast::MergeStmt;
 use crate::error::DbError;
 use crate::types::Value;
 
@@ -12,18 +12,21 @@ impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_merge(
         &mut self,
         stmt: MergeStmt,
-        ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
-        if ctx.is_readonly_table_var(stmt.target.name.name()) {
+        let target_object = stmt.target.name_as_object().ok_or_else(|| {
+            DbError::Execution("MERGE target must be a named table".into())
+        })?;
+        if ctx.is_readonly_table_var(target_object.name.as_str()) {
             return Err(DbError::Execution(format!(
                 "table-valued parameter '{}' is READONLY",
-                stmt.target.name.name()
+                target_object.name
             )));
         }
         let target_name = ctx
-            .resolve_table_name(stmt.target.name.name())
-            .unwrap_or_else(|| stmt.target.name.name().to_string());
-        let target_schema = stmt.target.name.schema_or_dbo();
+            .resolve_table_name(target_object.name.as_str())
+            .unwrap_or_else(|| target_object.name.clone());
+        let target_schema = target_object.schema_or_dbo();
         let target_table = self
             .catalog
             .find_table(target_schema, &target_name)
@@ -39,9 +42,23 @@ impl<'a> ScriptExecutor<'a> {
         let source_rows = match &stmt.source {
             crate::ast::MergeSource::Table(source_ref) => {
                 let resolved = ctx
-                    .resolve_table_name(source_ref.name.name())
-                    .unwrap_or_else(|| source_ref.name.name().to_string());
-                let source_schema = source_ref.name.schema_or_dbo();
+                    .resolve_table_name(
+                        source_ref
+                            .name_as_object()
+                            .ok_or_else(|| DbError::Execution("MERGE source must be a named table".into()))?
+                            .name
+                            .as_str(),
+                    )
+                    .unwrap_or_else(|| {
+                        source_ref
+                            .name_as_object()
+                            .map(|o| o.name.clone())
+                            .unwrap_or_else(|| "source".to_string())
+                    });
+                let source_name = source_ref.name_as_object().ok_or_else(|| {
+                    DbError::Execution("MERGE source must be a named table".into())
+                })?;
+                let source_schema = source_name.schema_or_dbo();
                 let source_table = self
                     .catalog
                     .find_table(source_schema, &resolved)
@@ -108,7 +125,10 @@ impl<'a> ScriptExecutor<'a> {
                 // Add source row context
                 let source_alias = match &stmt.source {
                     crate::ast::MergeSource::Table(ref t) => {
-                        t.alias.clone().unwrap_or_else(|| t.name.name().to_string())
+                        let name = t.name_as_object().ok_or_else(|| {
+                            DbError::Execution("MERGE source must be a named table".into())
+                        })?;
+                        t.alias.clone().unwrap_or_else(|| name.name.clone())
                     }
                     crate::ast::MergeSource::Subquery(_, ref alias) => {
                         alias.clone().unwrap_or_else(|| "source".to_string())
@@ -119,6 +139,7 @@ impl<'a> ScriptExecutor<'a> {
                 let source_table_def = crate::catalog::TableDef {
                     id: 0,
                     schema_id: 0,
+                    schema_name: "sys".to_string(), // Placeholder for synthetic table
                     name: source_alias.clone(),
                     columns: target_table
                         .columns
@@ -380,8 +401,8 @@ impl<'a> ScriptExecutor<'a> {
         // Ensure all matched rows are updated in storage before NOT MATCHED
         self.storage.clear_table(target_table.id)?;
         if let Some(db) = &ctx.dirty_buffer {
-            db.lock().push_op(
-                ctx.session_id,
+                db.lock().push_op(
+                ctx.session_id(),
                 target_table.name.clone(),
                 crate::executor::dirty_buffer::DirtyOp::Truncate,
             );
@@ -396,7 +417,10 @@ impl<'a> ScriptExecutor<'a> {
         // Process WHEN NOT MATCHED (source rows not matched to target)
         let source_alias = match &stmt.source {
             crate::ast::MergeSource::Table(ref t) => {
-                t.alias.clone().unwrap_or_else(|| t.name.name().to_string())
+                let name = t.name_as_object().ok_or_else(|| {
+                    DbError::Execution("MERGE source must be a named table".into())
+                })?;
+                t.alias.clone().unwrap_or_else(|| name.name.clone())
             }
             crate::ast::MergeSource::Subquery(_, ref alias) => {
                 alias.clone().unwrap_or_else(|| "source".to_string())
@@ -406,6 +430,7 @@ impl<'a> ScriptExecutor<'a> {
         let source_table_def = crate::catalog::TableDef {
             id: 0,
             schema_id: 0,
+            schema_name: "sys".to_string(), // Placeholder for synthetic table
             name: source_alias.clone(),
             columns: target_table
                 .columns

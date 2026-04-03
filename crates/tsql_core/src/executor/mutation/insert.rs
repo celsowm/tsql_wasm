@@ -20,7 +20,7 @@ impl<'a> MutationExecutor<'a> {
     pub(crate) fn execute_insert_with_context(
         &mut self,
         mut stmt: InsertStmt,
-        ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
         if let Some(mapped) = ctx.resolve_table_name(&stmt.table.name) {
             stmt.table.name = mapped;
@@ -255,7 +255,7 @@ impl<'a> MutationExecutor<'a> {
         table: &TableDef,
         insert_columns: &[String],
         row_values: Vec<Value>,
-        ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext<'_>,
     ) -> Result<StoredRow, DbError> {
         let mut final_values = vec![crate::types::Value::Null; table.columns.len()];
         for (input_col, val) in insert_columns.iter().zip(row_values.iter()) {
@@ -290,7 +290,7 @@ impl<'a> MutationExecutor<'a> {
         table: &TableDef,
         insert_columns: &[String],
         values: Vec<crate::ast::Expr>,
-        ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext<'_>,
     ) -> Result<StoredRow, DbError> {
         if insert_columns.len() != values.len() {
             return Err(DbError::Execution(
@@ -338,7 +338,7 @@ impl<'a> MutationExecutor<'a> {
         &mut self,
         table: &TableDef,
         final_values: &mut [Value],
-        ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext<'_>,
     ) -> Result<(), DbError> {
         for (idx, col) in table.columns.iter().enumerate() {
             if col.computed_expr.is_some() {

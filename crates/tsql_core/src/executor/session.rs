@@ -125,6 +125,9 @@ pub struct SessionRuntime<C, S> {
     pub(crate) options: SessionOptions,
     pub(crate) random_state: u64,
     pub(crate) original_database: String,
+    pub(crate) user: Option<String>,
+    pub(crate) app_name: Option<String>,
+    pub(crate) host_name: Option<String>,
 }
 
 impl<C, S> SessionRuntime<C, S>
@@ -146,6 +149,9 @@ where
             options: SessionOptions::default(),
             random_state: 1,
             original_database: "master".to_string(),
+            user: None,
+            app_name: None,
+            host_name: None,
         }
     }
 
@@ -159,6 +165,9 @@ where
         self.workspace = None;
         self.options = SessionOptions::default();
         self.random_state = 1;
+        self.user = None;
+        self.app_name = None;
+        self.host_name = None;
     }
 }
 

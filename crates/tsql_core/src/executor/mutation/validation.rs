@@ -340,12 +340,12 @@ pub(crate) fn enforce_unique_on_update(
     Ok(())
 }
 
-pub(crate) fn apply_assignments(
+pub(crate) fn apply_assignments<'a>(
     table: &TableDef,
     row: &mut StoredRow,
     assignments: &[Assignment],
     joined: &super::super::model::JoinedRow,
-    ctx: &mut ExecutionContext,
+    ctx: &mut ExecutionContext<'_>,
     catalog: &mut dyn Catalog,
     storage: &mut dyn Storage,
     clock: &dyn Clock,
@@ -405,10 +405,10 @@ pub(crate) fn validate_row_against_table(
     Ok(())
 }
 
-pub(crate) fn enforce_checks_on_row(
+pub(crate) fn enforce_checks_on_row<'a>(
     table: &TableDef,
     row: &StoredRow,
-    ctx: &mut ExecutionContext,
+    ctx: &mut ExecutionContext<'_>,
     catalog: &mut dyn Catalog,
     storage: &mut dyn Storage,
     clock: &dyn Clock,

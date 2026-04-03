@@ -1,7 +1,7 @@
 ﻿use crate::catalog::Catalog;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
-use crate::executor::tooling::format_expr;
+use crate::executor::tooling::formatting::format_expr;
 use super::super::VirtualTable;
 use super::super::virtual_table_def;
 

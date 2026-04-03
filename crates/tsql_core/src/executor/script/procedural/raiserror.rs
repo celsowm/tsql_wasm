@@ -8,7 +8,7 @@ impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_raiserror(
         &mut self,
         stmt: RaiserrorStmt,
-        ctx: &mut ExecutionContext,
+        ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<crate::executor::result::QueryResult>, DbError> {
         let msg_val = eval_expr(
             &stmt.message,
@@ -49,7 +49,7 @@ impl<'a> ScriptExecutor<'a> {
             Err(DbError::Execution(msg))
         } else {
             // Low severity just prints
-            ctx.print_output.push(msg);
+            ctx.session.print_output.push(msg);
             Ok(None)
         }
     }

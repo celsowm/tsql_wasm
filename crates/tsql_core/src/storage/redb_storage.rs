@@ -1,4 +1,4 @@
-﻿use std::path::Path;
+use std::path::Path;
 use std::sync::Arc;
 
 use crate::error::DbError;
@@ -229,6 +229,12 @@ impl Storage for RedbStorage {
     fn ensure_table(&mut self, _table_id: u32) {
     }
 
+    fn clone_boxed(&self) -> Box<dyn Storage> {
+        Box::new(self.clone())
+    }
+}
+
+impl crate::storage::CheckpointableStorage for RedbStorage {
     fn get_checkpoint_data(&self) -> StorageCheckpointData {
         StorageCheckpointData::Persistent
     }
@@ -237,11 +243,7 @@ impl Storage for RedbStorage {
         Ok(())
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
+    fn clone_checkpointable(&self) -> Box<dyn crate::storage::CheckpointableStorage> {
+        Box::new(self.clone())
     }
 }

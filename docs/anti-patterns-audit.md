@@ -1,5 +1,9 @@
 # Anti-Pattern Audit: `tsql_core`
 
+## Current Status
+
+P0 items 1-9 have been addressed in the current tree. The cleanup/session-reset schema bug behind item 8 is fixed; remaining `dbo` references elsewhere are default-schema conventions, not the same wrong-schema drop path. The P1/P2/SOLID sections below are still valid design debt and are kept for follow-up work.
+
 ## 🔴 P0 — Correctness / Wrong-Result Bugs
 
 | # | Issue | File | Description |
