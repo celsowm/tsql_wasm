@@ -78,6 +78,11 @@ pub enum TableRef<'a> {
         spec: UnpivotSpec<'a>,
         alias: Cow<'a, str>,
     },
+    TableValuedFunction {
+        name: Vec<Cow<'a, str>>,
+        args: Vec<Expr<'a>>,
+        alias: Option<Cow<'a, str>>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

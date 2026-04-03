@@ -523,7 +523,7 @@ where P: FnMut(&mut &'a [Token<'a>]) -> ModalResult<R>
 
 pub fn is_stop_keyword(k: &str) -> bool {
     let upper = k.to_uppercase();
-    matches!(upper.as_str(), "WHERE" | "GROUP" | "ORDER" | "HAVING" | "ELSE" | "END" | "IF" | "DECLARE" | "SET" | "EXEC" | "EXECUTE" | "PRINT" | "SELECT" | "INSERT" | "UPDATE" | "DELETE" | "GO" | "FROM" | "JOIN" | "ON" | "UNION" | "INTERSECT" | "EXCEPT" | "CROSS" | "APPLY" | "OUTER" | "INNER" | "LEFT" | "RIGHT" | "FULL" | "PIVOT" | "UNPIVOT")
+    matches!(upper.as_str(), "WHERE" | "GROUP" | "ORDER" | "HAVING" | "ELSE" | "END" | "IF" | "DECLARE" | "SET" | "EXEC" | "EXECUTE" | "PRINT" | "SELECT" | "INSERT" | "UPDATE" | "DELETE" | "GO" | "FROM" | "JOIN" | "ON" | "UNION" | "INTERSECT" | "EXCEPT" | "CROSS" | "APPLY" | "OUTER" | "INNER" | "LEFT" | "RIGHT" | "FULL" | "PIVOT" | "UNPIVOT" | "OUTPUT" | "WITH" | "BY" | "ASC" | "DESC" | "INFORMATION" | "INFORMATION_SCHEMA" | "TABLES" | "VIEWS" | "COLUMNS" | "ROUTINES" | "PARAMETERS" | "SCHEMATA" | "TABLE_CONSTRAINTS" | "CHECK_CONSTRAINTS" | "REFERENTIAL_CONSTRAINTS" | "KEY_COLUMN_USAGE" | "CONSTRAINT_TABLE_USAGE" | "CONSTRAINT_COLUMN_USAGE")
 }
 
 pub fn parse_data_type<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<DataType<'a>> {
@@ -578,6 +578,10 @@ pub fn parse_data_type<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<DataType<
                     Ok(DataType::NVarChar(size))
                 }
                 "SYSNAME" => Ok(DataType::NVarChar(Some(128))),
+                "DATE" => Ok(DataType::Date),
+                "DATETIME" => Ok(DataType::DateTime),
+                "DATETIME2" => Ok(DataType::DateTime2),
+                "TIME" => Ok(DataType::Time),
                 _ => Ok(DataType::Custom(id.clone())),
             }
         }

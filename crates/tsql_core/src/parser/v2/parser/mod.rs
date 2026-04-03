@@ -8,7 +8,7 @@ use winnow::error::{ErrMode, ContextError};
 use std::borrow::Cow;
 
 pub use crate::parser::v2::parser::expressions::{parse_expr, parse_data_type, parse_comma_list, is_stop_keyword, expect_keyword, expect_punctuation};
-pub use crate::parser::v2::parser::statements::query::{parse_select, parse_table_ref, parse_multipart_name as multipart_name};
+pub use crate::parser::v2::parser::statements::query::{parse_select, parse_select_body, parse_table_ref, parse_multipart_name as multipart_name};
 pub use crate::parser::v2::parser::statements::other::{parse_declare, parse_set, parse_if, parse_begin_end, parse_exec, parse_exec_dispatch, parse_try_catch};
 pub use crate::parser::v2::parser::statements::dml::{parse_insert, parse_update, parse_delete, parse_merge, parse_output_clause};
 pub use crate::parser::v2::parser::statements::ddl::{parse_create, parse_column_def, parse_table_body, parse_create_index, parse_create_type, parse_create_schema};
@@ -132,6 +132,143 @@ pub fn parse_statement<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<Statement
                     expect_keyword(input, "TABLE")?;
                     let table = multipart_name(input)?;
                     Ok(Statement::TruncateTable(table))
+                }
+                "ALTER" => {
+                    let _ = next_token(input);
+                    if matches!(peek_token(input), Some(Token::Keyword(kw)) if kw.eq_ignore_ascii_case("TABLE")) {
+                        let _ = next_token(input);
+                        let table = multipart_name(input)?;
+                        if matches!(peek_token(input), Some(Token::Keyword(kw)) if kw.eq_ignore_ascii_case("ADD")) {
+                            let _ = next_token(input);
+                            // Check for ADD CONSTRAINT
+                            if matches!(peek_token(input), Some(Token::Keyword(kw)) if kw.eq_ignore_ascii_case("CONSTRAINT")) {
+                                let _ = next_token(input);
+                                let constraint_name = match next_token(input) {
+                                    Some(Token::Identifier(id)) | Some(Token::Keyword(id)) => id.clone(),
+                                    _ => return Err(ErrMode::Backtrack(ContextError::new())),
+                                };
+                                // Parse constraint type
+                                let constraint = if matches!(peek_token(input), Some(Token::Keyword(kw)) if kw.eq_ignore_ascii_case("PRIMARY")) {
+                                    let _ = next_token(input);
+                                    expect_keyword(input, "KEY")?;
+                                    expect_punctuation(input, Token::LParen)?;
+                                    let columns = parse_comma_list(input, |i| {
+                                        match next_token(i) {
+                                            Some(Token::Identifier(id)) | Some(Token::Keyword(id)) => Ok(id.clone()),
+                                            _ => Err(ErrMode::Backtrack(ContextError::new())),
+                                        }
+                                    })?;
+                                    expect_punctuation(input, Token::RParen)?;
+                                    TableConstraint::PrimaryKey {
+                                        name: Some(constraint_name),
+                                        columns,
+                                    }
+                                } else if matches!(peek_token(input), Some(Token::Keyword(kw)) if kw.eq_ignore_ascii_case("FOREIGN")) {
+                                    let _ = next_token(input);
+                                    expect_keyword(input, "KEY")?;
+                                    expect_punctuation(input, Token::LParen)?;
+                                    let columns = parse_comma_list(input, |i| {
+                                        match next_token(i) {
+                                            Some(Token::Identifier(id)) | Some(Token::Keyword(id)) => Ok(id.clone()),
+                                            _ => Err(ErrMode::Backtrack(ContextError::new())),
+                                        }
+                                    })?;
+                                    expect_punctuation(input, Token::RParen)?;
+                                    expect_keyword(input, "REFERENCES")?;
+                                    let ref_table = multipart_name(input)?;
+                                    let mut ref_columns = Vec::new();
+                                    if matches!(peek_token(input), Some(Token::LParen)) {
+                                        let _ = next_token(input);
+                                        ref_columns = parse_comma_list(input, |i| {
+                                            match next_token(i) {
+                                                Some(Token::Identifier(id)) | Some(Token::Keyword(id)) => Ok(id.clone()),
+                                                _ => Err(ErrMode::Backtrack(ContextError::new())),
+                                            }
+                                        })?;
+                                        expect_punctuation(input, Token::RParen)?;
+                                    }
+                                    // Parse ON DELETE/UPDATE actions
+                                    let mut on_delete = None;
+                                    let mut on_update = None;
+                                    while let Some(Token::Keyword(kw)) = peek_token(input) {
+                                        if kw.eq_ignore_ascii_case("ON") {
+                                            let _ = next_token(input);
+                                            if matches!(peek_token(input), Some(Token::Keyword(k)) if k.eq_ignore_ascii_case("DELETE")) {
+                                                let _ = next_token(input);
+                                                on_delete = Some(parse_referential_action_v2(input)?);
+                                            } else if matches!(peek_token(input), Some(Token::Keyword(k)) if k.eq_ignore_ascii_case("UPDATE")) {
+                                                let _ = next_token(input);
+                                                on_update = Some(parse_referential_action_v2(input)?);
+                                            }
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                    TableConstraint::ForeignKey {
+                                        name: Some(constraint_name),
+                                        columns,
+                                        ref_table,
+                                        ref_columns,
+                                        on_delete,
+                                        on_update,
+                                    }
+                                } else if matches!(peek_token(input), Some(Token::Keyword(kw)) if kw.eq_ignore_ascii_case("CHECK")) {
+                                    let _ = next_token(input);
+                                    expect_punctuation(input, Token::LParen)?;
+                                    let expr = parse_expr(input)?;
+                                    expect_punctuation(input, Token::RParen)?;
+                                    TableConstraint::Check {
+                                        name: Some(constraint_name),
+                                        expr,
+                                    }
+                                } else if matches!(peek_token(input), Some(Token::Keyword(kw)) if kw.eq_ignore_ascii_case("UNIQUE")) {
+                                    let _ = next_token(input);
+                                    expect_punctuation(input, Token::LParen)?;
+                                    let columns = parse_comma_list(input, |i| {
+                                        match next_token(i) {
+                                            Some(Token::Identifier(id)) | Some(Token::Keyword(id)) => Ok(id.clone()),
+                                            _ => Err(ErrMode::Backtrack(ContextError::new())),
+                                        }
+                                    })?;
+                                    expect_punctuation(input, Token::RParen)?;
+                                    TableConstraint::Unique {
+                                        name: Some(constraint_name),
+                                        columns,
+                                    }
+                                } else {
+                                    return Err(ErrMode::Backtrack(ContextError::new()));
+                                };
+                                Ok(Statement::AlterTable { table, action: AlterTableAction::AddConstraint(constraint) })
+                            } else {
+                                // ADD column
+                                let col = parse_column_def(input)?;
+                                Ok(Statement::AlterTable { table, action: AlterTableAction::AddColumn(col) })
+                            }
+                        } else if matches!(peek_token(input), Some(Token::Keyword(kw)) if kw.eq_ignore_ascii_case("DROP")) {
+                            let _ = next_token(input);
+                            if matches!(peek_token(input), Some(Token::Keyword(kw)) if kw.eq_ignore_ascii_case("COLUMN")) {
+                                let _ = next_token(input);
+                                let col_name = match next_token(input) {
+                                    Some(Token::Identifier(id)) | Some(Token::Keyword(id)) => id.clone(),
+                                    _ => return Err(ErrMode::Backtrack(ContextError::new())),
+                                };
+                                Ok(Statement::AlterTable { table, action: AlterTableAction::DropColumn(col_name) })
+                            } else if matches!(peek_token(input), Some(Token::Keyword(kw)) if kw.eq_ignore_ascii_case("CONSTRAINT")) {
+                                let _ = next_token(input);
+                                let constraint_name = match next_token(input) {
+                                    Some(Token::Identifier(id)) | Some(Token::Keyword(id)) => id.clone(),
+                                    _ => return Err(ErrMode::Backtrack(ContextError::new())),
+                                };
+                                Ok(Statement::AlterTable { table, action: AlterTableAction::DropConstraint(constraint_name) })
+                            } else {
+                                Err(ErrMode::Backtrack(ContextError::new()))
+                            }
+                        } else {
+                            Err(ErrMode::Backtrack(ContextError::new()))
+                        }
+                    } else {
+                        Err(ErrMode::Backtrack(ContextError::new()))
+                    }
                 }
                 "DECLARE" => {
                      let _ = next_token(input);
@@ -516,5 +653,62 @@ impl<'a> Token<'a> {
             Token::Keyword(k) | Token::Identifier(k) => k.eq_ignore_ascii_case(other),
             _ => false,
         }
+    }
+}
+
+fn lower_object_name<'a>(name: Vec<Cow<'a, str>>) -> old::common::ObjectName {
+    old::common::ObjectName {
+        schema: if name.len() > 1 { Some(name[0].to_string()) } else { None },
+        name: name.last().unwrap().to_string(),
+    }
+}
+
+fn parse_referential_action_v2<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<ReferentialAction> {
+    match next_token(input) {
+        Some(Token::Keyword(k)) => match k.to_uppercase().as_str() {
+            "NO" => {
+                expect_keyword(input, "ACTION")?;
+                Ok(ReferentialAction::NoAction)
+            }
+            "CASCADE" => Ok(ReferentialAction::Cascade),
+            "SET" => {
+                if matches!(peek_token(input), Some(Token::Keyword(k)) if k.eq_ignore_ascii_case("NULL")) {
+                    let _ = next_token(input);
+                    Ok(ReferentialAction::SetNull)
+                } else if matches!(peek_token(input), Some(Token::Keyword(k)) if k.eq_ignore_ascii_case("DEFAULT")) {
+                    let _ = next_token(input);
+                    Ok(ReferentialAction::SetDefault)
+                } else {
+                    Err(ErrMode::Backtrack(ContextError::new()))
+                }
+            }
+            _ => Err(ErrMode::Backtrack(ContextError::new())),
+        },
+        _ => Err(ErrMode::Backtrack(ContextError::new())),
+    }
+}
+
+fn parse_referential_action<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<old::statements::ddl::ReferentialAction> {
+    match next_token(input) {
+        Some(Token::Keyword(k)) => match k.to_uppercase().as_str() {
+            "NO" => {
+                expect_keyword(input, "ACTION")?;
+                Ok(old::statements::ddl::ReferentialAction::NoAction)
+            }
+            "CASCADE" => Ok(old::statements::ddl::ReferentialAction::Cascade),
+            "SET" => {
+                if matches!(peek_token(input), Some(Token::Keyword(k)) if k.eq_ignore_ascii_case("NULL")) {
+                    let _ = next_token(input);
+                    Ok(old::statements::ddl::ReferentialAction::SetNull)
+                } else if matches!(peek_token(input), Some(Token::Keyword(k)) if k.eq_ignore_ascii_case("DEFAULT")) {
+                    let _ = next_token(input);
+                    Ok(old::statements::ddl::ReferentialAction::SetDefault)
+                } else {
+                    Err(ErrMode::Backtrack(ContextError::new()))
+                }
+            }
+            _ => Err(ErrMode::Backtrack(ContextError::new())),
+        },
+        _ => Err(ErrMode::Backtrack(ContextError::new())),
     }
 }

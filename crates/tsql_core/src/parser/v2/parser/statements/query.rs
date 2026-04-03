@@ -3,7 +3,12 @@ use winnow::prelude::*;
 use winnow::error::{ErrMode, ContextError};
 
 pub fn parse_select<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<SelectStmt<'a>> {
-    let mut current = parse_single_select(input)?;
+    let _ = expect_keyword(input, "SELECT")?;
+    parse_select_body(input)
+}
+
+pub fn parse_select_body<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<SelectStmt<'a>> {
+    let mut current = parse_single_select_body(input)?;
 
     loop {
         let kind = match peek_token(input) {
@@ -44,6 +49,10 @@ pub fn parse_select<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<SelectStmt<'
 
 fn parse_single_select<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<SelectStmt<'a>> {
     let _ = expect_keyword(input, "SELECT")?;
+    parse_single_select_body(input)
+}
+
+pub fn parse_single_select_body<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<SelectStmt<'a>> {
     let mut distinct = false;
     if let Some(Token::Keyword(k)) = peek_token(input) {
         if k.eq_ignore_ascii_case("DISTINCT") {
@@ -56,7 +65,9 @@ fn parse_single_select<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<SelectStm
     if let Some(Token::Keyword(k)) = peek_token(input) {
         if k.eq_ignore_ascii_case("TOP") {
             let _ = next_token(input);
-            top = Some(parse_expr(input)?);
+            // Parse the value after TOP - must be a primary expression (number, variable, etc.)
+            // Don't use parse_expr because that would consume trailing operators like *
+            top = Some(crate::parser::v2::parser::expressions::parse_primary(input)?);
         }
     }
 
@@ -71,8 +82,13 @@ fn parse_single_select<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<SelectStm
     }
 
     let mut from = None;
-    if let Some(Token::Keyword(k)) = peek_token(input) {
-        if k.eq_ignore_ascii_case("FROM") {
+    if let Some(tok) = peek_token(input) {
+        let is_from = match tok {
+            Token::Keyword(k) => k.eq_ignore_ascii_case("FROM"),
+            Token::Identifier(id) => id.eq_ignore_ascii_case("FROM"),
+            _ => false,
+        };
+        if is_from {
             let _ = next_token(input);
             from = Some(parse_comma_list(input, parse_table_ref)?);
         }
@@ -230,23 +246,57 @@ pub fn parse_table_ref<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<TableRef<
             let _ = next_token(input);
             let subquery = Box::new(parse_select(input)?);
             expect_punctuation(input, Token::RParen)?;
-            let alias = if let Some(Token::Keyword(k)) = peek_token(input) {
-                if k.eq_ignore_ascii_case("AS") {
-                    let _ = next_token(input);
-                }
-                match next_token(input) {
-                    Some(Token::Identifier(alias)) => alias.clone(),
+            let alias = if let Some(tok) = peek_token(input) {
+                match tok {
+                    Token::Keyword(k) if k.eq_ignore_ascii_case("AS") => {
+                        let _ = next_token(input);
+                        match next_token(input) {
+                            Some(Token::Identifier(alias)) => alias.clone(),
+                            _ => return Err(ErrMode::Backtrack(ContextError::new())),
+                        }
+                    }
+                    Token::Keyword(k) => k.clone(),
+                    Token::Identifier(id) => id.clone(),
                     _ => return Err(ErrMode::Backtrack(ContextError::new())),
                 }
-            } else if let Some(Token::Identifier(alias)) = next_token(input) {
-                alias.clone()
             } else {
                 return Err(ErrMode::Backtrack(ContextError::new()));
             };
             TableRef::Subquery { subquery, alias }
         }
-        Some(Token::Identifier(id)) | Some(Token::Keyword(id)) => {
+        Some(Token::Identifier(_)) | Some(Token::Keyword(_)) | Some(Token::Variable(_)) => {
             let name = parse_multipart_name(input)?;
+            // Check if this is a table-valued function call
+            if matches!(peek_token(input), Some(Token::LParen)) {
+                let _ = next_token(input);
+                let args = parse_comma_list(input, parse_expr)?;
+                expect_punctuation(input, Token::RParen)?;
+                let alias = if let Some(Token::Keyword(k)) = peek_token(input) {
+                    if k.eq_ignore_ascii_case("AS") {
+                        let _ = next_token(input);
+                        match next_token(input) {
+                            Some(Token::Identifier(alias)) => Some(alias.clone()),
+                            _ => return Err(ErrMode::Backtrack(ContextError::new())),
+                        }
+                    } else if !is_stop_keyword(k) {
+                        let next = next_token(input).unwrap();
+                        if let Token::Identifier(id) = next {
+                            Some(id.clone())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else if let Some(Token::Identifier(alias)) = peek_token(input) {
+                    let alias = alias.clone();
+                    let _ = next_token(input);
+                    Some(alias)
+                } else {
+                    None
+                };
+                TableRef::TableValuedFunction { name, args, alias }
+            } else {
             let alias = if let Some(Token::Keyword(k)) = peek_token(input) {
                 if k.eq_ignore_ascii_case("AS") {
                     let _ = next_token(input);
@@ -306,6 +356,7 @@ pub fn parse_table_ref<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<TableRef<
                 }
             }
             TableRef::Table { name, alias, hints }
+            } // end else (not a function call)
         }
         _ => return Err(ErrMode::Backtrack(ContextError::new())),
     };
@@ -533,7 +584,7 @@ pub fn parse_multipart_name<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<Vec<
     let mut parts = Vec::new();
     if let Some(tok) = next_token(input) {
         match tok {
-            Token::Identifier(id) | Token::Keyword(id) => parts.push(id.clone()),
+            Token::Identifier(id) | Token::Keyword(id) | Token::Variable(id) => parts.push(id.clone()),
             _ => return Err(ErrMode::Backtrack(ContextError::new())),
         }
     } else {
@@ -543,7 +594,7 @@ pub fn parse_multipart_name<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<Vec<
         let _ = next_token(input);
         if let Some(tok) = next_token(input) {
             match tok {
-                Token::Identifier(id) | Token::Keyword(id) => parts.push(id.clone()),
+                Token::Identifier(id) | Token::Keyword(id) | Token::Variable(id) => parts.push(id.clone()),
                 _ => return Err(ErrMode::Backtrack(ContextError::new())),
             }
         } else {

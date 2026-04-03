@@ -218,6 +218,7 @@ pub enum CreateStmt<'a> {
     Table {
         name: Vec<Cow<'a, str>>,
         columns: Vec<ColumnDef<'a>>,
+        constraints: Vec<TableConstraint<'a>>,
     },
     View {
         name: Vec<Cow<'a, str>>,

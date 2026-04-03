@@ -117,7 +117,6 @@ pub fn parse_batch_with_quoted_ident(
     let mut sql_ref = sql;
     let tokens = v2::lexer::lex(&mut sql_ref, quoted_identifier)
         .map_err(|e| DbError::Parse(format!("Lexer error: {:?}", e)))?;
-    println!("SQL: {} -> Tokens: {:?}", sql, tokens);
     let mut tok_ref = tokens.as_slice();
     let v2_stmts = v2::parser::parse_batch(&mut tok_ref)
         .map_err(|e| DbError::Parse(format!("Parser error: {:?}", e)))?;

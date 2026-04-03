@@ -9,9 +9,9 @@ pub fn parse_create<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<CreateStmt<'
         let _ = next_token(input);
         let name = multipart_name(input)?;
         expect_punctuation(input, Token::LParen)?;
-        let (columns, _constraints) = parse_table_body(input)?;
+        let (columns, constraints) = parse_table_body(input)?;
         expect_punctuation(input, Token::RParen)?;
-        Ok(CreateStmt::Table { name, columns })
+        Ok(CreateStmt::Table { name, columns, constraints })
     } else if matches!(peek_token(input), Some(Token::Keyword(kw)) if kw.eq_ignore_ascii_case("VIEW")) {
         let _ = next_token(input);
         let name = multipart_name(input)?;
@@ -341,13 +341,34 @@ fn parse_table_constraint<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<TableC
                 })?;
                 expect_punctuation(input, Token::RParen)?;
             }
+            // Parse ON DELETE/UPDATE actions
+            let mut on_delete = None;
+            let mut on_update = None;
+            while let Some(Token::Keyword(kw)) = peek_token(input) {
+                if kw.eq_ignore_ascii_case("ON") {
+                    let saved = *input;
+                    let _ = next_token(input);
+                    if matches!(peek_token(input), Some(Token::Keyword(k)) if k.eq_ignore_ascii_case("DELETE")) {
+                        let _ = next_token(input);
+                        on_delete = Some(parse_referential_action(input)?);
+                    } else if matches!(peek_token(input), Some(Token::Keyword(k)) if k.eq_ignore_ascii_case("UPDATE")) {
+                        let _ = next_token(input);
+                        on_update = Some(parse_referential_action(input)?);
+                    } else {
+                        *input = saved;
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
             Ok(TableConstraint::ForeignKey {
                 name,
                 columns,
                 ref_table,
                 ref_columns,
-                on_delete: None,
-                on_update: None,
+                on_delete,
+                on_update,
             })
         }
         "CHECK" => {
@@ -355,6 +376,15 @@ fn parse_table_constraint<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<TableC
             let expr = parse_expr(input)?;
             expect_punctuation(input, Token::RParen)?;
             Ok(TableConstraint::Check { name, expr })
+        }
+        "DEFAULT" => {
+            let expr = parse_expr(input)?;
+            expect_keyword(input, "FOR")?;
+            let column = match next_token(input) {
+                Some(Token::Identifier(id)) | Some(Token::Keyword(id)) => id.clone(),
+                _ => return Err(ErrMode::Backtrack(ContextError::new())),
+            };
+            Ok(TableConstraint::Default { name, column, expr })
         }
         _ => Err(ErrMode::Backtrack(ContextError::new())),
     }
@@ -391,4 +421,29 @@ pub fn parse_create_schema<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<State
         _ => return Err(ErrMode::Backtrack(ContextError::new())),
     };
     Ok(Statement::CreateSchema(name))
+}
+
+fn parse_referential_action<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<ReferentialAction> {
+    match next_token(input) {
+        Some(Token::Keyword(k)) => match k.to_uppercase().as_str() {
+            "NO" => {
+                expect_keyword(input, "ACTION")?;
+                Ok(ReferentialAction::NoAction)
+            }
+            "CASCADE" => Ok(ReferentialAction::Cascade),
+            "SET" => {
+                if matches!(peek_token(input), Some(Token::Keyword(k)) if k.eq_ignore_ascii_case("NULL")) {
+                    let _ = next_token(input);
+                    Ok(ReferentialAction::SetNull)
+                } else if matches!(peek_token(input), Some(Token::Keyword(k)) if k.eq_ignore_ascii_case("DEFAULT")) {
+                    let _ = next_token(input);
+                    Ok(ReferentialAction::SetDefault)
+                } else {
+                    Err(ErrMode::Backtrack(ContextError::new()))
+                }
+            }
+            _ => Err(ErrMode::Backtrack(ContextError::new())),
+        },
+        _ => Err(ErrMode::Backtrack(ContextError::new())),
+    }
 }

@@ -51,7 +51,15 @@ fn parse_comment<'a>(input: &mut &'a str) -> ModalResult<()> {
 }
 
 fn parse_number<'a>(input: &mut &'a str) -> ModalResult<f64> {
-    float.parse_next(input)
+    let start = *input;
+    let result: ModalResult<f64> = float.parse_next(input);
+    if let Ok(val) = result {
+        if val.is_infinite() || val.is_nan() {
+            *input = start;
+            return Err(winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new()));
+        }
+    }
+    result
 }
 
 fn parse_string<'a>(input: &mut &'a str) -> ModalResult<&'a str> {

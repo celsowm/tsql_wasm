@@ -580,6 +580,23 @@ fn lower_table_ref_recursive<'a>(tr: v2::TableRef<'a>) -> Result<(old::common::T
             tr.alias = Some(alias.into_owned());
             Ok((tr, joins))
         }
+        v2::TableRef::TableValuedFunction { name, args, alias } => {
+            // Convert to a table reference with the function call as part of the name
+            // The old AST doesn't have a separate TVF variant, so we encode it as a table name
+            let func_name = name.last().unwrap().to_string();
+            let arg_strs: Vec<String> = args.into_iter().map(|a| format!("{:?}", a)).collect();
+            let full_name = format!("{}({})", func_name, arg_strs.join(", "));
+            Ok((old::common::TableRef {
+                name: old::common::TableName::Object(old::common::ObjectName {
+                    schema: if name.len() > 1 { Some(name[0].to_string()) } else { None },
+                    name: full_name,
+                }),
+                alias: alias.map(|a| a.into_owned()),
+                pivot: None,
+                unpivot: None,
+                hints: Vec::new(),
+            }, Vec::new()))
+        }
     }
 }
 
@@ -701,10 +718,10 @@ pub fn lower_merge<'a>(s: v2::MergeStmt<'a>) -> Result<old::statements::dml::Mer
 
 pub fn lower_create<'a>(s: v2::CreateStmt<'a>) -> Result<old::Statement, DbError> {
     match s {
-        v2::CreateStmt::Table { name, columns } => Ok(old::Statement::CreateTable(old::statements::ddl::CreateTableStmt {
+        v2::CreateStmt::Table { name, columns, constraints } => Ok(old::Statement::CreateTable(old::statements::ddl::CreateTableStmt {
             name: lower_object_name(name),
             columns: columns.into_iter().map(lower_column_def).collect::<Result<Vec<_>, _>>()?,
-            table_constraints: Vec::new(), 
+            table_constraints: constraints.into_iter().map(lower_table_constraint).collect(),
         })),
         v2::CreateStmt::View { name, query } => Ok(old::Statement::CreateView(old::statements::ddl::CreateViewStmt {
             name: lower_object_name(name),

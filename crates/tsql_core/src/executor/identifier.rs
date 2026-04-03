@@ -9,6 +9,23 @@ pub(crate) fn resolve_identifier(
     name: &str,
     ctx: &ExecutionContext,
 ) -> Result<Value, DbError> {
+    if name.starts_with("@@") {
+        match name {
+            "@@FETCH_STATUS" => return Ok(Value::Int(*ctx.fetch_status)),
+            "@@ERROR" => return Ok(Value::Int(0)),
+            "@@LANGUAGE" => return Ok(Value::NVarChar("us_english".into())),
+            "@@TEXTSIZE" => return Ok(Value::Int(2147483647)),
+            "@@MAX_PRECISION" => return Ok(Value::TinyInt(38)),
+            "@@DATEFIRST" => return Ok(Value::TinyInt(ctx.datefirst as u8)),
+            "@@TRANCOUNT" => return Ok(Value::Int(ctx.trancount as i32)),
+            "@@SERVERNAME" => return Ok(Value::NVarChar("localhost".into())),
+            "@@SERVICENAME" => return Ok(Value::NVarChar("MSSQLSERVER".into())),
+            "@@SPID" => return Ok(Value::SmallInt(1)),
+            "@@VERSION" => return Ok(Value::NVarChar("Microsoft SQL Server 2022 (RTM) - 16.0.1000.6 (tsql_wasm emulator)".into())),
+            "@@MICROSOFTVERSION" => return Ok(Value::Int(0x0c000000)),
+            _ => {}
+        }
+    }
     if name.starts_with('@') {
         match ctx.variables.get(name) {
             Some((_, val)) => return Ok(val.clone()),

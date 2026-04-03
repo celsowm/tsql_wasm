@@ -644,6 +644,14 @@ pub fn runtime_type_to_tds(ty: &tsql_core::types::DataType) -> TypeInfo {
             precision: None,
             flags: 0x0001,
         },
+        tsql_core::types::DataType::Xml => TypeInfo {
+            tds_type: BIGVARCHARTYPE,
+            length_prefix: vec![0xFF, 0xFF],
+            collation: Some(DEFAULT_COLLATION),
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
     }
 }
 

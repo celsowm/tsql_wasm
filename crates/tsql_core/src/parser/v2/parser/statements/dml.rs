@@ -59,7 +59,7 @@ pub fn parse_insert<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<InsertStmt<'
              InsertSource::Values(rows)
         }
         "SELECT" => {
-             InsertSource::Select(Box::new(parse_select(input)?))
+             InsertSource::Select(Box::new(parse_select_body(input)?))
         }
         "EXEC" | "EXECUTE" => {
              let procedure = multipart_name(input)?;
@@ -173,11 +173,11 @@ pub fn parse_delete<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<DeleteStmt<'
 pub fn parse_output_clause<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<(Vec<OutputColumn<'a>>, Option<Vec<Cow<'a, str>>>)> {
     let columns = parse_comma_list(input, |i| {
         let source = match peek_token(i) {
-            Some(Token::Keyword(k)) if k.eq_ignore_ascii_case("INSERTED") => {
+            Some(Token::Keyword(k) | Token::Identifier(k)) if k.eq_ignore_ascii_case("INSERTED") => {
                 let _ = next_token(i);
                 OutputSource::Inserted
             }
-            Some(Token::Keyword(k)) if k.eq_ignore_ascii_case("DELETED") => {
+            Some(Token::Keyword(k) | Token::Identifier(k)) if k.eq_ignore_ascii_case("DELETED") => {
                 let _ = next_token(i);
                 OutputSource::Deleted
             }
@@ -228,15 +228,6 @@ pub fn parse_merge<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<MergeStmt<'a>
     let source = parse_table_ref(input)?;
     let _ = expect_keyword(input, "ON")?;
     let on_condition = parse_expr(input)?;
-
-    let mut output = None;
-    let mut output_into = None;
-    if matches!(peek_token(input), Some(Token::Keyword(k)) if k.eq_ignore_ascii_case("OUTPUT")) {
-        let _ = next_token(input);
-        let (out_cols, out_into) = parse_output_clause(input)?;
-        output = Some(out_cols);
-        output_into = out_into;
-    }
 
     let mut when_clauses = Vec::new();
     while let Some(Token::Keyword(kw)) = peek_token(input) {
@@ -307,6 +298,15 @@ pub fn parse_merge<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<MergeStmt<'a>
 
         when_clauses.push(MergeWhenClause { when, condition, action });
     }
-    
+
+    let mut output = None;
+    let mut output_into = None;
+    if matches!(peek_token(input), Some(Token::Keyword(k)) if k.eq_ignore_ascii_case("OUTPUT")) {
+        let _ = next_token(input);
+        let (out_cols, out_into) = parse_output_clause(input)?;
+        output = Some(out_cols);
+        output_into = out_into;
+    }
+
     Ok(MergeStmt { target, source, on_condition, when_clauses, output, output_into })
 }
