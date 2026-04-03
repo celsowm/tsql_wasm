@@ -1,14 +1,18 @@
-pub(crate) mod v2;
+pub(crate) mod ast;
+pub(crate) mod lexer;
+pub(crate) mod lower;
+pub(crate) mod parser;
 
 use crate::ast::Statement;
 use crate::error::DbError;
+use crate::parser::parser as inner_parser;
 
 pub mod utils {
-    use super::v2;
+    use super::{ast, lexer};
 
     pub fn split_csv_top_level(input: &str) -> Vec<String> {
         let mut sql_ref = input;
-        let tokens = match v2::lexer::lex(&mut sql_ref, true) {
+        let tokens = match lexer::lex(&mut sql_ref, true) {
             Ok(t) => t,
             Err(_) => return vec![input.to_string()],
         };
@@ -19,15 +23,15 @@ pub mod utils {
         let mut current_part_tokens = Vec::new();
         for tok in tokens {
             match tok {
-                v2::ast::Token::LParen => {
+                ast::Token::LParen => {
                     depth += 1;
                     current_part_tokens.push(tok);
                 }
-                v2::ast::Token::RParen => {
+                ast::Token::RParen => {
                     depth = depth.saturating_sub(1);
                     current_part_tokens.push(tok);
                 }
-                v2::ast::Token::Comma if depth == 0 => {
+                ast::Token::Comma if depth == 0 => {
                     result.push(format_tokens(&current_part_tokens));
                     current_part_tokens.clear();
                 }
@@ -42,20 +46,20 @@ pub mod utils {
         result
     }
 
-    fn format_tokens(tokens: &[v2::ast::Token]) -> String {
+    fn format_tokens(tokens: &[ast::Token]) -> String {
         tokens.iter().map(|t| match t {
-            v2::ast::Token::String(s) => format!("'{}'", s.replace("'", "''")),
-            v2::ast::Token::Identifier(id) => format!("[{}]", id),
-            v2::ast::Token::Variable(v) => v.to_string(),
-            v2::ast::Token::Keyword(k) => k.to_string(),
-            v2::ast::Token::Operator(op) => op.to_string(),
-            v2::ast::Token::Number(n) => n.to_string(),
-            v2::ast::Token::LParen => "(".to_string(),
-            v2::ast::Token::RParen => ")".to_string(),
-            v2::ast::Token::Comma => ",".to_string(),
-            v2::ast::Token::Dot => ".".to_string(),
-            v2::ast::Token::Semicolon => ";".to_string(),
-            v2::ast::Token::Star => "*".to_string(),
+            ast::Token::String(s) => format!("'{}'", s.replace("'", "''")),
+            ast::Token::Identifier(id) => format!("[{}]", id),
+            ast::Token::Variable(v) => v.to_string(),
+            ast::Token::Keyword(k) => k.to_string(),
+            ast::Token::Operator(op) => op.to_string(),
+            ast::Token::Number(n) => n.to_string(),
+            ast::Token::LParen => "(".to_string(),
+            ast::Token::RParen => ")".to_string(),
+            ast::Token::Comma => ",".to_string(),
+            ast::Token::Dot => ".".to_string(),
+            ast::Token::Semicolon => ";".to_string(),
+            ast::Token::Star => "*".to_string(),
             _ => "".to_string(),
         }).collect::<Vec<_>>().join(" ")
     }
@@ -63,17 +67,17 @@ pub mod utils {
 
 pub mod statements {
     pub mod procedural {
-        use crate::parser::v2;
+        use crate::parser::{lexer, lower, parser as inner_parser};
         use crate::error::DbError;
 
         pub fn parse_routine_params(input: &str) -> Result<Vec<crate::ast::RoutineParam>, DbError> {
             let mut sql_ref = input;
-            let tokens = v2::lexer::lex(&mut sql_ref, true)
+            let tokens = lexer::lex(&mut sql_ref, true)
                 .map_err(|e| DbError::Parse(format!("Lexer error: {:?}", e)))?;
             let mut tok_ref = tokens.as_slice();
-            let v2_params = v2::parser::parse_comma_list(&mut tok_ref, v2::parser::parse_routine_param)
+            let params = inner_parser::parse_comma_list(&mut tok_ref, inner_parser::parse_routine_param)
                 .map_err(|e| DbError::Parse(format!("Parser error: {:?}", e)))?;
-            v2_params.into_iter().map(v2::lower::lower_routine_param).collect()
+            params.into_iter().map(lower::lower_routine_param).collect()
         }
     }
 }
@@ -87,12 +91,12 @@ pub fn parse_expr_with_quoted_ident(
     quoted_identifier: bool,
 ) -> Result<crate::ast::Expr, DbError> {
     let mut sql_ref = input;
-    let tokens = v2::lexer::lex(&mut sql_ref, quoted_identifier)
+    let tokens = lexer::lex(&mut sql_ref, quoted_identifier)
         .map_err(|e| DbError::Parse(format!("Lexer error: {:?}", e)))?;
     let mut tok_ref = tokens.as_slice();
-    let v2_expr = v2::parser::expressions::parse_expr(&mut tok_ref)
+    let expr = inner_parser::expressions::parse_expr(&mut tok_ref)
         .map_err(|e| DbError::Parse(format!("Parser error: {:?}", e)))?;
-    v2::lower::lower_expr(v2_expr)
+    lower::lower_expr(expr)
 }
 
 pub fn parse_expr_subquery_aware(input: &str) -> Result<crate::ast::Expr, DbError> {
@@ -115,12 +119,12 @@ pub fn parse_batch_with_quoted_ident(
     quoted_identifier: bool,
 ) -> Result<Vec<Statement>, DbError> {
     let mut sql_ref = sql;
-    let tokens = v2::lexer::lex(&mut sql_ref, quoted_identifier)
+    let tokens = lexer::lex(&mut sql_ref, quoted_identifier)
         .map_err(|e| DbError::Parse(format!("Lexer error: {:?}", e)))?;
     let mut tok_ref = tokens.as_slice();
-    let v2_stmts = v2::parser::parse_batch(&mut tok_ref)
+    let stmts = inner_parser::parse_batch(&mut tok_ref)
         .map_err(|e| DbError::Parse(format!("Parser error: {:?}", e)))?;
-    v2::lower::lower_batch(v2_stmts)
+    lower::lower_batch(stmts)
 }
 
 pub fn parse_sql(sql: &str) -> Result<Statement, DbError> {

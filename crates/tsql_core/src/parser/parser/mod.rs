@@ -1,17 +1,15 @@
 pub mod expressions;
 pub mod statements;
 
-use crate::parser::v2::ast::*;
-use crate::ast as old;
+use crate::parser::ast::*;
 use winnow::prelude::*;
 use winnow::error::{ErrMode, ContextError};
-use std::borrow::Cow;
 
-pub use crate::parser::v2::parser::expressions::{parse_expr, parse_data_type, parse_comma_list, is_stop_keyword, expect_keyword, expect_punctuation};
-pub use crate::parser::v2::parser::statements::query::{parse_select, parse_select_body, parse_table_ref, parse_multipart_name as multipart_name};
-pub use crate::parser::v2::parser::statements::other::{parse_declare, parse_set, parse_if, parse_begin_end, parse_exec, parse_exec_dispatch, parse_try_catch};
-pub use crate::parser::v2::parser::statements::dml::{parse_insert, parse_update, parse_delete, parse_merge, parse_output_clause};
-pub use crate::parser::v2::parser::statements::ddl::{parse_create, parse_column_def, parse_table_body, parse_create_index, parse_create_type, parse_create_schema};
+pub use crate::parser::parser::expressions::{parse_expr, parse_data_type, parse_comma_list, expect_keyword, expect_punctuation};
+pub use crate::parser::parser::statements::query::{parse_select, parse_select_body, parse_table_ref, parse_multipart_name as multipart_name};
+pub use crate::parser::parser::statements::other::{parse_declare, parse_set, parse_if, parse_begin_end, parse_exec_dispatch, parse_try_catch};
+pub use crate::parser::parser::statements::dml::{parse_insert, parse_update, parse_delete, parse_merge};
+pub use crate::parser::parser::statements::ddl::{parse_create, parse_column_def, parse_table_body, parse_create_index, parse_create_type, parse_create_schema};
 
 pub fn parse_batch<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<Vec<Statement<'a>>> {
     let mut statements = Vec::new();
@@ -424,6 +422,9 @@ pub fn parse_statement<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<Statement
                 }
                 "BEGIN" => {
                     let _ = next_token(input);
+                    if matches!(peek_token(input), Some(Token::Keyword(k)) if k.eq_ignore_ascii_case("DISTRIBUTED")) {
+                        let _ = next_token(input);
+                    }
                     if let Some(Token::Keyword(k2)) = peek_token(input) {
                         if k2.eq_ignore_ascii_case("TRY") {
                             let _ = next_token(input);
@@ -438,6 +439,17 @@ pub fn parse_statement<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<Statement
                             } else {
                                 None
                             };
+                            if matches!(peek_token(input), Some(Token::Keyword(k)) if k.eq_ignore_ascii_case("WITH")) {
+                                let mut temp = *input;
+                                let _ = next_token(&mut temp);
+                                if matches!(peek_token(&temp), Some(tok) if tok.eq_ignore_ascii_case("MARK")) {
+                                    let _ = next_token(input);
+                                    let _ = next_token(input);
+                                    if matches!(peek_token(input), Some(Token::String(_)) | Some(Token::Identifier(_)) | Some(Token::Keyword(_))) {
+                                        let _ = next_token(input);
+                                    }
+                                }
+                            }
                             return Ok(Statement::BeginTransaction(name));
                         }
                     }
@@ -656,13 +668,6 @@ impl<'a> Token<'a> {
     }
 }
 
-fn lower_object_name<'a>(name: Vec<Cow<'a, str>>) -> old::common::ObjectName {
-    old::common::ObjectName {
-        schema: if name.len() > 1 { Some(name[0].to_string()) } else { None },
-        name: name.last().unwrap().to_string(),
-    }
-}
-
 fn parse_referential_action_v2<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<ReferentialAction> {
     match next_token(input) {
         Some(Token::Keyword(k)) => match k.to_uppercase().as_str() {
@@ -678,31 +683,6 @@ fn parse_referential_action_v2<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<R
                 } else if matches!(peek_token(input), Some(Token::Keyword(k)) if k.eq_ignore_ascii_case("DEFAULT")) {
                     let _ = next_token(input);
                     Ok(ReferentialAction::SetDefault)
-                } else {
-                    Err(ErrMode::Backtrack(ContextError::new()))
-                }
-            }
-            _ => Err(ErrMode::Backtrack(ContextError::new())),
-        },
-        _ => Err(ErrMode::Backtrack(ContextError::new())),
-    }
-}
-
-fn parse_referential_action<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<old::statements::ddl::ReferentialAction> {
-    match next_token(input) {
-        Some(Token::Keyword(k)) => match k.to_uppercase().as_str() {
-            "NO" => {
-                expect_keyword(input, "ACTION")?;
-                Ok(old::statements::ddl::ReferentialAction::NoAction)
-            }
-            "CASCADE" => Ok(old::statements::ddl::ReferentialAction::Cascade),
-            "SET" => {
-                if matches!(peek_token(input), Some(Token::Keyword(k)) if k.eq_ignore_ascii_case("NULL")) {
-                    let _ = next_token(input);
-                    Ok(old::statements::ddl::ReferentialAction::SetNull)
-                } else if matches!(peek_token(input), Some(Token::Keyword(k)) if k.eq_ignore_ascii_case("DEFAULT")) {
-                    let _ = next_token(input);
-                    Ok(old::statements::ddl::ReferentialAction::SetDefault)
                 } else {
                     Err(ErrMode::Backtrack(ContextError::new()))
                 }

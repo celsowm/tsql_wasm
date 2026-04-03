@@ -1,4 +1,4 @@
-use parking_lot::Mutex;
+﻿use parking_lot::Mutex;
 
 pub trait RandomProvider: Send + Sync {
     fn next_f64(&self) -> f64;

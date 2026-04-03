@@ -1,4 +1,4 @@
-use crate::ast::IsolationLevel;
+﻿use crate::ast::IsolationLevel;
 
 #[derive(Debug, Clone)]
 pub enum JournalEvent {

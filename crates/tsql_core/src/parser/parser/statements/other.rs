@@ -1,5 +1,5 @@
-use crate::parser::v2::ast::*;
-use crate::parser::v2::parser::*;
+use crate::parser::ast::*;
+use crate::parser::parser::*;
 use winnow::prelude::*;
 use winnow::error::{ErrMode, ContextError};
 use std::borrow::Cow;
@@ -101,7 +101,7 @@ pub fn parse_exec_dispatch<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<State
              expect_punctuation(input, Token::RParen)?;
              Ok(Statement::ExecDynamic { sql_expr })
         }
-        Some(Token::Identifier(id)) | Some(Token::Keyword(id)) | Some(Token::Variable(id)) => {
+        Some(Token::Identifier(_)) | Some(Token::Keyword(_)) | Some(Token::Variable(_)) => {
              let id_str = match peek_token(input).unwrap() {
                  Token::Identifier(id) | Token::Keyword(id) | Token::Variable(id) => id.clone(),
                  _ => unreachable!(),
@@ -201,36 +201,32 @@ pub fn parse_try_catch<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<Statement
     Ok(Statement::TryCatch { try_body, catch_body })
 }
 
-pub fn parse_exec<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<Statement<'a>> {
-    parse_exec_dispatch(input)
-}
-
 pub fn parse_expr<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<Expr<'a>> {
-    crate::parser::v2::parser::expressions::parse_expr(input)
+    crate::parser::parser::expressions::parse_expr(input)
 }
 
 pub fn parse_data_type<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<DataType<'a>> {
-    crate::parser::v2::parser::expressions::parse_data_type(input)
+    crate::parser::parser::expressions::parse_data_type(input)
 }
 
 pub fn expect_punctuation<'a>(input: &mut &'a [Token<'a>], expected: Token<'a>) -> ModalResult<()> {
-    crate::parser::v2::parser::expressions::expect_punctuation(input, expected)
+    crate::parser::parser::expressions::expect_punctuation(input, expected)
 }
 
 pub fn expect_keyword<'a>(input: &mut &'a [Token<'a>], expected: &str) -> ModalResult<()> {
-    crate::parser::v2::parser::expressions::expect_keyword(input, expected)
+    crate::parser::parser::expressions::expect_keyword(input, expected)
 }
 
 pub fn parse_comma_list<'a, P, R>(input: &mut &'a [Token<'a>], parser: P) -> ModalResult<Vec<R>>
 where P: FnMut(&mut &'a [Token<'a>]) -> ModalResult<R>
 {
-    crate::parser::v2::parser::expressions::parse_comma_list(input, parser)
+    crate::parser::parser::expressions::parse_comma_list(input, parser)
 }
 
 pub fn parse_statement<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<Statement<'a>> {
-    crate::parser::v2::parser::parse_statement(input)
+    crate::parser::parser::parse_statement(input)
 }
 
 pub fn multipart_name<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<Vec<Cow<'a, str>>> {
-    crate::parser::v2::parser::statements::query::parse_multipart_name(input)
+    crate::parser::parser::statements::query::parse_multipart_name(input)
 }

@@ -1,7 +1,7 @@
-use crate::parser::v2::ast::{Token, is_keyword};
+use crate::parser::ast::{Token, is_keyword};
 use winnow::prelude::*;
 use winnow::token::{take_while, any};
-use winnow::combinator::{alt, repeat, opt, delimited};
+use winnow::combinator::{alt, repeat, opt};
 use winnow::ascii::float;
 use std::borrow::Cow;
 

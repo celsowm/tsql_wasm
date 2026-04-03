@@ -232,40 +232,47 @@ fn test_phase8_parser_fuzz_malformed_input() {
 /// Parser fuzzing test: ensures parser handles boundary conditions
 #[test]
 fn test_phase8_parser_fuzz_boundary_conditions() {
-    let boundary_inputs = vec![
-        // Very long identifiers (should fail gracefully)
-        "SELECT * FROM ".to_string() + &"a".repeat(1000),
-        "CREATE TABLE ".to_string() + &"t".repeat(1000) + " (id INT)",
+    std::thread::Builder::new()
+        .stack_size(32 * 1024 * 1024)
+        .spawn(|| {
+            let boundary_inputs = vec![
+                // Very long identifiers (should fail gracefully)
+                "SELECT * FROM ".to_string() + &"a".repeat(1000),
+                "CREATE TABLE ".to_string() + &"t".repeat(1000) + " (id INT)",
 
-        // Very long strings
-        "SELECT '".to_string() + &"x".repeat(10000) + "'",
-        "SELECT N'".to_string() + &"x".repeat(10000) + "'",
+                // Very long strings
+                "SELECT '".to_string() + &"x".repeat(10000) + "'",
+                "SELECT N'".to_string() + &"x".repeat(10000) + "'",
 
-        // Many columns
-        "SELECT ".to_string() + &(1..100).map(|i| format!("col{}", i)).collect::<Vec<_>>().join(", "),
-        "CREATE TABLE t (".to_string() + &(1..100).map(|i| format!("col{} INT", i)).collect::<Vec<_>>().join(", ") + ")",
+                // Many columns
+                "SELECT ".to_string() + &(1..100).map(|i| format!("col{}", i)).collect::<Vec<_>>().join(", "),
+                "CREATE TABLE t (".to_string() + &(1..100).map(|i| format!("col{} INT", i)).collect::<Vec<_>>().join(", ") + ")",
 
-        // Many values
-        "INSERT INTO t VALUES ".to_string() + &(1..100).map(|_| "(1)").collect::<Vec<_>>().join(", "),
+                // Many values
+                "INSERT INTO t VALUES ".to_string() + &(1..100).map(|_| "(1)").collect::<Vec<_>>().join(", "),
 
-        // Deeply nested parentheses
-        "SELECT ".to_string() + &"(".repeat(50) + "1" + &")".repeat(50),
+                // Deeply nested parentheses
+                "SELECT ".to_string() + &"(".repeat(50) + "1" + &")".repeat(50),
 
-        // Many UNIONs
-        (0..50).map(|_| "SELECT 1").collect::<Vec<_>>().join(" UNION "),
+                // Many UNIONs
+                (0..50).map(|_| "SELECT 1").collect::<Vec<_>>().join(" UNION "),
 
-        // Many ORs in WHERE
-        "SELECT * FROM t WHERE ".to_string() + &(0..50).map(|i| format!("id = {}", i)).collect::<Vec<_>>().join(" OR "),
+                // Many ORs in WHERE
+                "SELECT * FROM t WHERE ".to_string() + &(0..50).map(|i| format!("id = {}", i)).collect::<Vec<_>>().join(" OR "),
 
-        // Many ANDs in WHERE
-        "SELECT * FROM t WHERE ".to_string() + &(0..50).map(|i| format!("id > {}", i)).collect::<Vec<_>>().join(" AND "),
-    ];
+                // Many ANDs in WHERE
+                "SELECT * FROM t WHERE ".to_string() + &(0..50).map(|i| format!("id > {}", i)).collect::<Vec<_>>().join(" AND "),
+            ];
 
-    for input in boundary_inputs {
-        // Parser should not panic on boundary conditions
-        let result = parse_sql(&input);
-        let _ = result;
-    }
+            for input in boundary_inputs {
+                // Parser should not panic on boundary conditions
+                let result = parse_sql(&input);
+                let _ = result;
+            }
+        })
+        .expect("failed to spawn boundary-condition parser test thread")
+        .join()
+        .expect("boundary-condition parser test thread panicked");
 }
 
 /// Parser fuzzing test: random mutations of valid SQL

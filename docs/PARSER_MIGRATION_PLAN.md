@@ -14,7 +14,7 @@ else
 
 The old parser sees `sys.dm_os_host_info if` as a table name because `if` is just raw text after a dot-separated identifier — it never tokenizes first.
 
-The v2 parser (in `parser/v2/`) uses **winnow** with a proper **lexer → token stream → parser** pipeline, which correctly identifies `IF` as a keyword token starting a new statement.
+The parser implementation, originally developed under `parser/v2/`, uses **winnow** with a proper **lexer → token stream → parser** pipeline, which correctly identifies `IF` as a keyword token starting a new statement.
 
 ## Architecture
 
@@ -272,7 +272,7 @@ Key mapping decisions:
   - `parser/utils.rs`
   - `parser/expression/` (entire directory)
   - `parser/statements/` (entire old directory — NOT the v2 one)
-- [ ] Move `parser/v2/` contents up to `parser/` (optional cleanup)
+- [x] Move `parser/v2/` contents up to `parser/`
 - [ ] Update `lib.rs` exports
 - [ ] Run full test suite: `cargo test -p tsql_core`
 - [ ] Run WASM tests: `cargo test -p tsql_wasm`

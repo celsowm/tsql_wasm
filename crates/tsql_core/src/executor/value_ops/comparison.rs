@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+﻿use std::cmp::Ordering;
 use crate::types::Value;
 use super::super::value_helpers::{rescale_raw, value_to_f64};
 

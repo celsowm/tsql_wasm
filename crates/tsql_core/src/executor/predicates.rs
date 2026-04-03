@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+﻿use std::cmp::Ordering;
 
 use crate::ast::{Expr, WhenClause};
 use crate::catalog::Catalog;

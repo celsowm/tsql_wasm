@@ -1,8 +1,7 @@
-use crate::parser::v2::ast::*;
-use crate::parser::v2::parser::*;
+use crate::parser::ast::*;
+use crate::parser::parser::*;
 use winnow::prelude::*;
 use winnow::error::{ErrMode, ContextError};
-use std::borrow::Cow;
 
 pub fn parse_create<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<CreateStmt<'a>> {
     if matches!(peek_token(input), Some(Token::Keyword(kw)) if kw.eq_ignore_ascii_case("TABLE")) {
@@ -129,7 +128,11 @@ pub fn parse_column_def<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<ColumnDe
     } else {
         return Err(ErrMode::Backtrack(ContextError::new()));
     };
-    let data_type = parse_data_type(input)?;
+    let data_type = if matches!(peek_token(input), Some(Token::Keyword(kw)) if kw.eq_ignore_ascii_case("AS")) {
+        DataType::SqlVariant
+    } else {
+        parse_data_type(input)?
+    };
     
     let mut is_nullable = None;
     let mut is_identity = false;

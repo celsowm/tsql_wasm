@@ -1,4 +1,4 @@
-use crate::catalog::Catalog;
+﻿use crate::catalog::Catalog;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 use super::VirtualTable;

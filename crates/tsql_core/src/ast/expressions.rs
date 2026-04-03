@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+﻿use serde::{Deserialize, Serialize};
 use crate::ast::statements::query::OrderByExpr;
 use crate::ast::data_types::DataTypeSpec;
 
@@ -140,6 +140,7 @@ pub enum WindowFrameBound {
 pub enum UnaryOp {
     Negate,
     Not,
+    BitwiseNot,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -157,4 +158,7 @@ pub enum BinaryOp {
     Multiply,
     Divide,
     Modulo,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
 }

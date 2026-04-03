@@ -1,4 +1,4 @@
-use serde::de::DeserializeOwned;
+﻿use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::ast::{IsolationLevel, Statement};

@@ -1,4 +1,4 @@
-use super::VirtualTable;
+﻿use super::VirtualTable;
 use super::{
     char_max_length, char_octet_length, charset_name, collation_name_val, datetime_precision_val,
     numeric_precision, numeric_precision_radix, numeric_scale_val, type_name, virtual_table_def,

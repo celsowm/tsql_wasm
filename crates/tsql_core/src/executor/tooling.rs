@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+﻿use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
@@ -264,13 +264,17 @@ pub(crate) fn format_expr(expr: &Expr) -> String {
                 BinaryOp::Multiply => "*",
                 BinaryOp::Divide => "/",
                 BinaryOp::Modulo => "%",
+                BinaryOp::BitwiseAnd => "&",
+                BinaryOp::BitwiseOr => "|",
+                BinaryOp::BitwiseXor => "^",
             };
             format!("{} {} {}", format_expr(left), op_str, format_expr(right))
         }
         Expr::Unary { op, expr } => {
             let op_str = match op {
                 UnaryOp::Negate => "-",
-                UnaryOp::Not => "NOT",
+                UnaryOp::Not => "NOT ",
+                UnaryOp::BitwiseNot => "~",
             };
             format!("{}{}", op_str, format_expr(expr))
         }

@@ -1,4 +1,4 @@
-use crate::ast::{
+﻿use crate::ast::{
     AlterTableAction, AlterTableStmt, CreateIndexStmt, CreateSchemaStmt, CreateTableStmt,
     CreateTypeStmt, DropIndexStmt, DropSchemaStmt, DropTableStmt, DropTypeStmt,
     TableConstraintSpec,

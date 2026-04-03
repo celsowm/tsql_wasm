@@ -1,4 +1,4 @@
-use crate::ast::{JoinClause, JoinType};
+﻿use crate::ast::{JoinClause, JoinType};
 use crate::error::DbError;
 
 use super::clock::Clock;

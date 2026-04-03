@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+﻿use std::cmp::Ordering;
 
 use crate::ast::{Expr, OrderByExpr, SelectItem, TopSpec};
 use crate::error::DbError;

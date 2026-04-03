@@ -1,4 +1,4 @@
-pub mod ast;
+﻿pub mod ast;
 pub mod catalog;
 pub mod error;
 pub mod executor;
@@ -20,3 +20,4 @@ pub use executor::tooling::{
     ExplainPlan, SessionOptions, SourceSpan, StatementSlice, SupportStatus, TraceStatementEvent,
 };
 pub use parser::{parse_batch, parse_sql};
+

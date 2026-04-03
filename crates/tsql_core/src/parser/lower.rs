@@ -1,4 +1,4 @@
-use crate::parser::v2::ast as v2;
+use crate::parser::ast as v2;
 use crate::ast as old;
 use crate::error::DbError;
 use std::borrow::Cow;
@@ -821,10 +821,6 @@ pub fn lower_fetch_direction<'a>(d: v2::FetchDirection<'a>) -> Result<old::state
         v2::FetchDirection::Relative(expr) => Ok(old::statements::procedural::FetchDirection::Relative(lower_expr(expr)?)),
     }
 }
-
-pub fn lower_isolation_level(i: old::IsolationLevel) -> old::IsolationLevel { i }
-pub fn lower_session_option(o: old::SessionOption) -> old::SessionOption { o }
-pub fn lower_session_option_value(v: old::SessionOptionValue) -> old::SessionOptionValue { v }
 
 pub fn lower_alter_action<'a>(a: v2::AlterTableAction<'a>) -> Result<old::statements::ddl::AlterTableAction, DbError> {
     match a {

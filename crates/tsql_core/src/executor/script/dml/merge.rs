@@ -1,4 +1,4 @@
-use crate::ast::MergeStmt;
+﻿use crate::ast::MergeStmt;
 use crate::error::DbError;
 use crate::types::Value;
 

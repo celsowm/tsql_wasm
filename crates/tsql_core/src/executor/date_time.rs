@@ -1,4 +1,4 @@
-use crate::error::DbError;
+﻿use crate::error::DbError;
 
 /// Typed enum for date parts, replacing string-based dispatch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+﻿use std::collections::HashMap;
 
 use super::types::{LockMode, SessionId, TableLockState};
 

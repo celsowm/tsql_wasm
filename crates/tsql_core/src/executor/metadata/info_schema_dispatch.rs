@@ -1,4 +1,4 @@
-use super::VirtualTable;
+﻿use super::VirtualTable;
 
 pub(crate) fn lookup(name: &str) -> Option<Box<dyn VirtualTable>> {
     super::info_schema_tables::lookup(name)

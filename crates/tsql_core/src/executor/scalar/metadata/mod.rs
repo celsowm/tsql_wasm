@@ -1,4 +1,4 @@
-mod common;
+﻿mod common;
 mod object;
 mod r#type;
 mod column;

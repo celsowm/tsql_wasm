@@ -1,4 +1,4 @@
-use crate::error::DbError;
+﻿use crate::error::DbError;
 use crate::types::{DataType, Value};
 use super::coercion::coerce_value_to_type;
 use super::super::value_helpers::pad_right;

@@ -1,4 +1,4 @@
-use crate::ast::{ApplyClause, Expr, JoinClause, OrderByExpr, SelectItem, TopSpec};
+﻿use crate::ast::{ApplyClause, Expr, JoinClause, OrderByExpr, SelectItem, TopSpec};
 
 use super::model::BoundTable;
 

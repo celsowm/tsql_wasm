@@ -1,4 +1,4 @@
-use crate::error::DbError;
+﻿use crate::error::DbError;
 use crate::types::Value;
 
 pub(crate) fn is_string_type(v: &Value) -> bool {

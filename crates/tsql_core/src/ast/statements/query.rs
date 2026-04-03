@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+﻿use serde::{Deserialize, Serialize};
 use crate::ast::expressions::Expr;
 use crate::ast::common::TableRef;
 use crate::ast::ObjectName;

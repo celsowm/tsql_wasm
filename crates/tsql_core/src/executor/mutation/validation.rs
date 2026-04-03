@@ -1,4 +1,4 @@
-use crate::ast::Assignment;
+﻿use crate::ast::Assignment;
 use crate::catalog::{Catalog, TableDef};
 use crate::error::DbError;
 use crate::storage::{Storage, StoredRow};

@@ -1,4 +1,4 @@
-use crate::parser::v2::ast::*;
+use crate::parser::ast::*;
 use winnow::prelude::*;
 use winnow::error::{ErrMode, ContextError};
 
@@ -67,7 +67,7 @@ pub fn parse_single_select_body<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<
             let _ = next_token(input);
             // Parse the value after TOP - must be a primary expression (number, variable, etc.)
             // Don't use parse_expr because that would consume trailing operators like *
-            top = Some(crate::parser::v2::parser::expressions::parse_primary(input)?);
+            top = Some(crate::parser::parser::expressions::parse_primary(input)?);
         }
     }
 
@@ -605,23 +605,23 @@ pub fn parse_multipart_name<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<Vec<
 }
 
 pub fn parse_expr<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<Expr<'a>> {
-    crate::parser::v2::parser::expressions::parse_expr(input)
+    crate::parser::parser::expressions::parse_expr(input)
 }
 
 pub fn parse_comma_list<'a, P, R>(input: &mut &'a [Token<'a>], parser: P) -> ModalResult<Vec<R>>
 where P: FnMut(&mut &'a [Token<'a>]) -> ModalResult<R>
 {
-    crate::parser::v2::parser::expressions::parse_comma_list(input, parser)
+    crate::parser::parser::expressions::parse_comma_list(input, parser)
 }
 
 pub fn is_stop_keyword(k: &str) -> bool {
-    crate::parser::v2::parser::expressions::is_stop_keyword(k)
+    crate::parser::parser::expressions::is_stop_keyword(k)
 }
 
 pub fn expect_keyword<'a>(input: &mut &'a [Token<'a>], expected: &str) -> ModalResult<()> {
-    crate::parser::v2::parser::expressions::expect_keyword(input, expected)
+    crate::parser::parser::expressions::expect_keyword(input, expected)
 }
 
 pub fn expect_punctuation<'a>(input: &mut &'a [Token<'a>], expected: Token<'a>) -> ModalResult<()> {
-    crate::parser::v2::parser::expressions::expect_punctuation(input, expected)
+    crate::parser::parser::expressions::expect_punctuation(input, expected)
 }

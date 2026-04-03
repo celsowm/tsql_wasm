@@ -1,4 +1,4 @@
-pub mod coercion;
+﻿pub mod coercion;
 pub mod comparison;
 pub mod formatting;
 

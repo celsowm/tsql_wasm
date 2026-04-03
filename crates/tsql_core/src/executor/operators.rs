@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+﻿use std::cmp::Ordering;
 
 use crate::ast::{BinaryOp, UnaryOp};
 use crate::error::DbError;
@@ -26,6 +26,9 @@ pub(crate) fn eval_binary(op: &BinaryOp, lv: Value, rv: Value, ansi_nulls: bool)
         BinaryOp::Multiply => eval_multiply(lv, rv),
         BinaryOp::Divide => eval_divide(lv, rv),
         BinaryOp::Modulo => eval_modulo(lv, rv),
+        BinaryOp::BitwiseAnd => eval_bitwise_and(lv, rv),
+        BinaryOp::BitwiseOr => eval_bitwise_or(lv, rv),
+        BinaryOp::BitwiseXor => eval_bitwise_xor(lv, rv),
     }
 }
 
@@ -49,6 +52,7 @@ pub(crate) fn eval_unary(op: &UnaryOp, val: Value) -> Result<Value, DbError> {
             ))),
         },
         UnaryOp::Not => Ok(Value::Bit(!truthy(&val))),
+        UnaryOp::BitwiseNot => eval_bitwise_not(val),
     }
 }
 
@@ -264,4 +268,39 @@ fn extract_money_as_i128(v: &Value) -> i128 {
         Value::Float(v) => (f64::from_bits(*v) * 10000.0) as i128,
         _ => 0,
     }
+}
+
+fn eval_bitwise_and(lv: Value, rv: Value) -> Result<Value, DbError> {
+    if lv.is_null() || rv.is_null() {
+        return Ok(Value::Null);
+    }
+    let a = to_i64(&lv)?;
+    let b = to_i64(&rv)?;
+    Ok(Value::BigInt(a & b))
+}
+
+fn eval_bitwise_or(lv: Value, rv: Value) -> Result<Value, DbError> {
+    if lv.is_null() || rv.is_null() {
+        return Ok(Value::Null);
+    }
+    let a = to_i64(&lv)?;
+    let b = to_i64(&rv)?;
+    Ok(Value::BigInt(a | b))
+}
+
+fn eval_bitwise_xor(lv: Value, rv: Value) -> Result<Value, DbError> {
+    if lv.is_null() || rv.is_null() {
+        return Ok(Value::Null);
+    }
+    let a = to_i64(&lv)?;
+    let b = to_i64(&rv)?;
+    Ok(Value::BigInt(a ^ b))
+}
+
+fn eval_bitwise_not(val: Value) -> Result<Value, DbError> {
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+    let a = to_i64(&val)?;
+    Ok(Value::BigInt(!a))
 }

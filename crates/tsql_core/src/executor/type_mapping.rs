@@ -1,4 +1,4 @@
-use crate::ast::DataTypeSpec;
+﻿use crate::ast::DataTypeSpec;
 use crate::types::DataType;
 
 pub(crate) fn data_type_spec_to_runtime(spec: &DataTypeSpec) -> DataType {

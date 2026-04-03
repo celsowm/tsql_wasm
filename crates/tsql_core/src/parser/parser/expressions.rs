@@ -1,4 +1,4 @@
-use crate::parser::v2::ast::*;
+use crate::parser::ast::*;
 use winnow::prelude::*;
 use winnow::error::{ErrMode, ContextError};
 use std::borrow::Cow;
@@ -59,7 +59,7 @@ fn parse_pratt_expr<'a>(input: &mut &'a [Token<'a>], min_bp: u8) -> ModalResult<
                 let _ = next_token(input); // IN
                 expect_punctuation(input, Token::LParen)?;
                 if matches!(peek_token(input), Some(Token::Keyword(kw)) if kw.eq_ignore_ascii_case("SELECT")) {
-                    let subquery = Box::new(crate::parser::v2::parser::statements::query::parse_select(input)?);
+                    let subquery = Box::new(crate::parser::parser::statements::query::parse_select(input)?);
                     expect_punctuation(input, Token::RParen)?;
                     left = Expr::InSubquery { expr: Box::new(left), subquery, negated: false };
                 } else {
@@ -110,7 +110,7 @@ fn parse_pratt_expr<'a>(input: &mut &'a [Token<'a>], min_bp: u8) -> ModalResult<
                          let _ = next_token(input); // IN
                          expect_punctuation(input, Token::LParen)?;
                          if matches!(peek_token(input), Some(Token::Keyword(kw)) if kw.eq_ignore_ascii_case("SELECT")) {
-                             let subquery = Box::new(crate::parser::v2::parser::statements::query::parse_select(input)?);
+                             let subquery = Box::new(crate::parser::parser::statements::query::parse_select(input)?);
                              expect_punctuation(input, Token::RParen)?;
                              left = Expr::InSubquery { expr: Box::new(left), subquery, negated: true };
                          } else {
@@ -238,7 +238,7 @@ pub fn parse_primary<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<Expr<'a>> {
         Some(Token::Keyword(k)) if k.eq_ignore_ascii_case("EXISTS") => {
             let _ = next_token(input);
             expect_punctuation(input, Token::LParen)?;
-            let subquery = Box::new(crate::parser::v2::parser::statements::query::parse_select(input)?);
+            let subquery = Box::new(crate::parser::parser::statements::query::parse_select(input)?);
             expect_punctuation(input, Token::RParen)?;
             Ok(Expr::Exists { subquery, negated: false })
         }
@@ -263,7 +263,7 @@ pub fn parse_primary<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<Expr<'a>> {
              if matches!(peek_token(input), Some(Token::Keyword(kw)) if kw.eq_ignore_ascii_case("EXISTS")) {
                  let _ = next_token(input); // EXISTS
                  expect_punctuation(input, Token::LParen)?;
-                 let subquery = Box::new(crate::parser::v2::parser::statements::query::parse_select(input)?);
+                 let subquery = Box::new(crate::parser::parser::statements::query::parse_select(input)?);
                  expect_punctuation(input, Token::RParen)?;
                  Ok(Expr::Exists { subquery, negated: true })
              } else {
@@ -282,9 +282,15 @@ pub fn parse_primary<'a>(input: &mut &'a [Token<'a>]) -> ModalResult<Expr<'a>> {
              Ok(Expr::Unary { op: UnaryOp::Negate, expr: Box::new(expr) })
         }
         Some(Token::LParen) => {
-            let _ = next_token(input);
+            let mut open_parens = 0usize;
+            while matches!(peek_token(input), Some(Token::LParen)) {
+                let _ = next_token(input);
+                open_parens += 1;
+            }
             let expr = parse_expr(input)?;
-            expect_punctuation(input, Token::RParen)?;
+            for _ in 0..open_parens {
+                expect_punctuation(input, Token::RParen)?;
+            }
             Ok(expr)
         }
         Some(Token::Star) => {
@@ -435,7 +441,7 @@ fn parse_window_over<'a>(
     if matches!(peek_token(input), Some(Token::Keyword(kw)) if kw.eq_ignore_ascii_case("ORDER")) {
         let _ = next_token(input); // ORDER
         expect_keyword(input, "BY")?;
-        order_by = parse_comma_list(input, crate::parser::v2::parser::statements::query::parse_order_by_expr)?;
+        order_by = parse_comma_list(input, crate::parser::parser::statements::query::parse_order_by_expr)?;
     }
 
     let mut frame = None;

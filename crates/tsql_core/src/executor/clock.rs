@@ -1,4 +1,4 @@
-pub trait Clock: Send + Sync {
+﻿pub trait Clock: Send + Sync {
     fn now_datetime_literal(&self) -> String;
 }
 

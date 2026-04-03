@@ -1,4 +1,4 @@
-use thiserror::Error;
+﻿use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorClass {
