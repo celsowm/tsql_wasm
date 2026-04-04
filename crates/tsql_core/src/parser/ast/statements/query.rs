@@ -21,8 +21,7 @@ pub struct SelectStmt<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ApplyClause<'a> {
     pub apply_type: ApplyType,
-    pub subquery: Box<SelectStmt<'a>>,
-    pub alias: Cow<'a, str>,
+    pub table: TableRef<'a>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -57,6 +56,11 @@ pub enum TableRef<'a> {
         name: Vec<Cow<'a, str>>,
         alias: Option<Cow<'a, str>>,
         hints: Vec<Cow<'a, str>>,
+    },
+    Values {
+        rows: Vec<Vec<Expr<'a>>>,
+        alias: Cow<'a, str>,
+        columns: Vec<Cow<'a, str>>,
     },
     Subquery {
         subquery: Box<SelectStmt<'a>>,

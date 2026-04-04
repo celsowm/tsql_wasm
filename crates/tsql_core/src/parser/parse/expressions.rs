@@ -402,6 +402,9 @@ fn parse_identifier_or_function<'a>(parser: &mut Parser<'a>, name: Cow<'a, str>)
             match tok {
                 Token::Identifier(next_id) => parts.push(next_id.clone()),
                 Token::Keyword(k) => parts.push(Cow::Borrowed(k.as_ref())),
+                Token::Star => {
+                    return Ok(Expr::QualifiedWildcard(parts));
+                }
                 _ => return parser.backtrack(Expected::Description("identifier")),
             }
         } else {

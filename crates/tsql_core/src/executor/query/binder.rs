@@ -97,6 +97,7 @@ fn bind_builtin_tvf(
     let name = match &tref.factor {
         TableFactor::Named(o) => &o.name,
         TableFactor::Derived(_) => return Ok(None),
+        TableFactor::Values { .. } => return Ok(None),
     };
     let upper = name.to_uppercase();
 
@@ -238,6 +239,7 @@ fn bind_view(
     let name = match &tref.factor {
         TableFactor::Named(o) => &o.name,
         TableFactor::Derived(_) => return Ok(None),
+        TableFactor::Values { .. } => return Ok(None),
     };
 
     let Some(view) = catalog.find_view(schema, name).cloned() else {
@@ -304,6 +306,7 @@ fn bind_inline_tvf(
     let name = match &tref.factor {
         TableFactor::Named(o) => &o.name,
         TableFactor::Derived(_) => return Ok(None),
+        TableFactor::Values { .. } => return Ok(None),
     };
     let Some(open) = name.find('(') else {
         return Ok(None);

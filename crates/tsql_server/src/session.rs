@@ -48,7 +48,7 @@ impl TdsSession {
 
         log::info!("Starting handshake for incoming connection");
         loop {
-            let (header, data) = packet::read_packet(&mut stream)
+            let (header, data) = packet::read_message(&mut stream)
                 .await
                 .map_err(|e| format!("Handshake read error: {}", e))?;
             log::debug!("Received handshake packet type=0x{:02X} len={}", header.packet_type, header.length);
@@ -125,7 +125,7 @@ impl TdsSession {
         let login_data = if let Some((_, data)) = login_packet {
             data
         } else {
-            let (header, data) = packet::read_packet(&mut reader)
+            let (header, data) = packet::read_message(&mut reader)
                 .await
                 .map_err(|e| format!("Failed to read LOGIN7: {}", e))?;
             if header.packet_type != TDS7_LOGIN {
@@ -202,7 +202,7 @@ impl TdsSession {
 
         // Main loop: handle SQL Batch and other packets
         loop {
-            let result = packet::read_packet(&mut reader).await;
+            let result = packet::read_message(&mut reader).await;
             match result {
                 Ok((header, data)) => {
                     log::debug!("Received packet type=0x{:02X} len={}", header.packet_type, header.length);

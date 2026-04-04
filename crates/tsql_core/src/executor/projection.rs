@@ -50,8 +50,41 @@ fn expand_projection_labels(item: &SelectItem, sample: Option<&JoinedRow>) -> Ve
                 vec!["*".to_string()]
             }
         }
+        Expr::QualifiedWildcard(parts) => {
+            if let Some(row) = sample {
+                let table_name = parts.last().unwrap();
+                row.iter()
+                    .filter(|binding| {
+                        binding.alias.eq_ignore_ascii_case(table_name)
+                            || binding.table.name.eq_ignore_ascii_case(table_name)
+                    })
+                    .flat_map(|binding| binding.table.columns.iter().map(|c| c.name.clone()))
+                    .collect()
+            } else {
+                vec![format!("{}.*", parts.join("."))]
+            }
+        }
         _ => vec![item.alias.clone().unwrap_or_else(|| expr_label(&item.expr))],
     }
+}
+
+pub fn expand_qualified_wildcard_values(row: &JoinedRow, table_name: &str) -> Vec<Value> {
+    let mut values = Vec::new();
+    for binding in row {
+        if binding.alias.eq_ignore_ascii_case(table_name)
+            || binding.table.name.eq_ignore_ascii_case(table_name)
+        {
+            for (idx, _) in binding.table.columns.iter().enumerate() {
+                let value = binding
+                    .row
+                    .as_ref()
+                    .map(|r| r.values[idx].clone())
+                    .unwrap_or(Value::Null);
+                values.push(value);
+            }
+        }
+    }
+    values
 }
 
 pub fn expand_wildcard_values(row: &JoinedRow) -> Vec<Value> {
@@ -81,6 +114,7 @@ pub fn expr_label(expr: &Expr) -> String {
         Expr::Convert { .. } => "CONVERT".to_string(),
         Expr::TryConvert { .. } => "TRY_CONVERT".to_string(),
         Expr::Wildcard => "*".to_string(),
+        Expr::QualifiedWildcard(parts) => format!("{}.*", parts.join(".")),
         Expr::Case { .. } => "CASE".to_string(),
         Expr::InList { .. } => "IN".to_string(),
         Expr::Between { .. } => "BETWEEN".to_string(),

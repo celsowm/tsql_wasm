@@ -52,6 +52,10 @@ pub(crate) fn project_flat_rows(
             for item in projection {
                 match &item.expr {
                     Expr::Wildcard => out.extend(expand_wildcard_values(row)),
+                    Expr::QualifiedWildcard(parts) => {
+                        let table_name = parts.last().unwrap();
+                        out.extend(crate::executor::projection::expand_qualified_wildcard_values(row, table_name));
+                    }
                     expr => {
                         let val = eval_expr(expr, row, ctx, catalog, storage, clock);
                         match val {

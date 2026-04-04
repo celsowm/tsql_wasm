@@ -14,6 +14,7 @@ pub(crate) fn normalize_table_ref(table: &TableRef) -> String {
     match &table.factor {
         TableFactor::Named(o) => normalize_object_name(o),
         TableFactor::Derived(_) => "(DERIVED)".to_string(),
+        TableFactor::Values { .. } => "(VALUES)".to_string(),
     }
 }
 

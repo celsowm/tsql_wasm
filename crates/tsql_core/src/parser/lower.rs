@@ -295,6 +295,7 @@ pub fn lower_expr(v2_expr: v2::Expr) -> Result<old::expressions::Expr, DbError> 
         v2::Expr::Variable(id) => Ok(old::expressions::Expr::Identifier(id.into_owned())),
         v2::Expr::QualifiedIdentifier(parts) => Ok(old::expressions::Expr::QualifiedIdentifier(parts.into_iter().map(|p| p.into_owned()).collect())),
         v2::Expr::Wildcard => Ok(old::expressions::Expr::Wildcard),
+        v2::Expr::QualifiedWildcard(parts) => Ok(old::expressions::Expr::QualifiedWildcard(parts.into_iter().map(|p| p.into_owned()).collect())),
         v2::Expr::Integer(i) => Ok(old::expressions::Expr::Integer(i)),
         v2::Expr::Float(f) => Ok(old::expressions::Expr::FloatLiteral(f64::from_bits(f).to_string())),
         v2::Expr::String(s) => Ok(old::expressions::Expr::String(s.into_owned())),
@@ -528,14 +529,52 @@ pub fn lower_select<'a>(s: v2::SelectStmt<'a>) -> Result<old::statements::query:
         into_table: s.into_table.map(lower_object_name),
         from,
         joins,
-        applies: s.applies.into_iter().map(|a| Ok(old::statements::query::ApplyClause {
-            apply_type: match a.apply_type {
-                v2::ApplyType::Cross => old::statements::query::ApplyType::Cross,
-                v2::ApplyType::Outer => old::statements::query::ApplyType::Outer,
-            },
-            subquery: lower_select(*a.subquery)?,
-            alias: a.alias.into_owned(),
-        })).collect::<Result<Vec<_>, DbError>>()?,
+        applies: s.applies.into_iter().map(|a| {
+            let (tr, extra_joins) = lower_table_ref_recursive(a.table)?;
+            if !extra_joins.is_empty() {
+                return Err(DbError::Parse("Joins inside APPLY are not yet supported in this version".into()));
+            }
+            let subquery = match tr.factor {
+                old::common::TableFactor::Derived(s) => *s,
+                old::common::TableFactor::Values { rows, columns } => {
+                    // Wrap VALUES in a SelectStmt and keep its projected columns.
+                    // An empty projection here would erase the VALUES columns before APPLY sees them.
+                    old::statements::query::SelectStmt {
+                        from: Some(old::common::TableRef {
+                            factor: old::common::TableFactor::Values { rows, columns },
+                            alias: tr.alias.clone(),
+                            pivot: None,
+                            unpivot: None,
+                            hints: Vec::new(),
+                        }),
+                        joins: Vec::new(),
+                        applies: Vec::new(),
+                        projection: vec![old::statements::query::SelectItem {
+                            expr: old::expressions::Expr::Wildcard,
+                            alias: None,
+                        }],
+                        into_table: None,
+                        distinct: false,
+                        top: None,
+                        selection: None,
+                        group_by: Vec::new(),
+                        having: None,
+                        order_by: Vec::new(),
+                        offset: None,
+                        fetch: None,
+                    }
+                }
+                _ => return Err(DbError::Parse("Only subqueries and VALUES are supported in APPLY in this version".into())),
+            };
+            Ok(old::statements::query::ApplyClause {
+                apply_type: match a.apply_type {
+                    v2::ApplyType::Cross => old::statements::query::ApplyType::Cross,
+                    v2::ApplyType::Outer => old::statements::query::ApplyType::Outer,
+                },
+                subquery,
+                alias: tr.alias.unwrap_or_default(),
+            })
+        }).collect::<Result<Vec<_>, DbError>>()?,
         selection: s.selection.map(lower_expr).transpose()?,
         group_by: s.group_by.into_iter().map(lower_expr).collect::<Result<Vec<_>, DbError>>()?,
         having: s.having.map(lower_expr).transpose()?,
@@ -573,6 +612,18 @@ fn lower_table_ref_recursive<'a>(tr: v2::TableRef<'a>) -> Result<(old::common::T
                 pivot: None,
                 unpivot: None,
                 hints: hints.into_iter().map(|h| h.into_owned()).collect(),
+            }, Vec::new()))
+        }
+        v2::TableRef::Values { rows, alias, columns } => {
+            Ok((old::common::TableRef {
+                factor: old::common::TableFactor::Values {
+                    rows: rows.into_iter().map(|r| r.into_iter().map(lower_expr).collect::<Result<Vec<_>, _>>()).collect::<Result<Vec<_>, _>>()?,
+                    columns: columns.into_iter().map(|c| c.into_owned()).collect(),
+                },
+                alias: Some(alias.into_owned()),
+                pivot: None,
+                unpivot: None,
+                hints: Vec::new(),
             }, Vec::new()))
         }
         v2::TableRef::Subquery { subquery, alias } => {

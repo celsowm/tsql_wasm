@@ -74,6 +74,24 @@ pub async fn read_packet<R: AsyncReadExt + Unpin>(
     Ok((header, data))
 }
 
+pub async fn read_message<R: AsyncReadExt + Unpin>(
+    reader: &mut R,
+) -> io::Result<(PacketHeader, Vec<u8>)> {
+    let (header, mut data) = read_packet(reader).await?;
+    let mut current_header = header.clone();
+    
+    while (current_header.status & STATUS_EOM) == 0 {
+        let (next_header, next_data) = read_packet(reader).await?;
+        data.extend_from_slice(&next_data);
+        current_header = next_header;
+    }
+    
+    // Return the first header (containing the packet type) but with final status
+    let mut final_header = header;
+    final_header.status = current_header.status;
+    Ok((final_header, data))
+}
+
 pub async fn write_packet<W: AsyncWriteExt + Unpin>(
     writer: &mut W,
     packet_type: u8,

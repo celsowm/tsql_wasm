@@ -116,29 +116,8 @@ pub fn parse_single_select_body<'a>(parser: &mut Parser<'a>) -> ParseResult<Sele
                 }
                 _ => break,
             };
-            parser.expect_lparen()?;
-            let subquery = Box::new(parse_select(parser)?);
-            parser.expect_rparen()?;
-            let alias = if let Some(Token::Keyword(k)) = parser.peek() {
-                if *k == Keyword::As {
-                    let _ = parser.next();
-                }
-                match parser.next() {
-                    Some(Token::Identifier(id)) => Some(id.clone()),
-                    Some(Token::Keyword(kw)) => Some(Cow::Owned(kw.as_ref().to_string())),
-                    _ => return parser.backtrack(Expected::Description("alias")),
-                }
-            } else if let Some(Token::Identifier(id)) = parser.peek() {
-                let id = id.clone();
-                let _ = parser.next();
-                Some(id)
-            } else {
-                return parser.backtrack(Expected::Description("alias"));
-            };
-            let Some(alias) = alias else {
-                return parser.backtrack(Expected::Description("alias"));
-            };
-            applies.push(ApplyClause { apply_type, subquery, alias });
+            let table = parse_table_ref(parser)?;
+            applies.push(ApplyClause { apply_type, table });
         } else {
             break;
         }
@@ -228,25 +207,81 @@ pub fn parse_table_ref<'a>(parser: &mut Parser<'a>) -> ParseResult<TableRef<'a>>
     let mut current = match parser.peek() {
         Some(Token::LParen) => {
             let _ = parser.next();
-            let subquery = Box::new(parse_select(parser)?);
-            parser.expect_rparen()?;
-            let alias = if let Some(tok) = parser.peek() {
-                match tok {
-                    Token::Keyword(Keyword::As) => {
-                        let _ = parser.next();
-                        match parser.next() {
-                            Some(Token::Identifier(alias)) => alias.clone(),
-                            _ => return parser.backtrack(Expected::Description("alias")),
+            if parser.at_keyword(Keyword::Values) {
+                let _ = parser.next();
+                let rows = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
+                    p.expect_lparen()?;
+                    let vals = crate::parser::parse::expressions::parse_comma_list(p, crate::parser::parse::expressions::parse_expr)?;
+                    p.expect_rparen()?;
+                    Ok(vals)
+                })?;
+                parser.expect_rparen()?;
+                let alias = if let Some(tok) = parser.peek() {
+                    match tok {
+                        Token::Keyword(Keyword::As) => {
+                            let _ = parser.next();
+                            match parser.next() {
+                                Some(Token::Identifier(alias)) => alias.clone(),
+                                _ => return parser.backtrack(Expected::Description("alias")),
+                            }
                         }
+                        Token::Keyword(k) if !crate::parser::parse::expressions::is_stop_keyword(k.as_ref()) => {
+                            let alias = Cow::Owned(k.as_ref().to_string());
+                            let _ = parser.next();
+                            alias
+                        }
+                        Token::Identifier(id) if !crate::parser::parse::expressions::is_stop_keyword(id) => {
+                            let alias = id.clone();
+                            let _ = parser.next();
+                            alias
+                        }
+                        _ => return parser.backtrack(Expected::Description("alias")),
                     }
-                    Token::Keyword(k) => Cow::Owned(k.as_ref().to_string()),
-                    Token::Identifier(id) => id.clone(),
-                    _ => return parser.backtrack(Expected::Description("alias")),
+                } else {
+                    return parser.backtrack(Expected::Description("alias"));
+                };
+                let mut columns = Vec::new();
+                if matches!(parser.peek(), Some(Token::LParen)) {
+                    let _ = parser.next();
+                    columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
+                        match p.next() {
+                            Some(Token::Identifier(id)) => Ok(id.clone()),
+                            Some(Token::Keyword(kw)) => Ok(Cow::Owned(kw.as_ref().to_string())),
+                            _ => p.backtrack(Expected::Description("column name")),
+                        }
+                    })?;
+                    parser.expect_rparen()?;
                 }
+                TableRef::Values { rows, alias, columns }
             } else {
-                return parser.backtrack(Expected::Description("alias"));
-            };
-            TableRef::Subquery { subquery, alias }
+                let subquery = Box::new(parse_select(parser)?);
+                parser.expect_rparen()?;
+                let alias = if let Some(tok) = parser.peek() {
+                    match tok {
+                        Token::Keyword(Keyword::As) => {
+                            let _ = parser.next();
+                            match parser.next() {
+                                Some(Token::Identifier(alias)) => alias.clone(),
+                                _ => return parser.backtrack(Expected::Description("alias")),
+                            }
+                        }
+                        Token::Keyword(k) if !crate::parser::parse::expressions::is_stop_keyword(k.as_ref()) => {
+                            let alias = Cow::Owned(k.as_ref().to_string());
+                            let _ = parser.next();
+                            alias
+                        }
+                        Token::Identifier(id) if !crate::parser::parse::expressions::is_stop_keyword(id) => {
+                            let alias = id.clone();
+                            let _ = parser.next();
+                            alias
+                        }
+                        _ => return parser.backtrack(Expected::Description("alias")),
+                    }
+                } else {
+                    return parser.backtrack(Expected::Description("alias"));
+                };
+                TableRef::Subquery { subquery, alias }
+            }
         }
         Some(Token::Identifier(_)) | Some(Token::Keyword(_)) | Some(Token::Variable(_)) => {
             let name = parse_multipart_name(parser)?;

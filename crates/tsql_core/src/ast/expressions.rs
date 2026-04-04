@@ -7,6 +7,7 @@ pub enum Expr {
     Identifier(String),
     QualifiedIdentifier(Vec<String>),
     Wildcard,
+    QualifiedWildcard(Vec<String>),
     Integer(i64),
     FloatLiteral(String),
     BinaryLiteral(Vec<u8>),

@@ -4,6 +4,43 @@ use crate::parser::state::Parser;
 use crate::parser::error::{ParseResult, Expected};
 use std::borrow::Cow;
 
+fn is_statement_starter<'a>(tok: Option<&Token<'a>>) -> bool {
+    match tok {
+        Some(Token::Keyword(k)) => matches!(
+            k,
+            Keyword::Select
+                | Keyword::Insert
+                | Keyword::Update
+                | Keyword::Delete
+                | Keyword::Create
+                | Keyword::Drop
+                | Keyword::Alter
+                | Keyword::Declare
+                | Keyword::Set
+                | Keyword::If
+                | Keyword::While
+                | Keyword::Exec
+                | Keyword::Execute
+                | Keyword::Print
+                | Keyword::Begin
+                | Keyword::Commit
+                | Keyword::Rollback
+                | Keyword::Save
+                | Keyword::Return
+                | Keyword::Break
+                | Keyword::Continue
+                | Keyword::Merge
+                | Keyword::Truncate
+                | Keyword::Open
+                | Keyword::Close
+                | Keyword::Deallocate
+                | Keyword::Fetch
+                | Keyword::With
+        ),
+        _ => false,
+    }
+}
+
 // Re-export canonical implementations from control_flow.rs
 pub use super::control_flow::{parse_if, parse_begin_end, parse_try_catch};
 
@@ -86,12 +123,15 @@ pub fn parse_exec_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement
                  return Ok(Statement::Procedural(ProceduralStatement::SpExecuteSql { sql_expr, params_def, args }));
              }
 
-             let name = parse_multipart_name(parser)?;
-             let mut args = Vec::new();
-             if !parser.is_empty() && !matches!(parser.peek(), Some(Token::Semicolon) | Some(Token::Go)) {
-                 args = crate::parser::parse::expressions::parse_comma_list(parser, parse_exec_arg)?;
-             }
-             Ok(Statement::Procedural(ProceduralStatement::ExecProcedure { name, args }))
+              let name = parse_multipart_name(parser)?;
+              let mut args = Vec::new();
+              if !parser.is_empty()
+                  && !matches!(parser.peek(), Some(Token::Semicolon) | Some(Token::Go))
+                  && !is_statement_starter(parser.peek())
+              {
+                  args = crate::parser::parse::expressions::parse_comma_list(parser, parse_exec_arg)?;
+              }
+              Ok(Statement::Procedural(ProceduralStatement::ExecProcedure { name, args }))
         }
         _ => parser.backtrack(Expected::Description("procedure name or expression")),
     }

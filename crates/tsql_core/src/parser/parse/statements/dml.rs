@@ -4,6 +4,43 @@ use crate::parser::state::Parser;
 use crate::parser::error::{ParseResult, Expected};
 use std::borrow::Cow;
 
+fn is_statement_starter<'a>(tok: Option<&Token<'a>>) -> bool {
+    match tok {
+        Some(Token::Keyword(k)) => matches!(
+            k,
+            Keyword::Select
+                | Keyword::Insert
+                | Keyword::Update
+                | Keyword::Delete
+                | Keyword::Create
+                | Keyword::Drop
+                | Keyword::Alter
+                | Keyword::Declare
+                | Keyword::Set
+                | Keyword::If
+                | Keyword::While
+                | Keyword::Exec
+                | Keyword::Execute
+                | Keyword::Print
+                | Keyword::Begin
+                | Keyword::Commit
+                | Keyword::Rollback
+                | Keyword::Save
+                | Keyword::Return
+                | Keyword::Break
+                | Keyword::Continue
+                | Keyword::Merge
+                | Keyword::Truncate
+                | Keyword::Open
+                | Keyword::Close
+                | Keyword::Deallocate
+                | Keyword::Fetch
+                | Keyword::With
+        ),
+        _ => false,
+    }
+}
+
 pub fn parse_insert<'a>(parser: &mut Parser<'a>) -> ParseResult<InsertStmt<'a>> {
     if let Some(Token::Keyword(Keyword::Into)) = parser.peek() {
         let _ = parser.next();
@@ -62,13 +99,16 @@ pub fn parse_insert<'a>(parser: &mut Parser<'a>) -> ParseResult<InsertStmt<'a>> 
         }
         Keyword::Exec | Keyword::Execute => {
              let procedure = parse_multipart_name(parser)?;
-             let args = if !parser.is_empty() && !matches!(parser.peek(), Some(Token::Semicolon)) {
+             let args = if !parser.is_empty()
+                 && !matches!(parser.peek(), Some(Token::Semicolon) | Some(Token::Go))
+                 && !is_statement_starter(parser.peek())
+             {
                  crate::parser::parse::expressions::parse_comma_list(parser, crate::parser::parse::expressions::parse_expr)?
              } else {
                  Vec::new()
              };
              InsertSource::Exec { procedure, args }
-        }
+         }
         _ => return parser.backtrack(Expected::Description("VALUES, SELECT, or EXEC")),
     };
 

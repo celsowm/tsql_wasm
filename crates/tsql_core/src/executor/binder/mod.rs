@@ -73,6 +73,7 @@ pub fn bind_expr(
             }
         }
         Expr::Wildcard => Err(DbError::Execution("wildcard is not a scalar expression".into())),
+        Expr::QualifiedWildcard(_) => Err(DbError::Execution("qualified wildcard is not a scalar expression".into())),
         Expr::Integer(v) => Ok(BoundExpr::Literal(if *v >= i32::MIN as i64 && *v <= i32::MAX as i64 {
             Value::Int(*v as i32)
         } else {

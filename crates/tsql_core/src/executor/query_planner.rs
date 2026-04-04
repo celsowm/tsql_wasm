@@ -241,6 +241,67 @@ pub fn bind_table(
             // This should be handled by the caller (QueryExecutor) which has access to self
             return Err(DbError::Execution("Subquery binding requires QueryExecutor context".into()));
         }
+        crate::ast::TableFactor::Values { rows, columns } => {
+            let alias = tref.alias.clone().unwrap_or_else(|| "VALUES".to_string());
+            let mut table_def = crate::catalog::TableDef {
+                id: 0,
+                schema_id: 1,
+                schema_name: "dbo".to_string(),
+                name: alias.clone(),
+                columns: Vec::new(),
+                check_constraints: Vec::new(),
+                foreign_keys: Vec::new(),
+            };
+            
+            // Determine number of columns from the first row if columns not provided
+            let first_row_len = rows.first().map(|r| r.len()).unwrap_or(0);
+            let col_count = if !columns.is_empty() {
+                columns.len()
+            } else {
+                first_row_len
+            };
+
+            for i in 0..col_count {
+                let name = columns.get(i).cloned().unwrap_or_else(|| format!("col{}", i + 1));
+                table_def.columns.push(crate::catalog::ColumnDef {
+                    id: (i + 1) as u32,
+                    name,
+                    data_type: crate::types::DataType::VarChar { max_len: 4000 }, // Default
+                    nullable: true,
+                    primary_key: false,
+                    unique: false,
+                    identity: None,
+                    default: None,
+                    default_constraint_name: None,
+                    check: None,
+                    check_constraint_name: None,
+                    computed_expr: None,
+                });
+            }
+
+            let mut virtual_rows = Vec::new();
+            for row_exprs in rows {
+                let mut row_values = Vec::new();
+                for expr in row_exprs {
+                    // Try to evaluate constant or variable
+                    let val = match super::evaluator::eval_constant_expr(expr, ctx, catalog, &crate::storage::InMemoryStorage::default(), &super::clock::SystemClock) {
+                        Ok(v) => v,
+                        Err(_) => crate::types::Value::Null,
+                    };
+                    row_values.push(val);
+                }
+                virtual_rows.push(crate::storage::StoredRow {
+                    values: row_values,
+                    deleted: false,
+                });
+            }
+
+            return Ok(BoundTable {
+                alias,
+                table: table_def,
+                virtual_rows: Some(virtual_rows),
+            });
+        }
         _ => {}
     }
 
@@ -254,6 +315,7 @@ pub fn bind_table(
                 }
             }
             crate::ast::TableFactor::Derived(_) => {}
+            crate::ast::TableFactor::Values { .. } => {}
         }
     } else {
         // Fallback for regular tables that don't start with @ or #

@@ -34,6 +34,7 @@ pub(crate) fn format_expr(expr: &Expr) -> String {
         Expr::Identifier(name) => name.clone(),
         Expr::QualifiedIdentifier(parts) => parts.join("."),
         Expr::Wildcard => "*".to_string(),
+        Expr::QualifiedWildcard(parts) => format!("{}.*", parts.join(".")),
         Expr::Integer(v) => v.to_string(),
         Expr::FloatLiteral(s) => s.clone(),
         Expr::BinaryLiteral(bytes) => crate::types::format_binary(bytes),
@@ -176,6 +177,7 @@ pub(crate) fn format_table_ref(table: &TableRef) -> String {
     let mut out = match &table.factor {
         TableFactor::Named(o) => format_object_name(o),
         TableFactor::Derived(stmt) => format!("({})", format_select_stmt(stmt)),
+        TableFactor::Values { .. } => "(VALUES (...))".to_string(),
     };
     if let Some(alias) = &table.alias {
         out.push_str(" AS ");

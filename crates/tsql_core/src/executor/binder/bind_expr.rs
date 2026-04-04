@@ -5,6 +5,7 @@ use crate::types::Value;
 /// A pre-resolved expression where all column identifiers have been bound to
 /// concrete (table_idx, col_idx) positions. This eliminates per-row string
 /// comparisons during expression evaluation.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum BoundExpr {
     /// A column resolved to a specific table and column index in the row.

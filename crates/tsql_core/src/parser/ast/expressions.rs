@@ -36,6 +36,7 @@ pub enum Expr<'a> {
     QualifiedIdentifier(Vec<Cow<'a, str>>),
     Variable(Cow<'a, str>),
     Wildcard,
+    QualifiedWildcard(Vec<Cow<'a, str>>),
     Integer(i64),
     Float(u64), // f64::to_bits()
     String(Cow<'a, str>),

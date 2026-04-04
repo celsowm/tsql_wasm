@@ -6,12 +6,14 @@
 
 /// Normalizes a T-SQL identifier to uppercase for consistent comparison.
 #[inline]
+#[allow(dead_code)]
 pub fn normalize_identifier(name: &str) -> String {
     name.to_uppercase()
 }
 
 /// Returns true if two identifiers are equal, ignoring ASCII case.
 #[inline]
+#[allow(dead_code)]
 pub fn eq_ignoring_case(a: &str, b: &str) -> bool {
     a.eq_ignore_ascii_case(b)
 }
@@ -36,6 +38,7 @@ pub fn strip_dbo_prefix(name: &str) -> &str {
 
 /// Normalizes an identifier: strips the dbo prefix and uppercases the result.
 #[inline]
+#[allow(dead_code)]
 pub fn normalize_name(name: &str) -> String {
     strip_dbo_prefix(name).to_uppercase()
 }

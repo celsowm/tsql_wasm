@@ -1,5 +1,6 @@
-﻿use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use crate::ast::statements::query::SelectStmt;
+use crate::ast::Expr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ObjectName {
@@ -17,6 +18,10 @@ impl ObjectName {
 pub enum TableFactor {
     Named(ObjectName),
     Derived(Box<SelectStmt>),
+    Values {
+        rows: Vec<Vec<Expr>>,
+        columns: Vec<String>,
+    },
 }
 
 impl TableFactor {
@@ -24,6 +29,7 @@ impl TableFactor {
         match self {
             TableFactor::Named(o) => Some(o),
             TableFactor::Derived(_) => None,
+            TableFactor::Values { .. } => None,
         }
     }
 
