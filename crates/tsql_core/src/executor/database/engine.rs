@@ -158,8 +158,7 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
     }
 
     pub fn print_output(&self) -> Vec<String> {
-        let session_mutex = self.db.inner.sessions.get(&self.default_session);
-        session_mutex.map(|s| s.lock().diagnostics.print_output.clone()).unwrap_or_default()
+        self.db.print_output(self.default_session)
     }
 }
 

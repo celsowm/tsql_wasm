@@ -1,4 +1,5 @@
 pub(crate) mod aggregates;
+pub(crate) mod binder;
 pub mod clock;
 pub mod conflict;
 pub(crate) mod deadlock;
@@ -33,6 +34,7 @@ pub(crate) mod scalar;
 pub(crate) mod schema;
 pub(crate) mod script;
 pub mod session;
+pub(crate) mod string_norm;
 pub mod table_util;
 pub mod tooling;
 pub mod transaction;

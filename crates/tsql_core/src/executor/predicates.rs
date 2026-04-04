@@ -33,7 +33,7 @@ pub(crate) fn eval_case(
     for clause in when_clauses {
         let match_found = if let Some(ref op_val) = operand_val {
             let when_val = eval_expr(&clause.condition, row, ctx, catalog, storage, clock)?;
-            compare_bool(op_val.clone(), when_val, |o| o == Ordering::Equal, ctx.ansi_nulls)
+            compare_bool(op_val.clone(), when_val, |o| o == Ordering::Equal, ctx.metadata.ansi_nulls)
         } else {
             let cond = eval_expr(&clause.condition, row, ctx, catalog, storage, clock)?;
             Value::Bit(truthy(&cond))
@@ -70,7 +70,7 @@ pub(crate) fn eval_in_list(
         if item_val.is_null() {
             return Ok(Value::Null);
         }
-        if compare_bool(val.clone(), item_val, |o| o == Ordering::Equal, ctx.ansi_nulls) == Value::Bit(true) {
+        if compare_bool(val.clone(), item_val, |o| o == Ordering::Equal, ctx.metadata.ansi_nulls) == Value::Bit(true) {
             found = true;
             break;
         }
@@ -98,10 +98,10 @@ pub(crate) fn eval_between(
 
     let ge_low = compare_bool(val.clone(), low_val, |o| {
         matches!(o, Ordering::Greater | Ordering::Equal)
-    }, ctx.ansi_nulls) == Value::Bit(true);
+    }, ctx.metadata.ansi_nulls) == Value::Bit(true);
     let le_high = compare_bool(val, high_val, |o| {
         matches!(o, Ordering::Less | Ordering::Equal)
-    }, ctx.ansi_nulls) == Value::Bit(true);
+    }, ctx.metadata.ansi_nulls) == Value::Bit(true);
 
     let result = ge_low && le_high;
     Ok(Value::Bit(if negated { !result } else { result }))
@@ -176,7 +176,7 @@ pub(crate) fn eval_scalar_subquery(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     let outer_row: JoinedRow = ctx.outer_row().clone().unwrap_or_else(|| row.to_vec());
-    let mut sub_ctx = ctx.with_outer_row_extended(row.to_vec(), outer_row);
+    let mut sub_ctx = ctx.with_outer_row(outer_row);
     let query_result = execute_subquery_select(stmt, &mut sub_ctx, catalog, storage, clock)?;
 
     if query_result.rows.is_empty() {
@@ -202,7 +202,7 @@ pub(crate) fn eval_exists(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     let outer_row: JoinedRow = ctx.outer_row().clone().unwrap_or_else(|| row.to_vec());
-    let mut sub_ctx = ctx.with_outer_row_extended(row.to_vec(), outer_row);
+    let mut sub_ctx = ctx.with_outer_row(outer_row);
     let query_result = execute_subquery_select(stmt, &mut sub_ctx, catalog, storage, clock)?;
     let exists = !query_result.rows.is_empty();
     Ok(Value::Bit(if negated { !exists } else { exists }))
@@ -224,7 +224,7 @@ pub(crate) fn eval_in_subquery(
     }
 
     let outer_row: JoinedRow = ctx.outer_row().clone().unwrap_or_else(|| row.to_vec());
-    let mut sub_ctx = ctx.with_outer_row_extended(row.to_vec(), outer_row);
+    let mut sub_ctx = ctx.with_outer_row(outer_row);
     let query_result = execute_subquery_select(stmt, &mut sub_ctx, catalog, storage, clock)?;
 
     if query_result.rows.is_empty() {
@@ -245,7 +245,7 @@ pub(crate) fn eval_in_subquery(
             continue;
         }
 
-        if compare_bool(val.clone(), subq_val.clone(), |o| o == Ordering::Equal, ctx.ansi_nulls) == Value::Bit(true)
+        if compare_bool(val.clone(), subq_val.clone(), |o| o == Ordering::Equal, ctx.metadata.ansi_nulls) == Value::Bit(true)
         {
             found = true;
             break;

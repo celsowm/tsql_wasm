@@ -3,6 +3,7 @@
 use super::types::{LockMode, LockResource, SessionId, TableLockState};
 use super::workspace::TxWorkspace;
 use super::AcquiredLock;
+use super::super::string_norm::normalize_identifier;
 
 /// Manages table-level lock state.
 pub(crate) struct TableLockManager {
@@ -29,7 +30,7 @@ impl TableLockManager {
     }
 
     pub fn can_acquire(&self, session_id: SessionId, table: &str, mode: LockMode) -> bool {
-        let normalized = table.to_uppercase();
+        let normalized = normalize_identifier(table);
         match self.locks.get(&normalized) {
             Some(state) => !state.has_conflict(session_id, mode),
             None => true,
@@ -42,7 +43,7 @@ impl TableLockManager {
         table: &str,
         mode: LockMode,
     ) -> Vec<SessionId> {
-        let normalized = table.to_uppercase();
+        let normalized = normalize_identifier(table);
         match self.locks.get(&normalized) {
             Some(state) => state.collect_blockers(session_id, mode),
             None => Vec::new(),
@@ -57,7 +58,7 @@ impl TableLockManager {
         mode: LockMode,
         savepoint_depth: usize,
     ) {
-        let normalized = table.to_uppercase();
+        let normalized = normalize_identifier(table);
         self.locks
             .entry(normalized.clone())
             .or_default()
@@ -74,7 +75,7 @@ impl TableLockManager {
 
     /// Acquire a table lock without recording in workspace (used by escalation).
     pub fn acquire_raw(&mut self, session_id: SessionId, table: &str, mode: LockMode) {
-        let normalized = table.to_uppercase();
+        let normalized = normalize_identifier(table);
         self.locks
             .entry(normalized)
             .or_default()

@@ -24,6 +24,12 @@ pub enum DbError {
 
     #[error("deadlock: {0}")]
     Deadlock(String),
+
+    /// A custom error with an explicit SQL Server–style class and number.
+    /// Allows callers to raise domain-specific errors (e.g. timeout, permission)
+    /// without modifying the DbError enum itself.
+    #[error("error {class}/{number}: {message}")]
+    Custom { class: u8, number: i32, message: String },
 }
 
 impl DbError {
@@ -31,7 +37,7 @@ impl DbError {
         match self {
             DbError::Parse(_) => ErrorClass::Parse,
             DbError::Semantic(_) => ErrorClass::Semantic,
-            DbError::Execution(_) | DbError::Deadlock(_) => ErrorClass::Execution,
+            DbError::Execution(_) | DbError::Deadlock(_) | DbError::Custom { .. } => ErrorClass::Execution,
             DbError::Storage(_) => ErrorClass::Storage,
         }
     }
@@ -39,10 +45,11 @@ impl DbError {
     pub fn number(&self) -> i32 {
         match self {
             DbError::Parse(_) => 102,
-            DbError::Semantic(_) => 207, // Invalid column name
+            DbError::Semantic(_) => 207,
             DbError::Execution(_) => 50000,
             DbError::Storage(_) => 50001,
             DbError::Deadlock(_) => 1205,
+            DbError::Custom { number, .. } => *number,
         }
     }
 
@@ -53,6 +60,7 @@ impl DbError {
             DbError::Execution(_) => "TSQL_EXECUTION_ERROR",
             DbError::Storage(_) => "TSQL_STORAGE_ERROR",
             DbError::Deadlock(_) => "TSQL_DEADLOCK_ERROR",
+            DbError::Custom { .. } => "TSQL_CUSTOM_ERROR",
         }
     }
 }

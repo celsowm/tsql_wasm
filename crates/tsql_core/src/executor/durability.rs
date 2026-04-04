@@ -37,10 +37,24 @@ where
     }
 }
 
-pub trait DurabilitySink<C>: std::fmt::Debug + Send + Sync {
+/// Writes checkpoints to durable storage.
+pub trait DurabilityWriter<C>: std::fmt::Debug + Send + Sync {
     fn persist_checkpoint(&mut self, checkpoint: &RecoveryCheckpoint<C>) -> Result<(), DbError>;
+}
+
+/// Reads the latest checkpoint from durable storage.
+/// Separated from DurabilityWriter so that write-only sinks (e.g. append-only audit log)
+/// don't need to implement recovery, and read-only sinks don't need to implement writes.
+pub trait RecoveryReader<C>: std::fmt::Debug + Send + Sync {
     fn latest_checkpoint(&self) -> Option<RecoveryCheckpoint<C>>;
 }
+
+/// Combined trait for sinks that support both writing and reading checkpoints.
+/// Implementors should implement `DurabilityWriter` and `RecoveryReader` directly;
+/// this trait is a convenience blanket that auto-implements from the two sub-traits.
+pub trait DurabilitySink<C>: DurabilityWriter<C> + RecoveryReader<C> {}
+
+impl<C, T> DurabilitySink<C> for T where T: DurabilityWriter<C> + RecoveryReader<C> {}
 
 #[derive(Debug)]
 pub struct NoopDurability<C> {
@@ -55,14 +69,19 @@ impl<C> Default for NoopDurability<C> {
     }
 }
 
-impl<C> DurabilitySink<C> for NoopDurability<C>
+impl<C> DurabilityWriter<C> for NoopDurability<C>
 where
     C: Catalog + Serialize + DeserializeOwned,
 {
     fn persist_checkpoint(&mut self, _checkpoint: &RecoveryCheckpoint<C>) -> Result<(), DbError> {
         Ok(())
     }
+}
 
+impl<C> RecoveryReader<C> for NoopDurability<C>
+where
+    C: Catalog + Serialize + DeserializeOwned,
+{
     fn latest_checkpoint(&self) -> Option<RecoveryCheckpoint<C>> {
         None
     }
@@ -85,7 +104,7 @@ impl<C> InMemoryDurability<C> {
     }
 }
 
-impl<C> DurabilitySink<C> for InMemoryDurability<C>
+impl<C> DurabilityWriter<C> for InMemoryDurability<C>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
 {
@@ -93,7 +112,12 @@ where
         self.latest = Some(checkpoint.clone());
         Ok(())
     }
+}
 
+impl<C> RecoveryReader<C> for InMemoryDurability<C>
+where
+    C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
+{
     fn latest_checkpoint(&self) -> Option<RecoveryCheckpoint<C>> {
         self.latest.clone()
     }
@@ -122,7 +146,7 @@ where
     }
 }
 
-impl<C> DurabilitySink<C> for FileDurability<C>
+impl<C> DurabilityWriter<C> for FileDurability<C>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
 {
@@ -133,7 +157,12 @@ where
         self.latest = Some(checkpoint.clone());
         Ok(())
     }
+}
 
+impl<C> RecoveryReader<C> for FileDurability<C>
+where
+    C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
+{
     fn latest_checkpoint(&self) -> Option<RecoveryCheckpoint<C>> {
         self.latest.clone()
     }

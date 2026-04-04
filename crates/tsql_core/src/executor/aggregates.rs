@@ -5,6 +5,7 @@ use crate::types::Value;
 use super::clock::Clock;
 use super::context::ExecutionContext;
 use super::evaluator::eval_expr;
+use super::string_norm::normalize_identifier;
 use super::value_ops::compare_values;
 use crate::catalog::Catalog;
 use crate::storage::Storage;
@@ -24,7 +25,7 @@ pub enum AggregateFn {
 impl AggregateFn {
     /// Parse an aggregate function name (case-insensitive) into a typed enum.
     pub fn from_name(name: &str) -> Option<Self> {
-        match name.to_uppercase().as_str() {
+        match normalize_identifier(name).as_str() {
             "COUNT" => Some(AggregateFn::Count),
             "SUM" => Some(AggregateFn::Sum),
             "AVG" => Some(AggregateFn::Avg),

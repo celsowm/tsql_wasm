@@ -106,32 +106,12 @@ where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
     S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
-    let ctx = ExecutionContext::new(
-        &mut session.variables,
-        &mut session.identities.last_identity,
-        &mut session.identities.scope_stack,
-        &mut session.tables.temp_map,
-        &mut session.tables.var_map,
-        &mut session.tables.var_counter,
-        session.options.ansi_nulls,
-        session.options.datefirst,
-        &mut session.random_state,
-        &mut session.cursors.map,
-        &mut session.cursors.fetch_status,
-        &mut session.diagnostics.print_output,
-        if session.tx_manager.active.is_some() {
-            Some(state.dirty_buffer.clone())
-        } else {
-            None
-        },
-        session_id,
-        session.original_database.clone(),
-        session.user.clone(),
-        session.app_name.clone(),
-        session.host_name.clone(),
-    );
-
-    ctx
+    let dirty_buffer = if session.tx_manager.active.is_some() {
+        Some(state.dirty_buffer.clone())
+    } else {
+        None
+    };
+    ExecutionContext::from_session(session, session_id, dirty_buffer)
 }
 
 fn execute_stmt_loop<C, S, F>(
@@ -154,7 +134,7 @@ where
     for stmt in stmts {
         ctx.frame.trancount = tx_manager.depth;
         ctx.frame.xact_state = tx_manager.xact_state;
-        ctx.identity_insert = options.identity_insert.clone();
+        ctx.session.identity_insert = options.identity_insert.clone();
         if is_transaction_statement(&stmt) {
             match transaction_exec::execute_transaction_statement(
                 state,
@@ -229,6 +209,56 @@ where
     Ok(())
 }
 
+fn execute_batch_core_inner<C, S, F>(
+    state: &SharedState<C, S>,
+    session_id: SessionId,
+    session: &mut SessionRuntime<C, S>,
+    body: F,
+) -> Result<(), DbError>
+where
+    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    F: FnOnce(
+        &mut ExecutionContext,
+        &SharedState<C, S>,
+        SessionId,
+        &mut crate::executor::transaction::TransactionManager<C, S, crate::executor::session::SessionSnapshot>,
+        &mut Box<dyn crate::executor::journal::Journal>,
+        &mut Option<crate::executor::locks::TxWorkspace<C, S>>,
+        &dyn crate::executor::clock::Clock,
+        &mut crate::executor::tooling::SessionOptions,
+    ) -> Result<(), DbError>,
+{
+    let session_ptr = session as *mut SessionRuntime<C, S>;
+
+    let mut ctx = unsafe {
+        let session_ref = &mut *session_ptr;
+        build_execution_context(session_id, session_ref, state)
+    };
+
+    ctx.enter_scope();
+
+    let exec_res = unsafe {
+        let session_ref = &mut *session_ptr;
+        let tx_manager = &mut session_ref.tx_manager;
+        let journal = &mut session_ref.journal;
+        let workspace = &mut session_ref.workspace;
+        let clock = session_ref.clock.as_ref();
+        let options = &mut session_ref.options;
+        body(&mut ctx, state, session_id, tx_manager, journal, workspace, clock, options)
+    };
+
+    // Scope cleanup always runs before error propagation — guarantees no leak
+    // even when the body returns Err (BREAK/CONTINUE/deadlock/etc).
+    let dropped_physical = ctx.leave_scope_collect_table_vars();
+    drop(ctx);
+    unsafe {
+        cleanup_scope_tables(state, &mut *session_ptr, dropped_physical);
+    }
+
+    exec_res
+}
+
 pub(crate) fn execute_batch_statements<C, S>(
     state: &SharedState<C, S>,
     session_id: SessionId,
@@ -240,39 +270,15 @@ where
     S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     let mut last_res = None;
-    let session_ptr = session as *mut SessionRuntime<C, S>;
-    let mut ctx = unsafe {
-        let session_ref = &mut *session_ptr;
-        build_execution_context(session_id, session_ref, state)
-    };
-    ctx.enter_scope();
-    let exec_res = unsafe {
-        let session_ref = &mut *session_ptr;
-        let tx_manager = &mut session_ref.tx_manager;
-        let journal = &mut session_ref.journal;
-        let workspace = &mut session_ref.workspace;
-        let clock = session_ref.clock.as_ref();
-        let options = &mut session_ref.options;
-        execute_stmt_loop(
-            state,
-            session_id,
-            tx_manager,
-            journal,
-            workspace,
-            clock,
-            options,
-            &mut ctx,
-            stmts,
-            |r| {
-                last_res = r;
-            },
-        )
-    };
-    let dropped_physical = ctx.leave_scope_collect_table_vars();
-    drop(ctx);
-    unsafe {
-        cleanup_scope_tables(state, &mut *session_ptr, dropped_physical);
-    }
+    let exec_res = execute_batch_core_inner(
+        state, session_id, session,
+        |ctx, state, session_id, tx_manager, journal, workspace, clock, options| {
+            execute_stmt_loop(
+                state, session_id, tx_manager, journal, workspace, clock, options, ctx,
+                stmts, |r| { last_res = r; },
+            )
+        },
+    );
     exec_res?;
     Ok(last_res)
 }
@@ -288,39 +294,15 @@ where
     S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     let mut results = Vec::new();
-    let session_ptr = session as *mut SessionRuntime<C, S>;
-    let mut ctx = unsafe {
-        let session_ref = &mut *session_ptr;
-        build_execution_context(session_id, session_ref, state)
-    };
-    ctx.enter_scope();
-    let exec_res = unsafe {
-        let session_ref = &mut *session_ptr;
-        let tx_manager = &mut session_ref.tx_manager;
-        let journal = &mut session_ref.journal;
-        let workspace = &mut session_ref.workspace;
-        let clock = session_ref.clock.as_ref();
-        let options = &mut session_ref.options;
-        execute_stmt_loop(
-            state,
-            session_id,
-            tx_manager,
-            journal,
-            workspace,
-            clock,
-            options,
-            &mut ctx,
-            stmts,
-            |r| {
-                results.push(r);
-            },
-        )
-    };
-    let dropped_physical = ctx.leave_scope_collect_table_vars();
-    drop(ctx);
-    unsafe {
-        cleanup_scope_tables(state, &mut *session_ptr, dropped_physical);
-    }
+    let exec_res = execute_batch_core_inner(
+        state, session_id, session,
+        |ctx, state, session_id, tx_manager, journal, workspace, clock, options| {
+            execute_stmt_loop(
+                state, session_id, tx_manager, journal, workspace, clock, options, ctx,
+                stmts, |r| { results.push(r); },
+            )
+        },
+    );
     exec_res?;
     Ok(results)
 }
@@ -358,9 +340,7 @@ where
             options,
             &mut ctx,
             vec![stmt],
-            |r| {
-                res = r;
-            },
+            |r| { res = r; },
         )
     };
     drop(ctx);

@@ -135,7 +135,7 @@ impl<'a> ScriptExecutor<'a> {
                     deleted: false,
                 };
                 self.storage.insert_row(table_id, row.clone())?;
-                if let Some(db) = &ctx.dirty_buffer {
+                if let Some(db) = &ctx.session.dirty_buffer {
                     db.lock().push_op(
                         ctx.session_id(),
                         target.name.to_string(),

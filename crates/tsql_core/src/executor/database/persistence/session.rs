@@ -7,6 +7,7 @@ use crate::executor::session::{SessionRuntime, SessionManager};
 use crate::catalog::Catalog;
 use crate::storage::Storage;
 use crate::executor::journal::Journal;
+use crate::executor::string_norm::normalize_identifier;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use crate::executor::database::SessionManagerService;
@@ -56,7 +57,7 @@ where
                 storage.storage.remove_table(table.id);
                 storage
                     .table_versions
-                    .remove(&format!("{}.{}", schema_name.to_uppercase(), table_name.to_uppercase()));
+                    .remove(&format!("{}.{}", normalize_identifier(&schema_name), normalize_identifier(&table_name)));
             }
         }
         Ok(())

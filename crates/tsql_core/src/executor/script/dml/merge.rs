@@ -400,7 +400,7 @@ impl<'a> ScriptExecutor<'a> {
 
         // Ensure all matched rows are updated in storage before NOT MATCHED
         self.storage.clear_table(target_table.id)?;
-        if let Some(db) = &ctx.dirty_buffer {
+        if let Some(db) = &ctx.session.dirty_buffer {
                 db.lock().push_op(
                 ctx.session_id(),
                 target_table.name.clone(),

@@ -123,16 +123,20 @@ impl<'a> QueryExecutor<'a> {
         }
 
         if let Some(where_clause) = &plan.residual_filter {
+            let sample_row = build_sample_row(&plan);
+            let bound_where = super::binder::bind_expr(where_clause, &sample_row, ctx)
+                .unwrap_or_else(|_| super::binder::BoundExpr::Dynamic(where_clause.clone()));
+
             let mut filtered = Vec::new();
             for row in source_rows {
-                if super::evaluator::eval_predicate(
-                    where_clause,
+                if super::value_ops::truthy(&super::binder::eval_bound_expr(
+                    &bound_where,
                     &row,
                     ctx,
                     self.catalog,
                     self.storage,
                     self.clock,
-                )? {
+                )?) {
                     filtered.push(row);
                 }
             }
@@ -187,16 +191,20 @@ impl<'a> QueryExecutor<'a> {
         }
 
         if let Some(where_clause) = &plan.residual_filter {
+            let sample_row = build_sample_row(&plan);
+            let bound_where = super::binder::bind_expr(where_clause, &sample_row, ctx)
+                .unwrap_or_else(|_| super::binder::BoundExpr::Dynamic(where_clause.clone()));
+
             let mut filtered = Vec::new();
             for row in source_rows {
-                if super::evaluator::eval_predicate(
-                    where_clause,
+                if super::value_ops::truthy(&super::binder::eval_bound_expr(
+                    &bound_where,
                     &row,
                     ctx,
                     self.catalog,
                     self.storage,
                     self.clock,
-                )? {
+                )?) {
                     filtered.push(row);
                 }
             }
@@ -361,4 +369,27 @@ impl<'a> QueryExecutor<'a> {
     ) -> Result<BoundTable, DbError> {
         binder::bind_table(catalog, self.storage, self.clock, tref, ctx, |s, c| self.execute_select(s, c))
     }
+}
+
+/// Builds a sample row from the physical plan's bound tables for pre-binding expressions.
+/// The sample row has the correct schema (table aliases, column names, types) but no data.
+fn build_sample_row(plan: &PhysicalPlan) -> JoinedRow {
+    let mut row = Vec::new();
+    // Add base table
+    row.push(crate::executor::model::ContextTable {
+        table: plan.base.bound.table.clone(),
+        alias: plan.base.bound.alias.clone(),
+        row: None,
+        storage_index: None,
+    });
+    // Add join tables
+    for join_plan in &plan.joins {
+        row.push(crate::executor::model::ContextTable {
+            table: join_plan.right.bound.table.clone(),
+            alias: join_plan.right.bound.alias.clone(),
+            row: None,
+            storage_index: None,
+        });
+    }
+    row
 }

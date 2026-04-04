@@ -1,10 +1,12 @@
 use crate::ast::{ObjectName, SelectStmt, TableFactor, TableRef};
 
+use super::super::string_norm::normalize_identifier;
+
 pub(crate) fn normalize_object_name(name: &ObjectName) -> String {
     format!(
         "{}.{}",
-        name.schema.as_deref().unwrap_or("dbo").to_uppercase(),
-        name.name.to_uppercase()
+        normalize_identifier(name.schema.as_deref().unwrap_or("dbo")),
+        normalize_identifier(&name.name)
     )
 }
 

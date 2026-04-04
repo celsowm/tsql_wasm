@@ -12,7 +12,7 @@ impl<'a> ScriptExecutor<'a> {
         stmt: WithCteStmt,
         ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
-        let old_ctes = ctx.ctes.clone();
+        let old_ctes = ctx.row.ctes.clone();
 
         for cte_def in &stmt.ctes {
             if stmt.recursive {
@@ -75,11 +75,11 @@ impl<'a> ScriptExecutor<'a> {
                             // so the recursive member sees only the rows from the previous iteration
                             let mut iteration_ctes = old_ctes.clone();
                             iteration_ctes.insert(&cte_def.name, table_def_inner.clone(), working_set);
-                            let prev_ctes = std::mem::replace(&mut ctx.ctes, iteration_ctes);
+                            let prev_ctes = std::mem::replace(&mut ctx.row.ctes, iteration_ctes);
 
                             let step_outcome = self.execute(recursive_stmt.clone(), ctx)?;
                             
-                            ctx.ctes = prev_ctes;
+                            ctx.row.ctes = prev_ctes;
 
                             let res = match step_outcome {
                                 StmtOutcome::Ok(Some(r)) => r,
@@ -100,7 +100,7 @@ impl<'a> ScriptExecutor<'a> {
                             return Err(DbError::Execution(format!("The maximum recursion 100 has been exhausted before statement completion.")));
                         }
 
-                        ctx.ctes.insert(&cte_def.name, table_def, all_rows);
+                        ctx.row.ctes.insert(&cte_def.name, table_def, all_rows);
                     } else {
                         return Err(DbError::Execution("Recursive CTE must use UNION ALL".into()));
                     }
@@ -156,12 +156,12 @@ impl<'a> ScriptExecutor<'a> {
                     })
                     .collect();
 
-                ctx.ctes.insert(&cte_def.name, table_def, rows);
+                ctx.row.ctes.insert(&cte_def.name, table_def, rows);
             }
         }
 
         let res = self.execute(*stmt.body, ctx);
-        ctx.ctes = old_ctes;
+        ctx.row.ctes = old_ctes;
         // Propagate control flow from the body; unwrap Ok values
         res.map(|outcome| outcome.into_result()).and_then(|r| r)
     }

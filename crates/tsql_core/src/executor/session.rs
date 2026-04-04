@@ -172,25 +172,29 @@ where
 }
 
 pub struct SharedStorage<C, S> {
-    pub catalog: C,
-    pub storage: S,
-    pub commit_ts: u64,
-    pub table_versions: HashMap<String, u64>,
+    pub(crate) catalog: C,
+    pub(crate) storage: S,
+    pub(crate) commit_ts: u64,
+    pub(crate) table_versions: HashMap<String, u64>,
 }
 
 impl<C, S> SharedStorage<C, S> {
     pub fn get_mut_refs(&mut self) -> (&mut C, &mut S) {
         (&mut self.catalog, &mut self.storage)
     }
+
+    pub fn get_refs(&self) -> (&C, &S) {
+        (&self.catalog, &self.storage)
+    }
 }
 
 pub struct SharedState<C, S> {
-    pub storage: parking_lot::RwLock<SharedStorage<C, S>>,
-    pub table_locks: parking_lot::Mutex<LockTable>,
-    pub durability: parking_lot::Mutex<Box<dyn DurabilitySink<C>>>,
-    pub sessions: dashmap::DashMap<SessionId, parking_lot::Mutex<SessionRuntime<C, S>>>,
-    pub next_session_id: std::sync::atomic::AtomicU64,
-    pub dirty_buffer: std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>,
+    pub(crate) storage: parking_lot::RwLock<SharedStorage<C, S>>,
+    pub(crate) table_locks: parking_lot::Mutex<LockTable>,
+    pub(crate) durability: parking_lot::Mutex<Box<dyn DurabilitySink<C>>>,
+    pub(crate) sessions: dashmap::DashMap<SessionId, parking_lot::Mutex<SessionRuntime<C, S>>>,
+    pub(crate) next_session_id: std::sync::atomic::AtomicU64,
+    pub(crate) dirty_buffer: std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>,
 }
 
 impl<C, S> SharedState<C, S>

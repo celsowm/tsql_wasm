@@ -2,6 +2,12 @@ use std::collections::HashSet;
 
 use crate::ast::{DdlStatement, DmlStatement, ObjectName, SelectStmt, Statement, TableRef};
 
+use super::string_norm::normalize_identifier;
+
+/// Returns the set of tables that `stmt` reads from. The `_ => {}` catch-all is
+/// intentional: statements not explicitly listed are assumed to have no read dependencies.
+/// When adding new `Statement` variants that reference tables, update this function.
+/// This centralised classification avoids scattering table-dependency logic across the codebase.
 pub(crate) fn collect_read_tables(stmt: &Statement) -> HashSet<String> {
     let mut out = HashSet::new();
     match stmt {
@@ -74,6 +80,10 @@ fn collect_tables_from_select(select: &SelectStmt, out: &mut HashSet<String>) {
     }
 }
 
+/// Returns the set of tables that `stmt` writes to. The `_ => {}` catch-all is
+/// intentional: statements not explicitly listed are assumed to have no write dependencies.
+/// When adding new `Statement` variants that modify tables, update this function.
+/// This centralised classification avoids scattering table-dependency logic across the codebase.
 pub(crate) fn collect_write_tables(stmt: &Statement) -> HashSet<String> {
     let mut out = HashSet::new();
     match stmt {
@@ -87,22 +97,22 @@ pub(crate) fn collect_write_tables(stmt: &Statement) -> HashSet<String> {
             out.insert(normalize_table_name(&s.table));
         }
         Statement::Ddl(DdlStatement::CreateTable(s)) => {
-            out.insert(s.name.name.to_uppercase());
+            out.insert(normalize_identifier(&s.name.name));
         }
         Statement::Ddl(DdlStatement::DropTable(s)) => {
-            out.insert(s.name.name.to_uppercase());
+            out.insert(normalize_identifier(&s.name.name));
         }
         Statement::Ddl(DdlStatement::AlterTable(s)) => {
-            out.insert(s.table.name.to_uppercase());
+            out.insert(normalize_identifier(&s.table.name));
         }
         Statement::Ddl(DdlStatement::TruncateTable(s)) => {
-            out.insert(s.name.name.to_uppercase());
+            out.insert(normalize_identifier(&s.name.name));
         }
         Statement::Ddl(DdlStatement::CreateIndex(s)) => {
-            out.insert(s.table.name.to_uppercase());
+            out.insert(normalize_identifier(&s.table.name));
         }
         Statement::Ddl(DdlStatement::DropIndex(s)) => {
-            out.insert(s.table.name.to_uppercase());
+            out.insert(normalize_identifier(&s.table.name));
         }
         Statement::Ddl(DdlStatement::CreateSchema(_)) | Statement::Ddl(DdlStatement::DropSchema(_)) => {
             out.insert("__GLOBAL__".to_string());
@@ -130,7 +140,7 @@ pub(crate) fn collect_write_tables(stmt: &Statement) -> HashSet<String> {
 }
 
 pub(crate) fn normalize_table_name(name: &ObjectName) -> String {
-    name.name.to_uppercase()
+    normalize_identifier(&name.name)
 }
 
 pub(crate) fn normalize_table_ref(table_ref: &TableRef) -> String {

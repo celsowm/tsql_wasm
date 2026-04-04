@@ -57,7 +57,7 @@ impl<'a> MutationExecutor<'a> {
                 let mut trigger_ctx = ctx.subquery();
                 trigger_ctx.frame.trigger_depth += 1;
                 if is_instead_of {
-                    trigger_ctx.skip_instead_of = true;
+                    trigger_ctx.frame.skip_instead_of = true;
                 }
                 let scope_depth = trigger_ctx.frame.scope_vars.len();
                 trigger_ctx.enter_scope();
@@ -83,7 +83,7 @@ impl<'a> MutationExecutor<'a> {
                         self.storage.insert_row(table_id, row.clone())?;
                     }
                     trigger_ctx.session.temp_map.insert("INSERTED".to_string(), ins_name.clone());
-                    trigger_ctx.session.temp_map.insert("INSERTED".to_uppercase(), ins_name.clone());
+                    trigger_ctx.session.temp_map.insert("INSERTED".to_string(), ins_name.clone());
                     ins_physical = Some((table_id, ins_name));
                 }
 
@@ -106,7 +106,7 @@ impl<'a> MutationExecutor<'a> {
                         self.storage.insert_row(table_id, row.clone())?;
                     }
                     trigger_ctx.session.temp_map.insert("DELETED".to_string(), del_name.clone());
-                    trigger_ctx.session.temp_map.insert("DELETED".to_uppercase(), del_name.clone());
+                    trigger_ctx.session.temp_map.insert("DELETED".to_string(), del_name.clone());
                     del_physical = Some((table_id, del_name));
                 }
 
@@ -151,7 +151,7 @@ impl<'a> MutationExecutor<'a> {
         table_name: &str,
         row: &crate::storage::StoredRow,
     ) {
-        if let Some(db) = &ctx.dirty_buffer {
+        if let Some(db) = &ctx.session.dirty_buffer {
                     db.lock().push_op(
                         ctx.session_id(),
                         table_name.to_string(),
@@ -167,7 +167,7 @@ impl<'a> MutationExecutor<'a> {
         row_index: usize,
         new_row: &crate::storage::StoredRow,
     ) {
-        if let Some(db) = &ctx.dirty_buffer {
+        if let Some(db) = &ctx.session.dirty_buffer {
                     db.lock().push_op(
                         ctx.session_id(),
                         table_name.to_string(),
@@ -185,7 +185,7 @@ impl<'a> MutationExecutor<'a> {
         table_name: &str,
         row_index: usize,
     ) {
-        if let Some(db) = &ctx.dirty_buffer {
+        if let Some(db) = &ctx.session.dirty_buffer {
                     db.lock().push_op(
                         ctx.session_id(),
                         table_name.to_string(),
@@ -199,7 +199,7 @@ impl<'a> MutationExecutor<'a> {
         ctx: &mut super::context::ExecutionContext<'_>,
         table_name: &str,
     ) {
-        if let Some(db) = &ctx.dirty_buffer {
+        if let Some(db) = &ctx.session.dirty_buffer {
                     db.lock().push_op(
                         ctx.session_id(),
                         table_name.to_string(),
@@ -214,7 +214,7 @@ impl<'a> MutationExecutor<'a> {
         table_name: &str,
         rows: Vec<crate::storage::StoredRow>,
     ) {
-        if let Some(db) = &ctx.dirty_buffer {
+        if let Some(db) = &ctx.session.dirty_buffer {
                     db.lock().push_op(
                         ctx.session_id(),
                         table_name.to_string(),

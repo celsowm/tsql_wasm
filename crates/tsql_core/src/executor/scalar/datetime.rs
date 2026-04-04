@@ -131,7 +131,7 @@ pub(crate) fn eval_datepart(
         "second" | "ss" | "s" => s,
         "weekday" | "dw" | "w" => {
             let dow = day_of_week_from_date(y, m, d);
-            let datefirst = ctx.datefirst;
+            let datefirst = ctx.metadata.datefirst;
             ((dow - datefirst + 7) % 7 + 1) as i32
         }
         "dayofweek" => {
@@ -184,7 +184,7 @@ pub(crate) fn eval_datename(
         "day" | "dd" | "d" => format!("{}", d),
         "dayofweek" | "dw" | "weekday" | "w" => {
             let dow = day_of_week_from_date(y, m, d);
-            let datefirst = ctx.datefirst;
+            let datefirst = ctx.metadata.datefirst;
             let adjusted = ((dow - datefirst + 7) % 7) as usize;
             let day_names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
             day_names[adjusted].to_string()

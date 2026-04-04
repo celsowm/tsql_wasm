@@ -8,6 +8,7 @@ use super::super::clock::Clock;
 use super::super::context::ExecutionContext;
 use super::super::model::{JoinedRow, ContextTable};
 use super::super::planner::{PhysicalPivot, PhysicalUnpivot};
+use super::super::string_norm::normalize_identifier;
 use super::super::result::QueryResult;
 
 pub(crate) fn execute_pivot(
@@ -140,7 +141,7 @@ pub(crate) fn execute_pivot(
                 })
                 .collect();
             
-            let agg_result = apply_aggregate_to_values(&spec.aggregate_func, agg_values, ctx.ansi_nulls)?;
+            let agg_result = apply_aggregate_to_values(&spec.aggregate_func, agg_values, ctx.metadata.ansi_nulls)?;
             row_values.push(agg_result);
         }
 
@@ -156,7 +157,7 @@ pub(crate) fn execute_pivot(
 }
 
 fn apply_aggregate_to_values(func: &str, values: Vec<Value>, ansi_nulls: bool) -> Result<Value, DbError> {
-    let upper = func.to_uppercase();
+    let upper = normalize_identifier(func);
     match upper.as_str() {
         "SUM" => {
             let mut sum: Option<Value> = None;

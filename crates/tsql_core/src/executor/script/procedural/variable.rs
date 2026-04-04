@@ -2,7 +2,6 @@ use crate::ast::{DeclareStmt, SetStmt};
 use crate::error::DbError;
 use crate::executor::context::ExecutionContext;
 use crate::executor::result::QueryResult;
-use crate::executor::schema::SchemaExecutor;
 use super::super::ScriptExecutor;
 
 impl<'a> ScriptExecutor<'a> {
@@ -50,11 +49,7 @@ impl<'a> ScriptExecutor<'a> {
             columns: stmt.columns,
             table_constraints: stmt.table_constraints,
         };
-        SchemaExecutor {
-            catalog: self.catalog,
-            storage: self.storage,
-        }
-        .create_table(create)?;
+        self.schema().create_table(create)?;
         ctx.register_table_var(&stmt.name, &physical);
         Ok(None)
     }

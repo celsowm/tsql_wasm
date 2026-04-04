@@ -44,7 +44,7 @@ pub(crate) fn eval_databasepropertyex(
         "USERACCESS" => Value::NVarChar("MULTI_USER".to_string()),
         "ISREADONLY" => Value::Int(0),
         "ISANSINULLDEFAULT" | "ISANSI_NULL_DEFAULT" => {
-            Value::Int(if ctx.ansi_nulls { 1 } else { 0 })
+            Value::Int(if ctx.metadata.ansi_nulls { 1 } else { 0 })
         }
         _ => Value::Null,
     })

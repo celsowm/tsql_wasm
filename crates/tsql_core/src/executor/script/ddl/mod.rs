@@ -2,8 +2,8 @@ use crate::ast::{AlterTableStmt, CreateTableStmt, DropTableStmt, TruncateTableSt
 use crate::error::DbError;
 use crate::executor::context::ExecutionContext;
 use crate::executor::result::QueryResult;
-use crate::executor::schema::SchemaExecutor;
 use crate::executor::mutation::MutationExecutor;
+use crate::executor::string_norm::normalize_identifier;
 use super::ScriptExecutor;
 
 impl<'a> ScriptExecutor<'a> {
@@ -79,7 +79,7 @@ impl<'a> ScriptExecutor<'a> {
             let logical = stmt.name.name.clone();
             let physical = format!("__temp_{}", logical.trim_start_matches('#'));
             ctx.session.temp_map
-                .insert(logical.to_uppercase(), physical.clone());
+                .insert(normalize_identifier(&logical), physical.clone());
             stmt.name.schema = Some("dbo".to_string());
             stmt.name.name = physical;
         }
@@ -93,7 +93,7 @@ impl<'a> ScriptExecutor<'a> {
         ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
         if stmt.name.name.starts_with('#') {
-            let key = stmt.name.name.to_uppercase();
+            let key = normalize_identifier(&stmt.name.name);
             if let Some(mapped) = ctx.session.temp_map.remove(&key) {
                 stmt.name.schema = Some("dbo".to_string());
                 stmt.name.name = mapped;
@@ -160,11 +160,7 @@ impl<'a> ScriptExecutor<'a> {
             })?
             .clone();
 
-        SchemaExecutor {
-            catalog: self.catalog,
-            storage: self.storage,
-        }
-        .alter_table(stmt)?;
+        self.schema().alter_table(stmt)?;
 
         if let Ok(rows) = self.storage.get_rows(table.id) {
             let mut_exec = MutationExecutor {

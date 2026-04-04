@@ -12,7 +12,7 @@ use crate::executor::session::SessionManager as SessionManagerTrait;
 use crate::executor::tooling::{ExecutionTrace, ExplainPlan, SessionOptions};
 use crate::storage::Storage;
 
-use super::super::durability::{DurabilitySink, RecoveryCheckpoint};
+use super::super::durability::{DurabilitySink, RecoveryReader, RecoveryCheckpoint};
 use super::super::session::{SharedState, SharedStorage};
 use super::{
     CheckpointManager as CheckpointManagerTrait,
@@ -24,13 +24,20 @@ use super::{
 mod checkpoint;
 mod session;
 
+/// Unified facade over focused service structs (`StatementExecutorService`,
+/// `CheckpointManagerService`, `SqlAnalyzerService`, `SessionManagerService`).
+///
+/// Trait implementations (`StatementExecutor`, `CheckpointManager`, `SqlAnalyzer`,
+/// `SessionManager`) delegate to the corresponding service obtained via `executor()`,
+/// `checkpoint_manager()`, `analyzer()`, and `session_manager()`. This keeps each service's
+/// internals isolated while exposing a single API surface to callers.
 #[derive(Clone)]
 pub struct DatabaseInner<C, S>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
     S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
-    pub inner: Arc<SharedState<C, S>>,
+    pub(crate) inner: Arc<SharedState<C, S>>,
 }
 
 impl DatabaseInner<CatalogImpl, crate::storage::RedbStorage> {
@@ -126,6 +133,12 @@ where
 
     pub fn session_manager(&self) -> super::SessionManagerService<C, S> {
         super::SessionManagerService { state: self.inner.clone() }
+    }
+
+    pub fn print_output(&self, session_id: SessionId) -> Vec<String> {
+        self.inner.sessions.get(&session_id)
+            .map(|s| s.lock().diagnostics.print_output.clone())
+            .unwrap_or_default()
     }
 
     pub fn create_session(&self) -> SessionId {

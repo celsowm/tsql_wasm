@@ -93,7 +93,7 @@ where
                             let _ = merged_storage.clear_table(table_id);
                         }
                         DirtyOp::ReplaceTable { rows } => {
-                            let _ = merged_storage.update_rows(table_id, rows.clone());
+                            let _ = merged_storage.replace_table(table_id, rows.clone());
                         }
                     }
                 }

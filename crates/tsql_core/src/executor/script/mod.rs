@@ -76,7 +76,7 @@ impl<'a> ScriptExecutor<'a> {
         table_name: &str,
         row: &crate::storage::StoredRow,
     ) {
-        if let Some(db) = &ctx.dirty_buffer {
+        if let Some(db) = &ctx.session.dirty_buffer {
             db.lock().push_op(
                 ctx.session_id(),
                 table_name.to_string(),
@@ -122,6 +122,13 @@ impl<'a> StatementVisitor<ExecutionContext<'_>> for ScriptExecutor<'a> {
         }.map(StmtOutcome::Ok)
     }
 
+    /// Rejects session statements (`SET IDENTITY_INSERT`, `SET TRANSACTION ISOLATION LEVEL`,
+    /// `SET` options) at runtime by design.
+    ///
+    /// These statements require access to shared state owned by the engine/database layer and are
+    /// dispatched there (see `dispatch.rs`). `ScriptExecutor` does not hold that state, so
+    /// execution here is intentionally unsupported. The visitor trait still requires this method
+    /// for compile-time exhaustiveness over `SessionStatement`.
     fn visit_session(
         &mut self,
         stmt: SessionStatement,

@@ -24,7 +24,9 @@ pub trait Storage: std::fmt::Debug + Send + Sync {
     fn insert_row(&mut self, table_id: u32, row: StoredRow) -> Result<(), DbError>;
     fn update_row(&mut self, table_id: u32, index: usize, row: StoredRow) -> Result<(), DbError>;
     fn delete_row(&mut self, table_id: u32, index: usize) -> Result<(), DbError>;
-    fn update_rows(&mut self, table_id: u32, rows: Vec<StoredRow>) -> Result<(), DbError>;
+    /// Replaces all rows in a table with the given set.
+    /// The table must already exist; returns an error otherwise.
+    fn replace_table(&mut self, table_id: u32, rows: Vec<StoredRow>) -> Result<(), DbError>;
     fn clear_table(&mut self, table_id: u32) -> Result<(), DbError>;
     fn remove_table(&mut self, table_id: u32);
     fn ensure_table(&mut self, table_id: u32);
@@ -79,7 +81,7 @@ impl Storage for InMemoryStorage {
         Ok(())
     }
 
-    fn update_rows(&mut self, table_id: u32, rows: Vec<StoredRow>) -> Result<(), DbError> {
+    fn replace_table(&mut self, table_id: u32, rows: Vec<StoredRow>) -> Result<(), DbError> {
         if self.tables.contains_key(&table_id) {
             self.tables.insert(table_id, rows);
             Ok(())

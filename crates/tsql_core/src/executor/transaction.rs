@@ -1,14 +1,16 @@
-﻿use std::collections::HashSet;
+use std::collections::HashSet;
 
 use crate::ast::IsolationLevel;
-use crate::catalog::Catalog;
 use crate::error::DbError;
-use crate::storage::Storage;
+
+use super::string_norm::normalize_identifier;
 
 #[derive(Debug, Clone)]
 pub struct Savepoint<C, S, X> {
     pub name: String,
+    /// Snapshot of the workspace catalog at savepoint time (needed for rollback).
     pub catalog_snapshot: C,
+    /// Snapshot of the workspace storage at savepoint time (needed for rollback).
     pub storage_snapshot: S,
     pub extra_snapshot: X,
     pub write_intent_len: usize,
@@ -29,18 +31,18 @@ pub struct WriteIntent {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct LockManager {
+pub struct WriteIntentTracker {
     read_locks: HashSet<String>,
     write_locks: HashSet<String>,
 }
 
-impl LockManager {
+impl WriteIntentTracker {
     pub fn acquire_read(&mut self, resource: &str) {
-        self.read_locks.insert(resource.to_uppercase());
+        self.read_locks.insert(normalize_identifier(resource));
     }
 
     pub fn acquire_write(&mut self, resource: &str) {
-        self.write_locks.insert(resource.to_uppercase());
+        self.write_locks.insert(normalize_identifier(resource));
     }
 
     pub fn clear(&mut self) {
@@ -49,35 +51,34 @@ impl LockManager {
     }
 }
 
+/// P1 #17: TxState no longer stores begin_catalog/begin_storage snapshots.
+/// The workspace holds the initial transaction state. On full rollback,
+/// the workspace is simply discarded. Savepoint snapshots are still needed
+/// for partial rollback within a transaction.
+/// The `begin_extra` stores the session state at BEGIN time for full rollback restoration.
 #[derive(Debug, Clone)]
 pub struct TxState<C, S, X> {
     pub isolation_level: IsolationLevel,
-    pub begin_catalog: C,
-    pub begin_storage: S,
-    pub begin_extra: X,
     pub savepoints: Vec<Savepoint<C, S, X>>,
-    pub lock_manager: LockManager,
+    pub lock_manager: WriteIntentTracker,
     pub write_set: Vec<WriteIntent>,
     pub snapshot_ts: u64,
+    pub begin_extra: X,
 }
 
 impl<C, S, X> TxState<C, S, X> {
     pub fn new(
         isolation_level: IsolationLevel,
-        begin_catalog: C,
-        begin_storage: S,
-        begin_extra: X,
         snapshot_ts: u64,
+        begin_extra: X,
     ) -> Self {
         Self {
             isolation_level,
-            begin_catalog,
-            begin_storage,
-            begin_extra,
             savepoints: vec![],
-            lock_manager: LockManager::default(),
+            lock_manager: WriteIntentTracker::default(),
             write_set: vec![],
             snapshot_ts,
+            begin_extra,
         }
     }
 }
@@ -111,24 +112,23 @@ impl Default for IsolationLevel {
 
 impl<C, S, X> TransactionManager<C, S, X>
 where
-    C: Catalog + Clone,
-    S: Storage + Clone,
+    C: Clone,
+    S: Clone,
     X: Clone,
 {
+    /// P1 #17: No longer clones catalog/storage. The workspace holds the
+    /// transaction state. TxState only tracks metadata and the begin-time extra snapshot.
     pub fn begin(
         &mut self,
-        catalog: &C,
-        storage: &S,
-        extra: &X,
         explicit_name: Option<String>,
+        snapshot_ts: u64,
+        extra: X,
     ) -> Result<Option<String>, DbError> {
         if self.depth == 0 {
             let tx = TxState::new(
                 self.session_isolation_level,
-                catalog.clone(),
-                storage.clone(),
-                extra.clone(),
-                self.commit_ts,
+                snapshot_ts,
+                extra,
             );
             self.active = Some(tx);
             self.xact_state = 1;
@@ -171,13 +171,15 @@ where
         Ok(())
     }
 
+    /// P1 #17: Rollback restores workspace from savepoint snapshots (for savepoint rollback)
+    /// or returns the begin-time extra snapshot for full rollback restoration.
     pub fn rollback(
         &mut self,
         savepoint: Option<String>,
         catalog: &mut C,
         storage: &mut S,
         extra: &mut X,
-    ) -> Result<(), DbError> {
+    ) -> Result<bool, DbError> {
         let Some(tx) = self.active.as_mut() else {
             return Err(DbError::Execution(
                 "ROLLBACK without active transaction".into(),
@@ -185,6 +187,7 @@ where
         };
 
         if let Some(sp_name) = savepoint {
+            // Savepoint rollback: restore from snapshot
             let Some(pos) = tx
                 .savepoints
                 .iter()
@@ -201,19 +204,17 @@ where
             *extra = snapshot.extra_snapshot;
             tx.write_set.truncate(snapshot.write_intent_len);
             tx.savepoints.truncate(pos + 1);
-            // tx.lock_manager.clear(); // Removed as it was clearing all locks, which is incorrect for savepoints
-            return Ok(());
+            Ok(false) // partial rollback, workspace stays
+        } else {
+            // Full rollback: restore to begin-time state
+            *extra = tx.begin_extra.clone();
+            tx.savepoints.clear();
+            tx.write_set.clear();
+            Ok(true) // full rollback, workspace should be discarded
         }
-
-        *catalog = tx.begin_catalog.clone();
-        *storage = tx.begin_storage.clone();
-        *extra = tx.begin_extra.clone();
-        self.active = None;
-        self.depth = 0;
-        self.xact_state = 0;
-        Ok(())
     }
 
+    /// P1 #17: Savepoint records workspace catalog/storage snapshots.
     pub fn save(
         &mut self,
         name: String,

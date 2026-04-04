@@ -20,7 +20,7 @@ impl<'a> ScriptExecutor<'a> {
             }
             Err(e) => {
                 // Store error for ERROR_* functions
-                ctx.last_error = Some(e);
+                ctx.frame.last_error = Some(e);
 
                 // Execute CATCH block
                 self.execute_batch(&stmt.catch_body, ctx)

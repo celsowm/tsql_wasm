@@ -59,7 +59,7 @@ impl<'a> WindowExecutor<'a> {
         }
 
         // Map to store calculated values: results_map[window_expr][row_idx] = value
-        let mut results_map: HashMap<Expr, Vec<Value>> = HashMap::new();
+        let mut results_map: HashMap<String, Vec<Value>> = HashMap::new();
 
         // Process each window specification group
         for (spec, win_exprs) in &window_specs {
@@ -310,7 +310,8 @@ impl<'a> WindowExecutor<'a> {
                                     }
                                 }
                             };
-                            results_map.entry(win_expr.clone()).or_insert_with(|| vec![Value::Null; rows.len()])[*original_idx] = val;
+                            let key = format!("{:?}", win_expr);
+                            results_map.entry(key).or_insert_with(|| vec![Value::Null; rows.len()])[*original_idx] = val;
                         }
                     }
                 }
@@ -321,8 +322,8 @@ impl<'a> WindowExecutor<'a> {
         let mut final_projected_rows = Vec::with_capacity(rows.len());
         for (idx, row) in rows.iter().enumerate() {
             let mut window_map = HashMap::new();
-            for (expr, values) in &results_map {
-                window_map.insert(expr.clone(), values[idx].clone());
+            for (key, values) in &results_map {
+                window_map.insert(key.clone(), values[idx].clone());
             }
 
             ctx.row.window_context = Some(window_map);

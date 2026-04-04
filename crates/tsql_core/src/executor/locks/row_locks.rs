@@ -1,6 +1,7 @@
 ﻿use std::collections::HashMap;
 
 use super::types::{LockMode, SessionId, TableLockState};
+use super::super::string_norm::normalize_identifier;
 
 /// Returned when a row lock acquisition triggers escalation.
 pub(crate) struct EscalationRequest {
@@ -36,7 +37,7 @@ impl RowLockManager {
         row_id: usize,
         mode: LockMode,
     ) -> bool {
-        let normalized = table.to_uppercase();
+        let normalized = normalize_identifier(table);
         let key = (normalized, row_id);
         match self.locks.get(&key) {
             Some(state) => !state.has_conflict(session_id, mode),
@@ -52,7 +53,7 @@ impl RowLockManager {
         row_id: usize,
         mode: LockMode,
     ) -> Option<EscalationRequest> {
-        let normalized = table.to_uppercase();
+        let normalized = normalize_identifier(table);
         let key = (normalized.clone(), row_id);
         self.locks
             .entry(key)
@@ -80,7 +81,7 @@ impl RowLockManager {
         row_id: usize,
         mode: LockMode,
     ) -> Vec<SessionId> {
-        let normalized = table.to_uppercase();
+        let normalized = normalize_identifier(table);
         let key = (normalized, row_id);
         match self.locks.get(&key) {
             Some(state) => state.collect_blockers(session_id, mode),
@@ -95,7 +96,7 @@ impl RowLockManager {
         row_id: usize,
         mode: LockMode,
     ) {
-        let normalized = table.to_uppercase();
+        let normalized = normalize_identifier(table);
         let key = (normalized.clone(), row_id);
 
         if let Some(state) = self.locks.get_mut(&key) {
@@ -131,7 +132,7 @@ impl RowLockManager {
     /// Perform escalation: remove all row locks for this session+table.
     /// The caller is responsible for adding the table-level lock.
     pub fn escalate_remove_rows(&mut self, session_id: SessionId, table: &str) {
-        let normalized = table.to_uppercase();
+        let normalized = normalize_identifier(table);
 
         let row_keys: Vec<(String, usize)> = self
             .locks

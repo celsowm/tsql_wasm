@@ -167,7 +167,7 @@ impl Storage for RedbStorage {
         Ok(())
     }
 
-    fn update_rows(&mut self, table_id: u32, rows: Vec<StoredRow>) -> Result<(), DbError> {
+    fn replace_table(&mut self, table_id: u32, rows: Vec<StoredRow>) -> Result<(), DbError> {
         let db = self.db()?;
         let write_txn = db.begin_write()
             .map_err(|e| DbError::Storage(format!("failed to begin write txn: {}", e)))?;

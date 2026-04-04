@@ -17,6 +17,7 @@ use super::clock::Clock;
 use super::context::{ExecutionContext, ModuleFrame, ModuleKind};
 use super::evaluator::eval_expr;
 use super::metadata::system_vars;
+use super::string_norm::normalize_identifier;
 use super::fuzzy;
 use super::json;
 use super::model::ContextTable;
@@ -40,7 +41,7 @@ pub(crate) fn eval_function(
         }
     }
 
-    let upper = name.to_uppercase();
+    let upper = normalize_identifier(name);
     let upper_str = upper.as_str();
 
     // Try category-based dispatch first
@@ -278,7 +279,7 @@ fn try_system_dispatch(
         "@@LANGUAGE" => Some(Ok(Value::NVarChar("us_english".into()))),
         "@@TEXTSIZE" => Some(Ok(Value::Int(2147483647))),
         "@@MAX_PRECISION" => Some(Ok(Value::TinyInt(38))),
-        "@@DATEFIRST" => Some(Ok(Value::TinyInt(ctx.datefirst as u8))),
+        "@@DATEFIRST" => Some(Ok(Value::TinyInt(ctx.metadata.datefirst as u8))),
         "@@MICROSOFTVERSION" => Some(Ok(system::eval_microsoft_version())),
         "ERROR_MESSAGE" => Some(system::eval_error_message(ctx)),
         "ERROR_NUMBER" => Some(system::eval_error_number(ctx)),

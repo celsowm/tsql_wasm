@@ -1,4 +1,4 @@
-﻿use std::collections::HashSet;
+use std::collections::HashSet;
 
 use crate::ast::{DdlStatement, DmlStatement, SessionStatement, Statement, TransactionStatement};
 use crate::catalog::Catalog;
@@ -26,7 +26,7 @@ pub(crate) fn execute_transaction_statement<C, S>(
     stmt: Statement,
 ) -> Result<Option<super::result::QueryResult>, DbError>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
+    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
     S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     match stmt {
@@ -43,7 +43,9 @@ where
                 };
                 tx_manager.commit_ts = commit_ts;
                 let extra = ctx.create_snapshot(session_options);
-                tx_manager.begin(&workspace_catalog, &workspace_storage, &extra, name.clone())?;
+                // P1 #17: No longer clones catalog/storage in TxState.
+                // The workspace holds the transaction state.
+                tx_manager.begin(name.clone(), commit_ts, extra)?;
                 *workspace_slot = Some(TxWorkspace {
                     catalog: workspace_catalog,
                     storage: workspace_storage,
@@ -138,7 +140,8 @@ where
                     DbError::Execution("ROLLBACK without active transaction".into())
                 })?;
                 let mut extra = ctx.create_snapshot(session_options);
-                tx_manager.rollback(
+                // P1 #17: Rollback restores from savepoint snapshots or signals full rollback.
+                let full_rollback = tx_manager.rollback(
                     savepoint.clone(),
                     &mut workspace.catalog,
                     &mut workspace.storage,
@@ -146,29 +149,34 @@ where
                 )?;
                 ctx.restore_snapshot(extra, session_options);
 
-                if let Some(ref active_tx) = tx_manager.active {
-                    let keep = active_tx.write_set.len();
-                    if workspace.write_tables.len() > keep {
-                        let mut names: Vec<_> = workspace.write_tables.iter().cloned().collect();
-                        names.sort();
-                        names.truncate(keep);
-                        workspace.write_tables = names.into_iter().collect();
+                if full_rollback {
+                    // Full rollback: discard workspace and end transaction
+                    tx_manager.active = None;
+                    tx_manager.depth = 0;
+                    tx_manager.xact_state = 0;
+                    state
+                        .table_locks
+                        .lock()
+                        .release_workspace_locks(session_id, workspace_slot, 0);
+                    state.dirty_buffer.lock().clear_session(session_id);
+                    *workspace_slot = None;
+                } else {
+                    // Savepoint rollback: trim write_tables to match write_set
+                    if let Some(ref active_tx) = tx_manager.active {
+                        let keep = active_tx.write_set.len();
+                        if workspace.write_tables.len() > keep {
+                            let mut names: Vec<_> = workspace.write_tables.iter().cloned().collect();
+                            names.sort();
+                            names.truncate(keep);
+                            workspace.write_tables = names.into_iter().collect();
+                        }
+                        let keep_depth = active_tx.savepoints.len();
+                        state
+                            .table_locks
+                            .lock()
+                            .release_workspace_locks(session_id, workspace_slot, keep_depth);
                     }
                 }
-            }
-            if let Some(ref active_tx) = tx_manager.active {
-                let keep_depth = active_tx.savepoints.len();
-                state
-                    .table_locks
-                    .lock()
-                    .release_workspace_locks(session_id, workspace_slot, keep_depth);
-            } else {
-                state
-                    .table_locks
-                    .lock()
-                    .release_workspace_locks(session_id, workspace_slot, 0);
-                state.dirty_buffer.lock().clear_session(session_id);
-                *workspace_slot = None;
             }
             journal.record(JournalEvent::Rollback { savepoint });
             Ok(None)
@@ -178,6 +186,7 @@ where
                 DbError::Execution("SAVE TRANSACTION without active transaction".into())
             })?;
             let extra = ctx.create_snapshot(session_options);
+            // P1 #17: Savepoint records workspace catalog/storage snapshots.
             tx_manager.save(name.clone(), &workspace.catalog, &workspace.storage, &extra)?;
             journal.record(JournalEvent::Savepoint { name });
             Ok(None)
@@ -204,7 +213,7 @@ pub(crate) fn force_xact_abort<C, S>(
     ctx: &mut super::context::ExecutionContext,
     session_options: &mut super::tooling::SessionOptions,
 ) where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
+    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
     S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     if tx_manager.active.is_none() {
@@ -212,6 +221,7 @@ pub(crate) fn force_xact_abort<C, S>(
     }
     if let Some(workspace) = workspace_slot.as_mut() {
         let mut extra = ctx.create_snapshot(session_options);
+        // P1 #17: Full rollback — discard workspace entirely.
         let _ = tx_manager.rollback(
             None,
             &mut workspace.catalog,
@@ -260,8 +270,8 @@ pub(crate) fn register_write_intent<C, S>(
     journal: &mut dyn Journal,
     stmt: &Statement,
 ) where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static,
+    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
 {
     if tx_manager.active.is_none() {
         return;

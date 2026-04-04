@@ -97,7 +97,7 @@ impl<'a> MutationExecutor<'a> {
         let target_alias = stmt.table.name.clone();
 
         // Check for INSTEAD OF UPDATE trigger
-        let instead_of_triggers = if ctx.skip_instead_of {
+        let instead_of_triggers = if ctx.frame.skip_instead_of {
             vec![]
         } else {
             self.find_triggers(&table, crate::ast::TriggerEvent::Update)

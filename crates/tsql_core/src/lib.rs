@@ -7,7 +7,7 @@ pub mod storage;
 pub mod types;
 
 pub use error::{DbError, StmtOutcome, StmtResult};
-pub use executor::durability::{DurabilitySink, InMemoryDurability, NoopDurability, RecoveryCheckpoint};
+pub use executor::durability::{DurabilitySink, DurabilityWriter, RecoveryReader, InMemoryDurability, NoopDurability, RecoveryCheckpoint};
 pub use executor::database::RandomSeed;
 pub use executor::database::{DatabaseInner, EngineInner, Database, PersistentDatabase, Engine, PersistentEngine};
 pub use executor::database::{CheckpointManager, StatementExecutor, SqlAnalyzer};

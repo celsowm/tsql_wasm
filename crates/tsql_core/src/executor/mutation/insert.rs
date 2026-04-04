@@ -8,6 +8,7 @@ use super::super::context::ExecutionContext;
 use super::super::evaluator::eval_expr_to_type_constant;
 use super::super::model::single_row_context;
 use super::super::result::QueryResult;
+use super::super::string_norm::normalize_identifier;
 
 use super::MutationExecutor;
 use super::output::build_output_result;
@@ -42,7 +43,7 @@ impl<'a> MutationExecutor<'a> {
         let table_id = table.id;
 
         // Check for INSTEAD OF INSERT trigger
-        let instead_of_triggers = if ctx.skip_instead_of {
+        let instead_of_triggers = if ctx.frame.skip_instead_of {
             vec![]
         } else {
             self.find_triggers(&table, crate::ast::TriggerEvent::Insert)
@@ -382,8 +383,8 @@ impl<'a> MutationExecutor<'a> {
                     )));
                 }
             } else if col.identity.is_some() {
-                let table_upper = table.name.to_uppercase();
-                if !ctx.identity_insert.contains(&table_upper) {
+                let table_upper = normalize_identifier(&table.name);
+                if !ctx.session.identity_insert.contains(&table_upper) {
                     return Err(DbError::Execution(format!(
                         "Cannot insert explicit value for identity column '{}' in table '{}' when IDENTITY_INSERT is set to OFF.",
                         col.name, table.name

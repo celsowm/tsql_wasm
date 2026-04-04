@@ -237,7 +237,7 @@ pub(crate) fn deterministic_rand(state: &mut u64) -> f64 {
 pub(crate) fn eval_error_message(
     ctx: &ExecutionContext,
 ) -> Result<Value, DbError> {
-    Ok(match &ctx.last_error {
+    Ok(match &ctx.frame.last_error {
         Some(e) => Value::VarChar(e.to_string()),
         None => Value::Null,
     })
@@ -246,7 +246,7 @@ pub(crate) fn eval_error_message(
 pub(crate) fn eval_error_number(
     ctx: &ExecutionContext,
 ) -> Result<Value, DbError> {
-    Ok(match &ctx.last_error {
+    Ok(match &ctx.frame.last_error {
         Some(_) => Value::Int(50000), // Default error number
         None => Value::Null,
     })
@@ -255,7 +255,7 @@ pub(crate) fn eval_error_number(
 pub(crate) fn eval_error_severity(
     ctx: &ExecutionContext,
 ) -> Result<Value, DbError> {
-    Ok(match &ctx.last_error {
+    Ok(match &ctx.frame.last_error {
         Some(_) => Value::Int(16), // Default severity
         None => Value::Null,
     })
@@ -264,7 +264,7 @@ pub(crate) fn eval_error_severity(
 pub(crate) fn eval_error_state(
     ctx: &ExecutionContext,
 ) -> Result<Value, DbError> {
-    Ok(match &ctx.last_error {
+    Ok(match &ctx.frame.last_error {
         Some(_) => Value::Int(1), // Default state
         None => Value::Null,
     })
@@ -375,22 +375,22 @@ pub(crate) fn eval_original_login(
 
 pub(crate) fn eval_session_user(
     args: &[Expr],
-    _ctx: &ExecutionContext,
+    ctx: &ExecutionContext,
 ) -> Result<Value, DbError> {
     if !args.is_empty() {
         return Err(DbError::Execution("SESSION_USER expects no arguments".into()));
     }
-    Ok(Value::NVarChar("dbo".to_string()))
+    Ok(Value::NVarChar(ctx.metadata.user.clone().unwrap_or_else(|| "dbo".to_string())))
 }
 
 pub(crate) fn eval_current_user(
     args: &[Expr],
-    _ctx: &ExecutionContext,
+    ctx: &ExecutionContext,
 ) -> Result<Value, DbError> {
     if !args.is_empty() {
         return Err(DbError::Execution("CURRENT_USER expects no arguments".into()));
     }
-    Ok(Value::NVarChar("dbo".to_string()))
+    Ok(Value::NVarChar(ctx.metadata.user.clone().unwrap_or_else(|| "dbo".to_string())))
 }
 
 pub(crate) fn eval_hashbytes(

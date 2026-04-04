@@ -2,6 +2,8 @@
 use crate::storage::StoredRow;
 use std::collections::HashMap;
 
+use super::string_norm::normalize_identifier;
+
 #[derive(Debug, Clone)]
 pub struct CteTable {
     pub table_def: TableDef,
@@ -20,11 +22,11 @@ impl CteStorage {
 
     pub fn insert(&mut self, name: &str, table_def: TableDef, rows: Vec<StoredRow>) {
         self.tables
-            .insert(name.to_uppercase(), CteTable { table_def, rows });
+            .insert(normalize_identifier(name), CteTable { table_def, rows });
     }
 
     pub fn get(&self, name: &str) -> Option<&CteTable> {
-        self.tables.get(&name.to_uppercase())
+        self.tables.get(&normalize_identifier(name))
     }
 }
 

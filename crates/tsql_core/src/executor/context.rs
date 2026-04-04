@@ -5,6 +5,8 @@ use super::model::{Cursor, JoinedRow};
 use crate::error::DbError;
 use crate::types::{DataType, Value};
 
+use super::string_norm::{normalize_identifier, strip_dbo_prefix};
+
 pub type Variables = std::collections::HashMap<String, (DataType, Value)>;
 
 #[derive(Debug, Clone)]
@@ -24,61 +26,143 @@ pub struct ModuleFrame {
 
 
 pub struct SessionStateRefs<'a> {
-    pub variables: &'a mut Variables,
-    pub last_identity: &'a mut Option<i64>,
-    pub identity_stack: &'a mut Vec<Option<i64>>,
-    pub temp_map: &'a mut HashMap<String, String>,
-    pub var_map: &'a mut HashMap<String, String>,
-    pub var_counter: &'a mut u64,
-    pub random_state: &'a mut u64,
-    pub cursors: &'a mut HashMap<String, Cursor>,
-    pub fetch_status: &'a mut i32,
-    pub print_output: &'a mut Vec<String>,
+    pub(crate) variables: &'a mut Variables,
+    pub(crate) last_identity: &'a mut Option<i64>,
+    pub(crate) identity_stack: &'a mut Vec<Option<i64>>,
+    pub(crate) temp_map: &'a mut HashMap<String, String>,
+    pub(crate) var_map: &'a mut HashMap<String, String>,
+    pub(crate) var_counter: &'a mut u64,
+    pub(crate) random_state: &'a mut u64,
+    pub(crate) cursors: &'a mut HashMap<String, Cursor>,
+    pub(crate) fetch_status: &'a mut i32,
+    pub(crate) print_output: &'a mut Vec<String>,
+    pub(crate) dirty_buffer: Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>>,
+    pub(crate) identity_insert: HashSet<String>,
 }
 
 pub struct SessionMetadata {
-    pub id: super::locks::SessionId,
-    pub database: Option<String>,
-    pub original_database: String,
-    pub user: Option<String>,
-    pub app_name: Option<String>,
-    pub host_name: Option<String>,
+    pub(crate) id: super::locks::SessionId,
+    pub(crate) database: Option<String>,
+    pub(crate) original_database: String,
+    pub(crate) user: Option<String>,
+    pub(crate) app_name: Option<String>,
+    pub(crate) host_name: Option<String>,
+    pub(crate) ansi_nulls: bool,
+    pub(crate) datefirst: i32,
 }
 
 pub struct FrameState {
-    pub depth: usize,
-    pub loop_depth: usize,
-    pub trancount: u32,
-    pub xact_state: i8,
-    pub trigger_depth: usize,
-    pub module_stack: Vec<ModuleFrame>,
-    pub table_vars: Vec<HashMap<String, String>>,
-    pub readonly_table_vars: Vec<HashSet<String>>,
-    pub scope_vars: Vec<Vec<String>>,
+    pub(crate) depth: usize,
+    pub(crate) loop_depth: usize,
+    pub(crate) trancount: u32,
+    pub(crate) xact_state: i8,
+    pub(crate) trigger_depth: usize,
+    pub(crate) module_stack: Vec<ModuleFrame>,
+    pub(crate) table_vars: Vec<HashMap<String, String>>,
+    pub(crate) readonly_table_vars: Vec<HashSet<String>>,
+    pub(crate) scope_vars: Vec<Vec<String>>,
+    pub(crate) skip_instead_of: bool,
+    pub(crate) last_error: Option<DbError>,
 }
 
 pub struct RowContext {
-    pub outer_row: Option<JoinedRow>,
-    pub apply_stack: Vec<JoinedRow>,
-    pub current_group: Option<super::model::Group>,
-    pub window_context: Option<HashMap<crate::ast::Expr, Value>>,
+    pub(crate) outer_row: Option<JoinedRow>,
+    pub(crate) apply_stack: Vec<JoinedRow>,
+    pub(crate) current_group: Option<super::model::Group>,
+    pub(crate) window_context: Option<HashMap<String, Value>>,
+    pub(crate) ctes: CteStorage,
 }
 
 pub struct ExecutionContext<'a> {
-    pub session: SessionStateRefs<'a>,
-    pub metadata: SessionMetadata,
-    pub frame: FrameState,
-    pub row: RowContext,
-    pub ctes: CteStorage,
-    pub ansi_nulls: bool,
-    pub datefirst: i32,
-    pub dirty_buffer: Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>>,
-    pub identity_insert: HashSet<String>,
-    pub skip_instead_of: bool,
-    pub last_error: Option<DbError>,
+    pub(crate) session: SessionStateRefs<'a>,
+    pub(crate) metadata: SessionMetadata,
+    pub(crate) frame: FrameState,
+    pub(crate) row: RowContext,
+}
+
+/// RAII guard that runs a cleanup closure on drop.
+/// Use `ScopeGuard::new(|| cleanup_action())` to guarantee cleanup even on early returns.
+pub struct ScopeGuard<F: FnOnce()> {
+    cleanup: Option<F>,
+}
+
+impl<F: FnOnce()> ScopeGuard<F> {
+    pub fn new(cleanup: F) -> Self {
+        Self { cleanup: Some(cleanup) }
+    }
+
+    /// Consume the guard without running cleanup.
+    pub fn dismiss(mut self) {
+        self.cleanup = None;
+    }
+}
+
+impl<F: FnOnce()> Drop for ScopeGuard<F> {
+    fn drop(&mut self) {
+        if let Some(cleanup) = self.cleanup.take() {
+            cleanup();
+        }
+    }
 }
 
 impl<'a> ExecutionContext<'a> {
+    /// P1 #12: Builder-style constructor that takes a `SessionRuntime` directly,
+    /// eliminating the need to pass 18 individual parameters.
+    pub fn from_session<C, S>(
+        session: &'a mut super::session::SessionRuntime<C, S>,
+        session_id: super::locks::SessionId,
+        dirty_buffer: Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>>,
+    ) -> Self {
+        Self {
+            session: SessionStateRefs {
+                variables: &mut session.variables,
+                last_identity: &mut session.identities.last_identity,
+                identity_stack: &mut session.identities.scope_stack,
+                temp_map: &mut session.tables.temp_map,
+                var_map: &mut session.tables.var_map,
+                var_counter: &mut session.tables.var_counter,
+                random_state: &mut session.random_state,
+                cursors: &mut session.cursors.map,
+                fetch_status: &mut session.cursors.fetch_status,
+                print_output: &mut session.diagnostics.print_output,
+                dirty_buffer,
+                identity_insert: HashSet::new(),
+            },
+            metadata: SessionMetadata {
+                id: session_id,
+                database: Some(session.original_database.clone()),
+                original_database: session.original_database.clone(),
+                user: session.user.clone(),
+                app_name: session.app_name.clone(),
+                host_name: session.host_name.clone(),
+                ansi_nulls: session.options.ansi_nulls,
+                datefirst: session.options.datefirst,
+            },
+            frame: FrameState {
+                depth: 0,
+                loop_depth: 0,
+                trancount: 0,
+                xact_state: 0,
+                trigger_depth: 0,
+                module_stack: vec![],
+                scope_vars: vec![vec![]],
+                table_vars: vec![HashMap::new()],
+                readonly_table_vars: vec![HashSet::new()],
+                skip_instead_of: false,
+                last_error: None,
+            },
+            row: RowContext {
+                outer_row: None,
+                apply_stack: vec![],
+                current_group: None,
+                window_context: None,
+                ctes: CteStorage::new(),
+            },
+        }
+    }
+
+    /// Legacy constructor — prefer `from_session()` for new code.
+    #[deprecated(since = "0.2.0", note = "Use ExecutionContext::from_session() instead")]
     pub fn new(
         variables: &'a mut Variables,
         session_last_identity: &'a mut Option<i64>,
@@ -111,14 +195,18 @@ impl<'a> ExecutionContext<'a> {
                 cursors,
                 fetch_status,
                 print_output,
+                dirty_buffer,
+                identity_insert: HashSet::new(),
             },
             metadata: SessionMetadata {
                 id: session_id,
-                database: None,
+                database: Some(session_original_database.clone()),
                 original_database: session_original_database,
                 user,
                 app_name,
                 host_name,
+                ansi_nulls,
+                datefirst,
             },
             frame: FrameState {
                 depth: 0,
@@ -130,24 +218,20 @@ impl<'a> ExecutionContext<'a> {
                 scope_vars: vec![vec![]],
                 table_vars: vec![HashMap::new()],
                 readonly_table_vars: vec![HashSet::new()],
+                skip_instead_of: false,
+                last_error: None,
             },
             row: RowContext {
                 outer_row: None,
                 apply_stack: vec![],
                 current_group: None,
                 window_context: None,
+                ctes: CteStorage::new(),
             },
-            ctes: CteStorage::new(),
-            ansi_nulls,
-            datefirst,
-            dirty_buffer,
-            identity_insert: HashSet::new(),
-            skip_instead_of: false,
-            last_error: None,
         }
     }
 
-    // Delegation properties for backward compatibility (can be removed later)
+    // Delegation methods for backward compatibility
     #[inline] pub fn variables(&self) -> &Variables { self.session.variables }
     #[inline] pub fn variables_mut(&mut self) -> &mut Variables { self.session.variables }
     #[inline] pub fn session_id(&self) -> super::locks::SessionId { self.metadata.id }
@@ -162,6 +246,21 @@ impl<'a> ExecutionContext<'a> {
     #[inline] pub fn current_group(&self) -> &Option<super::model::Group> { &self.row.current_group }
     #[inline] pub fn current_group_mut(&mut self) -> &mut Option<super::model::Group> { &mut self.row.current_group }
 
+    // Session option accessors
+    #[inline] pub fn ansi_nulls(&self) -> bool { self.metadata.ansi_nulls }
+    #[inline] pub fn ansi_nulls_mut(&mut self) -> &mut bool { &mut self.metadata.ansi_nulls }
+    #[inline] pub fn datefirst(&self) -> i32 { self.metadata.datefirst }
+    #[inline] pub fn datefirst_mut(&mut self) -> &mut i32 { &mut self.metadata.datefirst }
+
+    // Session state accessors
+    #[inline] pub fn dirty_buffer(&self) -> &Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>> { &self.session.dirty_buffer }
+    #[inline] pub fn identity_insert(&self) -> &HashSet<String> { &self.session.identity_insert }
+    #[inline] pub fn identity_insert_mut(&mut self) -> &mut HashSet<String> { &mut self.session.identity_insert }
+
+    // Frame state accessors
+    #[inline] pub fn last_error(&self) -> &Option<DbError> { &self.frame.last_error }
+    #[inline] pub fn last_error_mut(&mut self) -> &mut Option<DbError> { &mut self.frame.last_error }
+
     pub fn subquery(&mut self) -> ExecutionContext<'_> {
         ExecutionContext {
             session: SessionStateRefs {
@@ -175,6 +274,8 @@ impl<'a> ExecutionContext<'a> {
                 cursors: self.session.cursors,
                 fetch_status: self.session.fetch_status,
                 print_output: self.session.print_output,
+                dirty_buffer: self.session.dirty_buffer.clone(),
+                identity_insert: self.session.identity_insert.clone(),
             },
             metadata: SessionMetadata {
                 id: self.metadata.id,
@@ -183,6 +284,8 @@ impl<'a> ExecutionContext<'a> {
                 user: self.metadata.user.clone(),
                 app_name: self.metadata.app_name.clone(),
                 host_name: self.metadata.host_name.clone(),
+                ansi_nulls: self.metadata.ansi_nulls,
+                datefirst: self.metadata.datefirst,
             },
             frame: FrameState {
                 depth: self.frame.depth + 1,
@@ -194,36 +297,22 @@ impl<'a> ExecutionContext<'a> {
                 table_vars: self.frame.table_vars.clone(),
                 readonly_table_vars: self.frame.readonly_table_vars.clone(),
                 scope_vars: self.frame.scope_vars.clone(),
+                skip_instead_of: self.frame.skip_instead_of,
+                last_error: self.frame.last_error.clone(),
             },
             row: RowContext {
                 outer_row: self.row.outer_row.clone(),
                 apply_stack: self.row.apply_stack.clone(),
                 current_group: self.row.current_group.clone(),
                 window_context: self.row.window_context.clone(),
+                ctes: self.row.ctes.clone(),
             },
-            ctes: self.ctes.clone(),
-            ansi_nulls: self.ansi_nulls,
-            datefirst: self.datefirst,
-            dirty_buffer: self.dirty_buffer.clone(),
-            identity_insert: self.identity_insert.clone(),
-            skip_instead_of: self.skip_instead_of,
-            last_error: self.last_error.clone(),
         }
     }
 
     pub fn with_outer_row(&mut self, row: JoinedRow) -> ExecutionContext<'_> {
         let mut sub = self.subquery();
         sub.row.outer_row = Some(row);
-        sub
-    }
-
-    pub fn with_outer_row_extended(
-        &mut self,
-        _current_row: JoinedRow,
-        outer_row: JoinedRow,
-    ) -> ExecutionContext<'_> {
-        let mut sub = self.subquery();
-        sub.row.outer_row = Some(outer_row);
         sub
     }
 
@@ -295,24 +384,21 @@ impl<'a> ExecutionContext<'a> {
 
     pub fn register_table_var(&mut self, logical_name: &str, physical_name: &str) {
         if let Some(scope) = self.frame.table_vars.last_mut() {
-            scope.insert(logical_name.to_uppercase(), physical_name.to_string());
+            scope.insert(normalize_identifier(logical_name), physical_name.to_string());
         }
         self.session
             .var_map
-            .insert(logical_name.to_uppercase(), physical_name.to_string());
+            .insert(normalize_identifier(logical_name), physical_name.to_string());
     }
 
     pub fn mark_table_var_readonly(&mut self, logical_name: &str) {
         if let Some(scope) = self.frame.readonly_table_vars.last_mut() {
-            scope.insert(logical_name.to_uppercase());
+            scope.insert(normalize_identifier(logical_name));
         }
     }
 
     pub fn is_readonly_table_var(&self, logical_name: &str) -> bool {
-        let mut upper = logical_name.to_uppercase();
-        if upper.starts_with("DBO.") {
-            upper = upper["DBO.".len()..].to_string();
-        }
+        let upper = normalize_identifier(strip_dbo_prefix(logical_name));
         self.frame.readonly_table_vars
             .iter()
             .rev()
@@ -320,10 +406,7 @@ impl<'a> ExecutionContext<'a> {
     }
 
     pub fn resolve_table_name(&self, logical: &str) -> Option<String> {
-        let mut upper = logical.to_uppercase();
-        if upper.starts_with("DBO.") {
-            upper = upper["DBO.".len()..].to_string();
-        }
+        let upper = normalize_identifier(strip_dbo_prefix(logical));
 
         // 1. Mapped names (temp tables #t and pseudo-tables like INSERTED)
         if let Some(mapped) = self.session.temp_map.get(&upper) {
@@ -389,10 +472,10 @@ impl<'a> ExecutionContext<'a> {
         *self.session.var_counter
     }
 
-    pub fn get_window_value(&self, expr: &crate::ast::Expr) -> Option<Value> {
+    pub fn get_window_value(&self, key: &str) -> Option<Value> {
         self.row.window_context
             .as_ref()
-            .and_then(|m| m.get(expr).cloned())
+            .and_then(|m| m.get(key).cloned())
     }
 
     pub fn create_snapshot(
@@ -434,7 +517,7 @@ impl<'a> ExecutionContext<'a> {
         *self.session.fetch_status = snapshot.cursors.fetch_status;
         *options = snapshot.options;
         *self.session.random_state = snapshot.random_state;
-        self.ansi_nulls = options.ansi_nulls;
-        self.datefirst = options.datefirst;
+        self.metadata.ansi_nulls = options.ansi_nulls;
+        self.metadata.datefirst = options.datefirst;
     }
 }

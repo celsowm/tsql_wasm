@@ -85,7 +85,11 @@ pub struct SessionManagerService<C, S> {
 pub use persistence::DatabaseInner;
 pub use engine::EngineInner;
 
+/// Convenience alias — prefer `DatabaseInner<C, S>` with generics in new code.
+#[doc(hidden)]
 pub type Database = persistence::DatabaseInner<CatalogImpl, InMemoryStorage>;
+/// Convenience alias — prefer `DatabaseInner<C, S>` with generics in new code.
+#[doc(hidden)]
 pub type PersistentDatabase = persistence::DatabaseInner<CatalogImpl, crate::storage::RedbStorage>;
 
 pub type Engine = engine::EngineInner<CatalogImpl, InMemoryStorage>;

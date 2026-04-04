@@ -8,6 +8,7 @@ use crate::types::Value;
 
 use super::context::ExecutionContext;
 use super::cte::resolve_cte_table;
+use super::string_norm::normalize_identifier;
 use super::evaluator::eval_expr;
 use super::metadata::resolve_virtual_table;
 use super::model::{BoundTable, JoinedRow};
@@ -125,7 +126,7 @@ pub fn build_physical_plan(
     for join in joins {
         let right_bound = bind_table_fn(join.table.clone(), catalog, ctx)?;
         let right_pred = alias_predicates
-            .remove(&right_bound.alias.to_uppercase())
+            .remove(&normalize_identifier(&right_bound.alias))
             .and_then(and_terms);
         let right_scan = plan_scan(&right_bound, right_pred, &[], catalog);
         physical_joins.push(PhysicalJoin {
@@ -265,7 +266,7 @@ pub fn bind_table(
     let schema = tref.factor.as_object_name().map(|o| o.schema_or_dbo()).unwrap_or("dbo");
     let name = tref.factor.as_object_name().map(|o| o.name.as_str()).unwrap_or("");
 
-    if let Some(cte) = resolve_cte_table(&ctx.ctes, schema, name) {
+    if let Some(cte) = resolve_cte_table(&ctx.row.ctes, schema, name) {
         return Ok(BoundTable {
             alias: tref.alias.clone().unwrap_or_else(|| name.to_string()),
             table: cte.table_def.clone(),
@@ -299,7 +300,7 @@ fn bind_table_rows(
     ctx: &ExecutionContext,
     storage: &dyn crate::storage::Storage,
 ) -> Result<Vec<JoinedRow>, DbError> {
-    if let Some(cte) = ctx.ctes.get(&bound.table.name.to_uppercase()) {
+    if let Some(cte) = ctx.row.ctes.get(&normalize_identifier(&bound.table.name)) {
         return Ok(super::cte::cte_to_context_rows(cte, &bound.alias));
     }
 
@@ -456,7 +457,7 @@ fn expr_aliases(expr: &Expr) -> HashSet<String> {
         match expr {
             Expr::QualifiedIdentifier(parts) => {
                 if let Some(alias) = parts.first() {
-                    out.insert(alias.to_uppercase());
+                    out.insert(normalize_identifier(alias));
                 }
             }
             Expr::Binary { left, right, .. } => {
@@ -523,28 +524,28 @@ fn required_columns_from_logical(plan: &LogicalPlan) -> Vec<String> {
                 if let Some(o) = table.factor.as_object_name() {
                     out.insert(format!(
                         "{}.{}",
-                        o.schema_or_dbo().to_uppercase(),
-                        o.name.to_uppercase()
+                        normalize_identifier(o.schema_or_dbo()),
+                        normalize_identifier(&o.name)
                     ));
                 }
             }
             LogicalPlan::Pivot { input, spec, .. } => {
                 collect(input, out);
-                out.insert(spec.aggregate_col.to_uppercase());
-                out.insert(spec.pivot_col.to_uppercase());
+                out.insert(normalize_identifier(&spec.aggregate_col));
+                out.insert(normalize_identifier(&spec.pivot_col));
             }
             LogicalPlan::Unpivot { input, spec, .. } => {
                 collect(input, out);
-                out.insert(spec.value_col.to_uppercase());
-                out.insert(spec.pivot_col.to_uppercase());
+                out.insert(normalize_identifier(&spec.value_col));
+                out.insert(normalize_identifier(&spec.pivot_col));
                 for col in &spec.column_list {
-                    out.insert(col.to_uppercase());
+                    out.insert(normalize_identifier(col));
                 }
             }
             LogicalPlan::Join { left, join } => {
                 collect(left, out);
                 if let Some(o) = join.table.factor.as_object_name() {
-                    out.insert(o.name.to_uppercase());
+                    out.insert(normalize_identifier(&o.name));
                 }
             }
             LogicalPlan::Filter { input, predicate } => {
