@@ -180,10 +180,17 @@ pub fn parse_delete<'a>(parser: &mut Parser<'a>) -> ParseResult<DeleteStmt<'a>> 
     }
 
     let target = crate::parser::parse::statements::query::parse_table_ref(parser)?;
-    let table = match &target {
-        TableRef::Table { name, .. } => name.clone(),
-        _ => return parser.backtrack(Expected::Description("table name")),
-    };
+    let table = target
+        .name_as_object()
+        .map(|name| {
+            let mut parts = Vec::new();
+            if let Some(schema) = &name.schema {
+                parts.push(schema.clone());
+            }
+            parts.push(name.name.clone());
+            parts
+        })
+        .ok_or_else(|| parser.error(Expected::Description("table name")))?;
 
     let mut from = vec![target.clone()];
     if matches!(parser.peek(), Some(Token::Keyword(Keyword::From))) {

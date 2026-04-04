@@ -107,9 +107,9 @@ pub fn parse_create_trigger<'a>(parser: &mut Parser<'a>) -> ParseResult<CreateSt
     let events = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
         match p.next() {
             Some(Token::Keyword(k)) => match *k {
-                Keyword::Insert => Ok(crate::ast::TriggerEvent::Insert),
-                Keyword::Update => Ok(crate::ast::TriggerEvent::Update),
-                Keyword::Delete => Ok(crate::ast::TriggerEvent::Delete),
+                Keyword::Insert => Ok(crate::parser::ast::TriggerEvent::Insert),
+                Keyword::Update => Ok(crate::parser::ast::TriggerEvent::Update),
+                Keyword::Delete => Ok(crate::parser::ast::TriggerEvent::Delete),
                 _ => p.backtrack(Expected::Description("INSERT, UPDATE, or DELETE")),
             }
             _ => p.backtrack(Expected::Description("INSERT, UPDATE, or DELETE")),

@@ -1,4 +1,4 @@
-﻿pub mod ast;
+pub mod ast;
 pub mod catalog;
 pub mod error;
 pub mod executor;
@@ -20,4 +20,3 @@ pub use executor::tooling::{
     TraceStatementEvent,
 };
 pub use parser::{parse_batch, parse_sql};
-

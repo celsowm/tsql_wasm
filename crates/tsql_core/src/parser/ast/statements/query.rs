@@ -1,14 +1,16 @@
+use super::super::common::{ObjectName, TableRef};
 use super::super::expressions::Expr;
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SelectStmt<'a> {
-    pub distinct: bool,
-    pub top: Option<Expr<'a>>,
-    pub projection: Vec<SelectItem<'a>>,
-    pub into_table: Option<Vec<Cow<'a, str>>>,
-    pub from: Option<Vec<TableRef<'a>>>,
+    pub from: Option<TableRef<'a>>,
+    pub joins: Vec<JoinClause<'a>>,
     pub applies: Vec<ApplyClause<'a>>,
+    pub projection: Vec<SelectItem<'a>>,
+    pub into_table: Option<ObjectName<'a>>,
+    pub distinct: bool,
+    pub top: Option<TopSpec<'a>>,
     pub selection: Option<Expr<'a>>,
     pub group_by: Vec<Expr<'a>>,
     pub having: Option<Expr<'a>>,
@@ -16,6 +18,13 @@ pub struct SelectStmt<'a> {
     pub offset: Option<Expr<'a>>,
     pub fetch: Option<Expr<'a>>,
     pub set_op: Option<Box<SetOp<'a>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct JoinClause<'a> {
+    pub join_type: JoinType,
+    pub table: TableRef<'a>,
+    pub on: Option<Expr<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -51,57 +60,8 @@ pub struct SelectItem<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TableRef<'a> {
-    Table {
-        name: Vec<Cow<'a, str>>,
-        alias: Option<Cow<'a, str>>,
-        hints: Vec<Cow<'a, str>>,
-    },
-    Values {
-        rows: Vec<Vec<Expr<'a>>>,
-        alias: Cow<'a, str>,
-        columns: Vec<Cow<'a, str>>,
-    },
-    Subquery {
-        subquery: Box<SelectStmt<'a>>,
-        alias: Cow<'a, str>,
-    },
-    Join {
-        left: Box<TableRef<'a>>,
-        join_type: JoinType,
-        right: Box<TableRef<'a>>,
-        on: Option<Expr<'a>>,
-    },
-    Pivot {
-        source: Box<TableRef<'a>>,
-        spec: PivotSpec<'a>,
-        alias: Cow<'a, str>,
-    },
-    Unpivot {
-        source: Box<TableRef<'a>>,
-        spec: UnpivotSpec<'a>,
-        alias: Cow<'a, str>,
-    },
-    TableValuedFunction {
-        name: Vec<Cow<'a, str>>,
-        args: Vec<Expr<'a>>,
-        alias: Option<Cow<'a, str>>,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct PivotSpec<'a> {
-    pub aggregate_func: Cow<'a, str>,
-    pub aggregate_col: Cow<'a, str>,
-    pub pivot_col: Cow<'a, str>,
-    pub pivot_values: Vec<Cow<'a, str>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct UnpivotSpec<'a> {
-    pub value_col: Cow<'a, str>,
-    pub pivot_col: Cow<'a, str>,
-    pub column_list: Vec<Cow<'a, str>>,
+pub struct TopSpec<'a> {
+    pub value: Expr<'a>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

@@ -232,12 +232,12 @@ fn parse_set_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>>
             }
         }
         let iso = match level_keywords.as_slice() {
-            [Keyword::Read, Keyword::Uncommitted] => crate::ast::IsolationLevel::ReadUncommitted,
-            [Keyword::Read, Keyword::Committed] => crate::ast::IsolationLevel::ReadCommitted,
-            [Keyword::Repeatable, Keyword::Read] => crate::ast::IsolationLevel::RepeatableRead,
-            [Keyword::Serializable] => crate::ast::IsolationLevel::Serializable,
-            [Keyword::Snapshot] => crate::ast::IsolationLevel::Snapshot,
-            _ => crate::ast::IsolationLevel::ReadCommitted,
+            [Keyword::Read, Keyword::Uncommitted] => crate::parser::ast::IsolationLevel::ReadUncommitted,
+            [Keyword::Read, Keyword::Committed] => crate::parser::ast::IsolationLevel::ReadCommitted,
+            [Keyword::Repeatable, Keyword::Read] => crate::parser::ast::IsolationLevel::RepeatableRead,
+            [Keyword::Serializable] => crate::parser::ast::IsolationLevel::Serializable,
+            [Keyword::Snapshot] => crate::parser::ast::IsolationLevel::Snapshot,
+            _ => crate::parser::ast::IsolationLevel::ReadCommitted,
         };
         return Ok(Statement::Session(SessionStatement::SetTransactionIsolationLevel(iso)));
     }
@@ -263,7 +263,7 @@ fn parse_set_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>>
         }
     }
 
-    fn parse_bool_setting<'a>(parser: &mut Parser<'a>, option: crate::ast::SessionOption) -> ParseResult<Statement<'a>> {
+    fn parse_bool_setting<'a>(parser: &mut Parser<'a>, option: crate::parser::ast::SessionOption) -> ParseResult<Statement<'a>> {
         let _ = parser.next();
         let val = match parser.next() {
             Some(Token::Keyword(k)) if *k == Keyword::On => true,
@@ -274,11 +274,11 @@ fn parse_set_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>>
         };
         Ok(Statement::Session(SessionStatement::SetOption {
             option,
-            value: crate::ast::SessionOptionValue::Bool(val),
+            value: crate::parser::ast::SessionOptionValue::Bool(val),
         }))
     }
 
-    fn parse_text_setting<'a>(parser: &mut Parser<'a>, option: crate::ast::SessionOption) -> ParseResult<Statement<'a>> {
+    fn parse_text_setting<'a>(parser: &mut Parser<'a>, option: crate::parser::ast::SessionOption) -> ParseResult<Statement<'a>> {
         let _ = parser.next();
         let text = match parser.next() {
             Some(Token::String(s)) => s.clone().into_owned(),
@@ -288,21 +288,21 @@ fn parse_set_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>>
         };
         Ok(Statement::Session(SessionStatement::SetOption {
             option,
-            value: crate::ast::SessionOptionValue::Text(text),
+            value: crate::parser::ast::SessionOptionValue::Text(text),
         }))
     }
 
     if matches_set_name(parser.peek(), "ANSI_NULLS") {
-        return parse_bool_setting(parser, crate::ast::SessionOption::AnsiNulls);
+        return parse_bool_setting(parser, crate::parser::ast::SessionOption::AnsiNulls);
     }
     if matches_set_name(parser.peek(), "QUOTED_IDENTIFIER") {
-        return parse_bool_setting(parser, crate::ast::SessionOption::QuotedIdentifier);
+        return parse_bool_setting(parser, crate::parser::ast::SessionOption::QuotedIdentifier);
     }
     if matches_set_name(parser.peek(), "NOCOUNT") {
-        return parse_bool_setting(parser, crate::ast::SessionOption::NoCount);
+        return parse_bool_setting(parser, crate::parser::ast::SessionOption::NoCount);
     }
     if matches_set_name(parser.peek(), "XACT_ABORT") {
-        return parse_bool_setting(parser, crate::ast::SessionOption::XactAbort);
+        return parse_bool_setting(parser, crate::parser::ast::SessionOption::XactAbort);
     }
     if matches_set_name(parser.peek(), "DATEFIRST") {
         let _ = parser.next();
@@ -312,15 +312,15 @@ fn parse_set_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>>
             return parser.backtrack(Expected::Description("number"));
         };
         return Ok(Statement::Session(SessionStatement::SetOption {
-            option: crate::ast::SessionOption::DateFirst,
-            value: crate::ast::SessionOptionValue::Int(val),
+            option: crate::parser::ast::SessionOption::DateFirst,
+            value: crate::parser::ast::SessionOptionValue::Int(val),
         }));
     }
     if matches_set_name(parser.peek(), "LANGUAGE") {
-        return parse_text_setting(parser, crate::ast::SessionOption::Language);
+        return parse_text_setting(parser, crate::parser::ast::SessionOption::Language);
     }
     if matches_set_name(parser.peek(), "DATEFORMAT") {
-        return parse_text_setting(parser, crate::ast::SessionOption::DateFormat);
+        return parse_text_setting(parser, crate::parser::ast::SessionOption::DateFormat);
     }
     if matches_set_name(parser.peek(), "LOCK_TIMEOUT") {
         let _ = parser.next();
@@ -330,8 +330,8 @@ fn parse_set_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>>
             return parser.backtrack(Expected::Description("number"));
         };
         return Ok(Statement::Session(SessionStatement::SetOption {
-            option: crate::ast::SessionOption::LockTimeout,
-            value: crate::ast::SessionOptionValue::Int(val)
+            option: crate::parser::ast::SessionOption::LockTimeout,
+            value: crate::parser::ast::SessionOptionValue::Int(val)
         }));
     }
     Ok(parse_set(parser)?)

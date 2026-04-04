@@ -1,7 +1,7 @@
 use super::super::expressions::Expr;
 use super::super::common::DataType;
-use super::query::{SelectStmt, TableRef};
-use crate::ast as old;
+use super::super::common::TableRef;
+use super::query::SelectStmt;
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -27,7 +27,7 @@ pub enum DmlStatement<'a> {
     Merge(Box<MergeStmt<'a>>),
     SelectAssign {
         assignments: Vec<SelectAssignTarget<'a>>,
-        from: Option<Vec<TableRef<'a>>>,
+        from: Option<TableRef<'a>>,
         selection: Option<Expr<'a>>,
     },
 }
@@ -138,11 +138,8 @@ pub enum CursorStatement<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SessionStatement<'a> {
-    SetTransactionIsolationLevel(crate::ast::IsolationLevel),
-    SetOption {
-        option: crate::ast::SessionOption,
-        value: crate::ast::SessionOptionValue,
-    },
+    SetTransactionIsolationLevel(IsolationLevel),
+    SetOption { option: SessionOption, value: SessionOptionValue },
     SetIdentityInsert {
         table: Vec<Cow<'a, str>>,
         on: bool,
@@ -266,7 +263,7 @@ pub enum CreateStmt<'a> {
     Trigger {
         name: Vec<Cow<'a, str>>,
         table: Vec<Cow<'a, str>>,
-        events: Vec<old::TriggerEvent>,
+        events: Vec<TriggerEvent>,
         is_instead_of: bool,
         body: Vec<Statement<'a>>,
     },
@@ -393,4 +390,45 @@ pub struct OutputColumn<'a> {
 pub enum OutputSource {
     Inserted,
     Deleted,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum IsolationLevel {
+    ReadUncommitted,
+    ReadCommitted,
+    RepeatableRead,
+    Serializable,
+    Snapshot,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SessionOption {
+    AnsiNulls,
+    QuotedIdentifier,
+    NoCount,
+    XactAbort,
+    DateFirst,
+    Language,
+    DateFormat,
+    LockTimeout,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SessionOptionValue {
+    Bool(bool),
+    Int(i32),
+    Text(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum RoutineParamType<'a> {
+    Scalar(super::super::data_types::DataTypeSpec),
+    TableType(super::super::common::ObjectName<'a>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TriggerEvent {
+    Insert,
+    Update,
+    Delete,
 }

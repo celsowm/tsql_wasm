@@ -64,8 +64,8 @@ fn lower_dml<'a>(dml: v2::DmlStatement<'a>) -> Result<old::Statement, DbError> {
         v2::DmlStatement::Merge(s) => Ok(old::Statement::Dml(old::statements::DmlStatement::Merge(lower_merge(*s)?))),
         v2::DmlStatement::SelectAssign { assignments, from, selection } => {
             let mut joins = Vec::new();
-            let from_tr = if let Some(from_refs) = from {
-                let (tr, mut j) = lower_from_clause_internal(from_refs)?;
+            let from_tr = if let Some(from_ref) = from {
+                let (tr, mut j) = lower_table_ref_recursive(from_ref)?;
                 joins.append(&mut j);
                 Some(tr)
             } else {
@@ -277,10 +277,29 @@ fn lower_cursor<'a>(cursor: v2::CursorStatement<'a>) -> Result<old::Statement, D
 
 fn lower_session<'a>(session: v2::SessionStatement<'a>) -> Result<old::Statement, DbError> {
     match session {
-        v2::SessionStatement::SetTransactionIsolationLevel(iso) => Ok(old::Statement::Session(old::statements::SessionStatement::SetTransactionIsolationLevel(iso))),
+        v2::SessionStatement::SetTransactionIsolationLevel(iso) => Ok(old::Statement::Session(old::statements::SessionStatement::SetTransactionIsolationLevel(match iso {
+            v2::IsolationLevel::ReadUncommitted => old::IsolationLevel::ReadUncommitted,
+            v2::IsolationLevel::ReadCommitted => old::IsolationLevel::ReadCommitted,
+            v2::IsolationLevel::RepeatableRead => old::IsolationLevel::RepeatableRead,
+            v2::IsolationLevel::Serializable => old::IsolationLevel::Serializable,
+            v2::IsolationLevel::Snapshot => old::IsolationLevel::Snapshot,
+        }))),
         v2::SessionStatement::SetOption { option, value } => Ok(old::Statement::Session(old::statements::SessionStatement::SetOption(old::statements::procedural::SetOptionStmt {
-            option,
-            value,
+            option: match option {
+                v2::SessionOption::AnsiNulls => old::SessionOption::AnsiNulls,
+                v2::SessionOption::QuotedIdentifier => old::SessionOption::QuotedIdentifier,
+                v2::SessionOption::NoCount => old::SessionOption::NoCount,
+                v2::SessionOption::XactAbort => old::SessionOption::XactAbort,
+                v2::SessionOption::DateFirst => old::SessionOption::DateFirst,
+                v2::SessionOption::Language => old::SessionOption::Language,
+                v2::SessionOption::DateFormat => old::SessionOption::DateFormat,
+                v2::SessionOption::LockTimeout => old::SessionOption::LockTimeout,
+            },
+            value: match value {
+                v2::SessionOptionValue::Bool(v) => old::SessionOptionValue::Bool(v),
+                v2::SessionOptionValue::Int(v) => old::SessionOptionValue::Int(v),
+                v2::SessionOptionValue::Text(v) => old::SessionOptionValue::Text(v),
+            },
         }))),
         v2::SessionStatement::SetIdentityInsert { table, on } => Ok(old::Statement::Session(old::statements::SessionStatement::SetIdentityInsert(old::statements::SetIdentityInsertStmt {
             table: lower_object_name(table),
@@ -406,7 +425,10 @@ pub fn lower_binary_op(op: v2::BinaryOp) -> Result<old::expressions::BinaryOp, D
         v2::BinaryOp::Multiply => Ok(old::expressions::BinaryOp::Multiply),
         v2::BinaryOp::Divide => Ok(old::expressions::BinaryOp::Divide),
         v2::BinaryOp::Modulo => Ok(old::expressions::BinaryOp::Modulo),
-        _ => Err(DbError::Parse(format!("Binary operator {:?} not supported in old AST", op))),
+        v2::BinaryOp::BitwiseAnd => Ok(old::expressions::BinaryOp::BitwiseAnd),
+        v2::BinaryOp::BitwiseOr => Ok(old::expressions::BinaryOp::BitwiseOr),
+        v2::BinaryOp::BitwiseXor => Ok(old::expressions::BinaryOp::BitwiseXor),
+        v2::BinaryOp::Like => Err(DbError::Parse("LIKE should be lowered as a dedicated expression".into())),
     }
 }
 
@@ -414,7 +436,7 @@ pub fn lower_unary_op(op: v2::UnaryOp) -> old::expressions::UnaryOp {
     match op {
         v2::UnaryOp::Negate => old::expressions::UnaryOp::Negate,
         v2::UnaryOp::Not => old::expressions::UnaryOp::Not,
-        v2::UnaryOp::BitwiseNot => old::expressions::UnaryOp::Not,
+        v2::UnaryOp::BitwiseNot => old::expressions::UnaryOp::BitwiseNot,
     }
 }
 
@@ -510,23 +532,27 @@ pub fn lower_select<'a>(s: v2::SelectStmt<'a>) -> Result<old::statements::query:
         return Err(DbError::Parse("Subqueries with UNION/INTERSECT/EXCEPT not yet supported in this version".into()));
     }
 
-    let mut joins = Vec::new();
     let mut from = None;
-    
-    if let Some(from_refs) = s.from {
-        let (tr, mut j) = lower_from_clause_internal(from_refs)?;
+    let mut joins = Vec::new();
+
+    if let Some(from_ref) = s.from {
+        let (tr, mut j) = lower_table_ref_recursive(from_ref)?;
         from = Some(tr);
         joins.append(&mut j);
     }
 
+    for join in s.joins {
+        joins.push(lower_join_clause(join)?);
+    }
+
     Ok(old::statements::query::SelectStmt {
         distinct: s.distinct,
-        top: s.top.map(|e| Ok(old::statements::query::TopSpec { value: lower_expr(e)? })).transpose()?,
+        top: s.top.map(|top| Ok(old::statements::query::TopSpec { value: lower_expr(top.value)? })).transpose()?,
         projection: s.projection.into_iter().map(|i| Ok(old::statements::query::SelectItem {
             expr: lower_expr(i.expr)?,
             alias: i.alias.map(|a| a.into_owned()),
         })).collect::<Result<Vec<_>, DbError>>()?,
-        into_table: s.into_table.map(lower_object_name),
+        into_table: s.into_table.map(lower_object_name_owned),
         from,
         joins,
         applies: s.applies.into_iter().map(|a| {
@@ -584,6 +610,20 @@ pub fn lower_select<'a>(s: v2::SelectStmt<'a>) -> Result<old::statements::query:
     })
 }
 
+fn lower_join_clause<'a>(join: v2::JoinClause<'a>) -> Result<old::statements::query::JoinClause, DbError> {
+    Ok(old::statements::query::JoinClause {
+        join_type: match join.join_type {
+            v2::JoinType::Inner => old::statements::query::JoinType::Inner,
+            v2::JoinType::Left => old::statements::query::JoinType::Left,
+            v2::JoinType::Right => old::statements::query::JoinType::Right,
+            v2::JoinType::Full => old::statements::query::JoinType::Full,
+            v2::JoinType::Cross => old::statements::query::JoinType::Cross,
+        },
+        table: lower_table_ref_recursive(join.table)?.0,
+        on: join.on.map(lower_expr).transpose()?,
+    })
+}
+
 fn lower_from_clause_internal<'a>(tables: Vec<v2::TableRef<'a>>) -> Result<(old::common::TableRef, Vec<old::statements::query::JoinClause>), DbError> {
     if tables.is_empty() {
         return Err(DbError::Parse("FROM clause must have at least one table".into()));
@@ -604,76 +644,46 @@ fn lower_from_clause_internal<'a>(tables: Vec<v2::TableRef<'a>>) -> Result<(old:
 }
 
 fn lower_table_ref_recursive<'a>(tr: v2::TableRef<'a>) -> Result<(old::common::TableRef, Vec<old::statements::query::JoinClause>), DbError> {
-    match tr {
-        v2::TableRef::Table { name, alias, hints } => {
-            Ok((old::common::TableRef {
-                factor: old::common::TableFactor::Named(lower_object_name(name)),
-                alias: alias.map(|a| a.into_owned()),
-                pivot: None,
-                unpivot: None,
-                hints: hints.into_iter().map(|h| h.into_owned()).collect(),
-            }, Vec::new()))
-        }
-        v2::TableRef::Values { rows, alias, columns } => {
-            Ok((old::common::TableRef {
-                factor: old::common::TableFactor::Values {
-                    rows: rows.into_iter().map(|r| r.into_iter().map(lower_expr).collect::<Result<Vec<_>, _>>()).collect::<Result<Vec<_>, _>>()?,
-                    columns: columns.into_iter().map(|c| c.into_owned()).collect(),
-                },
-                alias: Some(alias.into_owned()),
-                pivot: None,
-                unpivot: None,
-                hints: Vec::new(),
-            }, Vec::new()))
-        }
-        v2::TableRef::Subquery { subquery, alias } => {
-            Ok((old::common::TableRef {
-                factor: old::common::TableFactor::Derived(Box::new(lower_select(*subquery)?)),
-                alias: Some(alias.into_owned()),
-                pivot: None,
-                unpivot: None,
-                hints: Vec::new(),
-            }, Vec::new()))
-        }
-        v2::TableRef::Join { left, join_type, right, on } => {
-            let (l_tr, mut l_joins) = lower_table_ref_recursive(*left)?;
-            let (r_tr, mut r_joins) = lower_table_ref_recursive(*right)?;
-            l_joins.push(old::statements::query::JoinClause {
-                join_type: match join_type {
-                    v2::JoinType::Inner => old::statements::query::JoinType::Inner,
-                    v2::JoinType::Left => old::statements::query::JoinType::Left,
-                    v2::JoinType::Right => old::statements::query::JoinType::Right,
-                    v2::JoinType::Full => old::statements::query::JoinType::Full,
-                    v2::JoinType::Cross => old::statements::query::JoinType::Cross,
-                },
-                table: r_tr,
-                on: on.map(lower_expr).transpose()?,
-            });
-            l_joins.append(&mut r_joins);
-            Ok((l_tr, l_joins))
-        }
-        v2::TableRef::Pivot { source, spec, alias } => {
-            let (mut tr, joins) = lower_table_ref_recursive(*source)?;
-            tr.pivot = Some(Box::new(old::common::PivotSpec {
-                aggregate_func: spec.aggregate_func.into_owned(),
-                aggregate_col: spec.aggregate_col.into_owned(),
-                pivot_col: spec.pivot_col.into_owned(),
-                pivot_values: spec.pivot_values.into_iter().map(|v| v.into_owned()).collect(),
-            }));
-            tr.alias = Some(alias.into_owned());
-            Ok((tr, joins))
-        }
-        v2::TableRef::Unpivot { source, spec, alias } => {
-            let (mut tr, joins) = lower_table_ref_recursive(*source)?;
-            tr.unpivot = Some(Box::new(old::common::UnpivotSpec {
-                value_col: spec.value_col.into_owned(),
-                pivot_col: spec.pivot_col.into_owned(),
-                column_list: spec.column_list.into_iter().map(|c| c.into_owned()).collect(),
-            }));
-            tr.alias = Some(alias.into_owned());
-            Ok((tr, joins))
-        }
-        v2::TableRef::TableValuedFunction { name, args, alias } => {
+    let alias = tr.alias.map(|a| a.into_owned());
+    let hints = tr.hints.into_iter().map(|h| h.into_owned()).collect();
+    let pivot = tr.pivot.map(|p| Box::new(old::common::PivotSpec {
+        aggregate_func: p.aggregate_func.into_owned(),
+        aggregate_col: p.aggregate_col.into_owned(),
+        pivot_col: p.pivot_col.into_owned(),
+        pivot_values: p.pivot_values.into_iter().map(|v| v.into_owned()).collect(),
+    }));
+    let unpivot = tr.unpivot.map(|u| Box::new(old::common::UnpivotSpec {
+        value_col: u.value_col.into_owned(),
+        pivot_col: u.pivot_col.into_owned(),
+        column_list: u.column_list.into_iter().map(|c| c.into_owned()).collect(),
+    }));
+
+    match tr.factor {
+        v2::TableFactor::Named(name) => Ok((old::common::TableRef {
+            factor: old::common::TableFactor::Named(lower_object_name_owned(name)),
+            alias,
+            pivot,
+            unpivot,
+            hints,
+        }, Vec::new())),
+        v2::TableFactor::Values { rows, columns } => Ok((old::common::TableRef {
+            factor: old::common::TableFactor::Values {
+                rows: rows.into_iter().map(|r| r.into_iter().map(lower_expr).collect::<Result<Vec<_>, _>>()).collect::<Result<Vec<_>, _>>()?,
+                columns: columns.into_iter().map(|c| c.into_owned()).collect(),
+            },
+            alias,
+            pivot,
+            unpivot,
+            hints,
+        }, Vec::new())),
+        v2::TableFactor::Derived(subquery) => Ok((old::common::TableRef {
+            factor: old::common::TableFactor::Derived(Box::new(lower_select(*subquery)?)),
+            alias,
+            pivot,
+            unpivot,
+            hints,
+        }, Vec::new())),
+        v2::TableFactor::TableValuedFunction { name, args, alias: tvf_alias } => {
             let func_name = name.last().unwrap().to_string();
             let arg_strs: Vec<String> = args
                 .into_iter()
@@ -685,12 +695,19 @@ fn lower_table_ref_recursive<'a>(tr: v2::TableRef<'a>) -> Result<(old::common::T
                     schema: if name.len() > 1 { Some(name[0].to_string()) } else { None },
                     name: full_name,
                 }),
-                alias: alias.map(|a| a.into_owned()),
-                pivot: None,
-                unpivot: None,
+                alias: tvf_alias.map(|a| a.into_owned()).or(alias),
+                pivot,
+                unpivot,
                 hints: Vec::new(),
             }, Vec::new()))
         }
+    }
+}
+
+fn lower_object_name_owned<'a>(name: v2::ObjectName<'a>) -> old::ObjectName {
+    old::ObjectName {
+        schema: name.schema.map(|s| s.into_owned()),
+        name: name.name.into_owned(),
     }
 }
 
@@ -836,7 +853,11 @@ pub fn lower_create<'a>(s: v2::CreateStmt<'a>) -> Result<old::Statement, DbError
         v2::CreateStmt::Trigger { name, table, events, is_instead_of, body } => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::CreateTrigger(old::statements::procedural::CreateTriggerStmt {
             name: lower_object_name(name),
             table: lower_object_name(table),
-            events,
+            events: events.into_iter().map(|e| match e {
+                v2::TriggerEvent::Insert => old::TriggerEvent::Insert,
+                v2::TriggerEvent::Update => old::TriggerEvent::Update,
+                v2::TriggerEvent::Delete => old::TriggerEvent::Delete,
+            }).collect(),
             is_instead_of,
             body: body.into_iter().map(lower_statement).collect::<Result<Vec<_>, _>>()?,
         }))),

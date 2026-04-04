@@ -85,6 +85,11 @@ fn test_sql_server_handshake_probe_functions() {
     assert_eq!(r.rows[0][0], Value::VarChar("Windows".to_string()));
 }
 
+#[test]
+fn test_bitwise_and_in_sql_server_probe_expression() {
+    parse_sql("SELECT @@MICROSOFTVERSION & 0xffff AS v").expect("parse failed");
+}
+
 // ─── HASHBYTES ────────────────────────────────────────────────────────────
 
 #[test]

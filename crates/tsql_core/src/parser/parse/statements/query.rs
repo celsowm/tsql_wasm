@@ -64,7 +64,7 @@ pub fn parse_single_select_body<'a>(parser: &mut Parser<'a>) -> ParseResult<Sele
     let mut top = None;
     if let Some(Token::Keyword(Keyword::Top)) = parser.peek() {
         let _ = parser.next();
-        top = Some(crate::parser::parse::expressions::parse_primary(parser)?);
+        top = Some(TopSpec { value: crate::parser::parse::expressions::parse_primary(parser)? });
     }
 
     let projection = parse_projection(parser)?;
@@ -72,10 +72,11 @@ pub fn parse_single_select_body<'a>(parser: &mut Parser<'a>) -> ParseResult<Sele
     let mut into_table = None;
     if let Some(Token::Keyword(Keyword::Into)) = parser.peek() {
         let _ = parser.next();
-        into_table = Some(parse_multipart_name(parser)?);
+        into_table = Some(parse_object_name(parse_multipart_name(parser)?));
     }
 
     let mut from = None;
+    let mut joins = Vec::new();
     if let Some(tok) = parser.peek() {
         let is_from = match tok {
             Token::Keyword(Keyword::From) => true,
@@ -84,8 +85,21 @@ pub fn parse_single_select_body<'a>(parser: &mut Parser<'a>) -> ParseResult<Sele
         };
         if is_from {
             let _ = parser.next();
-            from = Some(crate::parser::parse::expressions::parse_comma_list(parser, parse_table_ref)?);
+            let tables = crate::parser::parse::expressions::parse_comma_list(parser, parse_table_ref)?;
+            let mut iter = tables.into_iter();
+            from = iter.next();
+            for table in iter {
+                joins.push(JoinClause {
+                    join_type: JoinType::Cross,
+                    table,
+                    on: None,
+                });
+            }
         }
+    }
+
+    while let Some(join) = parse_join_clause(parser)? {
+        joins.push(join);
     }
 
     let mut applies = Vec::new();
@@ -174,6 +188,7 @@ pub fn parse_single_select_body<'a>(parser: &mut Parser<'a>) -> ParseResult<Sele
         projection,
         into_table,
         from,
+        joins,
         applies,
         selection,
         group_by,
@@ -204,42 +219,22 @@ fn parse_projection<'a>(parser: &mut Parser<'a>) -> ParseResult<Vec<SelectItem<'
 }
 
 pub fn parse_table_ref<'a>(parser: &mut Parser<'a>) -> ParseResult<TableRef<'a>> {
-    let mut current = match parser.peek() {
+    let (factor, alias, hints) = match parser.peek() {
         Some(Token::LParen) => {
             let _ = parser.next();
             if parser.at_keyword(Keyword::Values) {
                 let _ = parser.next();
                 let rows = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
                     p.expect_lparen()?;
-                    let vals = crate::parser::parse::expressions::parse_comma_list(p, crate::parser::parse::expressions::parse_expr)?;
+                    let vals = crate::parser::parse::expressions::parse_comma_list(
+                        p,
+                        crate::parser::parse::expressions::parse_expr,
+                    )?;
                     p.expect_rparen()?;
                     Ok(vals)
                 })?;
                 parser.expect_rparen()?;
-                let alias = if let Some(tok) = parser.peek() {
-                    match tok {
-                        Token::Keyword(Keyword::As) => {
-                            let _ = parser.next();
-                            match parser.next() {
-                                Some(Token::Identifier(alias)) => alias.clone(),
-                                _ => return parser.backtrack(Expected::Description("alias")),
-                            }
-                        }
-                        Token::Keyword(k) if !crate::parser::parse::expressions::is_stop_keyword(k.as_ref()) => {
-                            let alias = Cow::Owned(k.as_ref().to_string());
-                            let _ = parser.next();
-                            alias
-                        }
-                        Token::Identifier(id) if !crate::parser::parse::expressions::is_stop_keyword(id) => {
-                            let alias = id.clone();
-                            let _ = parser.next();
-                            alias
-                        }
-                        _ => return parser.backtrack(Expected::Description("alias")),
-                    }
-                } else {
-                    return parser.backtrack(Expected::Description("alias"));
-                };
+                let alias = parse_required_alias(parser)?;
                 let mut columns = Vec::new();
                 if matches!(parser.peek(), Some(Token::LParen)) {
                     let _ = parser.next();
@@ -252,104 +247,46 @@ pub fn parse_table_ref<'a>(parser: &mut Parser<'a>) -> ParseResult<TableRef<'a>>
                     })?;
                     parser.expect_rparen()?;
                 }
-                TableRef::Values { rows, alias, columns }
+                (
+                    TableFactor::Values { rows, columns },
+                    Some(alias),
+                    Vec::new(),
+                )
             } else {
                 let subquery = Box::new(parse_select(parser)?);
                 parser.expect_rparen()?;
-                let alias = if let Some(tok) = parser.peek() {
-                    match tok {
-                        Token::Keyword(Keyword::As) => {
-                            let _ = parser.next();
-                            match parser.next() {
-                                Some(Token::Identifier(alias)) => alias.clone(),
-                                _ => return parser.backtrack(Expected::Description("alias")),
-                            }
-                        }
-                        Token::Keyword(k) if !crate::parser::parse::expressions::is_stop_keyword(k.as_ref()) => {
-                            let alias = Cow::Owned(k.as_ref().to_string());
-                            let _ = parser.next();
-                            alias
-                        }
-                        Token::Identifier(id) if !crate::parser::parse::expressions::is_stop_keyword(id) => {
-                            let alias = id.clone();
-                            let _ = parser.next();
-                            alias
-                        }
-                        _ => return parser.backtrack(Expected::Description("alias")),
-                    }
-                } else {
-                    return parser.backtrack(Expected::Description("alias"));
-                };
-                TableRef::Subquery { subquery, alias }
+                let alias = parse_required_alias(parser)?;
+                (
+                    TableFactor::Derived(subquery),
+                    Some(alias),
+                    Vec::new(),
+                )
             }
         }
         Some(Token::Identifier(_)) | Some(Token::Keyword(_)) | Some(Token::Variable(_)) => {
             let name = parse_multipart_name(parser)?;
             if matches!(parser.peek(), Some(Token::LParen)) {
                 let _ = parser.next();
-                let args = crate::parser::parse::expressions::parse_comma_list(parser, crate::parser::parse::expressions::parse_expr)?;
+                let args = crate::parser::parse::expressions::parse_comma_list(
+                    parser,
+                    crate::parser::parse::expressions::parse_expr,
+                )?;
                 parser.expect_rparen()?;
-                let alias = if let Some(Token::Keyword(k)) = parser.peek() {
-                    if *k == Keyword::As {
-                        let _ = parser.next();
-                        match parser.next() {
-                            Some(Token::Identifier(alias)) => Some(alias.clone()),
-                            _ => return parser.backtrack(Expected::Description("alias")),
-                        }
-                    } else if !crate::parser::parse::expressions::is_stop_keyword(k.as_ref()) {
-                        let next = parser.next().unwrap();
-                        if let Token::Identifier(id) = next {
-                            Some(id.clone())
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                } else if let Some(Token::Identifier(alias)) = parser.peek() {
-                    let alias = alias.clone();
-                    let _ = parser.next();
-                    Some(alias)
-                } else {
-                    None
+                let alias = parse_optional_alias(parser);
+                let factor = TableFactor::TableValuedFunction {
+                    name,
+                    args,
+                    alias: alias.clone(),
                 };
-                TableRef::TableValuedFunction { name, args, alias }
-            } else {
-            let alias = if let Some(Token::Keyword(k)) = parser.peek() {
-                if *k == Keyword::As {
-                    let _ = parser.next();
-                    match parser.next() {
-                        Some(Token::Identifier(alias)) => Some(alias.clone()),
-                        Some(Token::String(alias)) => Some(alias.clone()),
-                        _ => return parser.backtrack(Expected::Description("alias")),
-                    }
-                } else if !crate::parser::parse::expressions::is_stop_keyword(k.as_ref()) {
-                    let next = parser.next().unwrap();
-                    if let Token::Identifier(id) = next {
-                        Some(id.clone())
-                    } else if let Token::Keyword(kw) = next {
-                        Some(Cow::Owned(kw.as_ref().to_string()))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            } else if let Some(Token::Identifier(alias)) = parser.peek() {
-                if !crate::parser::parse::expressions::is_stop_keyword(alias) {
-                    let alias = alias.clone();
-                    let _ = parser.next();
-                    Some(alias)
-                } else {
-                    None
-                }
-            } else if let Some(Token::String(alias)) = parser.peek() {
-                let alias = alias.clone();
-                let _ = parser.next();
-                Some(alias)
-            } else {
-                None
-            };
+                return Ok(TableRef {
+                    factor,
+                    alias,
+                    pivot: None,
+                    unpivot: None,
+                    hints: Vec::new(),
+                });
+            }
+            let alias = parse_optional_alias(parser);
             let mut hints = Vec::new();
             if let Some(Token::Keyword(Keyword::With)) = parser.peek() {
                 let saved = parser.save();
@@ -372,170 +309,196 @@ pub fn parse_table_ref<'a>(parser: &mut Parser<'a>) -> ParseResult<TableRef<'a>>
                     parser.restore(saved);
                 }
             }
-            TableRef::Table { name, alias, hints }
-            }
+            (
+                TableFactor::Named(parse_object_name(name)),
+                alias,
+                hints,
+            )
         }
         _ => return parser.backtrack(Expected::Description("table reference")),
     };
 
-    loop {
-        if let Some(Token::Keyword(k)) = parser.peek() {
-            match *k {
-                Keyword::Inner | Keyword::Left | Keyword::Right | Keyword::Full | Keyword::Cross | Keyword::Join => {
-                    let join_type = if *k == Keyword::Join {
-                        let _ = parser.next();
-                        JoinType::Inner
-                    } else {
-                        let jt = match *k {
-                            Keyword::Inner => JoinType::Inner,
-                            Keyword::Left => JoinType::Left,
-                            Keyword::Right => JoinType::Right,
-                            Keyword::Full => JoinType::Full,
-                            Keyword::Cross => {
-                                if matches!(parser.peek_at(1), Some(Token::Keyword(Keyword::Apply))) {
-                                    break;
-                                }
-                                JoinType::Cross
-                            }
-                            _ => unreachable!(),
-                        };
-                        
-                        if matches!(k, Keyword::Left | Keyword::Right | Keyword::Full) {
-                            if matches!(parser.peek_at(1), Some(Token::Keyword(Keyword::Apply))) {
-                                break;
-                            }
-                        }
+    let mut table = TableRef {
+        factor,
+        alias,
+        pivot: None,
+        unpivot: None,
+        hints,
+    };
 
-                        let _ = parser.next();
-                        if matches!(parser.peek(), Some(Token::Keyword(Keyword::Outer))) {
-                            let _ = parser.next();
-                        }
-                        parser.expect_keyword(Keyword::Join)?;
-                        jt
-                    };
-                    let right = parse_table_ref(parser)?;
-                    let on = if join_type != JoinType::Cross {
-                        parser.expect_keyword(Keyword::On)?;
-                        Some(crate::parser::parse::expressions::parse_expr(parser)?)
-                    } else {
-                        None
-                    };
-                    current = TableRef::Join {
-                        left: Box::new(current),
-                        join_type,
-                        right: Box::new(right),
-                        on,
-                    };
-                }
-                Keyword::Pivot => {
-                    let _ = parser.next();
-                    parser.expect_lparen()?;
-                    let aggregate_func = match parser.next() {
-                        Some(Token::Identifier(id)) => id.clone(),
-                        Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
-                        _ => return parser.backtrack(Expected::Description("identifier")),
-                    };
-                    parser.expect_lparen()?;
-                    let aggregate_col = match parser.next() {
-                        Some(Token::Identifier(id)) => id.clone(),
-                        Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
-                        _ => return parser.backtrack(Expected::Description("identifier")),
-                    };
-                    parser.expect_rparen()?;
-                    parser.expect_keyword(Keyword::For)?;
-                    let pivot_col = match parser.next() {
-                        Some(Token::Identifier(id)) => id.clone(),
-                        Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
-                        _ => return parser.backtrack(Expected::Description("identifier")),
-                    };
-                    parser.expect_keyword(Keyword::In)?;
-                    parser.expect_lparen()?;
-                    let pivot_values = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
-                        match p.next() {
-                            Some(Token::Identifier(id)) => Ok(id.clone()),
-                            Some(Token::Keyword(kw)) => Ok(Cow::Owned(kw.as_ref().to_string())),
-                            _ => p.backtrack(Expected::Description("identifier")),
-                        }
-                    })?;
-                    parser.expect_rparen()?;
-                    parser.expect_rparen()?;
-                    let alias = if let Some(Token::Keyword(k)) = parser.peek() {
-                        if *k == Keyword::As {
-                            let _ = parser.next();
-                        }
-                        match parser.next() {
-                            Some(Token::Identifier(id)) => id.clone(),
-                            Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
-                            _ => return parser.backtrack(Expected::Description("alias")),
-                        }
-                    } else if let Some(Token::Identifier(id)) = parser.peek() {
-                        let id = id.clone();
-                        let _ = parser.next();
-                        id
-                    } else {
-                        return parser.backtrack(Expected::Description("alias"));
-                    };
-                    current = TableRef::Pivot {
-                        source: Box::new(current),
-                        spec: PivotSpec { aggregate_func, aggregate_col, pivot_col, pivot_values },
-                        alias,
-                    };
-                }
-                Keyword::Unpivot => {
-                    let _ = parser.next();
-                    parser.expect_lparen()?;
-                    let value_col = match parser.next() {
-                        Some(Token::Identifier(id)) => id.clone(),
-                        Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
-                        _ => return parser.backtrack(Expected::Description("identifier")),
-                    };
-                    parser.expect_keyword(Keyword::For)?;
-                    let pivot_col = match parser.next() {
-                        Some(Token::Identifier(id)) => id.clone(),
-                        Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
-                        _ => return parser.backtrack(Expected::Description("identifier")),
-                    };
-                    parser.expect_keyword(Keyword::In)?;
-                    parser.expect_lparen()?;
-                    let column_list = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
-                        match p.next() {
-                            Some(Token::Identifier(id)) => Ok(id.clone()),
-                            Some(Token::Keyword(kw)) => Ok(Cow::Owned(kw.as_ref().to_string())),
-                            _ => p.backtrack(Expected::Description("identifier")),
-                        }
-                    })?;
-                    parser.expect_rparen()?;
-                    parser.expect_rparen()?;
-                    let alias = if let Some(Token::Keyword(k)) = parser.peek() {
-                        if *k == Keyword::As {
-                            let _ = parser.next();
-                        }
-                        match parser.next() {
-                            Some(Token::Identifier(id)) => id.clone(),
-                            Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
-                            _ => return parser.backtrack(Expected::Description("alias")),
-                        }
-                    } else if let Some(Token::Identifier(id)) = parser.peek() {
-                        let id = id.clone();
-                        let _ = parser.next();
-                        id
-                    } else {
-                        return parser.backtrack(Expected::Description("alias"));
-                    };
-                    current = TableRef::Unpivot {
-                        source: Box::new(current),
-                        spec: UnpivotSpec { value_col, pivot_col, column_list },
-                        alias,
-                    };
-                }
-                _ => break,
+    loop {
+        match parser.peek() {
+            Some(Token::Keyword(Keyword::Pivot)) => {
+                let _ = parser.next();
+                parser.expect_lparen()?;
+                let aggregate_func = match parser.next() {
+                    Some(Token::Identifier(id)) => id.clone(),
+                    Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
+                    _ => return parser.backtrack(Expected::Description("identifier")),
+                };
+                parser.expect_lparen()?;
+                let aggregate_col = match parser.next() {
+                    Some(Token::Identifier(id)) => id.clone(),
+                    Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
+                    _ => return parser.backtrack(Expected::Description("identifier")),
+                };
+                parser.expect_rparen()?;
+                parser.expect_keyword(Keyword::For)?;
+                let pivot_col = match parser.next() {
+                    Some(Token::Identifier(id)) => id.clone(),
+                    Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
+                    _ => return parser.backtrack(Expected::Description("identifier")),
+                };
+                parser.expect_keyword(Keyword::In)?;
+                parser.expect_lparen()?;
+                let pivot_values = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
+                    match p.next() {
+                        Some(Token::Identifier(id)) => Ok(id.clone()),
+                        Some(Token::Keyword(kw)) => Ok(Cow::Owned(kw.as_ref().to_string())),
+                        _ => p.backtrack(Expected::Description("identifier")),
+                    }
+                })?;
+                parser.expect_rparen()?;
+                parser.expect_rparen()?;
+                let alias = parse_required_alias(parser)?;
+                table.pivot = Some(Box::new(PivotSpec {
+                    aggregate_func,
+                    aggregate_col,
+                    pivot_col,
+                    pivot_values,
+                }));
+                table.alias = Some(alias);
             }
-        } else {
-            break;
+            Some(Token::Keyword(Keyword::Unpivot)) => {
+                let _ = parser.next();
+                parser.expect_lparen()?;
+                let value_col = match parser.next() {
+                    Some(Token::Identifier(id)) => id.clone(),
+                    Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
+                    _ => return parser.backtrack(Expected::Description("identifier")),
+                };
+                parser.expect_keyword(Keyword::For)?;
+                let pivot_col = match parser.next() {
+                    Some(Token::Identifier(id)) => id.clone(),
+                    Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
+                    _ => return parser.backtrack(Expected::Description("identifier")),
+                };
+                parser.expect_keyword(Keyword::In)?;
+                parser.expect_lparen()?;
+                let column_list = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
+                    match p.next() {
+                        Some(Token::Identifier(id)) => Ok(id.clone()),
+                        Some(Token::Keyword(kw)) => Ok(Cow::Owned(kw.as_ref().to_string())),
+                        _ => p.backtrack(Expected::Description("identifier")),
+                    }
+                })?;
+                parser.expect_rparen()?;
+                parser.expect_rparen()?;
+                let alias = parse_required_alias(parser)?;
+                table.unpivot = Some(Box::new(UnpivotSpec {
+                    value_col,
+                    pivot_col,
+                    column_list,
+                }));
+                table.alias = Some(alias);
+            }
+            _ => break,
         }
     }
 
-    Ok(current)
+    Ok(table)
+}
+
+fn parse_join_clause<'a>(parser: &mut Parser<'a>) -> ParseResult<Option<JoinClause<'a>>> {
+    let Some(Token::Keyword(k)) = parser.peek() else {
+        return Ok(None);
+    };
+
+    if matches!(k, Keyword::Cross | Keyword::Left | Keyword::Right | Keyword::Full)
+        && matches!(parser.peek_at(1), Some(Token::Keyword(Keyword::Apply)))
+    {
+        return Ok(None);
+    }
+
+    let join_type = match *k {
+        Keyword::Join => {
+            let _ = parser.next();
+            JoinType::Inner
+        }
+        Keyword::Inner | Keyword::Left | Keyword::Right | Keyword::Full | Keyword::Cross => {
+            let jt = match *k {
+                Keyword::Inner => JoinType::Inner,
+                Keyword::Left => JoinType::Left,
+                Keyword::Right => JoinType::Right,
+                Keyword::Full => JoinType::Full,
+                Keyword::Cross => JoinType::Cross,
+                _ => unreachable!(),
+            };
+            let _ = parser.next();
+            if matches!(parser.peek(), Some(Token::Keyword(Keyword::Outer))) {
+                let _ = parser.next();
+            }
+            parser.expect_keyword(Keyword::Join)?;
+            jt
+        }
+        _ => return Ok(None),
+    };
+
+    let table = parse_table_ref(parser)?;
+    let on = if join_type != JoinType::Cross {
+        parser.expect_keyword(Keyword::On)?;
+        Some(crate::parser::parse::expressions::parse_expr(parser)?)
+    } else {
+        None
+    };
+    Ok(Some(JoinClause { join_type, table, on }))
+}
+
+fn parse_optional_alias<'a>(parser: &mut Parser<'a>) -> Option<Cow<'a, str>> {
+    let saved = parser.save();
+    match parser.peek() {
+        Some(Token::Keyword(Keyword::As)) => {
+            let _ = parser.next();
+            match parser.next() {
+                Some(Token::Identifier(alias)) => Some(alias.clone()),
+                Some(Token::String(alias)) => Some(alias.clone()),
+                Some(Token::Keyword(kw)) => Some(Cow::Owned(kw.as_ref().to_string())),
+                _ => {
+                    parser.restore(saved);
+                    None
+                }
+            }
+        }
+        Some(Token::Keyword(k)) if !crate::parser::parse::expressions::is_stop_keyword(k.as_ref()) => {
+            match parser.next().unwrap() {
+                Token::Identifier(alias) => Some(alias.clone()),
+                Token::Keyword(kw) => Some(Cow::Owned(kw.as_ref().to_string())),
+                Token::String(alias) => Some(alias.clone()),
+                _ => {
+                    parser.restore(saved);
+                    None
+                }
+            }
+        }
+        Some(Token::Identifier(alias)) if !crate::parser::parse::expressions::is_stop_keyword(alias) => {
+            let alias = alias.clone();
+            let _ = parser.next();
+            Some(alias)
+        }
+        Some(Token::String(alias)) => {
+            let alias = alias.clone();
+            let _ = parser.next();
+            Some(alias)
+        }
+        _ => {
+            parser.restore(saved);
+            None
+        }
+    }
+}
+
+fn parse_required_alias<'a>(parser: &mut Parser<'a>) -> ParseResult<Cow<'a, str>> {
+    parse_optional_alias(parser).ok_or_else(|| parser.error(Expected::Description("alias")))
 }
 
 pub fn parse_select_item<'a>(parser: &mut Parser<'a>) -> ParseResult<SelectItem<'a>> {
@@ -613,4 +576,18 @@ pub fn parse_multipart_name<'a>(parser: &mut Parser<'a>) -> ParseResult<Vec<Cow<
         }
     }
     Ok(parts)
+}
+
+pub fn parse_object_name<'a>(parts: Vec<Cow<'a, str>>) -> ObjectName<'a> {
+    let mut parts = parts;
+    if parts.len() == 1 {
+        ObjectName {
+            schema: None,
+            name: parts.remove(0),
+        }
+    } else {
+        let name = parts.pop().unwrap();
+        let schema = Some(parts.pop().unwrap());
+        ObjectName { schema, name }
+    }
 }
