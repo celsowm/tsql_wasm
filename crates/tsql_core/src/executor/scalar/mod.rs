@@ -4,6 +4,7 @@ pub(crate) mod logic;
 pub(crate) mod math;
 pub(crate) mod string;
 pub(crate) mod system;
+mod builtin_registry;
 
 use crate::ast::Expr;
 use crate::ast::RoutineParamType;
@@ -22,6 +23,13 @@ use super::fuzzy;
 use super::json;
 use super::model::ContextTable;
 use super::regexp;
+use builtin_registry::{
+    lookup_datetime_function,
+    lookup_math_function,
+    lookup_string_function,
+    lookup_system_function,
+    lookup_system_variable,
+};
 
 pub(crate) fn eval_function(
     name: &str,
@@ -97,6 +105,10 @@ fn try_datetime_dispatch(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Option<Result<Value, DbError>> {
+    if let Some(handler) = lookup_datetime_function(name) {
+        return Some(handler(args, row, ctx, catalog, storage, clock));
+    }
+
     match name {
         "GETDATE" | "CURRENT_TIMESTAMP" => {
             if !args.is_empty() {
@@ -132,6 +144,10 @@ fn try_string_dispatch(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Option<Result<Value, DbError>> {
+    if let Some(handler) = lookup_string_function(name) {
+        return Some(handler(args, row, ctx, catalog, storage, clock));
+    }
+
     match name {
         "LEN" => Some(string::eval_len(args, row, ctx, catalog, storage, clock)),
         "SUBSTRING" => Some(string::eval_substring(args, row, ctx, catalog, storage, clock)),
@@ -175,6 +191,10 @@ fn try_math_dispatch(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Option<Result<Value, DbError>> {
+    if let Some(handler) = lookup_math_function(name) {
+        return Some(handler(args, row, ctx, catalog, storage, clock));
+    }
+
     match name {
         "ROUND" => Some(math::eval_round(args, row, ctx, catalog, storage, clock)),
         "CEILING" => Some(math::eval_math_unary(args, row, ctx, catalog, storage, clock, "CEILING", |f| f.ceil())),
@@ -212,6 +232,14 @@ fn try_system_dispatch(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Option<Result<Value, DbError>> {
+    if let Some(handler) = lookup_system_function(name) {
+        return Some(handler(args, row, ctx, catalog, storage, clock));
+    }
+
+    if let Some(result) = lookup_system_variable(name, ctx) {
+        return Some(result);
+    }
+
     match name {
         "NEWID" => {
             if !args.is_empty() {
