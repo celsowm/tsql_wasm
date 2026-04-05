@@ -1,8 +1,8 @@
 use super::statements::query::{SelectStmt, OrderByExpr};
 use super::common::DataType;
-use std::borrow::Cow;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BinaryOp {
     Eq,
     NotEq,
@@ -23,127 +23,126 @@ pub enum BinaryOp {
     Like,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum UnaryOp {
     Negate,
     Not,
     BitwiseNot,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Expr<'a> {
-    Identifier(Cow<'a, str>),
-    QualifiedIdentifier(Vec<Cow<'a, str>>),
-    Variable(Cow<'a, str>),
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Expr {
+    Identifier(String),
+    QualifiedIdentifier(Vec<String>),
+    Variable(String),
     Wildcard,
-    QualifiedWildcard(Vec<Cow<'a, str>>),
+    QualifiedWildcard(Vec<String>),
     Integer(i64),
-    Float(u64), // f64::to_bits()
-    String(Cow<'a, str>),
-    UnicodeString(Cow<'a, str>),
+    Float(u64),
+    String(String),
+    UnicodeString(String),
     BinaryLiteral(Vec<u8>),
     Null,
     Bool(bool),
     FunctionCall {
-        name: Cow<'a, str>,
-        args: Vec<Expr<'a>>,
+        name: String,
+        args: Vec<Expr>,
     },
     Binary {
-        left: Box<Expr<'a>>,
+        left: Box<Expr>,
         op: BinaryOp,
-        right: Box<Expr<'a>>,
+        right: Box<Expr>,
     },
     Unary {
         op: UnaryOp,
-        expr: Box<Expr<'a>>,
+        expr: Box<Expr>,
     },
     Cast {
-        expr: Box<Expr<'a>>,
-        target: DataType<'a>,
+        expr: Box<Expr>,
+        target: DataType,
     },
     Convert {
-        target: DataType<'a>,
-        expr: Box<Expr<'a>>,
+        target: DataType,
+        expr: Box<Expr>,
         style: Option<i32>,
     },
     Case {
-        operand: Option<Box<Expr<'a>>>,
-        when_clauses: Vec<WhenClause<'a>>,
-        else_result: Option<Box<Expr<'a>>>,
+        operand: Option<Box<Expr>>,
+        when_clauses: Vec<WhenClause>,
+        else_result: Option<Box<Expr>>,
     },
-    Subquery(Box<SelectStmt<'a>>),
+    Subquery(Box<SelectStmt>),
     InList {
-        expr: Box<Expr<'a>>,
-        list: Vec<Expr<'a>>,
+        expr: Box<Expr>,
+        list: Vec<Expr>,
         negated: bool,
     },
     InSubquery {
-        expr: Box<Expr<'a>>,
-        subquery: Box<SelectStmt<'a>>,
+        expr: Box<Expr>,
+        subquery: Box<SelectStmt>,
         negated: bool,
     },
     Between {
-        expr: Box<Expr<'a>>,
-        low: Box<Expr<'a>>,
-        high: Box<Expr<'a>>,
+        expr: Box<Expr>,
+        low: Box<Expr>,
+        high: Box<Expr>,
         negated: bool,
     },
     Like {
-        expr: Box<Expr<'a>>,
-        pattern: Box<Expr<'a>>,
+        expr: Box<Expr>,
+        pattern: Box<Expr>,
         negated: bool,
     },
-    IsNull(Box<Expr<'a>>),
-    IsNotNull(Box<Expr<'a>>),
+    IsNull(Box<Expr>),
+    IsNotNull(Box<Expr>),
     Exists {
-        subquery: Box<SelectStmt<'a>>,
+        subquery: Box<SelectStmt>,
         negated: bool,
     },
     TryCast {
-        expr: Box<Expr<'a>>,
-        target: DataType<'a>,
+        expr: Box<Expr>,
+        target: DataType,
     },
     TryConvert {
-        target: DataType<'a>,
-        expr: Box<Expr<'a>>,
+        target: DataType,
+        expr: Box<Expr>,
         style: Option<i32>,
     },
     WindowFunction {
-        name: Cow<'a, str>,
-        args: Vec<Expr<'a>>,
-        partition_by: Vec<Expr<'a>>,
-        order_by: Vec<OrderByExpr<'a>>,
-        frame: Option<WindowFrame<'a>>,
+        name: String,
+        args: Vec<Expr>,
+        partition_by: Vec<Expr>,
+        order_by: Vec<OrderByExpr>,
+        frame: Option<WindowFrame>,
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct WindowFrame<'a> {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct WindowFrame {
     pub units: WindowFrameUnits,
     pub extent: WindowFrameExtent,
-    _phantom: std::marker::PhantomData<&'a ()>,
 }
 
-impl<'a> WindowFrame<'a> {
+impl WindowFrame {
     pub fn new(units: WindowFrameUnits, extent: WindowFrameExtent) -> Self {
-        Self { units, extent, _phantom: std::marker::PhantomData }
+        Self { units, extent }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum WindowFrameUnits {
     Rows,
     Range,
     Groups,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum WindowFrameExtent {
     Bound(WindowFrameBound),
     Between(WindowFrameBound, WindowFrameBound),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum WindowFrameBound {
     UnboundedPreceding,
     Preceding(Option<i64>),
@@ -152,8 +151,8 @@ pub enum WindowFrameBound {
     UnboundedFollowing,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct WhenClause<'a> {
-    pub condition: Expr<'a>,
-    pub result: Expr<'a>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct WhenClause {
+    pub condition: Expr,
+    pub result: Expr,
 }

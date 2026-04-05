@@ -2,9 +2,8 @@ use crate::parser::ast::*;
 use crate::parser::token::Keyword;
 use crate::parser::state::Parser;
 use crate::parser::error::{ParseResult, Expected};
-use std::borrow::Cow;
 
-pub fn parse_drop<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+pub fn parse_drop(parser: &mut Parser) -> ParseResult<Statement> {
     if parser.at_keyword(Keyword::Table) {
         let _ = parser.next();
         let table = parse_multipart_name(parser)?;
@@ -31,7 +30,7 @@ pub fn parse_drop<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
         let _ = parser.next();
         let name = match parser.next() {
              Some(Token::Identifier(id)) => id.clone(),
-             Some(Token::Keyword(k)) => Cow::Owned(k.as_ref().to_string()),
+             Some(Token::Keyword(k)) => k.as_ref().to_string(),
              _ => return parser.backtrack(Expected::Description("identifier or keyword")),
         };
         Ok(Statement::Ddl(DdlStatement::DropSchema(name)))
@@ -48,6 +47,6 @@ pub fn parse_drop<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
     }
 }
 
-fn parse_multipart_name<'a>(parser: &mut Parser<'a>) -> ParseResult<Vec<Cow<'a, str>>> {
+fn parse_multipart_name(parser: &mut Parser) -> ParseResult<Vec<String>> {
     crate::parser::parse::statements::query::parse_multipart_name(parser)
 }

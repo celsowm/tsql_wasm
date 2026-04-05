@@ -1,25 +1,30 @@
-use crate::parser::ast as v2;
-use crate::ast as old;
+use crate::parser::ast;
+use crate::ast as executor_ast;
 use crate::error::DbError;
-use crate::executor::tooling::formatting::format_expr;
-use std::borrow::Cow;
 
-pub fn lower_batch<'a>(v2_stmts: Vec<v2::Statement<'a>>) -> Result<Vec<old::Statement>, DbError> {
-    v2_stmts.into_iter().map(lower_statement).collect()
+pub fn lower_batch(parser_stmts: Vec<ast::Statement>) -> Result<Vec<executor_ast::Statement>, DbError> {
+    parser_stmts.into_iter().map(lower_statement).collect()
 }
 
-pub fn lower_statement<'a>(v2_stmt: v2::Statement<'a>) -> Result<old::Statement, DbError> {
-    match v2_stmt {
-        v2::Statement::Dml(dml) => lower_dml(dml),
-        v2::Statement::Ddl(ddl) => lower_ddl(ddl),
-        v2::Statement::Procedural(proc) => lower_procedural(proc),
-        v2::Statement::Transaction(txn) => lower_transaction(txn),
-        v2::Statement::Cursor(cursor) => lower_cursor(cursor),
-        v2::Statement::Session(session) => lower_session(session),
-        v2::Statement::WithCte { ctes, body } => {
-            let ctes = ctes.into_iter().map(lower_cte_def).collect::<Result<_, _>>()?;
+pub fn lower_statement(parser_stmt: ast::Statement) -> Result<executor_ast::Statement, DbError> {
+    match parser_stmt {
+        ast::Statement::Dml(dml) => lower_dml(dml),
+        ast::Statement::Ddl(ddl) => lower_ddl(ddl),
+        ast::Statement::Procedural(proc) => lower_procedural(proc),
+        ast::Statement::Transaction(txn) => lower_transaction(txn),
+        ast::Statement::Cursor(cursor) => lower_cursor(cursor),
+        ast::Statement::Session(session) => lower_session(session),
+        ast::Statement::WithCte { ctes, body } => {
+            let ctes: Result<Vec<_>, _> = ctes.into_iter().map(|cte| {
+                let query = lower_statement(ast::Statement::Dml(ast::DmlStatement::Select(Box::new(cte.query))))?;
+                Ok(executor_ast::statements::procedural::CteDef {
+                    name: cte.name,
+                    query,
+                })
+            }).collect();
+            let ctes = ctes?;
             let body = Box::new(lower_statement(*body)?);
-            Ok(old::Statement::WithCte(old::statements::procedural::WithCteStmt {
+            Ok(executor_ast::Statement::WithCte(executor_ast::statements::procedural::WithCteStmt {
                 recursive: false,
                 ctes,
                 body,
@@ -28,41 +33,34 @@ pub fn lower_statement<'a>(v2_stmt: v2::Statement<'a>) -> Result<old::Statement,
     }
 }
 
-fn lower_cte_def<'a>(cte: v2::CteDef<'a>) -> Result<old::statements::procedural::CteDef, DbError> {
-    Ok(old::statements::procedural::CteDef {
-        name: cte.name.into_owned(),
-        query: lower_statement(v2::Statement::Dml(v2::DmlStatement::Select(Box::new(cte.query))))?,
-    })
-}
-
-fn lower_dml<'a>(dml: v2::DmlStatement<'a>) -> Result<old::Statement, DbError> {
+fn lower_dml(dml: ast::DmlStatement) -> Result<executor_ast::Statement, DbError> {
     match dml {
-        v2::DmlStatement::Select(s) => {
+        ast::DmlStatement::Select(s) => {
             if let Some(ref op) = s.set_op {
-                let mut left_v2 = (*s).clone();
-                left_v2.set_op = None;
-                let left = lower_select(left_v2)?;
+                let mut left_parser = (*s).clone();
+                left_parser.set_op = None;
+                let left = lower_select(left_parser)?;
                 let right = lower_select(op.right.clone())?;
                 let kind = match op.kind {
-                    v2::SetOpKind::Union => old::statements::query::SetOpKind::Union,
-                    v2::SetOpKind::UnionAll => old::statements::query::SetOpKind::UnionAll,
-                    v2::SetOpKind::Intersect => old::statements::query::SetOpKind::Intersect,
-                    v2::SetOpKind::Except => old::statements::query::SetOpKind::Except,
+                    ast::SetOpKind::Union => executor_ast::statements::query::SetOpKind::Union,
+                    ast::SetOpKind::UnionAll => executor_ast::statements::query::SetOpKind::UnionAll,
+                    ast::SetOpKind::Intersect => executor_ast::statements::query::SetOpKind::Intersect,
+                    ast::SetOpKind::Except => executor_ast::statements::query::SetOpKind::Except,
                 };
-                let set_op = old::statements::query::SetOpStmt {
-                    left: Box::new(old::Statement::Dml(old::statements::DmlStatement::Select(left))),
+                let set_op = executor_ast::statements::query::SetOpStmt {
+                    left: Box::new(executor_ast::Statement::Dml(executor_ast::statements::DmlStatement::Select(left))),
                     op: kind,
-                    right: Box::new(old::Statement::Dml(old::statements::DmlStatement::Select(right))),
+                    right: Box::new(executor_ast::Statement::Dml(executor_ast::statements::DmlStatement::Select(right))),
                 };
-                return Ok(old::Statement::Dml(old::statements::DmlStatement::SetOp(set_op)));
+                return Ok(executor_ast::Statement::Dml(executor_ast::statements::DmlStatement::SetOp(set_op)));
             }
-            Ok(old::Statement::Dml(old::statements::DmlStatement::Select(lower_select(*s)?)))
+            Ok(executor_ast::Statement::Dml(executor_ast::statements::DmlStatement::Select(lower_select(*s)?)))
         }
-        v2::DmlStatement::Insert(s) => Ok(old::Statement::Dml(old::statements::DmlStatement::Insert(lower_insert(*s)?))),
-        v2::DmlStatement::Update(s) => Ok(old::Statement::Dml(old::statements::DmlStatement::Update(lower_update(*s)?))),
-        v2::DmlStatement::Delete(s) => Ok(old::Statement::Dml(old::statements::DmlStatement::Delete(lower_delete(*s)?))),
-        v2::DmlStatement::Merge(s) => Ok(old::Statement::Dml(old::statements::DmlStatement::Merge(lower_merge(*s)?))),
-        v2::DmlStatement::SelectAssign { assignments, from, selection } => {
+        ast::DmlStatement::Insert(s) => Ok(executor_ast::Statement::Dml(executor_ast::statements::DmlStatement::Insert(lower_insert(*s)?))),
+        ast::DmlStatement::Update(s) => Ok(executor_ast::Statement::Dml(executor_ast::statements::DmlStatement::Update(lower_update(*s)?))),
+        ast::DmlStatement::Delete(s) => Ok(executor_ast::Statement::Dml(executor_ast::statements::DmlStatement::Delete(lower_delete(*s)?))),
+        ast::DmlStatement::Merge(s) => Ok(executor_ast::Statement::Dml(executor_ast::statements::DmlStatement::Merge(lower_merge(*s)?))),
+        ast::DmlStatement::SelectAssign { assignments, from, selection } => {
             let mut joins = Vec::new();
             let from_tr = if let Some(from_ref) = from {
                 let (tr, mut j) = lower_table_ref_recursive(from_ref)?;
@@ -71,9 +69,9 @@ fn lower_dml<'a>(dml: v2::DmlStatement<'a>) -> Result<old::Statement, DbError> {
             } else {
                 None
             };
-            Ok(old::Statement::Dml(old::statements::DmlStatement::SelectAssign(old::statements::procedural::SelectAssignStmt {
-                targets: assignments.into_iter().map(|a| Ok(old::statements::procedural::SelectAssignTarget {
-                    variable: a.variable.into_owned(),
+            Ok(executor_ast::Statement::Dml(executor_ast::statements::DmlStatement::SelectAssign(executor_ast::statements::procedural::SelectAssignStmt {
+                targets: assignments.into_iter().map(|a| Ok(executor_ast::statements::procedural::SelectAssignTarget {
+                    variable: a.variable,
                     expr: lower_expr(a.expr)?,
                 })).collect::<Result<Vec<_>, _>>()?,
                 from: from_tr,
@@ -84,165 +82,165 @@ fn lower_dml<'a>(dml: v2::DmlStatement<'a>) -> Result<old::Statement, DbError> {
     }
 }
 
-fn lower_ddl<'a>(ddl: v2::DdlStatement<'a>) -> Result<old::Statement, DbError> {
+fn lower_ddl(ddl: ast::DdlStatement) -> Result<executor_ast::Statement, DbError> {
     match ddl {
-        v2::DdlStatement::Create(s) => lower_create(*s),
-        v2::DdlStatement::AlterTable { table, action } => {
-            Ok(old::Statement::Ddl(old::statements::DdlStatement::AlterTable(old::statements::ddl::AlterTableStmt {
+        ast::DdlStatement::Create(s) => lower_create(*s),
+        ast::DdlStatement::AlterTable { table, action } => {
+            Ok(executor_ast::Statement::Ddl(executor_ast::statements::DdlStatement::AlterTable(executor_ast::statements::ddl::AlterTableStmt {
                 table: lower_object_name(table),
                 action: lower_alter_action(action)?,
             })))
         }
-        v2::DdlStatement::TruncateTable(table) => Ok(old::Statement::Ddl(old::statements::DdlStatement::TruncateTable(old::statements::ddl::TruncateTableStmt {
+        ast::DdlStatement::TruncateTable(table) => Ok(executor_ast::Statement::Ddl(executor_ast::statements::DdlStatement::TruncateTable(executor_ast::statements::ddl::TruncateTableStmt {
             name: lower_object_name(table),
         }))),
-        v2::DdlStatement::DropTable(table) => Ok(old::Statement::Ddl(old::statements::DdlStatement::DropTable(old::statements::ddl::DropTableStmt {
+        ast::DdlStatement::DropTable(table) => Ok(executor_ast::Statement::Ddl(executor_ast::statements::DdlStatement::DropTable(executor_ast::statements::ddl::DropTableStmt {
             name: lower_object_name(table),
         }))),
-        v2::DdlStatement::DropView(name) => Ok(old::Statement::Ddl(old::statements::DdlStatement::DropView(old::statements::ddl::DropViewStmt {
+        ast::DdlStatement::DropView(name) => Ok(executor_ast::Statement::Ddl(executor_ast::statements::DdlStatement::DropView(executor_ast::statements::ddl::DropViewStmt {
             name: lower_object_name(name),
         }))),
-        v2::DdlStatement::DropProcedure(name) => Ok(old::Statement::Ddl(old::statements::DdlStatement::DropProcedure(old::statements::procedural::DropProcedureStmt {
+        ast::DdlStatement::DropProcedure(name) => Ok(executor_ast::Statement::Ddl(executor_ast::statements::DdlStatement::DropProcedure(executor_ast::statements::procedural::DropProcedureStmt {
             name: lower_object_name(name),
         }))),
-        v2::DdlStatement::DropFunction(name) => Ok(old::Statement::Ddl(old::statements::DdlStatement::DropFunction(old::statements::procedural::DropFunctionStmt {
+        ast::DdlStatement::DropFunction(name) => Ok(executor_ast::Statement::Ddl(executor_ast::statements::DdlStatement::DropFunction(executor_ast::statements::procedural::DropFunctionStmt {
             name: lower_object_name(name),
         }))),
-        v2::DdlStatement::DropTrigger(name) => Ok(old::Statement::Ddl(old::statements::DdlStatement::DropTrigger(old::statements::procedural::DropTriggerStmt {
+        ast::DdlStatement::DropTrigger(name) => Ok(executor_ast::Statement::Ddl(executor_ast::statements::DdlStatement::DropTrigger(executor_ast::statements::procedural::DropTriggerStmt {
             name: lower_object_name(name),
         }))),
-        v2::DdlStatement::DropIndex { name, table } => {
-            Ok(old::Statement::Ddl(old::statements::DdlStatement::DropIndex(old::statements::ddl::DropIndexStmt {
+        ast::DdlStatement::DropIndex { name, table } => {
+            Ok(executor_ast::Statement::Ddl(executor_ast::statements::DdlStatement::DropIndex(executor_ast::statements::ddl::DropIndexStmt {
                 name: lower_object_name(name),
                 table: lower_object_name(table),
             })))
         }
-        v2::DdlStatement::DropType(name) => Ok(old::Statement::Ddl(old::statements::DdlStatement::DropType(old::statements::ddl::DropTypeStmt {
+        ast::DdlStatement::DropType(name) => Ok(executor_ast::Statement::Ddl(executor_ast::statements::DdlStatement::DropType(executor_ast::statements::ddl::DropTypeStmt {
             name: lower_object_name(name),
         }))),
-        v2::DdlStatement::DropSchema(name) => Ok(old::Statement::Ddl(old::statements::DdlStatement::DropSchema(old::statements::ddl::DropSchemaStmt {
-            name: name.into_owned(),
+        ast::DdlStatement::DropSchema(name) => Ok(executor_ast::Statement::Ddl(executor_ast::statements::DdlStatement::DropSchema(executor_ast::statements::ddl::DropSchemaStmt {
+            name: name,
         }))),
-        v2::DdlStatement::CreateIndex { name, table, columns } => {
-            Ok(old::Statement::Ddl(old::statements::DdlStatement::CreateIndex(old::statements::ddl::CreateIndexStmt {
+        ast::DdlStatement::CreateIndex { name, table, columns } => {
+            Ok(executor_ast::Statement::Ddl(executor_ast::statements::DdlStatement::CreateIndex(executor_ast::statements::ddl::CreateIndexStmt {
                 name: lower_object_name(name),
                 table: lower_object_name(table),
-                columns: columns.into_iter().map(|c| c.into_owned()).collect(),
+                columns: columns,
             })))
         }
-        v2::DdlStatement::CreateType { name, columns } => {
-            Ok(old::Statement::Ddl(old::statements::DdlStatement::CreateType(old::statements::ddl::CreateTypeStmt {
+        ast::DdlStatement::CreateType { name, columns } => {
+            Ok(executor_ast::Statement::Ddl(executor_ast::statements::DdlStatement::CreateType(executor_ast::statements::ddl::CreateTypeStmt {
                 name: lower_object_name(name),
                 columns: columns.into_iter().map(lower_column_def).collect::<Result<Vec<_>, _>>()?,
                 table_constraints: Vec::new(),
             })))
         }
-        v2::DdlStatement::CreateSchema(name) => Ok(old::Statement::Ddl(old::statements::DdlStatement::CreateSchema(old::statements::ddl::CreateSchemaStmt {
-            name: name.into_owned(),
+        ast::DdlStatement::CreateSchema(name) => Ok(executor_ast::Statement::Ddl(executor_ast::statements::DdlStatement::CreateSchema(executor_ast::statements::ddl::CreateSchemaStmt {
+            name: name,
         }))),
     }
 }
 
-fn lower_procedural<'a>(proc: v2::ProceduralStatement<'a>) -> Result<old::Statement, DbError> {
+fn lower_procedural(proc: ast::ProceduralStatement) -> Result<executor_ast::Statement, DbError> {
     match proc {
-        v2::ProceduralStatement::Declare(vars) => {
+        ast::ProceduralStatement::Declare(vars) => {
             if vars.len() == 1 {
                 let var = vars.into_iter().next().unwrap();
-                Ok(old::Statement::Procedural(old::statements::ProceduralStatement::Declare(old::statements::procedural::DeclareStmt {
-                    name: var.name.into_owned(),
+                Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::Declare(executor_ast::statements::procedural::DeclareStmt {
+                    name: var.name,
                     data_type: lower_data_type(var.data_type)?,
                     default: var.initial_value.map(lower_expr).transpose()?,
                 })))
             } else {
                 let mut stmts = Vec::new();
                 for var in vars {
-                    stmts.push(old::Statement::Procedural(old::statements::ProceduralStatement::Declare(old::statements::procedural::DeclareStmt {
-                        name: var.name.into_owned(),
+                    stmts.push(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::Declare(executor_ast::statements::procedural::DeclareStmt {
+                        name: var.name,
                         data_type: lower_data_type(var.data_type)?,
                         default: var.initial_value.map(lower_expr).transpose()?,
                     })));
                 }
-                Ok(old::Statement::Procedural(old::statements::ProceduralStatement::BeginEnd(stmts)))
+                Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::BeginEnd(stmts)))
             }
         }
-        v2::ProceduralStatement::DeclareTableVar { name, columns, constraints } => {
-            Ok(old::Statement::Procedural(old::statements::ProceduralStatement::DeclareTableVar(old::statements::procedural::DeclareTableVarStmt {
-                name: name.into_owned(),
+        ast::ProceduralStatement::DeclareTableVar { name, columns, constraints } => {
+            Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::DeclareTableVar(executor_ast::statements::procedural::DeclareTableVarStmt {
+                name: name,
                 columns: columns.into_iter().map(lower_column_def).collect::<Result<Vec<_>, _>>()?,
                 table_constraints: constraints.into_iter().map(lower_table_constraint).collect(),
             })))
         }
-        v2::ProceduralStatement::DeclareCursor { name, query } => {
-            Ok(old::Statement::Procedural(old::statements::ProceduralStatement::DeclareCursor(old::statements::procedural::DeclareCursorStmt {
-                name: name.into_owned(),
+        ast::ProceduralStatement::DeclareCursor { name, query } => {
+            Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::DeclareCursor(executor_ast::statements::procedural::DeclareCursorStmt {
+                name: name,
                 query: lower_select(query)?,
             })))
         }
-        v2::ProceduralStatement::Set { variable, expr } => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::Set(old::statements::procedural::SetStmt {
-            name: variable.into_owned(),
+        ast::ProceduralStatement::Set { variable, expr } => Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::Set(executor_ast::statements::procedural::SetStmt {
+            name: variable,
             expr: lower_expr(expr)?,
         }))),
-        v2::ProceduralStatement::If { condition, then_stmt, else_stmt } => {
+        ast::ProceduralStatement::If { condition, then_stmt, else_stmt } => {
             let then_body = match lower_statement(*then_stmt)? {
-                old::Statement::Procedural(old::statements::ProceduralStatement::BeginEnd(stmts)) => stmts,
+                executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::BeginEnd(stmts)) => stmts,
                 other => vec![other],
             };
             let else_body = match else_stmt {
                 Some(s) => Some(match lower_statement(*s)? {
-                    old::Statement::Procedural(old::statements::ProceduralStatement::BeginEnd(stmts)) => stmts,
+                    executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::BeginEnd(stmts)) => stmts,
                     other => vec![other],
                 }),
                 None => None,
             };
-            Ok(old::Statement::Procedural(old::statements::ProceduralStatement::If(old::statements::procedural::IfStmt {
+            Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::If(executor_ast::statements::procedural::IfStmt {
                 condition: lower_expr(condition)?,
                 then_body,
                 else_body,
             })))
         }
-        v2::ProceduralStatement::BeginEnd(stmts) => {
-            Ok(old::Statement::Procedural(old::statements::ProceduralStatement::BeginEnd(stmts.into_iter().map(lower_statement).collect::<Result<Vec<_>, _>>()?)))
+        ast::ProceduralStatement::BeginEnd(stmts) => {
+            Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::BeginEnd(stmts.into_iter().map(lower_statement).collect::<Result<Vec<_>, _>>()?)))
         }
-        v2::ProceduralStatement::While { condition, stmt } => {
+        ast::ProceduralStatement::While { condition, stmt } => {
             let body = match lower_statement(*stmt)? {
-                old::Statement::Procedural(old::statements::ProceduralStatement::BeginEnd(stmts)) => stmts,
+                executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::BeginEnd(stmts)) => stmts,
                 other => vec![other],
             };
-            Ok(old::Statement::Procedural(old::statements::ProceduralStatement::While(old::statements::procedural::WhileStmt {
+            Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::While(executor_ast::statements::procedural::WhileStmt {
                 condition: lower_expr(condition)?,
                 body,
             })))
         }
-        v2::ProceduralStatement::Break => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::Break)),
-        v2::ProceduralStatement::Continue => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::Continue)),
-        v2::ProceduralStatement::Return(expr) => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::Return(expr.map(lower_expr).transpose()?))),
-        v2::ProceduralStatement::Print(expr) => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::Print(lower_expr(expr)?))),
-        v2::ProceduralStatement::Raiserror { message, severity, state } => {
-            Ok(old::Statement::Procedural(old::statements::ProceduralStatement::Raiserror(old::statements::procedural::RaiserrorStmt {
+        ast::ProceduralStatement::Break => Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::Break)),
+        ast::ProceduralStatement::Continue => Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::Continue)),
+        ast::ProceduralStatement::Return(expr) => Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::Return(expr.map(lower_expr).transpose()?))),
+        ast::ProceduralStatement::Print(expr) => Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::Print(lower_expr(expr)?))),
+        ast::ProceduralStatement::Raiserror { message, severity, state } => {
+            Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::Raiserror(executor_ast::statements::procedural::RaiserrorStmt {
                 message: lower_expr(message)?,
                 severity: lower_expr(severity)?,
                 state: lower_expr(state)?,
             })))
         }
-        v2::ProceduralStatement::TryCatch { try_body, catch_body } => {
-            Ok(old::Statement::Procedural(old::statements::ProceduralStatement::TryCatch(old::statements::procedural::TryCatchStmt {
+        ast::ProceduralStatement::TryCatch { try_body, catch_body } => {
+            Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::TryCatch(executor_ast::statements::procedural::TryCatchStmt {
                 try_body: try_body.into_iter().map(lower_statement).collect::<Result<Vec<_>, _>>()?,
                 catch_body: catch_body.into_iter().map(lower_statement).collect::<Result<Vec<_>, _>>()?,
             })))
         }
-        v2::ProceduralStatement::ExecDynamic { sql_expr } => {
-            Ok(old::Statement::Procedural(old::statements::ProceduralStatement::ExecDynamic(old::statements::procedural::ExecStmt {
+        ast::ProceduralStatement::ExecDynamic { sql_expr } => {
+            Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::ExecDynamic(executor_ast::statements::procedural::ExecStmt {
                 sql_expr: lower_expr(sql_expr)?,
             })))
         }
-        v2::ProceduralStatement::ExecProcedure { name, args } => {
-            Ok(old::Statement::Procedural(old::statements::ProceduralStatement::ExecProcedure(old::statements::procedural::ExecProcedureStmt {
+        ast::ProceduralStatement::ExecProcedure { name, args } => {
+            Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::ExecProcedure(executor_ast::statements::procedural::ExecProcedureStmt {
                 name: lower_object_name(name),
                 args: args.into_iter().map(lower_exec_arg).collect::<Result<Vec<_>, _>>()?,
             })))
         }
-        v2::ProceduralStatement::SpExecuteSql { sql_expr, params_def, args } => {
-            Ok(old::Statement::Procedural(old::statements::ProceduralStatement::SpExecuteSql(old::statements::procedural::SpExecuteSqlStmt {
+        ast::ProceduralStatement::SpExecuteSql { sql_expr, params_def, args } => {
+            Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::SpExecuteSql(executor_ast::statements::procedural::SpExecuteSqlStmt {
                 sql_expr: lower_expr(sql_expr)?,
                 params_def: params_def.map(lower_expr).transpose()?,
                 args: args.into_iter().map(lower_exec_arg).collect::<Result<Vec<_>, _>>()?,
@@ -251,156 +249,156 @@ fn lower_procedural<'a>(proc: v2::ProceduralStatement<'a>) -> Result<old::Statem
     }
 }
 
-fn lower_transaction<'a>(txn: v2::TransactionStatement<'a>) -> Result<old::Statement, DbError> {
+fn lower_transaction(txn: ast::TransactionStatement) -> Result<executor_ast::Statement, DbError> {
     match txn {
-        v2::TransactionStatement::Begin(name) => Ok(old::Statement::Transaction(old::statements::TransactionStatement::Begin(name.map(|n| n.into_owned())))),
-        v2::TransactionStatement::Commit(name) => Ok(old::Statement::Transaction(old::statements::TransactionStatement::Commit(name.map(|n| n.into_owned())))),
-        v2::TransactionStatement::Rollback(name) => Ok(old::Statement::Transaction(old::statements::TransactionStatement::Rollback(name.map(|n| n.into_owned())))),
-        v2::TransactionStatement::Save(name) => Ok(old::Statement::Transaction(old::statements::TransactionStatement::Save(name.into_owned()))),
+        ast::TransactionStatement::Begin(name) => Ok(executor_ast::Statement::Transaction(executor_ast::statements::TransactionStatement::Begin(name))),
+        ast::TransactionStatement::Commit(name) => Ok(executor_ast::Statement::Transaction(executor_ast::statements::TransactionStatement::Commit(name))),
+        ast::TransactionStatement::Rollback(name) => Ok(executor_ast::Statement::Transaction(executor_ast::statements::TransactionStatement::Rollback(name))),
+        ast::TransactionStatement::Save(name) => Ok(executor_ast::Statement::Transaction(executor_ast::statements::TransactionStatement::Save(name))),
     }
 }
 
-fn lower_cursor<'a>(cursor: v2::CursorStatement<'a>) -> Result<old::Statement, DbError> {
+fn lower_cursor(cursor: ast::CursorStatement) -> Result<executor_ast::Statement, DbError> {
     match cursor {
-        v2::CursorStatement::Open(name) => Ok(old::Statement::Cursor(old::statements::CursorStatement::OpenCursor(name.into_owned()))),
-        v2::CursorStatement::Fetch { name, direction, into_vars } => {
-            Ok(old::Statement::Cursor(old::statements::CursorStatement::FetchCursor(old::statements::procedural::FetchCursorStmt {
-                name: name.into_owned(),
+        ast::CursorStatement::Open(name) => Ok(executor_ast::Statement::Cursor(executor_ast::statements::CursorStatement::OpenCursor(name))),
+        ast::CursorStatement::Fetch { name, direction, into_vars } => {
+            Ok(executor_ast::Statement::Cursor(executor_ast::statements::CursorStatement::FetchCursor(executor_ast::statements::procedural::FetchCursorStmt {
+                name: name,
                 direction: lower_fetch_direction(direction)?,
-                into: into_vars.map(|v| v.into_iter().map(|i| i.into_owned()).collect()),
+                into: into_vars,
             })))
         }
-        v2::CursorStatement::Close(name) => Ok(old::Statement::Cursor(old::statements::CursorStatement::CloseCursor(name.into_owned()))),
-        v2::CursorStatement::Deallocate(name) => Ok(old::Statement::Cursor(old::statements::CursorStatement::DeallocateCursor(name.into_owned()))),
+        ast::CursorStatement::Close(name) => Ok(executor_ast::Statement::Cursor(executor_ast::statements::CursorStatement::CloseCursor(name))),
+        ast::CursorStatement::Deallocate(name) => Ok(executor_ast::Statement::Cursor(executor_ast::statements::CursorStatement::DeallocateCursor(name))),
     }
 }
 
-fn lower_session<'a>(session: v2::SessionStatement<'a>) -> Result<old::Statement, DbError> {
+fn lower_session(session: ast::SessionStatement) -> Result<executor_ast::Statement, DbError> {
     match session {
-        v2::SessionStatement::SetTransactionIsolationLevel(iso) => Ok(old::Statement::Session(old::statements::SessionStatement::SetTransactionIsolationLevel(match iso {
-            v2::IsolationLevel::ReadUncommitted => old::IsolationLevel::ReadUncommitted,
-            v2::IsolationLevel::ReadCommitted => old::IsolationLevel::ReadCommitted,
-            v2::IsolationLevel::RepeatableRead => old::IsolationLevel::RepeatableRead,
-            v2::IsolationLevel::Serializable => old::IsolationLevel::Serializable,
-            v2::IsolationLevel::Snapshot => old::IsolationLevel::Snapshot,
+        ast::SessionStatement::SetTransactionIsolationLevel(iso) => Ok(executor_ast::Statement::Session(executor_ast::statements::SessionStatement::SetTransactionIsolationLevel(match iso {
+            ast::IsolationLevel::ReadUncommitted => executor_ast::IsolationLevel::ReadUncommitted,
+            ast::IsolationLevel::ReadCommitted => executor_ast::IsolationLevel::ReadCommitted,
+            ast::IsolationLevel::RepeatableRead => executor_ast::IsolationLevel::RepeatableRead,
+            ast::IsolationLevel::Serializable => executor_ast::IsolationLevel::Serializable,
+            ast::IsolationLevel::Snapshot => executor_ast::IsolationLevel::Snapshot,
         }))),
-        v2::SessionStatement::SetOption { option, value } => Ok(old::Statement::Session(old::statements::SessionStatement::SetOption(old::statements::procedural::SetOptionStmt {
+        ast::SessionStatement::SetOption { option, value } => Ok(executor_ast::Statement::Session(executor_ast::statements::SessionStatement::SetOption(executor_ast::statements::procedural::SetOptionStmt {
             option: match option {
-                v2::SessionOption::AnsiNulls => old::SessionOption::AnsiNulls,
-                v2::SessionOption::QuotedIdentifier => old::SessionOption::QuotedIdentifier,
-                v2::SessionOption::NoCount => old::SessionOption::NoCount,
-                v2::SessionOption::XactAbort => old::SessionOption::XactAbort,
-                v2::SessionOption::DateFirst => old::SessionOption::DateFirst,
-                v2::SessionOption::Language => old::SessionOption::Language,
-                v2::SessionOption::DateFormat => old::SessionOption::DateFormat,
-                v2::SessionOption::LockTimeout => old::SessionOption::LockTimeout,
+                ast::SessionOption::AnsiNulls => executor_ast::SessionOption::AnsiNulls,
+                ast::SessionOption::QuotedIdentifier => executor_ast::SessionOption::QuotedIdentifier,
+                ast::SessionOption::NoCount => executor_ast::SessionOption::NoCount,
+                ast::SessionOption::XactAbort => executor_ast::SessionOption::XactAbort,
+                ast::SessionOption::DateFirst => executor_ast::SessionOption::DateFirst,
+                ast::SessionOption::Language => executor_ast::SessionOption::Language,
+                ast::SessionOption::DateFormat => executor_ast::SessionOption::DateFormat,
+                ast::SessionOption::LockTimeout => executor_ast::SessionOption::LockTimeout,
             },
             value: match value {
-                v2::SessionOptionValue::Bool(v) => old::SessionOptionValue::Bool(v),
-                v2::SessionOptionValue::Int(v) => old::SessionOptionValue::Int(v),
-                v2::SessionOptionValue::Text(v) => old::SessionOptionValue::Text(v),
+                ast::SessionOptionValue::Bool(v) => executor_ast::SessionOptionValue::Bool(v),
+                ast::SessionOptionValue::Int(v) => executor_ast::SessionOptionValue::Int(v),
+                ast::SessionOptionValue::Text(v) => executor_ast::SessionOptionValue::Text(v),
             },
         }))),
-        v2::SessionStatement::SetIdentityInsert { table, on } => Ok(old::Statement::Session(old::statements::SessionStatement::SetIdentityInsert(old::statements::SetIdentityInsertStmt {
+        ast::SessionStatement::SetIdentityInsert { table, on } => Ok(executor_ast::Statement::Session(executor_ast::statements::SessionStatement::SetIdentityInsert(executor_ast::statements::SetIdentityInsertStmt {
             table: lower_object_name(table),
             on,
         }))),
     }
 }
 
-pub fn lower_expr(v2_expr: v2::Expr) -> Result<old::expressions::Expr, DbError> {
-    match v2_expr {
-        v2::Expr::Identifier(id) => Ok(old::expressions::Expr::Identifier(id.into_owned())),
-        v2::Expr::Variable(id) => Ok(old::expressions::Expr::Identifier(id.into_owned())),
-        v2::Expr::QualifiedIdentifier(parts) => Ok(old::expressions::Expr::QualifiedIdentifier(parts.into_iter().map(|p| p.into_owned()).collect())),
-        v2::Expr::Wildcard => Ok(old::expressions::Expr::Wildcard),
-        v2::Expr::QualifiedWildcard(parts) => Ok(old::expressions::Expr::QualifiedWildcard(parts.into_iter().map(|p| p.into_owned()).collect())),
-        v2::Expr::Integer(i) => Ok(old::expressions::Expr::Integer(i)),
-        v2::Expr::Float(f) => Ok(old::expressions::Expr::FloatLiteral(f64::from_bits(f).to_string())),
-        v2::Expr::String(s) => Ok(old::expressions::Expr::String(s.into_owned())),
-        v2::Expr::UnicodeString(s) => Ok(old::expressions::Expr::UnicodeString(s.into_owned())),
-        v2::Expr::BinaryLiteral(b) => Ok(old::expressions::Expr::BinaryLiteral(b)),
-        v2::Expr::Null => Ok(old::expressions::Expr::Null),
-        v2::Expr::Bool(b) => Ok(old::expressions::Expr::Integer(if b { 1 } else { 0 })),
-        v2::Expr::Binary { left, op, right } => {
+pub fn lower_expr(parser_expr: ast::Expr) -> Result<executor_ast::expressions::Expr, DbError> {
+    match parser_expr {
+        ast::Expr::Identifier(id) => Ok(executor_ast::expressions::Expr::Identifier(id)),
+        ast::Expr::Variable(id) => Ok(executor_ast::expressions::Expr::Identifier(id)),
+        ast::Expr::QualifiedIdentifier(parts) => Ok(executor_ast::expressions::Expr::QualifiedIdentifier(parts)),
+        ast::Expr::Wildcard => Ok(executor_ast::expressions::Expr::Wildcard),
+        ast::Expr::QualifiedWildcard(parts) => Ok(executor_ast::expressions::Expr::QualifiedWildcard(parts)),
+        ast::Expr::Integer(i) => Ok(executor_ast::expressions::Expr::Integer(i)),
+        ast::Expr::Float(f) => Ok(executor_ast::expressions::Expr::FloatLiteral(f64::from_bits(f).to_string())),
+        ast::Expr::String(s) => Ok(executor_ast::expressions::Expr::String(s)),
+        ast::Expr::UnicodeString(s) => Ok(executor_ast::expressions::Expr::UnicodeString(s)),
+        ast::Expr::BinaryLiteral(b) => Ok(executor_ast::expressions::Expr::BinaryLiteral(b)),
+        ast::Expr::Null => Ok(executor_ast::expressions::Expr::Null),
+        ast::Expr::Bool(b) => Ok(executor_ast::expressions::Expr::Integer(if b { 1 } else { 0 })),
+        ast::Expr::Binary { left, op, right } => {
              match op {
-                 v2::BinaryOp::Like => Ok(old::expressions::Expr::Like {
+                 ast::BinaryOp::Like => Ok(executor_ast::expressions::Expr::Like {
                      expr: Box::new(lower_expr(*left)?),
                      pattern: Box::new(lower_expr(*right)?),
                      negated: false,
                  }),
-                 _ => Ok(old::expressions::Expr::Binary {
+                 _ => Ok(executor_ast::expressions::Expr::Binary {
                      left: Box::new(lower_expr(*left)?),
                      op: lower_binary_op(op)?,
                      right: Box::new(lower_expr(*right)?),
                  })
              }
         }
-        v2::Expr::Unary { op, expr } => Ok(old::expressions::Expr::Unary {
+        ast::Expr::Unary { op, expr } => Ok(executor_ast::expressions::Expr::Unary {
             op: lower_unary_op(op),
             expr: Box::new(lower_expr(*expr)?),
         }),
-        v2::Expr::IsNull(expr) => Ok(old::expressions::Expr::IsNull(Box::new(lower_expr(*expr)?))),
-        v2::Expr::IsNotNull(expr) => Ok(old::expressions::Expr::IsNotNull(Box::new(lower_expr(*expr)?))),
-        v2::Expr::Cast { expr, target } => Ok(old::expressions::Expr::Cast {
+        ast::Expr::IsNull(expr) => Ok(executor_ast::expressions::Expr::IsNull(Box::new(lower_expr(*expr)?))),
+        ast::Expr::IsNotNull(expr) => Ok(executor_ast::expressions::Expr::IsNotNull(Box::new(lower_expr(*expr)?))),
+        ast::Expr::Cast { expr, target } => Ok(executor_ast::expressions::Expr::Cast {
             expr: Box::new(lower_expr(*expr)?),
             target: lower_data_type(target)?,
         }),
-        v2::Expr::TryCast { expr, target } => Ok(old::expressions::Expr::TryCast {
+        ast::Expr::TryCast { expr, target } => Ok(executor_ast::expressions::Expr::TryCast {
             expr: Box::new(lower_expr(*expr)?),
             target: lower_data_type(target)?,
         }),
-        v2::Expr::Convert { target, expr, style } => Ok(old::expressions::Expr::Convert {
-            target: lower_data_type(target)?,
-            expr: Box::new(lower_expr(*expr)?),
-            style,
-        }),
-        v2::Expr::TryConvert { target, expr, style } => Ok(old::expressions::Expr::TryConvert {
+        ast::Expr::Convert { target, expr, style } => Ok(executor_ast::expressions::Expr::Convert {
             target: lower_data_type(target)?,
             expr: Box::new(lower_expr(*expr)?),
             style,
         }),
-        v2::Expr::Case { operand, when_clauses, else_result } => Ok(old::expressions::Expr::Case {
+        ast::Expr::TryConvert { target, expr, style } => Ok(executor_ast::expressions::Expr::TryConvert {
+            target: lower_data_type(target)?,
+            expr: Box::new(lower_expr(*expr)?),
+            style,
+        }),
+        ast::Expr::Case { operand, when_clauses, else_result } => Ok(executor_ast::expressions::Expr::Case {
             operand: operand.map(|e| lower_expr(*e)).transpose()?.map(Box::new),
-            when_clauses: when_clauses.into_iter().map(|w| Ok(old::expressions::WhenClause {
+            when_clauses: when_clauses.into_iter().map(|w| Ok(executor_ast::expressions::WhenClause {
                 condition: lower_expr(w.condition)?,
                 result: lower_expr(w.result)?,
             })).collect::<Result<Vec<_>, _>>()?,
             else_result: else_result.map(|e| lower_expr(*e)).transpose()?.map(Box::new),
         }),
-        v2::Expr::InList { expr, list, negated } => Ok(old::expressions::Expr::InList {
+        ast::Expr::InList { expr, list, negated } => Ok(executor_ast::expressions::Expr::InList {
             expr: Box::new(lower_expr(*expr)?),
             list: list.into_iter().map(lower_expr).collect::<Result<Vec<_>, _>>()?,
             negated,
         }),
-        v2::Expr::InSubquery { expr, subquery, negated } => Ok(old::expressions::Expr::InSubquery {
+        ast::Expr::InSubquery { expr, subquery, negated } => Ok(executor_ast::expressions::Expr::InSubquery {
             expr: Box::new(lower_expr(*expr)?),
             subquery: Box::new(lower_select(*subquery)?),
             negated,
         }),
-        v2::Expr::Between { expr, low, high, negated } => Ok(old::expressions::Expr::Between {
+        ast::Expr::Between { expr, low, high, negated } => Ok(executor_ast::expressions::Expr::Between {
             expr: Box::new(lower_expr(*expr)?),
             low: Box::new(lower_expr(*low)?),
             high: Box::new(lower_expr(*high)?),
             negated,
         }),
-        v2::Expr::Like { expr, pattern, negated } => Ok(old::expressions::Expr::Like {
+        ast::Expr::Like { expr, pattern, negated } => Ok(executor_ast::expressions::Expr::Like {
             expr: Box::new(lower_expr(*expr)?),
             pattern: Box::new(lower_expr(*pattern)?),
             negated,
         }),
-        v2::Expr::Exists { subquery, negated } => Ok(old::expressions::Expr::Exists {
+        ast::Expr::Exists { subquery, negated } => Ok(executor_ast::expressions::Expr::Exists {
             subquery: Box::new(lower_select(*subquery)?),
             negated,
         }),
-        v2::Expr::Subquery(s) => Ok(old::expressions::Expr::Subquery(Box::new(lower_select(*s)?))),
-        v2::Expr::FunctionCall { name, args } => Ok(old::expressions::Expr::FunctionCall {
-            name: name.into_owned(),
+        ast::Expr::Subquery(s) => Ok(executor_ast::expressions::Expr::Subquery(Box::new(lower_select(*s)?))),
+        ast::Expr::FunctionCall { name, args } => Ok(executor_ast::expressions::Expr::FunctionCall {
+            name: name,
             args: args.into_iter().map(lower_expr).collect::<Result<Vec<_>, _>>()?,
         }),
-        v2::Expr::WindowFunction { name, args, partition_by, order_by, frame } => {
-            Ok(old::expressions::Expr::WindowFunction {
-                func: lower_window_func(name.as_ref()),
+        ast::Expr::WindowFunction { name, args, partition_by, order_by, frame } => {
+            Ok(executor_ast::expressions::Expr::WindowFunction {
+                func: lower_window_func(name.as_str()),
                 args: args.into_iter().map(lower_expr).collect::<Result<Vec<_>, _>>()?,
                 partition_by: partition_by.into_iter().map(lower_expr).collect::<Result<Vec<_>, _>>()?,
                 order_by: order_by.into_iter().map(lower_order_by_expr).collect::<Result<Vec<_>, _>>()?,
@@ -410,124 +408,129 @@ pub fn lower_expr(v2_expr: v2::Expr) -> Result<old::expressions::Expr, DbError> 
     }
 }
 
-pub fn lower_binary_op(op: v2::BinaryOp) -> Result<old::expressions::BinaryOp, DbError> {
+pub fn lower_binary_op(op: ast::BinaryOp) -> Result<executor_ast::expressions::BinaryOp, DbError> {
     match op {
-        v2::BinaryOp::Eq => Ok(old::expressions::BinaryOp::Eq),
-        v2::BinaryOp::NotEq => Ok(old::expressions::BinaryOp::NotEq),
-        v2::BinaryOp::Gt => Ok(old::expressions::BinaryOp::Gt),
-        v2::BinaryOp::Lt => Ok(old::expressions::BinaryOp::Lt),
-        v2::BinaryOp::Gte => Ok(old::expressions::BinaryOp::Gte),
-        v2::BinaryOp::Lte => Ok(old::expressions::BinaryOp::Lte),
-        v2::BinaryOp::And => Ok(old::expressions::BinaryOp::And),
-        v2::BinaryOp::Or => Ok(old::expressions::BinaryOp::Or),
-        v2::BinaryOp::Add => Ok(old::expressions::BinaryOp::Add),
-        v2::BinaryOp::Subtract => Ok(old::expressions::BinaryOp::Subtract),
-        v2::BinaryOp::Multiply => Ok(old::expressions::BinaryOp::Multiply),
-        v2::BinaryOp::Divide => Ok(old::expressions::BinaryOp::Divide),
-        v2::BinaryOp::Modulo => Ok(old::expressions::BinaryOp::Modulo),
-        v2::BinaryOp::BitwiseAnd => Ok(old::expressions::BinaryOp::BitwiseAnd),
-        v2::BinaryOp::BitwiseOr => Ok(old::expressions::BinaryOp::BitwiseOr),
-        v2::BinaryOp::BitwiseXor => Ok(old::expressions::BinaryOp::BitwiseXor),
-        v2::BinaryOp::Like => Err(DbError::Parse("LIKE should be lowered as a dedicated expression".into())),
+        ast::BinaryOp::Eq => Ok(executor_ast::expressions::BinaryOp::Eq),
+        ast::BinaryOp::NotEq => Ok(executor_ast::expressions::BinaryOp::NotEq),
+        ast::BinaryOp::Gt => Ok(executor_ast::expressions::BinaryOp::Gt),
+        ast::BinaryOp::Lt => Ok(executor_ast::expressions::BinaryOp::Lt),
+        ast::BinaryOp::Gte => Ok(executor_ast::expressions::BinaryOp::Gte),
+        ast::BinaryOp::Lte => Ok(executor_ast::expressions::BinaryOp::Lte),
+        ast::BinaryOp::And => Ok(executor_ast::expressions::BinaryOp::And),
+        ast::BinaryOp::Or => Ok(executor_ast::expressions::BinaryOp::Or),
+        ast::BinaryOp::Add => Ok(executor_ast::expressions::BinaryOp::Add),
+        ast::BinaryOp::Subtract => Ok(executor_ast::expressions::BinaryOp::Subtract),
+        ast::BinaryOp::Multiply => Ok(executor_ast::expressions::BinaryOp::Multiply),
+        ast::BinaryOp::Divide => Ok(executor_ast::expressions::BinaryOp::Divide),
+        ast::BinaryOp::Modulo => Ok(executor_ast::expressions::BinaryOp::Modulo),
+        ast::BinaryOp::BitwiseAnd => Ok(executor_ast::expressions::BinaryOp::BitwiseAnd),
+        ast::BinaryOp::BitwiseOr => Ok(executor_ast::expressions::BinaryOp::BitwiseOr),
+        ast::BinaryOp::BitwiseXor => Ok(executor_ast::expressions::BinaryOp::BitwiseXor),
+        ast::BinaryOp::Like => Err(DbError::Parse("LIKE should be lowered as a dedicated expression".into())),
     }
 }
 
-pub fn lower_unary_op(op: v2::UnaryOp) -> old::expressions::UnaryOp {
+pub fn lower_unary_op(op: ast::UnaryOp) -> executor_ast::expressions::UnaryOp {
     match op {
-        v2::UnaryOp::Negate => old::expressions::UnaryOp::Negate,
-        v2::UnaryOp::Not => old::expressions::UnaryOp::Not,
-        v2::UnaryOp::BitwiseNot => old::expressions::UnaryOp::BitwiseNot,
+        ast::UnaryOp::Negate => executor_ast::expressions::UnaryOp::Negate,
+        ast::UnaryOp::Not => executor_ast::expressions::UnaryOp::Not,
+        ast::UnaryOp::BitwiseNot => executor_ast::expressions::UnaryOp::BitwiseNot,
     }
 }
 
-pub fn lower_window_func(name: &str) -> old::expressions::WindowFunc {
+pub fn lower_window_func(name: &str) -> executor_ast::expressions::WindowFunc {
     match name.to_uppercase().as_str() {
-        "ROW_NUMBER" => old::expressions::WindowFunc::RowNumber,
-        "RANK" => old::expressions::WindowFunc::Rank,
-        "DENSE_RANK" => old::expressions::WindowFunc::DenseRank,
-        "NTILE" => old::expressions::WindowFunc::NTile,
-        "LAG" => old::expressions::WindowFunc::Lag,
-        "LEAD" => old::expressions::WindowFunc::Lead,
-        "FIRST_VALUE" => old::expressions::WindowFunc::FirstValue,
-        "LAST_VALUE" => old::expressions::WindowFunc::LastValue,
-        "PERCENTILE_CONT" => old::expressions::WindowFunc::PercentileCont,
-        "PERCENTILE_DISC" => old::expressions::WindowFunc::PercentileDisc,
-        "PERCENT_RANK" => old::expressions::WindowFunc::PercentileRank,
-        _ => old::expressions::WindowFunc::Aggregate(name.to_string()),
+        "ROW_NUMBER" => executor_ast::expressions::WindowFunc::RowNumber,
+        "RANK" => executor_ast::expressions::WindowFunc::Rank,
+        "DENSE_RANK" => executor_ast::expressions::WindowFunc::DenseRank,
+        "NTILE" => executor_ast::expressions::WindowFunc::NTile,
+        "LAG" => executor_ast::expressions::WindowFunc::Lag,
+        "LEAD" => executor_ast::expressions::WindowFunc::Lead,
+        "FIRST_VALUE" => executor_ast::expressions::WindowFunc::FirstValue,
+        "LAST_VALUE" => executor_ast::expressions::WindowFunc::LastValue,
+        "PERCENTILE_CONT" => executor_ast::expressions::WindowFunc::PercentileCont,
+        "PERCENTILE_DISC" => executor_ast::expressions::WindowFunc::PercentileDisc,
+        "PERCENT_RANK" => executor_ast::expressions::WindowFunc::PercentileRank,
+        _ => executor_ast::expressions::WindowFunc::Aggregate(name.to_string()),
     }
 }
 
-pub fn lower_window_frame(frame: v2::WindowFrame) -> old::expressions::WindowFrame {
-    old::expressions::WindowFrame {
+pub fn lower_window_frame(frame: ast::WindowFrame) -> executor_ast::expressions::WindowFrame {
+    executor_ast::expressions::WindowFrame {
         units: match frame.units {
-            v2::WindowFrameUnits::Rows => old::expressions::WindowFrameUnits::Rows,
-            v2::WindowFrameUnits::Range => old::expressions::WindowFrameUnits::Range,
-            v2::WindowFrameUnits::Groups => old::expressions::WindowFrameUnits::Groups,
+            ast::WindowFrameUnits::Rows => executor_ast::expressions::WindowFrameUnits::Rows,
+            ast::WindowFrameUnits::Range => executor_ast::expressions::WindowFrameUnits::Range,
+            ast::WindowFrameUnits::Groups => executor_ast::expressions::WindowFrameUnits::Groups,
         },
         extent: match frame.extent {
-            v2::WindowFrameExtent::Bound(b) => old::expressions::WindowFrameExtent::Bound(lower_window_bound(b)),
-            v2::WindowFrameExtent::Between(b1, b2) => old::expressions::WindowFrameExtent::Between(lower_window_bound(b1), lower_window_bound(b2)),
+            ast::WindowFrameExtent::Bound(b) => executor_ast::expressions::WindowFrameExtent::Bound(lower_window_bound(b)),
+            ast::WindowFrameExtent::Between(b1, b2) => executor_ast::expressions::WindowFrameExtent::Between(lower_window_bound(b1), lower_window_bound(b2)),
         }
     }
 }
 
-pub fn lower_window_bound(bound: v2::WindowFrameBound) -> old::expressions::WindowFrameBound {
+pub fn lower_window_bound(bound: ast::WindowFrameBound) -> executor_ast::expressions::WindowFrameBound {
     match bound {
-        v2::WindowFrameBound::UnboundedPreceding => old::expressions::WindowFrameBound::UnboundedPreceding,
-        v2::WindowFrameBound::Preceding(n) => old::expressions::WindowFrameBound::Preceding(n),
-        v2::WindowFrameBound::CurrentRow => old::expressions::WindowFrameBound::CurrentRow,
-        v2::WindowFrameBound::Following(n) => old::expressions::WindowFrameBound::Following(n),
-        v2::WindowFrameBound::UnboundedFollowing => old::expressions::WindowFrameBound::UnboundedFollowing,
+        ast::WindowFrameBound::UnboundedPreceding => executor_ast::expressions::WindowFrameBound::UnboundedPreceding,
+        ast::WindowFrameBound::Preceding(n) => executor_ast::expressions::WindowFrameBound::Preceding(n),
+        ast::WindowFrameBound::CurrentRow => executor_ast::expressions::WindowFrameBound::CurrentRow,
+        ast::WindowFrameBound::Following(n) => executor_ast::expressions::WindowFrameBound::Following(n),
+        ast::WindowFrameBound::UnboundedFollowing => executor_ast::expressions::WindowFrameBound::UnboundedFollowing,
     }
 }
 
-pub fn lower_object_name<'a>(parts: Vec<Cow<'a, str>>) -> old::ObjectName {
-    let mut parts_owned: Vec<String> = parts.into_iter().map(|p| p.into_owned()).collect();
+pub fn lower_object_name(parts: Vec<String>) -> executor_ast::ObjectName {
+    let mut parts_owned = parts;
     if parts_owned.len() == 1 {
-        old::ObjectName { schema: None, name: parts_owned.remove(0) }
+        executor_ast::ObjectName { schema: None, name: parts_owned.remove(0) }
     } else if parts_owned.len() == 2 {
         let name = parts_owned.pop().unwrap();
         let schema = Some(parts_owned.pop().unwrap());
-        old::ObjectName { schema, name }
+        executor_ast::ObjectName { schema, name }
     } else {
         let name = parts_owned.pop().unwrap();
         let schema = Some(parts_owned.pop().unwrap());
-        old::ObjectName { schema, name }
+        executor_ast::ObjectName { schema, name }
     }
 }
 
-pub fn lower_data_type<'a>(dt: v2::DataType<'a>) -> Result<old::data_types::DataTypeSpec, DbError> {
+pub fn lower_data_type(dt: ast::DataType) -> Result<executor_ast::data_types::DataTypeSpec, DbError> {
     match dt {
-        v2::DataType::Int => Ok(old::data_types::DataTypeSpec::Int),
-        v2::DataType::BigInt => Ok(old::data_types::DataTypeSpec::BigInt),
-        v2::DataType::SmallInt => Ok(old::data_types::DataTypeSpec::SmallInt),
-        v2::DataType::TinyInt => Ok(old::data_types::DataTypeSpec::TinyInt),
-        v2::DataType::Bit => Ok(old::data_types::DataTypeSpec::Bit),
-        v2::DataType::Float => Ok(old::data_types::DataTypeSpec::Float),
-        v2::DataType::Real => Ok(old::data_types::DataTypeSpec::Float),
-        v2::DataType::Decimal(p, s) => Ok(old::data_types::DataTypeSpec::Decimal(p, s)),
-        v2::DataType::Numeric(p, s) => Ok(old::data_types::DataTypeSpec::Numeric(p, s)),
-        v2::DataType::VarChar(n) => Ok(old::data_types::DataTypeSpec::VarChar(n.unwrap_or(u16::MAX as u32) as u16)),
-        v2::DataType::NVarChar(n) => Ok(old::data_types::DataTypeSpec::NVarChar(n.unwrap_or(u16::MAX as u32) as u16)),
-        v2::DataType::Char(n) => Ok(old::data_types::DataTypeSpec::Char(n.unwrap_or(1) as u16)),
-        v2::DataType::NChar(n) => Ok(old::data_types::DataTypeSpec::NChar(n.unwrap_or(1) as u16)),
-        v2::DataType::Binary(n) => Ok(old::data_types::DataTypeSpec::Binary(n.unwrap_or(1) as u16)),
-        v2::DataType::VarBinary(n) => Ok(old::data_types::DataTypeSpec::VarBinary(n.unwrap_or(u16::MAX as u32) as u16)),
-        v2::DataType::Date => Ok(old::data_types::DataTypeSpec::Date),
-        v2::DataType::Time => Ok(old::data_types::DataTypeSpec::Time),
-        v2::DataType::DateTime => Ok(old::data_types::DataTypeSpec::DateTime),
-        v2::DataType::DateTime2 => Ok(old::data_types::DataTypeSpec::DateTime2),
-        v2::DataType::Money => Ok(old::data_types::DataTypeSpec::Money),
-        v2::DataType::SmallMoney => Ok(old::data_types::DataTypeSpec::SmallMoney),
-        v2::DataType::UniqueIdentifier => Ok(old::data_types::DataTypeSpec::UniqueIdentifier),
-        v2::DataType::SqlVariant => Ok(old::data_types::DataTypeSpec::SqlVariant),
-        v2::DataType::Xml => Ok(old::data_types::DataTypeSpec::Xml),
-        v2::DataType::Custom(_) => Ok(old::data_types::DataTypeSpec::VarChar(255)),
-        _ => Err(DbError::Parse(format!("Data type {:?} not supported in old AST", dt))),
+        ast::DataType::Int => Ok(executor_ast::data_types::DataTypeSpec::Int),
+        ast::DataType::BigInt => Ok(executor_ast::data_types::DataTypeSpec::BigInt),
+        ast::DataType::SmallInt => Ok(executor_ast::data_types::DataTypeSpec::SmallInt),
+        ast::DataType::TinyInt => Ok(executor_ast::data_types::DataTypeSpec::TinyInt),
+        ast::DataType::Bit => Ok(executor_ast::data_types::DataTypeSpec::Bit),
+        ast::DataType::Float => Ok(executor_ast::data_types::DataTypeSpec::Float),
+        ast::DataType::Real => Ok(executor_ast::data_types::DataTypeSpec::Float),
+        ast::DataType::Decimal(p, s) => Ok(executor_ast::data_types::DataTypeSpec::Decimal(p, s)),
+        ast::DataType::Numeric(p, s) => Ok(executor_ast::data_types::DataTypeSpec::Numeric(p, s)),
+        ast::DataType::VarChar(n) => Ok(executor_ast::data_types::DataTypeSpec::VarChar(n.unwrap_or(u16::MAX as u32) as u16)),
+        ast::DataType::NVarChar(n) => Ok(executor_ast::data_types::DataTypeSpec::NVarChar(n.unwrap_or(u16::MAX as u32) as u16)),
+        ast::DataType::Char(n) => Ok(executor_ast::data_types::DataTypeSpec::Char(n.unwrap_or(1) as u16)),
+        ast::DataType::NChar(n) => Ok(executor_ast::data_types::DataTypeSpec::NChar(n.unwrap_or(1) as u16)),
+        ast::DataType::Binary(n) => Ok(executor_ast::data_types::DataTypeSpec::Binary(n.unwrap_or(1) as u16)),
+        ast::DataType::VarBinary(n) => Ok(executor_ast::data_types::DataTypeSpec::VarBinary(n.unwrap_or(u16::MAX as u32) as u16)),
+        ast::DataType::Date => Ok(executor_ast::data_types::DataTypeSpec::Date),
+        ast::DataType::Time => Ok(executor_ast::data_types::DataTypeSpec::Time),
+        ast::DataType::DateTime => Ok(executor_ast::data_types::DataTypeSpec::DateTime),
+        ast::DataType::DateTime2 => Ok(executor_ast::data_types::DataTypeSpec::DateTime2),
+        ast::DataType::Money => Ok(executor_ast::data_types::DataTypeSpec::Money),
+        ast::DataType::SmallMoney => Ok(executor_ast::data_types::DataTypeSpec::SmallMoney),
+        ast::DataType::UniqueIdentifier => Ok(executor_ast::data_types::DataTypeSpec::UniqueIdentifier),
+        ast::DataType::SqlVariant => Ok(executor_ast::data_types::DataTypeSpec::SqlVariant),
+        ast::DataType::Xml => Ok(executor_ast::data_types::DataTypeSpec::Xml),
+        ast::DataType::DateTimeOffset => Ok(executor_ast::data_types::DataTypeSpec::VarChar(255)),
+        ast::DataType::SmallDateTime => Ok(executor_ast::data_types::DataTypeSpec::DateTime),
+        ast::DataType::Image => Ok(executor_ast::data_types::DataTypeSpec::VarBinary(8000)),
+        ast::DataType::Text => Ok(executor_ast::data_types::DataTypeSpec::VarChar(8000)),
+        ast::DataType::NText => Ok(executor_ast::data_types::DataTypeSpec::NVarChar(4000)),
+        ast::DataType::Table => Ok(executor_ast::data_types::DataTypeSpec::VarChar(255)),
+        ast::DataType::Custom(_) => Ok(executor_ast::data_types::DataTypeSpec::VarChar(255)),
     }
 }
 
-pub fn lower_select<'a>(s: v2::SelectStmt<'a>) -> Result<old::statements::query::SelectStmt, DbError> {
+pub fn lower_select(s: ast::SelectStmt) -> Result<executor_ast::statements::query::SelectStmt, DbError> {
     if s.set_op.is_some() {
         return Err(DbError::Parse("Subqueries with UNION/INTERSECT/EXCEPT not yet supported in this version".into()));
     }
@@ -545,12 +548,12 @@ pub fn lower_select<'a>(s: v2::SelectStmt<'a>) -> Result<old::statements::query:
         joins.push(lower_join_clause(join)?);
     }
 
-    Ok(old::statements::query::SelectStmt {
+    Ok(executor_ast::statements::query::SelectStmt {
         distinct: s.distinct,
-        top: s.top.map(|top| Ok(old::statements::query::TopSpec { value: lower_expr(top.value)? })).transpose()?,
-        projection: s.projection.into_iter().map(|i| Ok(old::statements::query::SelectItem {
+        top: s.top.map(|top| Ok(executor_ast::statements::query::TopSpec { value: lower_expr(top.value)? })).transpose()?,
+        projection: s.projection.into_iter().map(|i| Ok(executor_ast::statements::query::SelectItem {
             expr: lower_expr(i.expr)?,
-            alias: i.alias.map(|a| a.into_owned()),
+            alias: i.alias,
         })).collect::<Result<Vec<_>, DbError>>()?,
         into_table: s.into_table.map(lower_object_name_owned),
         from,
@@ -561,13 +564,11 @@ pub fn lower_select<'a>(s: v2::SelectStmt<'a>) -> Result<old::statements::query:
                 return Err(DbError::Parse("Joins inside APPLY are not yet supported in this version".into()));
             }
             let subquery = match tr.factor {
-                old::common::TableFactor::Derived(s) => *s,
-                old::common::TableFactor::Values { rows, columns } => {
-                    // Wrap VALUES in a SelectStmt and keep its projected columns.
-                    // An empty projection here would erase the VALUES columns before APPLY sees them.
-                    old::statements::query::SelectStmt {
-                        from: Some(old::common::TableRef {
-                            factor: old::common::TableFactor::Values { rows, columns },
+                executor_ast::common::TableFactor::Derived(s) => *s,
+                executor_ast::common::TableFactor::Values { rows, columns } => {
+                    executor_ast::statements::query::SelectStmt {
+                        from: Some(executor_ast::common::TableRef {
+                            factor: executor_ast::common::TableFactor::Values { rows, columns },
                             alias: tr.alias.clone(),
                             pivot: None,
                             unpivot: None,
@@ -575,8 +576,8 @@ pub fn lower_select<'a>(s: v2::SelectStmt<'a>) -> Result<old::statements::query:
                         }),
                         joins: Vec::new(),
                         applies: Vec::new(),
-                        projection: vec![old::statements::query::SelectItem {
-                            expr: old::expressions::Expr::Wildcard,
+                        projection: vec![executor_ast::statements::query::SelectItem {
+                            expr: executor_ast::expressions::Expr::Wildcard,
                             alias: None,
                         }],
                         into_table: None,
@@ -592,10 +593,10 @@ pub fn lower_select<'a>(s: v2::SelectStmt<'a>) -> Result<old::statements::query:
                 }
                 _ => return Err(DbError::Parse("Only subqueries and VALUES are supported in APPLY in this version".into())),
             };
-            Ok(old::statements::query::ApplyClause {
+            Ok(executor_ast::statements::query::ApplyClause {
                 apply_type: match a.apply_type {
-                    v2::ApplyType::Cross => old::statements::query::ApplyType::Cross,
-                    v2::ApplyType::Outer => old::statements::query::ApplyType::Outer,
+                    ast::ApplyType::Cross => executor_ast::statements::query::ApplyType::Cross,
+                    ast::ApplyType::Outer => executor_ast::statements::query::ApplyType::Outer,
                 },
                 subquery,
                 alias: tr.alias.unwrap_or_default(),
@@ -610,21 +611,21 @@ pub fn lower_select<'a>(s: v2::SelectStmt<'a>) -> Result<old::statements::query:
     })
 }
 
-fn lower_join_clause<'a>(join: v2::JoinClause<'a>) -> Result<old::statements::query::JoinClause, DbError> {
-    Ok(old::statements::query::JoinClause {
+fn lower_join_clause(join: ast::JoinClause) -> Result<executor_ast::statements::query::JoinClause, DbError> {
+    Ok(executor_ast::statements::query::JoinClause {
         join_type: match join.join_type {
-            v2::JoinType::Inner => old::statements::query::JoinType::Inner,
-            v2::JoinType::Left => old::statements::query::JoinType::Left,
-            v2::JoinType::Right => old::statements::query::JoinType::Right,
-            v2::JoinType::Full => old::statements::query::JoinType::Full,
-            v2::JoinType::Cross => old::statements::query::JoinType::Cross,
+            ast::JoinType::Inner => executor_ast::statements::query::JoinType::Inner,
+            ast::JoinType::Left => executor_ast::statements::query::JoinType::Left,
+            ast::JoinType::Right => executor_ast::statements::query::JoinType::Right,
+            ast::JoinType::Full => executor_ast::statements::query::JoinType::Full,
+            ast::JoinType::Cross => executor_ast::statements::query::JoinType::Cross,
         },
         table: lower_table_ref_recursive(join.table)?.0,
         on: join.on.map(lower_expr).transpose()?,
     })
 }
 
-fn lower_from_clause_internal<'a>(tables: Vec<v2::TableRef<'a>>) -> Result<(old::common::TableRef, Vec<old::statements::query::JoinClause>), DbError> {
+fn lower_from_clause_internal(tables: Vec<ast::TableRef>) -> Result<(executor_ast::common::TableRef, Vec<executor_ast::statements::query::JoinClause>), DbError> {
     if tables.is_empty() {
         return Err(DbError::Parse("FROM clause must have at least one table".into()));
     }
@@ -633,8 +634,8 @@ fn lower_from_clause_internal<'a>(tables: Vec<v2::TableRef<'a>>) -> Result<(old:
     let (tr, mut joins) = lower_table_ref_recursive(first)?;
     for t in iter {
         let (next_tr, mut next_j) = lower_table_ref_recursive(t)?;
-        joins.push(old::statements::query::JoinClause {
-            join_type: old::statements::query::JoinType::Cross,
+        joins.push(executor_ast::statements::query::JoinClause {
+            join_type: executor_ast::statements::query::JoinType::Cross,
             table: next_tr,
             on: None,
         });
@@ -643,59 +644,59 @@ fn lower_from_clause_internal<'a>(tables: Vec<v2::TableRef<'a>>) -> Result<(old:
     Ok((tr, joins))
 }
 
-fn lower_table_ref_recursive<'a>(tr: v2::TableRef<'a>) -> Result<(old::common::TableRef, Vec<old::statements::query::JoinClause>), DbError> {
-    let alias = tr.alias.map(|a| a.into_owned());
-    let hints = tr.hints.into_iter().map(|h| h.into_owned()).collect();
-    let pivot = tr.pivot.map(|p| Box::new(old::common::PivotSpec {
-        aggregate_func: p.aggregate_func.into_owned(),
-        aggregate_col: p.aggregate_col.into_owned(),
-        pivot_col: p.pivot_col.into_owned(),
-        pivot_values: p.pivot_values.into_iter().map(|v| v.into_owned()).collect(),
+fn lower_table_ref_recursive(tr: ast::TableRef) -> Result<(executor_ast::common::TableRef, Vec<executor_ast::statements::query::JoinClause>), DbError> {
+    let alias = tr.alias;
+    let hints = tr.hints;
+    let pivot = tr.pivot.map(|p| Box::new(executor_ast::common::PivotSpec {
+        aggregate_func: p.aggregate_func,
+        aggregate_col: p.aggregate_col,
+        pivot_col: p.pivot_col,
+        pivot_values: p.pivot_values,
     }));
-    let unpivot = tr.unpivot.map(|u| Box::new(old::common::UnpivotSpec {
-        value_col: u.value_col.into_owned(),
-        pivot_col: u.pivot_col.into_owned(),
-        column_list: u.column_list.into_iter().map(|c| c.into_owned()).collect(),
+    let unpivot = tr.unpivot.map(|u| Box::new(executor_ast::common::UnpivotSpec {
+        value_col: u.value_col,
+        pivot_col: u.pivot_col,
+        column_list: u.column_list,
     }));
 
     match tr.factor {
-        v2::TableFactor::Named(name) => Ok((old::common::TableRef {
-            factor: old::common::TableFactor::Named(lower_object_name_owned(name)),
+        ast::TableFactor::Named(name) => Ok((executor_ast::common::TableRef {
+            factor: executor_ast::common::TableFactor::Named(lower_object_name_owned(name)),
             alias,
             pivot,
             unpivot,
             hints,
         }, Vec::new())),
-        v2::TableFactor::Values { rows, columns } => Ok((old::common::TableRef {
-            factor: old::common::TableFactor::Values {
+        ast::TableFactor::Values { rows, columns } => Ok((executor_ast::common::TableRef {
+            factor: executor_ast::common::TableFactor::Values {
                 rows: rows.into_iter().map(|r| r.into_iter().map(lower_expr).collect::<Result<Vec<_>, _>>()).collect::<Result<Vec<_>, _>>()?,
-                columns: columns.into_iter().map(|c| c.into_owned()).collect(),
+                columns: columns,
             },
             alias,
             pivot,
             unpivot,
             hints,
         }, Vec::new())),
-        v2::TableFactor::Derived(subquery) => Ok((old::common::TableRef {
-            factor: old::common::TableFactor::Derived(Box::new(lower_select(*subquery)?)),
+        ast::TableFactor::Derived(subquery) => Ok((executor_ast::common::TableRef {
+            factor: executor_ast::common::TableFactor::Derived(Box::new(lower_select(*subquery)?)),
             alias,
             pivot,
             unpivot,
             hints,
         }, Vec::new())),
-        v2::TableFactor::TableValuedFunction { name, args, alias: tvf_alias } => {
+        ast::TableFactor::TableValuedFunction { name, args, alias: tvf_alias } => {
             let func_name = name.last().unwrap().to_string();
             let arg_strs: Vec<String> = args
                 .into_iter()
-                .map(|a| lower_expr(a).map(|expr| format_expr(&expr)))
+                .map(|a| lower_expr(a).map(|expr| crate::executor::tooling::formatting::format_expr(&expr)))
                 .collect::<Result<Vec<_>, _>>()?;
             let full_name = format!("{}({})", func_name, arg_strs.join(", "));
-            Ok((old::common::TableRef {
-                factor: old::common::TableFactor::Named(old::common::ObjectName {
+            Ok((executor_ast::common::TableRef {
+                factor: executor_ast::common::TableFactor::Named(executor_ast::common::ObjectName {
                     schema: if name.len() > 1 { Some(name[0].to_string()) } else { None },
                     name: full_name,
                 }),
-                alias: tvf_alias.map(|a| a.into_owned()).or(alias),
+                alias: tvf_alias.or(alias),
                 pivot,
                 unpivot,
                 hints: Vec::new(),
@@ -704,68 +705,72 @@ fn lower_table_ref_recursive<'a>(tr: v2::TableRef<'a>) -> Result<(old::common::T
     }
 }
 
-fn lower_object_name_owned<'a>(name: v2::ObjectName<'a>) -> old::ObjectName {
-    old::ObjectName {
-        schema: name.schema.map(|s| s.into_owned()),
-        name: name.name.into_owned(),
+fn lower_object_name_owned(name: ast::ObjectName) -> executor_ast::ObjectName {
+    executor_ast::ObjectName {
+        schema: name.schema,
+        name: name.name,
     }
 }
 
-pub fn lower_insert<'a>(s: v2::InsertStmt<'a>) -> Result<old::statements::dml::InsertStmt, DbError> {
-    Ok(old::statements::dml::InsertStmt {
+pub fn lower_insert(s: ast::InsertStmt) -> Result<executor_ast::statements::dml::InsertStmt, DbError> {
+    Ok(executor_ast::statements::dml::InsertStmt {
         table: lower_object_name(s.table),
-        columns: if s.columns.is_empty() { None } else { Some(s.columns.into_iter().map(|c| c.into_owned()).collect()) },
+        columns: if s.columns.is_empty() { None } else { Some(s.columns) },
         source: match s.source {
-            v2::InsertSource::Values(rows) => old::statements::dml::InsertSource::Values(
+            ast::InsertSource::Values(rows) => executor_ast::statements::dml::InsertSource::Values(
                 rows.into_iter().map(|r| r.into_iter().map(lower_expr).collect::<Result<Vec<_>, _>>()).collect::<Result<Vec<_>, _>>()?
             ),
-            v2::InsertSource::Select(sel) => old::statements::dml::InsertSource::Select(Box::new(lower_select(*sel)?)),
-            v2::InsertSource::Exec { procedure, args } => old::statements::dml::InsertSource::Exec(Box::new(old::Statement::Procedural(old::statements::ProceduralStatement::ExecProcedure(old::statements::procedural::ExecProcedureStmt {
+            ast::InsertSource::Select(sel) => executor_ast::statements::dml::InsertSource::Select(Box::new(lower_select(*sel)?)),
+            ast::InsertSource::Exec { procedure, args } => executor_ast::statements::dml::InsertSource::Exec(Box::new(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::ExecProcedure(executor_ast::statements::procedural::ExecProcedureStmt {
                 name: lower_object_name(procedure),
-                args: args.into_iter().map(|e| Ok(old::statements::procedural::ExecArgument {
+                args: args.into_iter().map(|e| Ok(executor_ast::statements::procedural::ExecArgument {
                     name: None, 
                     expr: lower_expr(e)?,
                     is_output: false,
                 })).collect::<Result<Vec<_>, DbError>>()?,
             })))),
-            v2::InsertSource::DefaultValues => old::statements::dml::InsertSource::DefaultValues,
+            ast::InsertSource::DefaultValues => executor_ast::statements::dml::InsertSource::DefaultValues,
         },
         output: s.output.map(|cols| cols.into_iter().map(lower_output_column).collect()),
         output_into: s.output_into.map(lower_object_name),
     })
 }
 
-pub fn lower_update<'a>(s: v2::UpdateStmt<'a>) -> Result<old::statements::dml::UpdateStmt, DbError> {
+pub fn lower_update(s: ast::UpdateStmt) -> Result<executor_ast::statements::dml::UpdateStmt, DbError> {
     let (table_tr, mut extra_joins) = lower_table_ref_recursive(s.table)?;
     let table = match table_tr.factor {
-        old::common::TableFactor::Named(ref o) => o.clone(),
+        executor_ast::common::TableFactor::Named(ref o) => o.clone(),
         _ => return Err(DbError::Parse("UPDATE target must be an object".into())),
     };
+    
+    for join in s.joins {
+        extra_joins.push(lower_join_clause(join)?);
+    }
     
     let mut from_clause = None;
     if let Some(from_refs) = s.from {
         let (tr, mut j) = lower_from_clause_internal(from_refs)?;
         extra_joins.append(&mut j);
-        from_clause = Some(old::statements::dml::FromClause {
+        from_clause = Some(executor_ast::statements::dml::FromClause {
             tables: vec![tr],
             joins: extra_joins,
             applies: Vec::new(),
         });
     } else if !extra_joins.is_empty() {
-        from_clause = Some(old::statements::dml::FromClause {
+        from_clause = Some(executor_ast::statements::dml::FromClause {
             tables: vec![table_tr],
             joins: extra_joins,
             applies: Vec::new(),
         });
     }
 
-    Ok(old::statements::dml::UpdateStmt {
+    Ok(executor_ast::statements::dml::UpdateStmt {
         table,
-        assignments: s.assignments.into_iter().map(|a| Ok(old::statements::dml::Assignment {
-            column: a.column.into_owned(),
+        assignments: s.assignments.into_iter().map(|a| Ok(executor_ast::statements::dml::Assignment {
+            column: a.column,
             expr: lower_expr(a.expr)?,
         })).collect::<Result<Vec<_>, _>>()?,
-        top: s.top.map(|e| Ok(old::statements::query::TopSpec { value: lower_expr(e)? })).transpose()?,
+        top: s.top.map(|e| Ok(executor_ast::statements::query::TopSpec { value: lower_expr(e)? })).transpose()?,
         from: from_clause,
         selection: s.selection.map(lower_expr).transpose()?,
         output: s.output.map(|cols| cols.into_iter().map(lower_output_column).collect()),
@@ -773,14 +778,18 @@ pub fn lower_update<'a>(s: v2::UpdateStmt<'a>) -> Result<old::statements::dml::U
     })
 }
 
-pub fn lower_delete<'a>(s: v2::DeleteStmt<'a>) -> Result<old::statements::dml::DeleteStmt, DbError> {
+pub fn lower_delete(s: ast::DeleteStmt) -> Result<executor_ast::statements::dml::DeleteStmt, DbError> {
     let table = lower_object_name(s.table);
-    let (tr, joins) = lower_from_clause_internal(s.from)?;
+    let (tr, mut joins) = lower_from_clause_internal(s.from)?;
+    
+    for join in s.joins {
+        joins.push(lower_join_clause(join)?);
+    }
 
-    Ok(old::statements::dml::DeleteStmt {
+    Ok(executor_ast::statements::dml::DeleteStmt {
         table,
-        top: s.top.map(|e| Ok(old::statements::query::TopSpec { value: lower_expr(e)? })).transpose()?,
-        from: Some(old::statements::dml::FromClause {
+        top: s.top.map(|e| Ok(executor_ast::statements::query::TopSpec { value: lower_expr(e)? })).transpose()?,
+        from: Some(executor_ast::statements::dml::FromClause {
             tables: vec![tr],
             joins,
             applies: Vec::new(),
@@ -791,32 +800,32 @@ pub fn lower_delete<'a>(s: v2::DeleteStmt<'a>) -> Result<old::statements::dml::D
     })
 }
 
-pub fn lower_merge<'a>(s: v2::MergeStmt<'a>) -> Result<old::statements::dml::MergeStmt, DbError> {
+pub fn lower_merge(s: ast::MergeStmt) -> Result<executor_ast::statements::dml::MergeStmt, DbError> {
     let (target, _) = lower_table_ref_recursive(s.target)?;
     let (source_tr, _) = lower_table_ref_recursive(s.source)?;
-    Ok(old::statements::dml::MergeStmt {
+    Ok(executor_ast::statements::dml::MergeStmt {
         target,
-        source: old::statements::dml::MergeSource::Table(source_tr),
+        source: executor_ast::statements::dml::MergeSource::Table(source_tr),
         on_condition: lower_expr(s.on_condition)?,
-        when_clauses: s.when_clauses.into_iter().map(|w| Ok(old::statements::dml::MergeWhenClause {
+        when_clauses: s.when_clauses.into_iter().map(|w| Ok(executor_ast::statements::dml::MergeWhenClause {
             when: match w.when {
-                v2::MergeWhen::Matched => old::statements::dml::MergeWhen::Matched,
-                v2::MergeWhen::NotMatched => old::statements::dml::MergeWhen::NotMatched,
-                v2::MergeWhen::NotMatchedBySource => old::statements::dml::MergeWhen::NotMatchedBySource,
+                ast::MergeWhen::Matched => executor_ast::statements::dml::MergeWhen::Matched,
+                ast::MergeWhen::NotMatched => executor_ast::statements::dml::MergeWhen::NotMatched,
+                ast::MergeWhen::NotMatchedBySource => executor_ast::statements::dml::MergeWhen::NotMatchedBySource,
             },
             condition: w.condition.map(lower_expr).transpose()?,
             action: match w.action {
-                v2::MergeAction::Update { assignments } => old::statements::dml::MergeAction::Update {
-                    assignments: assignments.into_iter().map(|a| Ok(old::statements::dml::Assignment {
-                        column: a.column.into_owned(),
+                ast::MergeAction::Update { assignments } => executor_ast::statements::dml::MergeAction::Update {
+                    assignments: assignments.into_iter().map(|a| Ok(executor_ast::statements::dml::Assignment {
+                        column: a.column,
                         expr: lower_expr(a.expr)?,
                     })).collect::<Result<Vec<_>, _>>()?,
                 },
-                v2::MergeAction::Insert { columns, values } => old::statements::dml::MergeAction::Insert {
-                    columns: columns.into_iter().map(|c| c.into_owned()).collect(),
+                ast::MergeAction::Insert { columns, values } => executor_ast::statements::dml::MergeAction::Insert {
+                    columns: columns,
                     values: values.into_iter().map(lower_expr).collect::<Result<Vec<_>, _>>()?,
                 },
-                v2::MergeAction::Delete => old::statements::dml::MergeAction::Delete,
+                ast::MergeAction::Delete => executor_ast::statements::dml::MergeAction::Delete,
             },
         })).collect::<Result<Vec<_>, _>>()?,
         output: s.output.map(|cols| cols.into_iter().map(lower_output_column).collect()),
@@ -824,39 +833,39 @@ pub fn lower_merge<'a>(s: v2::MergeStmt<'a>) -> Result<old::statements::dml::Mer
     })
 }
 
-pub fn lower_create<'a>(s: v2::CreateStmt<'a>) -> Result<old::Statement, DbError> {
+pub fn lower_create(s: ast::CreateStmt) -> Result<executor_ast::Statement, DbError> {
     match s {
-        v2::CreateStmt::Table { name, columns, constraints } => Ok(old::Statement::Ddl(old::statements::DdlStatement::CreateTable(old::statements::ddl::CreateTableStmt {
+        ast::CreateStmt::Table { name, columns, constraints } => Ok(executor_ast::Statement::Ddl(executor_ast::statements::DdlStatement::CreateTable(executor_ast::statements::ddl::CreateTableStmt {
             name: lower_object_name(name),
             columns: columns.into_iter().map(lower_column_def).collect::<Result<Vec<_>, _>>()?,
             table_constraints: constraints.into_iter().map(lower_table_constraint).collect(),
         }))),
-        v2::CreateStmt::View { name, query } => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::CreateView(old::statements::ddl::CreateViewStmt {
+        ast::CreateStmt::View { name, query } => Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::CreateView(executor_ast::statements::ddl::CreateViewStmt {
             name: lower_object_name(name),
             query: lower_select(query)?,
         }))),
-        v2::CreateStmt::Procedure { name, params, body } => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::CreateProcedure(old::statements::procedural::CreateProcedureStmt {
+        ast::CreateStmt::Procedure { name, params, body } => Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::CreateProcedure(executor_ast::statements::procedural::CreateProcedureStmt {
             name: lower_object_name(name),
             params: params.into_iter().map(lower_routine_param).collect::<Result<Vec<_>, _>>()?,
             body: body.into_iter().map(lower_statement).collect::<Result<Vec<_>, _>>()?,
         }))),
-        v2::CreateStmt::Function { name, params, returns, body } => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::CreateFunction(old::statements::procedural::CreateFunctionStmt {
+        ast::CreateStmt::Function { name, params, returns, body } => Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::CreateFunction(executor_ast::statements::procedural::CreateFunctionStmt {
             name: lower_object_name(name),
             params: params.into_iter().map(lower_routine_param).collect::<Result<Vec<_>, _>>()?,
             returns: returns.map(lower_data_type).transpose()?,
             body: match body {
-                v2::FunctionBody::ScalarReturn(e) => old::statements::procedural::FunctionBody::ScalarReturn(lower_expr(e)?),
-                v2::FunctionBody::Block(stmts) => old::statements::procedural::FunctionBody::Scalar(stmts.into_iter().map(lower_statement).collect::<Result<Vec<_>, _>>()?),
-                v2::FunctionBody::Table(sel) => old::statements::procedural::FunctionBody::InlineTable(lower_select(sel)?),
+                ast::FunctionBody::ScalarReturn(e) => executor_ast::statements::procedural::FunctionBody::ScalarReturn(lower_expr(e)?),
+                ast::FunctionBody::Block(stmts) => executor_ast::statements::procedural::FunctionBody::Scalar(stmts.into_iter().map(lower_statement).collect::<Result<Vec<_>, _>>()?),
+                ast::FunctionBody::Table(sel) => executor_ast::statements::procedural::FunctionBody::InlineTable(lower_select(sel)?),
             },
         }))),
-        v2::CreateStmt::Trigger { name, table, events, is_instead_of, body } => Ok(old::Statement::Procedural(old::statements::ProceduralStatement::CreateTrigger(old::statements::procedural::CreateTriggerStmt {
+        ast::CreateStmt::Trigger { name, table, events, is_instead_of, body } => Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::CreateTrigger(executor_ast::statements::procedural::CreateTriggerStmt {
             name: lower_object_name(name),
             table: lower_object_name(table),
             events: events.into_iter().map(|e| match e {
-                v2::TriggerEvent::Insert => old::TriggerEvent::Insert,
-                v2::TriggerEvent::Update => old::TriggerEvent::Update,
-                v2::TriggerEvent::Delete => old::TriggerEvent::Delete,
+                ast::TriggerEvent::Insert => executor_ast::TriggerEvent::Insert,
+                ast::TriggerEvent::Update => executor_ast::TriggerEvent::Update,
+                ast::TriggerEvent::Delete => executor_ast::TriggerEvent::Delete,
             }).collect(),
             is_instead_of,
             body: body.into_iter().map(lower_statement).collect::<Result<Vec<_>, _>>()?,
@@ -864,44 +873,44 @@ pub fn lower_create<'a>(s: v2::CreateStmt<'a>) -> Result<old::Statement, DbError
     }
 }
 
-pub fn lower_column_def<'a>(c: v2::ColumnDef<'a>) -> Result<old::statements::ddl::ColumnSpec, DbError> {
-    Ok(old::statements::ddl::ColumnSpec {
-        name: c.name.into_owned(),
+pub fn lower_column_def(c: ast::ColumnDef) -> Result<executor_ast::statements::ddl::ColumnSpec, DbError> {
+    Ok(executor_ast::statements::ddl::ColumnSpec {
+        name: c.name,
         data_type: lower_data_type(c.data_type)?,
         nullable: c.is_nullable.unwrap_or(true),
         identity: c.identity_spec,
         primary_key: c.is_primary_key,
         unique: c.is_unique,
         default: c.default_expr.map(lower_expr).transpose()?,
-        default_constraint_name: c.default_constraint_name.map(|n| n.into_owned()),
+        default_constraint_name: c.default_constraint_name,
         check: c.check_expr.map(lower_expr).transpose()?,
-        check_constraint_name: c.check_constraint_name.map(|n| n.into_owned()),
+        check_constraint_name: c.check_constraint_name,
         computed_expr: c.computed_expr.map(lower_expr).transpose()?,
-        foreign_key: c.foreign_key.map(|fk| old::statements::ddl::ForeignKeyRef {
+        foreign_key: c.foreign_key.map(|fk| executor_ast::statements::ddl::ForeignKeyRef {
             referenced_table: lower_object_name(fk.ref_table),
-            referenced_columns: fk.ref_columns.into_iter().map(|c| c.into_owned()).collect(),
+            referenced_columns: fk.ref_columns,
             on_delete: fk.on_delete.map(lower_referential_action),
             on_update: fk.on_update.map(lower_referential_action),
         }),
     })
 }
 
-pub fn lower_routine_param<'a>(p: v2::RoutineParam<'a>) -> Result<old::statements::RoutineParam, DbError> {
+pub fn lower_routine_param(p: ast::RoutineParam) -> Result<executor_ast::statements::RoutineParam, DbError> {
     let (param_type, is_readonly) = match p.data_type {
-        v2::DataType::Custom(name) => {
+        ast::DataType::Custom(name) => {
             if !p.is_readonly {
                 return Err(DbError::Parse(format!(
                     "table-valued parameter '{}' must be READONLY",
                     p.name
                 )));
             }
-            let name_str = name.as_ref();
+            let name_str = name.as_str();
             let (schema, type_name) = match name_str.rsplit_once('.') {
                 Some((schema, ty)) => (Some(schema.to_string()), ty.to_string()),
                 None => (None, name_str.to_string()),
             };
             (
-                old::statements::RoutineParamType::TableType(old::ObjectName {
+                executor_ast::statements::RoutineParamType::TableType(executor_ast::ObjectName {
                     schema,
                     name: type_name,
                 }),
@@ -909,12 +918,12 @@ pub fn lower_routine_param<'a>(p: v2::RoutineParam<'a>) -> Result<old::statement
             )
         }
         other => (
-            old::statements::RoutineParamType::Scalar(lower_data_type(other)?),
+            executor_ast::statements::RoutineParamType::Scalar(lower_data_type(other)?),
             p.is_readonly,
         ),
     };
-    Ok(old::statements::RoutineParam {
-        name: p.name.into_owned(),
+    Ok(executor_ast::statements::RoutineParam {
+        name: p.name,
         param_type,
         is_output: p.is_output,
         is_readonly,
@@ -922,88 +931,88 @@ pub fn lower_routine_param<'a>(p: v2::RoutineParam<'a>) -> Result<old::statement
     })
 }
 
-pub fn lower_output_column<'a>(c: v2::OutputColumn<'a>) -> old::statements::dml::OutputColumn {
-    old::statements::dml::OutputColumn {
+pub fn lower_output_column(c: ast::OutputColumn) -> executor_ast::statements::dml::OutputColumn {
+    executor_ast::statements::dml::OutputColumn {
         source: match c.source {
-            v2::OutputSource::Inserted => old::statements::dml::OutputSource::Inserted,
-            v2::OutputSource::Deleted => old::statements::dml::OutputSource::Deleted,
+            ast::OutputSource::Inserted => executor_ast::statements::dml::OutputSource::Inserted,
+            ast::OutputSource::Deleted => executor_ast::statements::dml::OutputSource::Deleted,
         },
-        column: c.column.into_owned(),
-        alias: c.alias.map(|a| a.into_owned()),
+        column: c.column,
+        alias: c.alias,
         is_wildcard: c.is_wildcard,
     }
 }
 
-pub fn lower_order_by_expr<'a>(o: v2::OrderByExpr<'a>) -> Result<old::statements::query::OrderByExpr, DbError> {
-    Ok(old::statements::query::OrderByExpr {
+pub fn lower_order_by_expr(o: ast::OrderByExpr) -> Result<executor_ast::statements::query::OrderByExpr, DbError> {
+    Ok(executor_ast::statements::query::OrderByExpr {
         expr: lower_expr(o.expr)?,
         asc: o.asc,
     })
 }
 
-pub fn lower_exec_arg<'a>(a: v2::ExecArg<'a>) -> Result<old::statements::procedural::ExecArgument, DbError> {
-    Ok(old::statements::procedural::ExecArgument {
-        name: a.name.map(|n| n.into_owned()),
+pub fn lower_exec_arg(a: ast::ExecArg) -> Result<executor_ast::statements::procedural::ExecArgument, DbError> {
+    Ok(executor_ast::statements::procedural::ExecArgument {
+        name: a.name,
         expr: lower_expr(a.expr)?,
         is_output: a.is_output,
     })
 }
 
-pub fn lower_fetch_direction<'a>(d: v2::FetchDirection<'a>) -> Result<old::statements::procedural::FetchDirection, DbError> {
+pub fn lower_fetch_direction(d: ast::FetchDirection) -> Result<executor_ast::statements::procedural::FetchDirection, DbError> {
     match d {
-        v2::FetchDirection::Next => Ok(old::statements::procedural::FetchDirection::Next),
-        v2::FetchDirection::Prior => Ok(old::statements::procedural::FetchDirection::Prior),
-        v2::FetchDirection::First => Ok(old::statements::procedural::FetchDirection::First),
-        v2::FetchDirection::Last => Ok(old::statements::procedural::FetchDirection::Last),
-        v2::FetchDirection::Absolute(expr) => Ok(old::statements::procedural::FetchDirection::Absolute(lower_expr(expr)?)),
-        v2::FetchDirection::Relative(expr) => Ok(old::statements::procedural::FetchDirection::Relative(lower_expr(expr)?)),
+        ast::FetchDirection::Next => Ok(executor_ast::statements::procedural::FetchDirection::Next),
+        ast::FetchDirection::Prior => Ok(executor_ast::statements::procedural::FetchDirection::Prior),
+        ast::FetchDirection::First => Ok(executor_ast::statements::procedural::FetchDirection::First),
+        ast::FetchDirection::Last => Ok(executor_ast::statements::procedural::FetchDirection::Last),
+        ast::FetchDirection::Absolute(expr) => Ok(executor_ast::statements::procedural::FetchDirection::Absolute(lower_expr(expr)?)),
+        ast::FetchDirection::Relative(expr) => Ok(executor_ast::statements::procedural::FetchDirection::Relative(lower_expr(expr)?)),
     }
 }
 
-pub fn lower_alter_action<'a>(a: v2::AlterTableAction<'a>) -> Result<old::statements::ddl::AlterTableAction, DbError> {
+pub fn lower_alter_action(a: ast::AlterTableAction) -> Result<executor_ast::statements::ddl::AlterTableAction, DbError> {
     match a {
-        v2::AlterTableAction::AddColumn(c) => Ok(old::statements::ddl::AlterTableAction::AddColumn(lower_column_def(c)?)),
-        v2::AlterTableAction::DropColumn(c) => Ok(old::statements::ddl::AlterTableAction::DropColumn(c.into_owned())),
-        v2::AlterTableAction::AddConstraint(c) => Ok(old::statements::ddl::AlterTableAction::AddConstraint(lower_table_constraint(c))),
-        v2::AlterTableAction::DropConstraint(c) => Ok(old::statements::ddl::AlterTableAction::DropConstraint(c.into_owned())),
+        ast::AlterTableAction::AddColumn(c) => Ok(executor_ast::statements::ddl::AlterTableAction::AddColumn(lower_column_def(c)?)),
+        ast::AlterTableAction::DropColumn(c) => Ok(executor_ast::statements::ddl::AlterTableAction::DropColumn(c)),
+        ast::AlterTableAction::AddConstraint(c) => Ok(executor_ast::statements::ddl::AlterTableAction::AddConstraint(lower_table_constraint(c))),
+        ast::AlterTableAction::DropConstraint(c) => Ok(executor_ast::statements::ddl::AlterTableAction::DropConstraint(c)),
     }
 }
 
-pub fn lower_table_constraint<'a>(c: v2::TableConstraint<'a>) -> old::statements::ddl::TableConstraintSpec {
+pub fn lower_table_constraint(c: ast::TableConstraint) -> executor_ast::statements::ddl::TableConstraintSpec {
     match c {
-        v2::TableConstraint::PrimaryKey { name, columns } => old::statements::ddl::TableConstraintSpec::PrimaryKey {
-            name: name.map(|n| n.into_owned()).unwrap_or_default(),
-            columns: columns.into_iter().map(|c| c.into_owned()).collect(),
+        ast::TableConstraint::PrimaryKey { name, columns } => executor_ast::statements::ddl::TableConstraintSpec::PrimaryKey {
+            name: name.unwrap_or_default(),
+            columns: columns,
         },
-        v2::TableConstraint::Unique { name, columns } => old::statements::ddl::TableConstraintSpec::Unique {
-            name: name.map(|n| n.into_owned()).unwrap_or_default(),
-            columns: columns.into_iter().map(|c| c.into_owned()).collect(),
+        ast::TableConstraint::Unique { name, columns } => executor_ast::statements::ddl::TableConstraintSpec::Unique {
+            name: name.unwrap_or_default(),
+            columns: columns,
         },
-        v2::TableConstraint::ForeignKey { name, columns, ref_table, ref_columns, on_delete, on_update } => old::statements::ddl::TableConstraintSpec::ForeignKey {
-            name: name.map(|n| n.into_owned()).unwrap_or_default(),
-            columns: columns.into_iter().map(|c| c.into_owned()).collect(),
+        ast::TableConstraint::ForeignKey { name, columns, ref_table, ref_columns, on_delete, on_update } => executor_ast::statements::ddl::TableConstraintSpec::ForeignKey {
+            name: name.unwrap_or_default(),
+            columns: columns,
             referenced_table: lower_object_name(ref_table),
-            referenced_columns: ref_columns.into_iter().map(|c| c.into_owned()).collect(),
+            referenced_columns: ref_columns,
             on_delete: on_delete.map(lower_referential_action),
             on_update: on_update.map(lower_referential_action),
         },
-        v2::TableConstraint::Check { name, expr } => old::statements::ddl::TableConstraintSpec::Check {
-            name: name.map(|n| n.into_owned()).unwrap_or_default(),
+        ast::TableConstraint::Check { name, expr } => executor_ast::statements::ddl::TableConstraintSpec::Check {
+            name: name.unwrap_or_default(),
             expr: lower_expr(expr).unwrap(),
         },
-        v2::TableConstraint::Default { name, column, expr } => old::statements::ddl::TableConstraintSpec::Default {
-            name: name.map(|n| n.into_owned()).unwrap_or_default(),
-            column: column.into_owned(),
+        ast::TableConstraint::Default { name, column, expr } => executor_ast::statements::ddl::TableConstraintSpec::Default {
+            name: name.unwrap_or_default(),
+            column: column,
             expr: lower_expr(expr).unwrap(),
         },
     }
 }
 
-pub fn lower_referential_action(a: v2::ReferentialAction) -> old::statements::ddl::ReferentialAction {
+pub fn lower_referential_action(a: ast::ReferentialAction) -> executor_ast::statements::ddl::ReferentialAction {
     match a {
-        v2::ReferentialAction::NoAction => old::statements::ddl::ReferentialAction::NoAction,
-        v2::ReferentialAction::Cascade => old::statements::ddl::ReferentialAction::Cascade,
-        v2::ReferentialAction::SetNull => old::statements::ddl::ReferentialAction::SetNull,
-        v2::ReferentialAction::SetDefault => old::statements::ddl::ReferentialAction::SetDefault,
+        ast::ReferentialAction::NoAction => executor_ast::statements::ddl::ReferentialAction::NoAction,
+        ast::ReferentialAction::Cascade => executor_ast::statements::ddl::ReferentialAction::Cascade,
+        ast::ReferentialAction::SetNull => executor_ast::statements::ddl::ReferentialAction::SetNull,
+        ast::ReferentialAction::SetDefault => executor_ast::statements::ddl::ReferentialAction::SetDefault,
     }
 }

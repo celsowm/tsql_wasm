@@ -3,7 +3,7 @@ use crate::parser::token::Keyword;
 use crate::parser::state::Parser;
 use crate::parser::error::{ParseResult, Expected};
 
-pub fn parse_if<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+pub fn parse_if(parser: &mut Parser) -> ParseResult<Statement> {
     let condition = crate::parser::parse::expressions::parse_expr(parser)?;
     let then_stmt = crate::parser::parse::parse_statement(parser)?;
     let else_stmt = if let Some(Token::Keyword(Keyword::Else)) = parser.peek() {
@@ -20,7 +20,7 @@ pub fn parse_if<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
     }))
 }
 
-pub fn parse_begin_end<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+pub fn parse_begin_end(parser: &mut Parser) -> ParseResult<Statement> {
     let mut statements = Vec::new();
     loop {
         while matches!(parser.peek(), Some(Token::Semicolon)) {
@@ -38,7 +38,7 @@ pub fn parse_begin_end<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>
     Ok(Statement::Procedural(ProceduralStatement::BeginEnd(statements)))
 }
 
-pub fn parse_try_catch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+pub fn parse_try_catch(parser: &mut Parser) -> ParseResult<Statement> {
     let mut try_body = Vec::new();
     loop {
         while matches!(parser.peek(), Some(Token::Semicolon)) {

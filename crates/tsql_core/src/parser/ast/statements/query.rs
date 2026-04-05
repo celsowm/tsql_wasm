@@ -1,51 +1,51 @@
 use super::super::common::{ObjectName, TableRef};
 use super::super::expressions::Expr;
-use std::borrow::Cow;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SelectStmt<'a> {
-    pub from: Option<TableRef<'a>>,
-    pub joins: Vec<JoinClause<'a>>,
-    pub applies: Vec<ApplyClause<'a>>,
-    pub projection: Vec<SelectItem<'a>>,
-    pub into_table: Option<ObjectName<'a>>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SelectStmt {
+    pub from: Option<TableRef>,
+    pub joins: Vec<JoinClause>,
+    pub applies: Vec<ApplyClause>,
+    pub projection: Vec<SelectItem>,
+    pub into_table: Option<ObjectName>,
     pub distinct: bool,
-    pub top: Option<TopSpec<'a>>,
-    pub selection: Option<Expr<'a>>,
-    pub group_by: Vec<Expr<'a>>,
-    pub having: Option<Expr<'a>>,
-    pub order_by: Vec<OrderByExpr<'a>>,
-    pub offset: Option<Expr<'a>>,
-    pub fetch: Option<Expr<'a>>,
-    pub set_op: Option<Box<SetOp<'a>>>,
+    pub top: Option<TopSpec>,
+    pub selection: Option<Expr>,
+    pub group_by: Vec<Expr>,
+    pub having: Option<Expr>,
+    pub order_by: Vec<OrderByExpr>,
+    pub offset: Option<Expr>,
+    pub fetch: Option<Expr>,
+    pub set_op: Option<Box<SetOp>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct JoinClause<'a> {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct JoinClause {
     pub join_type: JoinType,
-    pub table: TableRef<'a>,
-    pub on: Option<Expr<'a>>,
+    pub table: TableRef,
+    pub on: Option<Expr>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ApplyClause<'a> {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ApplyClause {
     pub apply_type: ApplyType,
-    pub table: TableRef<'a>,
+    pub table: TableRef,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ApplyType {
     Cross,
     Outer,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SetOp<'a> {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SetOp {
     pub kind: SetOpKind,
-    pub right: SelectStmt<'a>,
+    pub right: SelectStmt,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SetOpKind {
     Union,
     UnionAll,
@@ -53,18 +53,18 @@ pub enum SetOpKind {
     Except,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SelectItem<'a> {
-    pub expr: Expr<'a>,
-    pub alias: Option<Cow<'a, str>>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SelectItem {
+    pub expr: Expr,
+    pub alias: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TopSpec<'a> {
-    pub value: Expr<'a>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TopSpec {
+    pub value: Expr,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum JoinType {
     Inner,
     Left,
@@ -73,8 +73,8 @@ pub enum JoinType {
     Cross,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct OrderByExpr<'a> {
-    pub expr: Expr<'a>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct OrderByExpr {
+    pub expr: Expr,
     pub asc: bool,
 }

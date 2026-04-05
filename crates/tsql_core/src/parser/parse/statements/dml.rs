@@ -2,9 +2,8 @@ use crate::parser::ast::*;
 use crate::parser::token::Keyword;
 use crate::parser::state::Parser;
 use crate::parser::error::{ParseResult, Expected};
-use std::borrow::Cow;
 
-fn is_statement_starter<'a>(tok: Option<&Token<'a>>) -> bool {
+fn is_statement_starter(tok: Option<&Token>) -> bool {
     match tok {
         Some(Token::Keyword(k)) => matches!(
             k,
@@ -41,7 +40,7 @@ fn is_statement_starter<'a>(tok: Option<&Token<'a>>) -> bool {
     }
 }
 
-pub fn parse_insert<'a>(parser: &mut Parser<'a>) -> ParseResult<InsertStmt<'a>> {
+pub fn parse_insert(parser: &mut Parser) -> ParseResult<InsertStmt> {
     if let Some(Token::Keyword(Keyword::Into)) = parser.peek() {
         let _ = parser.next();
     }
@@ -54,7 +53,7 @@ pub fn parse_insert<'a>(parser: &mut Parser<'a>) -> ParseResult<InsertStmt<'a>> 
             if let Some(tok) = p.next() {
                 match tok {
                     Token::Identifier(id) => Ok(id.clone()),
-                    Token::Keyword(kw) => Ok(Cow::Owned(kw.as_ref().to_string())),
+                                Token::Keyword(kw) => Ok(kw.as_ref().to_string()),
                     _ => p.backtrack(Expected::Description("column name")),
                 }
             } else {
@@ -115,7 +114,7 @@ pub fn parse_insert<'a>(parser: &mut Parser<'a>) -> ParseResult<InsertStmt<'a>> 
     Ok(InsertStmt { table, columns, source, output, output_into })
 }
 
-pub fn parse_update<'a>(parser: &mut Parser<'a>) -> ParseResult<UpdateStmt<'a>> {
+pub fn parse_update(parser: &mut Parser) -> ParseResult<UpdateStmt> {
     let mut top = None;
     if matches!(parser.peek(), Some(Token::Keyword(Keyword::Top))) {
         let _ = parser.next();
@@ -138,9 +137,14 @@ pub fn parse_update<'a>(parser: &mut Parser<'a>) -> ParseResult<UpdateStmt<'a>> 
     }
 
     let mut from = None;
+    let mut joins = Vec::new();
     if let Some(Token::Keyword(Keyword::From)) = parser.peek() {
         let _ = parser.next();
         from = Some(crate::parser::parse::expressions::parse_comma_list(parser, crate::parser::parse::statements::query::parse_table_ref)?);
+    }
+    
+    while let Some(join) = crate::parser::parse::statements::query::parse_join_clause(parser)? {
+        joins.push(join);
     }
     
     let mut selection = None;
@@ -149,14 +153,14 @@ pub fn parse_update<'a>(parser: &mut Parser<'a>) -> ParseResult<UpdateStmt<'a>> 
         selection = Some(crate::parser::parse::expressions::parse_expr(parser)?);
     }
     
-    Ok(UpdateStmt { table, assignments, top, from, selection, output, output_into })
+    Ok(UpdateStmt { table, assignments, top, from, joins, selection, output, output_into })
 }
 
-fn parse_update_assignment<'a>(parser: &mut Parser<'a>) -> ParseResult<UpdateAssignment<'a>> {
+fn parse_update_assignment(parser: &mut Parser) -> ParseResult<UpdateAssignment> {
     let parts = parse_multipart_name(parser)?;
     let column = parts.last().unwrap().clone();
     if let Some(Token::Operator(op)) = parser.next() {
-        if op.as_ref() != "=" {
+        if *op != "=" {
              return parser.backtrack(Expected::Description("="));
         }
     } else {
@@ -166,7 +170,7 @@ fn parse_update_assignment<'a>(parser: &mut Parser<'a>) -> ParseResult<UpdateAss
     Ok(UpdateAssignment { column, expr })
 }
 
-pub fn parse_delete<'a>(parser: &mut Parser<'a>) -> ParseResult<DeleteStmt<'a>> {
+pub fn parse_delete(parser: &mut Parser) -> ParseResult<DeleteStmt> {
     let mut top = None;
     if matches!(parser.peek(), Some(Token::Keyword(Keyword::Top))) {
         let _ = parser.next();
@@ -193,12 +197,17 @@ pub fn parse_delete<'a>(parser: &mut Parser<'a>) -> ParseResult<DeleteStmt<'a>> 
         .ok_or_else(|| parser.error(Expected::Description("table name")))?;
 
     let mut from = vec![target.clone()];
+    let mut joins = Vec::new();
     if matches!(parser.peek(), Some(Token::Keyword(Keyword::From))) {
         let _ = parser.next();
         from.extend(crate::parser::parse::expressions::parse_comma_list(
             parser,
             crate::parser::parse::statements::query::parse_table_ref,
         )?);
+    }
+    
+    while let Some(join) = crate::parser::parse::statements::query::parse_join_clause(parser)? {
+        joins.push(join);
     }
     
     let mut output = None;
@@ -216,10 +225,10 @@ pub fn parse_delete<'a>(parser: &mut Parser<'a>) -> ParseResult<DeleteStmt<'a>> 
         selection = Some(crate::parser::parse::expressions::parse_expr(parser)?);
     }
     
-    Ok(DeleteStmt { table, top, from, selection, output, output_into })
+    Ok(DeleteStmt { table, top, from, joins, selection, output, output_into })
 }
 
-pub fn parse_output_clause<'a>(parser: &mut Parser<'a>) -> ParseResult<(Vec<OutputColumn<'a>>, Option<Vec<Cow<'a, str>>>)> {
+pub fn parse_output_clause(parser: &mut Parser) -> ParseResult<(Vec<OutputColumn>, Option<Vec<String>>)> {
     let columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
         let source = match p.peek() {
             Some(Token::Keyword(Keyword::Inserted)) => {
@@ -246,11 +255,11 @@ pub fn parse_output_clause<'a>(parser: &mut Parser<'a>) -> ParseResult<(Vec<Outp
         let _ = p.next();
         let (column, is_wildcard) = if matches!(p.peek(), Some(Token::Star)) {
             let _ = p.next();
-            (Cow::Borrowed("*"), true)
+            ("*".to_string(), true)
         } else {
             match p.next() {
                 Some(Token::Identifier(id)) => (id.clone(), false),
-                Some(Token::Keyword(kw)) => (Cow::Owned(kw.as_ref().to_string()), false),
+                Some(Token::Keyword(kw)) => (kw.as_ref().to_string(), false),
                 _ => return p.backtrack(Expected::Description("column name")),
             }
         };
@@ -258,7 +267,7 @@ pub fn parse_output_clause<'a>(parser: &mut Parser<'a>) -> ParseResult<(Vec<Outp
             let _ = p.next();
             match p.next() {
                 Some(Token::Identifier(id)) => Some(id.clone()),
-                Some(Token::Keyword(kw)) => Some(Cow::Owned(kw.as_ref().to_string())),
+                Some(Token::Keyword(kw)) => Some(kw.as_ref().to_string()),
                 _ => return p.backtrack(Expected::Description("alias")),
             }
         } else {
@@ -274,7 +283,7 @@ pub fn parse_output_clause<'a>(parser: &mut Parser<'a>) -> ParseResult<(Vec<Outp
     Ok((columns, output_into))
 }
 
-pub fn parse_merge<'a>(parser: &mut Parser<'a>) -> ParseResult<MergeStmt<'a>> {
+pub fn parse_merge(parser: &mut Parser) -> ParseResult<MergeStmt> {
     if matches!(parser.peek(), Some(Token::Keyword(Keyword::Into))) {
         let _ = parser.next();
     }
@@ -333,7 +342,7 @@ pub fn parse_merge<'a>(parser: &mut Parser<'a>) -> ParseResult<MergeStmt<'a>> {
                         if let Some(tok) = p.next() {
                             match tok {
                                 Token::Identifier(id) => Ok(id.clone()),
-                                Token::Keyword(kw) => Ok(Cow::Owned(kw.as_ref().to_string())),
+                    Token::Keyword(kw) => Ok(kw.as_ref().to_string()),
                                 _ => p.backtrack(Expected::Description("column name")),
                             }
                         } else {
@@ -366,6 +375,6 @@ pub fn parse_merge<'a>(parser: &mut Parser<'a>) -> ParseResult<MergeStmt<'a>> {
     Ok(MergeStmt { target, source, on_condition, when_clauses, output, output_into })
 }
 
-fn parse_multipart_name<'a>(parser: &mut Parser<'a>) -> ParseResult<Vec<Cow<'a, str>>> {
+fn parse_multipart_name(parser: &mut Parser) -> ParseResult<Vec<String>> {
     crate::parser::parse::statements::query::parse_multipart_name(parser)
 }

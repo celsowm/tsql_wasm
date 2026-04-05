@@ -3,7 +3,7 @@ use crate::parser::token::Keyword;
 use crate::parser::state::Parser;
 use crate::parser::error::{ParseResult, Expected};
 
-pub fn parse_open_cursor<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+pub fn parse_open_cursor(parser: &mut Parser) -> ParseResult<Statement> {
     if let Some(Token::Identifier(id)) = parser.next() {
         Ok(Statement::Cursor(CursorStatement::Open(id.clone())))
     } else {
@@ -11,7 +11,7 @@ pub fn parse_open_cursor<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'
     }
 }
 
-pub fn parse_close_cursor<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+pub fn parse_close_cursor(parser: &mut Parser) -> ParseResult<Statement> {
     if let Some(Token::Identifier(id)) = parser.next() {
         Ok(Statement::Cursor(CursorStatement::Close(id.clone())))
     } else {
@@ -19,7 +19,7 @@ pub fn parse_close_cursor<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<
     }
 }
 
-pub fn parse_deallocate_cursor<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+pub fn parse_deallocate_cursor(parser: &mut Parser) -> ParseResult<Statement> {
     if let Some(Token::Identifier(id)) = parser.next() {
         Ok(Statement::Cursor(CursorStatement::Deallocate(id.clone())))
     } else {
@@ -27,7 +27,7 @@ pub fn parse_deallocate_cursor<'a>(parser: &mut Parser<'a>) -> ParseResult<State
     }
 }
 
-pub fn parse_fetch_cursor<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+pub fn parse_fetch_cursor(parser: &mut Parser) -> ParseResult<Statement> {
     let mut direction = FetchDirection::Next;
     if let Some(Token::Keyword(k)) = parser.peek() {
         match *k {

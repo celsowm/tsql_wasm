@@ -1,19 +1,19 @@
-use std::borrow::Cow;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ObjectName<'a> {
-    pub schema: Option<Cow<'a, str>>,
-    pub name: Cow<'a, str>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ObjectName {
+    pub schema: Option<String>,
+    pub name: String,
 }
 
-impl<'a> ObjectName<'a> {
+impl ObjectName {
     pub fn schema_or_dbo(&self) -> &str {
         self.schema.as_deref().unwrap_or("dbo")
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum DataType<'a> {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum DataType {
     Int,
     BigInt,
     SmallInt,
@@ -44,26 +44,26 @@ pub enum DataType<'a> {
     NText,
     SqlVariant,
     Table,
-    Custom(Cow<'a, str>),
+    Custom(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TableFactor<'a> {
-    Named(ObjectName<'a>),
-    Derived(Box<crate::parser::ast::statements::query::SelectStmt<'a>>),
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum TableFactor {
+    Named(ObjectName),
+    Derived(Box<crate::parser::ast::statements::query::SelectStmt>),
     Values {
-        rows: Vec<Vec<crate::parser::ast::expressions::Expr<'a>>>,
-        columns: Vec<Cow<'a, str>>,
+        rows: Vec<Vec<crate::parser::ast::expressions::Expr>>,
+        columns: Vec<String>,
     },
     TableValuedFunction {
-        name: Vec<Cow<'a, str>>,
-        args: Vec<crate::parser::ast::expressions::Expr<'a>>,
-        alias: Option<Cow<'a, str>>,
+        name: Vec<String>,
+        args: Vec<crate::parser::ast::expressions::Expr>,
+        alias: Option<String>,
     },
 }
 
-impl<'a> TableFactor<'a> {
-    pub fn as_object_name(&self) -> Option<&ObjectName<'a>> {
+impl TableFactor {
+    pub fn as_object_name(&self) -> Option<&ObjectName> {
         match self {
             TableFactor::Named(name) => Some(name),
             TableFactor::Derived(_) | TableFactor::Values { .. } | TableFactor::TableValuedFunction { .. } => None,
@@ -75,21 +75,21 @@ impl<'a> TableFactor<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TableRef<'a> {
-    pub factor: TableFactor<'a>,
-    pub alias: Option<Cow<'a, str>>,
-    pub pivot: Option<Box<PivotSpec<'a>>>,
-    pub unpivot: Option<Box<UnpivotSpec<'a>>>,
-    pub hints: Vec<Cow<'a, str>>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TableRef {
+    pub factor: TableFactor,
+    pub alias: Option<String>,
+    pub pivot: Option<Box<PivotSpec>>,
+    pub unpivot: Option<Box<UnpivotSpec>>,
+    pub hints: Vec<String>,
 }
 
-impl<'a> TableRef<'a> {
-    pub fn name_as_object(&self) -> Option<&ObjectName<'a>> {
+impl TableRef {
+    pub fn name_as_object(&self) -> Option<&ObjectName> {
         self.factor.as_object_name()
     }
 
-    pub fn object(name: ObjectName<'a>) -> Self {
+    pub fn object(name: ObjectName) -> Self {
         Self {
             factor: TableFactor::Named(name),
             alias: None,
@@ -100,17 +100,17 @@ impl<'a> TableRef<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct PivotSpec<'a> {
-    pub aggregate_func: Cow<'a, str>,
-    pub aggregate_col: Cow<'a, str>,
-    pub pivot_col: Cow<'a, str>,
-    pub pivot_values: Vec<Cow<'a, str>>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PivotSpec {
+    pub aggregate_func: String,
+    pub aggregate_col: String,
+    pub pivot_col: String,
+    pub pivot_values: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct UnpivotSpec<'a> {
-    pub value_col: Cow<'a, str>,
-    pub pivot_col: Cow<'a, str>,
-    pub column_list: Vec<Cow<'a, str>>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct UnpivotSpec {
+    pub value_col: String,
+    pub pivot_col: String,
+    pub column_list: Vec<String>,
 }

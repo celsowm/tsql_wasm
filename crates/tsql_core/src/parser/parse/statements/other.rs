@@ -2,9 +2,8 @@ use crate::parser::ast::*;
 use crate::parser::token::Keyword;
 use crate::parser::state::Parser;
 use crate::parser::error::{ParseResult, Expected};
-use std::borrow::Cow;
 
-fn is_statement_starter<'a>(tok: Option<&Token<'a>>) -> bool {
+fn is_statement_starter(tok: Option<&Token>) -> bool {
     match tok {
         Some(Token::Keyword(k)) => matches!(
             k,
@@ -44,7 +43,7 @@ fn is_statement_starter<'a>(tok: Option<&Token<'a>>) -> bool {
 // Re-export canonical implementations from control_flow.rs
 pub use super::control_flow::{parse_if, parse_begin_end, parse_try_catch};
 
-pub fn parse_declare<'a>(parser: &mut Parser<'a>) -> ParseResult<Vec<DeclareVar<'a>>> {
+pub fn parse_declare(parser: &mut Parser) -> ParseResult<Vec<DeclareVar>> {
     let mut vars = Vec::new();
     loop {
         match parser.next() {
@@ -52,7 +51,7 @@ pub fn parse_declare<'a>(parser: &mut Parser<'a>) -> ParseResult<Vec<DeclareVar<
                 let name = name.clone();
                 let data_type = crate::parser::parse::expressions::parse_data_type(parser)?;
                 let initial_value = if let Some(Token::Operator(op)) = parser.peek() {
-                    if op.as_ref() == "=" {
+                    if *op == "=" {
                         let _ = parser.next();
                         Some(crate::parser::parse::expressions::parse_expr(parser)?)
                     } else {
@@ -73,12 +72,12 @@ pub fn parse_declare<'a>(parser: &mut Parser<'a>) -> ParseResult<Vec<DeclareVar<
     Ok(vars)
 }
 
-pub fn parse_set<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+pub fn parse_set(parser: &mut Parser) -> ParseResult<Statement> {
     match parser.next() {
         Some(Token::Variable(variable)) => {
             let variable = variable.clone();
             if let Some(Token::Operator(op)) = parser.next() {
-                if op.as_ref() != "=" {
+                if *op != "=" {
                      return parser.backtrack(Expected::Description("="));
                 }
             } else {
@@ -91,7 +90,7 @@ pub fn parse_set<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
     }
 }
 
-pub fn parse_exec_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+pub fn parse_exec_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
     match parser.peek() {
         Some(Token::LParen) => {
              let _ = parser.next();
@@ -102,7 +101,7 @@ pub fn parse_exec_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement
         Some(Token::Identifier(_)) | Some(Token::Keyword(_)) | Some(Token::Variable(_)) => {
              let id_str = match parser.peek().unwrap() {
                  Token::Identifier(id) => id.clone(),
-                 Token::Keyword(kw) => Cow::Owned(kw.as_ref().to_string()),
+                  Token::Keyword(kw) => kw.as_ref().to_string(),
                  Token::Variable(v) => v.clone(),
                  _ => unreachable!(),
              };
@@ -137,11 +136,11 @@ pub fn parse_exec_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement
     }
 }
 
-fn parse_exec_arg<'a>(parser: &mut Parser<'a>) -> ParseResult<ExecArg<'a>> {
+fn parse_exec_arg(parser: &mut Parser) -> ParseResult<ExecArg> {
     let mut name = None;
     if let Some(Token::Variable(v)) = parser.peek() {
         let v = v.clone();
-        if matches!(parser.peek_at(1), Some(Token::Operator(op)) if op.as_ref() == "=") {
+        if matches!(parser.peek_at(1), Some(Token::Operator(op)) if *op == "=") {
             let _ = parser.next();
             let _ = parser.next();
             name = Some(v);
@@ -158,6 +157,6 @@ fn parse_exec_arg<'a>(parser: &mut Parser<'a>) -> ParseResult<ExecArg<'a>> {
     Ok(ExecArg { name, expr, is_output })
 }
 
-fn parse_multipart_name<'a>(parser: &mut Parser<'a>) -> ParseResult<Vec<Cow<'a, str>>> {
+fn parse_multipart_name(parser: &mut Parser) -> ParseResult<Vec<String>> {
     crate::parser::parse::statements::query::parse_multipart_name(parser)
 }

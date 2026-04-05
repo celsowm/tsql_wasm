@@ -1,15 +1,14 @@
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
 use super::token::Keyword;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Token<'a> {
+pub enum Token {
     Keyword(Keyword),
-    Identifier(Cow<'a, str>),
-    Variable(Cow<'a, str>),
+    Identifier(String),
+    Variable(String),
     Number { value: f64, is_float: bool },
-    String(Cow<'a, str>), // Unescaped string
-    Operator(Cow<'a, str>),
+    String(String),
+    Operator(String),
     LParen,
     RParen,
     Comma,
@@ -17,7 +16,7 @@ pub enum Token<'a> {
     Dot,
     Star,
     Tilde,
-    BinaryLiteral(Cow<'a, str>),
+    BinaryLiteral(String),
     Go,
 }
 

@@ -1,353 +1,355 @@
 use super::super::expressions::Expr;
 use super::super::common::DataType;
 use super::super::common::TableRef;
-use super::query::SelectStmt;
-use std::borrow::Cow;
+use super::query::{SelectStmt, JoinClause};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Statement<'a> {
-    Dml(DmlStatement<'a>),
-    Ddl(DdlStatement<'a>),
-    Procedural(ProceduralStatement<'a>),
-    Transaction(TransactionStatement<'a>),
-    Cursor(CursorStatement<'a>),
-    Session(SessionStatement<'a>),
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Statement {
+    Dml(DmlStatement),
+    Ddl(DdlStatement),
+    Procedural(ProceduralStatement),
+    Transaction(TransactionStatement),
+    Cursor(CursorStatement),
+    Session(SessionStatement),
     WithCte {
-        ctes: Vec<CteDef<'a>>,
-        body: Box<Statement<'a>>,
+        ctes: Vec<CteDef>,
+        body: Box<Statement>,
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum DmlStatement<'a> {
-    Select(Box<SelectStmt<'a>>),
-    Insert(Box<InsertStmt<'a>>),
-    Update(Box<UpdateStmt<'a>>),
-    Delete(Box<DeleteStmt<'a>>),
-    Merge(Box<MergeStmt<'a>>),
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum DmlStatement {
+    Select(Box<SelectStmt>),
+    Insert(Box<InsertStmt>),
+    Update(Box<UpdateStmt>),
+    Delete(Box<DeleteStmt>),
+    Merge(Box<MergeStmt>),
     SelectAssign {
-        assignments: Vec<SelectAssignTarget<'a>>,
-        from: Option<TableRef<'a>>,
-        selection: Option<Expr<'a>>,
+        assignments: Vec<SelectAssignTarget>,
+        from: Option<TableRef>,
+        selection: Option<Expr>,
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum DdlStatement<'a> {
-    Create(Box<CreateStmt<'a>>),
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum DdlStatement {
+    Create(Box<CreateStmt>),
     AlterTable {
-        table: Vec<Cow<'a, str>>,
-        action: AlterTableAction<'a>,
+        table: Vec<String>,
+        action: AlterTableAction,
     },
-    TruncateTable(Vec<Cow<'a, str>>),
-    DropTable(Vec<Cow<'a, str>>),
-    DropView(Vec<Cow<'a, str>>),
-    DropProcedure(Vec<Cow<'a, str>>),
-    DropFunction(Vec<Cow<'a, str>>),
-    DropTrigger(Vec<Cow<'a, str>>),
+    TruncateTable(Vec<String>),
+    DropTable(Vec<String>),
+    DropView(Vec<String>),
+    DropProcedure(Vec<String>),
+    DropFunction(Vec<String>),
+    DropTrigger(Vec<String>),
     DropIndex {
-        name: Vec<Cow<'a, str>>,
-        table: Vec<Cow<'a, str>>,
+        name: Vec<String>,
+        table: Vec<String>,
     },
-    DropType(Vec<Cow<'a, str>>),
-    DropSchema(Cow<'a, str>),
+    DropType(Vec<String>),
+    DropSchema(String),
     CreateIndex {
-        name: Vec<Cow<'a, str>>,
-        table: Vec<Cow<'a, str>>,
-        columns: Vec<Cow<'a, str>>,
+        name: Vec<String>,
+        table: Vec<String>,
+        columns: Vec<String>,
     },
     CreateType {
-        name: Vec<Cow<'a, str>>,
-        columns: Vec<ColumnDef<'a>>,
+        name: Vec<String>,
+        columns: Vec<ColumnDef>,
     },
-    CreateSchema(Cow<'a, str>),
+    CreateSchema(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ProceduralStatement<'a> {
-    Declare(Vec<DeclareVar<'a>>),
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ProceduralStatement {
+    Declare(Vec<DeclareVar>),
     DeclareTableVar {
-        name: Cow<'a, str>,
-        columns: Vec<ColumnDef<'a>>,
-        constraints: Vec<TableConstraint<'a>>,
+        name: String,
+        columns: Vec<ColumnDef>,
+        constraints: Vec<TableConstraint>,
     },
     DeclareCursor {
-        name: Cow<'a, str>,
-        query: SelectStmt<'a>,
+        name: String,
+        query: SelectStmt,
     },
     Set {
-        variable: Cow<'a, str>,
-        expr: Expr<'a>,
+        variable: String,
+        expr: Expr,
     },
     If {
-        condition: Expr<'a>,
-        then_stmt: Box<Statement<'a>>,
-        else_stmt: Option<Box<Statement<'a>>>,
+        condition: Expr,
+        then_stmt: Box<Statement>,
+        else_stmt: Option<Box<Statement>>,
     },
-    BeginEnd(Vec<Statement<'a>>),
+    BeginEnd(Vec<Statement>),
     While {
-        condition: Expr<'a>,
-        stmt: Box<Statement<'a>>,
+        condition: Expr,
+        stmt: Box<Statement>,
     },
     Break,
     Continue,
-    Return(Option<Expr<'a>>),
-    Print(Expr<'a>),
+    Return(Option<Expr>),
+    Print(Expr),
     Raiserror {
-        message: Expr<'a>,
-        severity: Expr<'a>,
-        state: Expr<'a>,
+        message: Expr,
+        severity: Expr,
+        state: Expr,
     },
     TryCatch {
-        try_body: Vec<Statement<'a>>,
-        catch_body: Vec<Statement<'a>>,
+        try_body: Vec<Statement>,
+        catch_body: Vec<Statement>,
     },
     ExecDynamic {
-        sql_expr: Expr<'a>,
+        sql_expr: Expr,
     },
     ExecProcedure {
-        name: Vec<Cow<'a, str>>,
-        args: Vec<ExecArg<'a>>,
+        name: Vec<String>,
+        args: Vec<ExecArg>,
     },
     SpExecuteSql {
-        sql_expr: Expr<'a>,
-        params_def: Option<Expr<'a>>,
-        args: Vec<ExecArg<'a>>,
+        sql_expr: Expr,
+        params_def: Option<Expr>,
+        args: Vec<ExecArg>,
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TransactionStatement<'a> {
-    Begin(Option<Cow<'a, str>>),
-    Commit(Option<Cow<'a, str>>),
-    Rollback(Option<Cow<'a, str>>),
-    Save(Cow<'a, str>),
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum TransactionStatement {
+    Begin(Option<String>),
+    Commit(Option<String>),
+    Rollback(Option<String>),
+    Save(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum CursorStatement<'a> {
-    Open(Cow<'a, str>),
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum CursorStatement {
+    Open(String),
     Fetch {
-        name: Cow<'a, str>,
-        direction: FetchDirection<'a>,
-        into_vars: Option<Vec<Cow<'a, str>>>,
+        name: String,
+        direction: FetchDirection,
+        into_vars: Option<Vec<String>>,
     },
-    Close(Cow<'a, str>),
-    Deallocate(Cow<'a, str>),
+    Close(String),
+    Deallocate(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum SessionStatement<'a> {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SessionStatement {
     SetTransactionIsolationLevel(IsolationLevel),
     SetOption { option: SessionOption, value: SessionOptionValue },
     SetIdentityInsert {
-        table: Vec<Cow<'a, str>>,
+        table: Vec<String>,
         on: bool,
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct MergeStmt<'a> {
-    pub target: TableRef<'a>,
-    pub source: TableRef<'a>,
-    pub on_condition: Expr<'a>,
-    pub when_clauses: Vec<MergeWhenClause<'a>>,
-    pub output: Option<Vec<OutputColumn<'a>>>,
-    pub output_into: Option<Vec<Cow<'a, str>>>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct MergeStmt {
+    pub target: TableRef,
+    pub source: TableRef,
+    pub on_condition: Expr,
+    pub when_clauses: Vec<MergeWhenClause>,
+    pub output: Option<Vec<OutputColumn>>,
+    pub output_into: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct MergeWhenClause<'a> {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct MergeWhenClause {
     pub when: MergeWhen,
-    pub condition: Option<Expr<'a>>,
-    pub action: MergeAction<'a>,
+    pub condition: Option<Expr>,
+    pub action: MergeAction,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MergeWhen {
     Matched,
     NotMatched,
     NotMatchedBySource,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum MergeAction<'a> {
-    Update { assignments: Vec<UpdateAssignment<'a>> },
-    Insert { columns: Vec<Cow<'a, str>>, values: Vec<Expr<'a>> },
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MergeAction {
+    Update { assignments: Vec<UpdateAssignment> },
+    Insert { columns: Vec<String>, values: Vec<Expr> },
     Delete,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CteDef<'a> {
-    pub name: Cow<'a, str>,
-    pub columns: Vec<Cow<'a, str>>,
-    pub query: SelectStmt<'a>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct CteDef {
+    pub name: String,
+    pub columns: Vec<String>,
+    pub query: SelectStmt,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct InsertStmt<'a> {
-    pub table: Vec<Cow<'a, str>>,
-    pub columns: Vec<Cow<'a, str>>,
-    pub source: InsertSource<'a>,
-    pub output: Option<Vec<OutputColumn<'a>>>,
-    pub output_into: Option<Vec<Cow<'a, str>>>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct InsertStmt {
+    pub table: Vec<String>,
+    pub columns: Vec<String>,
+    pub source: InsertSource,
+    pub output: Option<Vec<OutputColumn>>,
+    pub output_into: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum InsertSource<'a> {
-    Values(Vec<Vec<Expr<'a>>>),
-    Select(Box<SelectStmt<'a>>),
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum InsertSource {
+    Values(Vec<Vec<Expr>>),
+    Select(Box<SelectStmt>),
     Exec {
-        procedure: Vec<Cow<'a, str>>,
-        args: Vec<Expr<'a>>,
+        procedure: Vec<String>,
+        args: Vec<Expr>,
     },
     DefaultValues,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct UpdateStmt<'a> {
-    pub table: TableRef<'a>,
-    pub assignments: Vec<UpdateAssignment<'a>>,
-    pub top: Option<Expr<'a>>,
-    pub from: Option<Vec<TableRef<'a>>>,
-    pub selection: Option<Expr<'a>>,
-    pub output: Option<Vec<OutputColumn<'a>>>,
-    pub output_into: Option<Vec<Cow<'a, str>>>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct UpdateStmt {
+    pub table: TableRef,
+    pub assignments: Vec<UpdateAssignment>,
+    pub top: Option<Expr>,
+    pub from: Option<Vec<TableRef>>,
+    pub joins: Vec<JoinClause>,
+    pub selection: Option<Expr>,
+    pub output: Option<Vec<OutputColumn>>,
+    pub output_into: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct UpdateAssignment<'a> {
-    pub column: Cow<'a, str>,
-    pub expr: Expr<'a>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct UpdateAssignment {
+    pub column: String,
+    pub expr: Expr,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct DeleteStmt<'a> {
-    pub table: Vec<Cow<'a, str>>,
-    pub top: Option<Expr<'a>>,
-    pub from: Vec<TableRef<'a>>,
-    pub selection: Option<Expr<'a>>,
-    pub output: Option<Vec<OutputColumn<'a>>>,
-    pub output_into: Option<Vec<Cow<'a, str>>>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DeleteStmt {
+    pub table: Vec<String>,
+    pub top: Option<Expr>,
+    pub from: Vec<TableRef>,
+    pub joins: Vec<JoinClause>,
+    pub selection: Option<Expr>,
+    pub output: Option<Vec<OutputColumn>>,
+    pub output_into: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct DeclareVar<'a> {
-    pub name: Cow<'a, str>,
-    pub data_type: DataType<'a>,
-    pub initial_value: Option<Expr<'a>>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DeclareVar {
+    pub name: String,
+    pub data_type: DataType,
+    pub initial_value: Option<Expr>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum CreateStmt<'a> {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum CreateStmt {
     Table {
-        name: Vec<Cow<'a, str>>,
-        columns: Vec<ColumnDef<'a>>,
-        constraints: Vec<TableConstraint<'a>>,
+        name: Vec<String>,
+        columns: Vec<ColumnDef>,
+        constraints: Vec<TableConstraint>,
     },
     View {
-        name: Vec<Cow<'a, str>>,
-        query: SelectStmt<'a>,
+        name: Vec<String>,
+        query: SelectStmt,
     },
     Procedure {
-        name: Vec<Cow<'a, str>>,
-        params: Vec<RoutineParam<'a>>,
-        body: Vec<Statement<'a>>,
+        name: Vec<String>,
+        params: Vec<RoutineParam>,
+        body: Vec<Statement>,
     },
     Function {
-        name: Vec<Cow<'a, str>>,
-        params: Vec<RoutineParam<'a>>,
-        returns: Option<DataType<'a>>,
-        body: FunctionBody<'a>,
+        name: Vec<String>,
+        params: Vec<RoutineParam>,
+        returns: Option<DataType>,
+        body: FunctionBody,
     },
     Trigger {
-        name: Vec<Cow<'a, str>>,
-        table: Vec<Cow<'a, str>>,
+        name: Vec<String>,
+        table: Vec<String>,
         events: Vec<TriggerEvent>,
         is_instead_of: bool,
-        body: Vec<Statement<'a>>,
+        body: Vec<Statement>,
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct RoutineParam<'a> {
-    pub name: Cow<'a, str>,
-    pub data_type: DataType<'a>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct RoutineParam {
+    pub name: String,
+    pub data_type: DataType,
     pub is_output: bool,
     pub is_readonly: bool,
-    pub default: Option<Expr<'a>>,
+    pub default: Option<Expr>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum FunctionBody<'a> {
-    ScalarReturn(Expr<'a>),
-    Block(Vec<Statement<'a>>),
-    Table(SelectStmt<'a>),
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum FunctionBody {
+    ScalarReturn(Expr),
+    Block(Vec<Statement>),
+    Table(SelectStmt),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ColumnDef<'a> {
-    pub name: Cow<'a, str>,
-    pub data_type: DataType<'a>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ColumnDef {
+    pub name: String,
+    pub data_type: DataType,
     pub is_nullable: Option<bool>,
     pub is_identity: bool,
     pub identity_spec: Option<(i64, i64)>,
     pub is_primary_key: bool,
     pub is_unique: bool,
-    pub default_expr: Option<Expr<'a>>,
-    pub default_constraint_name: Option<Cow<'a, str>>,
-    pub check_expr: Option<Expr<'a>>,
-    pub check_constraint_name: Option<Cow<'a, str>>,
-    pub computed_expr: Option<Expr<'a>>,
-    pub foreign_key: Option<ForeignKeyRef<'a>>,
+    pub default_expr: Option<Expr>,
+    pub default_constraint_name: Option<String>,
+    pub check_expr: Option<Expr>,
+    pub check_constraint_name: Option<String>,
+    pub computed_expr: Option<Expr>,
+    pub foreign_key: Option<ForeignKeyRef>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ForeignKeyRef<'a> {
-    pub ref_table: Vec<Cow<'a, str>>,
-    pub ref_columns: Vec<Cow<'a, str>>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ForeignKeyRef {
+    pub ref_table: Vec<String>,
+    pub ref_columns: Vec<String>,
     pub on_delete: Option<ReferentialAction>,
     pub on_update: Option<ReferentialAction>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum AlterTableAction<'a> {
-    AddColumn(ColumnDef<'a>),
-    DropColumn(Cow<'a, str>),
-    AddConstraint(TableConstraint<'a>),
-    DropConstraint(Cow<'a, str>),
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AlterTableAction {
+    AddColumn(ColumnDef),
+    DropColumn(String),
+    AddConstraint(TableConstraint),
+    DropConstraint(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TableConstraint<'a> {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum TableConstraint {
     PrimaryKey {
-        name: Option<Cow<'a, str>>,
-        columns: Vec<Cow<'a, str>>,
+        name: Option<String>,
+        columns: Vec<String>,
     },
     Unique {
-        name: Option<Cow<'a, str>>,
-        columns: Vec<Cow<'a, str>>,
+        name: Option<String>,
+        columns: Vec<String>,
     },
     ForeignKey {
-        name: Option<Cow<'a, str>>,
-        columns: Vec<Cow<'a, str>>,
-        ref_table: Vec<Cow<'a, str>>,
-        ref_columns: Vec<Cow<'a, str>>,
+        name: Option<String>,
+        columns: Vec<String>,
+        ref_table: Vec<String>,
+        ref_columns: Vec<String>,
         on_delete: Option<ReferentialAction>,
         on_update: Option<ReferentialAction>,
     },
     Check {
-        name: Option<Cow<'a, str>>,
-        expr: Expr<'a>,
+        name: Option<String>,
+        expr: Expr,
     },
     Default {
-        name: Option<Cow<'a, str>>,
-        column: Cow<'a, str>,
-        expr: Expr<'a>,
+        name: Option<String>,
+        column: String,
+        expr: Expr,
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ReferentialAction {
     NoAction,
     Cascade,
@@ -355,44 +357,44 @@ pub enum ReferentialAction {
     SetDefault,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum FetchDirection<'a> {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum FetchDirection {
     Next,
     Prior,
     First,
     Last,
-    Absolute(Expr<'a>),
-    Relative(Expr<'a>),
+    Absolute(Expr),
+    Relative(Expr),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SelectAssignTarget<'a> {
-    pub variable: Cow<'a, str>,
-    pub expr: Expr<'a>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SelectAssignTarget {
+    pub variable: String,
+    pub expr: Expr,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ExecArg<'a> {
-    pub name: Option<Cow<'a, str>>,
-    pub expr: Expr<'a>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ExecArg {
+    pub name: Option<String>,
+    pub expr: Expr,
     pub is_output: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct OutputColumn<'a> {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct OutputColumn {
     pub source: OutputSource,
-    pub column: Cow<'a, str>,
-    pub alias: Option<Cow<'a, str>>,
+    pub column: String,
+    pub alias: Option<String>,
     pub is_wildcard: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum OutputSource {
     Inserted,
     Deleted,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum IsolationLevel {
     ReadUncommitted,
     ReadCommitted,
@@ -401,7 +403,7 @@ pub enum IsolationLevel {
     Snapshot,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SessionOption {
     AnsiNulls,
     QuotedIdentifier,
@@ -413,20 +415,20 @@ pub enum SessionOption {
     LockTimeout,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SessionOptionValue {
     Bool(bool),
     Int(i32),
     Text(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum RoutineParamType<'a> {
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum RoutineParamType {
     Scalar(super::super::data_types::DataTypeSpec),
-    TableType(super::super::common::ObjectName<'a>),
+    TableType(super::super::common::ObjectName),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TriggerEvent {
     Insert,
     Update,

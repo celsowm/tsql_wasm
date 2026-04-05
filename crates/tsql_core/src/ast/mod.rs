@@ -16,3 +16,5 @@ pub use statements::{
     SetIdentityInsertStmt, Statement,
     DmlStatement, DdlStatement, ProceduralStatement, TransactionStatement, CursorStatement, SessionStatement,
 };
+
+pub use crate::parser::ast as parser_ast;

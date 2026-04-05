@@ -3,7 +3,7 @@ use crate::parser::token::Keyword;
 use crate::parser::state::Parser;
 use crate::parser::error::{ParseResult, Expected};
 
-pub fn parse_begin_transaction<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+pub fn parse_begin_transaction(parser: &mut Parser) -> ParseResult<Statement> {
     if let Some(Token::Keyword(k)) = parser.peek() {
         if matches!(k, Keyword::Tran | Keyword::Transaction) {
             let _ = parser.next();
@@ -31,7 +31,7 @@ pub fn parse_begin_transaction<'a>(parser: &mut Parser<'a>) -> ParseResult<State
     Ok(Statement::Transaction(TransactionStatement::Begin(name)))
 }
 
-pub fn parse_commit_transaction<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+pub fn parse_commit_transaction(parser: &mut Parser) -> ParseResult<Statement> {
     if let Some(Token::Keyword(k)) = parser.peek() {
         if matches!(k, Keyword::Tran | Keyword::Transaction) {
             let _ = parser.next();
@@ -47,7 +47,7 @@ pub fn parse_commit_transaction<'a>(parser: &mut Parser<'a>) -> ParseResult<Stat
     Ok(Statement::Transaction(TransactionStatement::Commit(name)))
 }
 
-pub fn parse_rollback_transaction<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+pub fn parse_rollback_transaction(parser: &mut Parser) -> ParseResult<Statement> {
     if let Some(Token::Keyword(k)) = parser.peek() {
         if matches!(k, Keyword::Tran | Keyword::Transaction) {
             let _ = parser.next();
@@ -63,7 +63,7 @@ pub fn parse_rollback_transaction<'a>(parser: &mut Parser<'a>) -> ParseResult<St
     Ok(Statement::Transaction(TransactionStatement::Rollback(name)))
 }
 
-pub fn parse_save_transaction<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+pub fn parse_save_transaction(parser: &mut Parser) -> ParseResult<Statement> {
     if let Some(Token::Keyword(k)) = parser.peek() {
         if matches!(k, Keyword::Tran | Keyword::Transaction) {
             let _ = parser.next();

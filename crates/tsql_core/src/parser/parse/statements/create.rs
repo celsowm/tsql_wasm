@@ -2,9 +2,8 @@ use crate::parser::ast::*;
 use crate::parser::token::Keyword;
 use crate::parser::state::Parser;
 use crate::parser::error::{ParseResult, Expected};
-use std::borrow::Cow;
 
-pub fn parse_create_table<'a>(parser: &mut Parser<'a>) -> ParseResult<CreateStmt<'a>> {
+pub fn parse_create_table(parser: &mut Parser) -> ParseResult<CreateStmt> {
     let name = parse_multipart_name(parser)?;
     parser.expect_lparen()?;
     let (columns, constraints) = super::ddl::parse_table_body(parser)?;
@@ -12,14 +11,14 @@ pub fn parse_create_table<'a>(parser: &mut Parser<'a>) -> ParseResult<CreateStmt
     Ok(CreateStmt::Table { name, columns, constraints })
 }
 
-pub fn parse_create_view<'a>(parser: &mut Parser<'a>) -> ParseResult<CreateStmt<'a>> {
+pub fn parse_create_view(parser: &mut Parser) -> ParseResult<CreateStmt> {
     let name = parse_multipart_name(parser)?;
     parser.expect_keyword(Keyword::As)?;
     let query = crate::parser::parse::statements::query::parse_select(parser)?;
     Ok(CreateStmt::View { name, query })
 }
 
-pub fn parse_create_procedure<'a>(parser: &mut Parser<'a>) -> ParseResult<CreateStmt<'a>> {
+pub fn parse_create_procedure(parser: &mut Parser) -> ParseResult<CreateStmt> {
     let name = parse_multipart_name(parser)?;
     let mut params = Vec::new();
     if matches!(parser.peek(), Some(Token::Variable(_))) {
@@ -38,7 +37,7 @@ pub fn parse_create_procedure<'a>(parser: &mut Parser<'a>) -> ParseResult<Create
     Ok(CreateStmt::Procedure { name, params, body })
 }
 
-pub fn parse_create_function<'a>(parser: &mut Parser<'a>) -> ParseResult<CreateStmt<'a>> {
+pub fn parse_create_function(parser: &mut Parser) -> ParseResult<CreateStmt> {
     let name = parse_multipart_name(parser)?;
     let mut params = Vec::new();
     if matches!(parser.peek(), Some(Token::LParen)) {
@@ -88,7 +87,7 @@ pub fn parse_create_function<'a>(parser: &mut Parser<'a>) -> ParseResult<CreateS
     Ok(CreateStmt::Function { name, params, returns, body })
 }
 
-pub fn parse_create_trigger<'a>(parser: &mut Parser<'a>) -> ParseResult<CreateStmt<'a>> {
+pub fn parse_create_trigger(parser: &mut Parser) -> ParseResult<CreateStmt> {
     let name = parse_multipart_name(parser)?;
     parser.expect_keyword(Keyword::On)?;
     let table = parse_multipart_name(parser)?;
@@ -129,6 +128,6 @@ pub fn parse_create_trigger<'a>(parser: &mut Parser<'a>) -> ParseResult<CreateSt
     Ok(CreateStmt::Trigger { name, table, events, is_instead_of, body })
 }
 
-fn parse_multipart_name<'a>(parser: &mut Parser<'a>) -> ParseResult<Vec<Cow<'a, str>>> {
+fn parse_multipart_name(parser: &mut Parser) -> ParseResult<Vec<String>> {
     crate::parser::parse::statements::query::parse_multipart_name(parser)
 }

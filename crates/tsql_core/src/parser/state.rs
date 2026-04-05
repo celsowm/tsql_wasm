@@ -2,28 +2,28 @@ use crate::parser::ast::Token;
 use crate::parser::error::{ParseError, ParseResult, Expected};
 use crate::parser::token::Keyword;
 
-pub struct Parser<'a> {
-    tokens: &'a [Token<'a>],
+pub struct Parser {
+    tokens: Vec<Token>,
     position: usize,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(tokens: &'a [Token<'a>]) -> Self {
+impl Parser {
+    pub fn new(tokens: Vec<Token>) -> Self {
         Self {
             tokens,
             position: 0,
         }
     }
 
-    pub fn peek(&self) -> Option<&'a Token<'a>> {
+    pub fn peek(&self) -> Option<&Token> {
         self.tokens.get(self.position)
     }
 
-    pub fn peek_at(&self, offset: usize) -> Option<&'a Token<'a>> {
+    pub fn peek_at(&self, offset: usize) -> Option<&Token> {
         self.tokens.get(self.position + offset)
     }
 
-    pub fn next(&mut self) -> Option<&'a Token<'a>> {
+    pub fn next(&mut self) -> Option<&Token> {
         let tok = self.tokens.get(self.position)?;
         self.position += 1;
         Some(tok)
@@ -62,7 +62,7 @@ impl<'a> Parser<'a> {
         self.expect_token(&Token::Comma)
     }
 
-    pub fn expect_token(&mut self, expected: &Token<'a>) -> ParseResult<()> {
+    pub fn expect_token(&mut self, expected: &Token) -> ParseResult<()> {
         let pos = self.position;
         match self.next() {
             Some(tok) if tokens_equal(tok, expected) => Ok(()),

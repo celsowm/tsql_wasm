@@ -2,11 +2,10 @@ use crate::parser::ast::*;
 use crate::parser::token::Keyword;
 use crate::parser::state::Parser;
 use crate::parser::error::{ParseResult, Expected};
-use std::borrow::Cow;
 
 pub use super::create::{parse_create_table, parse_create_view, parse_create_procedure, parse_create_function, parse_create_trigger};
 
-pub fn parse_create<'a>(parser: &mut Parser<'a>) -> ParseResult<CreateStmt<'a>> {
+pub fn parse_create(parser: &mut Parser) -> ParseResult<CreateStmt> {
     if parser.at_keyword(Keyword::Table) {
         let _ = parser.next();
         parse_create_table(parser)
@@ -27,11 +26,11 @@ pub fn parse_create<'a>(parser: &mut Parser<'a>) -> ParseResult<CreateStmt<'a>> 
     }
 }
 
-pub fn parse_column_def<'a>(parser: &mut Parser<'a>) -> ParseResult<ColumnDef<'a>> {
+pub fn parse_column_def(parser: &mut Parser) -> ParseResult<ColumnDef> {
     let name = if let Some(tok) = parser.next() {
         match tok {
             Token::Identifier(id) => id.clone(),
-            Token::Keyword(k) => Cow::Owned(k.as_ref().to_string()),
+            Token::Keyword(k) => k.as_ref().to_string(),
             _ => return parser.backtrack(Expected::Description("column name")),
         }
     } else {
@@ -98,7 +97,7 @@ pub fn parse_column_def<'a>(parser: &mut Parser<'a>) -> ParseResult<ColumnDef<'a
                 let _ = parser.next();
                 let constraint_name = match parser.next() {
                     Some(Token::Identifier(id)) => id.clone(),
-                    Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
+                    Some(Token::Keyword(kw)) => kw.as_ref().to_string(),
                     _ => return parser.backtrack(Expected::Description("constraint name")),
                 };
                 match parser.next() {
@@ -124,7 +123,7 @@ pub fn parse_column_def<'a>(parser: &mut Parser<'a>) -> ParseResult<ColumnDef<'a
                     ref_columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
                         match p.next() {
                             Some(Token::Identifier(id)) => Ok(id.clone()),
-                            Some(Token::Keyword(kw)) => Ok(Cow::Owned(kw.as_ref().to_string())),
+                            Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
                             _ => p.backtrack(Expected::Description("column name")),
                         }
                     })?;
@@ -162,7 +161,7 @@ pub fn parse_column_def<'a>(parser: &mut Parser<'a>) -> ParseResult<ColumnDef<'a
     })
 }
 
-pub fn parse_table_body<'a>(parser: &mut Parser<'a>) -> ParseResult<(Vec<ColumnDef<'a>>, Vec<TableConstraint<'a>>)> {
+pub fn parse_table_body(parser: &mut Parser) -> ParseResult<(Vec<ColumnDef>, Vec<TableConstraint>)> {
     let mut columns = Vec::new();
     let mut constraints = Vec::new();
 
@@ -190,13 +189,13 @@ pub fn parse_table_body<'a>(parser: &mut Parser<'a>) -> ParseResult<(Vec<ColumnD
     Ok((columns, constraints))
 }
 
-pub fn parse_table_constraint<'a>(parser: &mut Parser<'a>) -> ParseResult<TableConstraint<'a>> {
+pub fn parse_table_constraint(parser: &mut Parser) -> ParseResult<TableConstraint> {
     let mut name = None;
     if matches!(parser.peek(), Some(Token::Keyword(Keyword::Constraint))) {
         let _ = parser.next();
         name = Some(match parser.next() {
             Some(Token::Identifier(id)) => id.clone(),
-            Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
+            Some(Token::Keyword(kw)) => kw.as_ref().to_string(),
             _ => return parser.backtrack(Expected::Description("constraint name")),
         });
     }
@@ -213,7 +212,7 @@ pub fn parse_table_constraint<'a>(parser: &mut Parser<'a>) -> ParseResult<TableC
             let columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
                 match p.next() {
                     Some(Token::Identifier(id)) => Ok(id.clone()),
-                    Some(Token::Keyword(kw)) => Ok(Cow::Owned(kw.as_ref().to_string())),
+                    Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
                     _ => p.backtrack(Expected::Description("column name")),
                 }
             })?;
@@ -225,7 +224,7 @@ pub fn parse_table_constraint<'a>(parser: &mut Parser<'a>) -> ParseResult<TableC
             let columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
                 match p.next() {
                     Some(Token::Identifier(id)) => Ok(id.clone()),
-                    Some(Token::Keyword(kw)) => Ok(Cow::Owned(kw.as_ref().to_string())),
+                    Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
                     _ => p.backtrack(Expected::Description("column name")),
                 }
             })?;
@@ -238,7 +237,7 @@ pub fn parse_table_constraint<'a>(parser: &mut Parser<'a>) -> ParseResult<TableC
             let columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
                 match p.next() {
                     Some(Token::Identifier(id)) => Ok(id.clone()),
-                    Some(Token::Keyword(kw)) => Ok(Cow::Owned(kw.as_ref().to_string())),
+                    Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
                     _ => p.backtrack(Expected::Description("column name")),
                 }
             })?;
@@ -251,7 +250,7 @@ pub fn parse_table_constraint<'a>(parser: &mut Parser<'a>) -> ParseResult<TableC
                 ref_columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
                     match p.next() {
                         Some(Token::Identifier(id)) => Ok(id.clone()),
-                        Some(Token::Keyword(kw)) => Ok(Cow::Owned(kw.as_ref().to_string())),
+                        Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
                         _ => p.backtrack(Expected::Description("column name")),
                     }
                 })?;
@@ -297,7 +296,7 @@ pub fn parse_table_constraint<'a>(parser: &mut Parser<'a>) -> ParseResult<TableC
             parser.expect_keyword(Keyword::For)?;
             let column = match parser.next() {
                 Some(Token::Identifier(id)) => id.clone(),
-                Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
+                Some(Token::Keyword(kw)) => kw.as_ref().to_string(),
                 _ => return parser.backtrack(Expected::Description("column name")),
             };
             Ok(TableConstraint::Default { name, column, expr })
@@ -306,7 +305,7 @@ pub fn parse_table_constraint<'a>(parser: &mut Parser<'a>) -> ParseResult<TableC
     }
 }
 
-pub fn parse_create_index<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+pub fn parse_create_index(parser: &mut Parser) -> ParseResult<Statement> {
     let name = parse_multipart_name(parser)?;
     parser.expect_keyword(Keyword::On)?;
     let table = parse_multipart_name(parser)?;
@@ -314,7 +313,7 @@ pub fn parse_create_index<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<
     let columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
         match p.next() {
             Some(Token::Identifier(id)) => Ok(id.clone()),
-            Some(Token::Keyword(kw)) => Ok(Cow::Owned(kw.as_ref().to_string())),
+            Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
             _ => p.backtrack(Expected::Description("column name")),
         }
     })?;
@@ -322,7 +321,7 @@ pub fn parse_create_index<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<
     Ok(Statement::Ddl(DdlStatement::CreateIndex { name, table, columns }))
 }
 
-pub fn parse_create_type<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+pub fn parse_create_type(parser: &mut Parser) -> ParseResult<Statement> {
     let name = parse_multipart_name(parser)?;
     parser.expect_keyword(Keyword::As)?;
     parser.expect_keyword(Keyword::Table)?;
@@ -332,16 +331,16 @@ pub fn parse_create_type<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'
     Ok(Statement::Ddl(DdlStatement::CreateType { name, columns }))
 }
 
-pub fn parse_create_schema<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+pub fn parse_create_schema(parser: &mut Parser) -> ParseResult<Statement> {
     let name = match parser.next() {
         Some(Token::Identifier(id)) => id.clone(),
-        Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
+        Some(Token::Keyword(kw)) => kw.as_ref().to_string(),
         _ => return parser.backtrack(Expected::Description("schema name")),
     };
     Ok(Statement::Ddl(DdlStatement::CreateSchema(name)))
 }
 
-fn parse_referential_action<'a>(parser: &mut Parser<'a>) -> ParseResult<ReferentialAction> {
+fn parse_referential_action(parser: &mut Parser) -> ParseResult<ReferentialAction> {
     match parser.next() {
         Some(Token::Keyword(k)) => match *k {
             Keyword::No => {
@@ -366,14 +365,14 @@ fn parse_referential_action<'a>(parser: &mut Parser<'a>) -> ParseResult<Referent
     }
 }
 
-fn parse_multipart_name<'a>(parser: &mut Parser<'a>) -> ParseResult<Vec<Cow<'a, str>>> {
+fn parse_multipart_name(parser: &mut Parser) -> ParseResult<Vec<String>> {
     crate::parser::parse::statements::query::parse_multipart_name(parser)
 }
 
-pub fn parse_alter_table_add_constraint<'a>(parser: &mut Parser<'a>) -> ParseResult<TableConstraint<'a>> {
+pub fn parse_alter_table_add_constraint(parser: &mut Parser) -> ParseResult<TableConstraint> {
     let constraint_name = match parser.next() {
         Some(Token::Identifier(id)) => id.clone(),
-        Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
+        Some(Token::Keyword(kw)) => kw.as_ref().to_string(),
         _ => return parser.backtrack(Expected::Description("constraint name")),
     };
     let constraint = if parser.at_keyword(Keyword::Primary) {
@@ -383,7 +382,7 @@ pub fn parse_alter_table_add_constraint<'a>(parser: &mut Parser<'a>) -> ParseRes
         let columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
             match p.next() {
                 Some(Token::Identifier(id)) => Ok(id.clone()),
-                Some(Token::Keyword(kw)) => Ok(Cow::Owned(kw.as_ref().to_string())),
+                Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
                 _ => p.backtrack(Expected::Description("column name")),
             }
         })?;
@@ -399,7 +398,7 @@ pub fn parse_alter_table_add_constraint<'a>(parser: &mut Parser<'a>) -> ParseRes
         let columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
             match p.next() {
                 Some(Token::Identifier(id)) => Ok(id.clone()),
-                Some(Token::Keyword(kw)) => Ok(Cow::Owned(kw.as_ref().to_string())),
+                Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
                 _ => p.backtrack(Expected::Description("column name")),
             }
         })?;
@@ -412,7 +411,7 @@ pub fn parse_alter_table_add_constraint<'a>(parser: &mut Parser<'a>) -> ParseRes
             ref_columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
                 match p.next() {
                     Some(Token::Identifier(id)) => Ok(id.clone()),
-                    Some(Token::Keyword(kw)) => Ok(Cow::Owned(kw.as_ref().to_string())),
+                    Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
                     _ => p.backtrack(Expected::Description("column name")),
                 }
             })?;
@@ -457,7 +456,7 @@ pub fn parse_alter_table_add_constraint<'a>(parser: &mut Parser<'a>) -> ParseRes
         let columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
             match p.next() {
                 Some(Token::Identifier(id)) => Ok(id.clone()),
-                Some(Token::Keyword(kw)) => Ok(Cow::Owned(kw.as_ref().to_string())),
+                Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
                 _ => p.backtrack(Expected::Description("column name")),
             }
         })?;

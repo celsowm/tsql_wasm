@@ -2,13 +2,12 @@ use crate::parser::ast::*;
 use crate::parser::state::Parser;
 use crate::parser::error::{ParseResult, Expected};
 use crate::parser::token::Keyword;
-use std::borrow::Cow;
 
-pub fn parse_expr<'a>(parser: &mut Parser<'a>) -> ParseResult<Expr<'a>> {
+pub fn parse_expr(parser: &mut Parser) -> ParseResult<Expr> {
     parse_pratt_expr(parser, 0)
 }
 
-fn parse_pratt_expr<'a>(parser: &mut Parser<'a>, min_bp: u8) -> ParseResult<Expr<'a>> {
+fn parse_pratt_expr(parser: &mut Parser, min_bp: u8) -> ParseResult<Expr> {
     let mut left = parse_primary(parser)?;
 
     loop {
@@ -182,7 +181,7 @@ fn postfix_binding_power(_op: &Keyword) -> (u8, ()) {
     (11, ())
 }
 
-pub fn parse_primary<'a>(parser: &mut Parser<'a>) -> ParseResult<Expr<'a>> {
+pub fn parse_primary(parser: &mut Parser) -> ParseResult<Expr> {
     match parser.peek() {
         Some(Token::Number { value: n, is_float }) => {
              let n = *n;
@@ -270,22 +269,22 @@ pub fn parse_primary<'a>(parser: &mut Parser<'a>) -> ParseResult<Expr<'a>> {
              }
         }
         Some(Token::Keyword(k)) if matches!(parser.peek_at(1), Some(Token::LParen)) => {
-            let name = Cow::Borrowed(k.as_ref());
+            let name = k.as_ref().to_string();
             let _ = parser.next();
             parse_identifier_or_function(parser, name)
         }
-        Some(Token::Operator(op)) if op.as_ref() == "-" => {
+        Some(Token::Operator(op)) if *op == "-" => {
              let _ = parser.next();
              let expr = parse_pratt_expr(parser, 12)?;
              Ok(Expr::Unary { op: UnaryOp::Negate, expr: Box::new(expr) })
         }
         Some(Token::Keyword(k)) if matches!(parser.peek_at(1), Some(Token::LParen) | Some(Token::Dot)) => {
-            let name = Cow::Borrowed(k.as_ref());
+            let name = k.as_ref().to_string();
             let _ = parser.next();
             parse_identifier_or_function(parser, name)
         }
         Some(Token::Keyword(k)) => {
-            let name = Cow::Borrowed(k.as_ref());
+            let name = k.as_ref().to_string();
             let _ = parser.next();
             Ok(Expr::Identifier(name))
         }
@@ -315,7 +314,7 @@ pub fn parse_primary<'a>(parser: &mut Parser<'a>) -> ParseResult<Expr<'a>> {
     }
 }
 
-pub fn parse_case<'a>(parser: &mut Parser<'a>) -> ParseResult<Expr<'a>> {
+pub fn parse_case(parser: &mut Parser) -> ParseResult<Expr> {
     let mut operand = None;
     if !parser.at_keyword(Keyword::When) {
         operand = Some(Box::new(parse_expr(parser)?));
@@ -340,7 +339,7 @@ pub fn parse_case<'a>(parser: &mut Parser<'a>) -> ParseResult<Expr<'a>> {
     Ok(Expr::Case { operand, when_clauses, else_result })
 }
 
-pub fn parse_cast<'a>(parser: &mut Parser<'a>) -> ParseResult<Expr<'a>> {
+pub fn parse_cast(parser: &mut Parser) -> ParseResult<Expr> {
     parser.expect_lparen()?;
     let expr = parse_expr(parser)?;
     parser.expect_keyword(Keyword::As)?;
@@ -349,7 +348,7 @@ pub fn parse_cast<'a>(parser: &mut Parser<'a>) -> ParseResult<Expr<'a>> {
     Ok(Expr::Cast { expr: Box::new(expr), target })
 }
 
-pub fn parse_convert<'a>(parser: &mut Parser<'a>) -> ParseResult<Expr<'a>> {
+pub fn parse_convert(parser: &mut Parser) -> ParseResult<Expr> {
     parser.expect_lparen()?;
     let target = parse_data_type(parser)?;
     parser.expect_comma()?;
@@ -367,7 +366,7 @@ pub fn parse_convert<'a>(parser: &mut Parser<'a>) -> ParseResult<Expr<'a>> {
     Ok(Expr::Convert { target, expr: Box::new(expr), style })
 }
 
-pub fn parse_try_cast<'a>(parser: &mut Parser<'a>) -> ParseResult<Expr<'a>> {
+pub fn parse_try_cast(parser: &mut Parser) -> ParseResult<Expr> {
     parser.expect_lparen()?;
     let expr = parse_expr(parser)?;
     parser.expect_keyword(Keyword::As)?;
@@ -376,7 +375,7 @@ pub fn parse_try_cast<'a>(parser: &mut Parser<'a>) -> ParseResult<Expr<'a>> {
     Ok(Expr::TryCast { expr: Box::new(expr), target })
 }
 
-pub fn parse_try_convert<'a>(parser: &mut Parser<'a>) -> ParseResult<Expr<'a>> {
+pub fn parse_try_convert(parser: &mut Parser) -> ParseResult<Expr> {
     parser.expect_lparen()?;
     let target = parse_data_type(parser)?;
     parser.expect_comma()?;
@@ -394,14 +393,14 @@ pub fn parse_try_convert<'a>(parser: &mut Parser<'a>) -> ParseResult<Expr<'a>> {
     Ok(Expr::TryConvert { target, expr: Box::new(expr), style })
 }
 
-fn parse_identifier_or_function<'a>(parser: &mut Parser<'a>, name: Cow<'a, str>) -> ParseResult<Expr<'a>> {
+fn parse_identifier_or_function(parser: &mut Parser, name: String) -> ParseResult<Expr> {
     let mut parts = vec![name];
     while matches!(parser.peek(), Some(Token::Dot)) {
         let _ = parser.next();
         if let Some(tok) = parser.next() {
             match tok {
                 Token::Identifier(next_id) => parts.push(next_id.clone()),
-                Token::Keyword(k) => parts.push(Cow::Borrowed(k.as_ref())),
+                Token::Keyword(k) => parts.push(k.as_ref().to_string()),
                 Token::Star => {
                     return Ok(Expr::QualifiedWildcard(parts));
                 }
@@ -426,14 +425,14 @@ fn parse_identifier_or_function<'a>(parser: &mut Parser<'a>, name: Cow<'a, str>)
         let function_name = if parts.len() == 1 {
             parts.remove(0)
         } else {
-            Cow::Owned(parts.iter().map(|p| p.as_ref()).collect::<Vec<_>>().join("."))
+            parts.iter().map(|p| p.as_ref()).collect::<Vec<_>>().join(".")
         };
         if parser.at_keyword(Keyword::Over) {
             return parse_window_over(parser, function_name, args);
         }
         Ok(Expr::FunctionCall { name: function_name, args })
     } else if parts.len() == 1 {
-        let upper = parts[0].as_ref().to_uppercase();
+        let upper = parts[0].to_uppercase();
         if matches!(upper.as_str(), "CURRENT_TIMESTAMP" | "CURRENT_DATE" | "GETDATE") {
             Ok(Expr::FunctionCall { name: parts.remove(0), args: vec![] })
         } else {
@@ -446,11 +445,11 @@ fn parse_identifier_or_function<'a>(parser: &mut Parser<'a>, name: Cow<'a, str>)
     }
 }
 
-fn parse_window_over<'a>(
-    parser: &mut Parser<'a>,
-    name: Cow<'a, str>,
-    args: Vec<Expr<'a>>,
-) -> ParseResult<Expr<'a>> {
+fn parse_window_over(
+    parser: &mut Parser,
+    name: String,
+    args: Vec<Expr>,
+) -> ParseResult<Expr> {
     parser.expect_keyword(Keyword::Over)?;
     parser.expect_lparen()?;
 
@@ -524,7 +523,7 @@ fn parse_window_over<'a>(
     Ok(Expr::WindowFunction { name, args, partition_by, order_by, frame })
 }
 
-fn parse_window_frame_bound<'a>(parser: &mut Parser<'a>) -> ParseResult<WindowFrameBound> {
+fn parse_window_frame_bound(parser: &mut Parser) -> ParseResult<WindowFrameBound> {
     if parser.at_keyword(Keyword::Unbounded) {
         let _ = parser.next();
         if parser.at_keyword(Keyword::Preceding) {
@@ -557,8 +556,8 @@ fn parse_window_frame_bound<'a>(parser: &mut Parser<'a>) -> ParseResult<WindowFr
     parser.backtrack(Expected::Description("window frame bound"))
 }
 
-pub fn parse_comma_list<'a, P, R>(parser: &mut Parser<'a>, mut parser_fn: P) -> ParseResult<Vec<R>>
-where P: FnMut(&mut Parser<'a>) -> ParseResult<R>
+pub fn parse_comma_list<P, R>(parser: &mut Parser, mut parser_fn: P) -> ParseResult<Vec<R>>
+where P: FnMut(&mut Parser) -> ParseResult<R>
 {
     let mut results = Vec::new();
     results.push(parser_fn(parser)?);
@@ -588,7 +587,7 @@ pub fn is_stop_keyword(k: &str) -> bool {
     )).unwrap_or(false)
 }
 
-pub fn parse_data_type<'a>(parser: &mut Parser<'a>) -> ParseResult<DataType<'a>> {
+pub fn parse_data_type(parser: &mut Parser) -> ParseResult<DataType> {
     match parser.next() {
         Some(Token::Identifier(id)) => {
             let upper = id.to_uppercase();
@@ -698,11 +697,11 @@ pub fn parse_data_type<'a>(parser: &mut Parser<'a>) -> ParseResult<DataType<'a>>
                         let _ = parser.next();
                         match parser.next() {
                             Some(Token::Identifier(next_id)) => parts.push(next_id.clone()),
-                            Some(Token::Keyword(k)) => parts.push(Cow::Borrowed(k.as_ref())),
+                            Some(Token::Keyword(k)) => parts.push(k.as_ref().to_string()),
                             _ => return parser.backtrack(Expected::Description("identifier")),
                         }
                     }
-                    Ok(DataType::Custom(Cow::Owned(parts.iter().map(|p| p.as_ref()).collect::<Vec<_>>().join("."))))
+                    Ok(DataType::Custom(parts.iter().map(|p| p.as_ref()).collect::<Vec<_>>().join(".")))
                 }
             }
         }
@@ -716,6 +715,7 @@ pub fn parse_data_type<'a>(parser: &mut Parser<'a>) -> ParseResult<DataType<'a>>
                 Keyword::Float => Ok(DataType::Float),
                 Keyword::Real => Ok(DataType::Real),
                 Keyword::Decimal | Keyword::Numeric => {
+                    let is_decimal = matches!(kw, Keyword::Decimal);
                     let mut p = 18;
                     let mut s = 0;
                     if matches!(parser.peek(), Some(Token::LParen)) {
@@ -731,11 +731,7 @@ pub fn parse_data_type<'a>(parser: &mut Parser<'a>) -> ParseResult<DataType<'a>>
                         }
                         parser.expect_rparen()?;
                     }
-                    match kw {
-                        Keyword::Decimal => Ok(DataType::Decimal(p, s)),
-                        Keyword::Numeric => Ok(DataType::Numeric(p, s)),
-                        _ => unreachable!(),
-                    }
+                    if is_decimal { Ok(DataType::Decimal(p, s)) } else { Ok(DataType::Numeric(p, s)) }
                 }
                 Keyword::Char => {
                     let mut size = None;
@@ -811,7 +807,7 @@ pub fn parse_data_type<'a>(parser: &mut Parser<'a>) -> ParseResult<DataType<'a>>
                 Keyword::DateTime => Ok(DataType::DateTime),
                 Keyword::DateTime2 => Ok(DataType::DateTime2),
                 Keyword::Time => Ok(DataType::Time),
-                _ => Ok(DataType::Custom(Cow::Borrowed(kw.as_ref()))),
+                _ => Ok(DataType::Custom(kw.as_ref().to_string())),
             }
         }
         _ => parser.backtrack(Expected::Description("data type")),

@@ -6,7 +6,6 @@ use crate::parser::parse::expressions::parse_expr;
 use crate::parser::state::Parser;
 use crate::parser::error::{ParseResult, Expected};
 use crate::parser::token::Keyword;
-use std::borrow::Cow;
 
 pub use crate::parser::parse::expressions::{parse_data_type, parse_comma_list};
 pub use crate::parser::parse::statements::query::{parse_select, parse_multipart_name as multipart_name};
@@ -16,7 +15,7 @@ pub use crate::parser::parse::statements::ddl::{parse_create, parse_table_body, 
 pub use crate::parser::parse::statements::drop::parse_drop;
 pub use crate::parser::parse::statements::alter::parse_alter;
 
-pub fn parse_batch<'a>(parser: &mut Parser<'a>) -> ParseResult<Vec<Statement<'a>>> {
+pub fn parse_batch(parser: &mut Parser) -> ParseResult<Vec<Statement>> {
     let mut statements = Vec::new();
     while !parser.is_empty() {
         while matches!(parser.peek(), Some(Token::Semicolon)) {
@@ -32,7 +31,7 @@ pub fn parse_batch<'a>(parser: &mut Parser<'a>) -> ParseResult<Vec<Statement<'a>
     Ok(statements)
 }
 
-pub fn parse_statement<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+pub fn parse_statement(parser: &mut Parser) -> ParseResult<Statement> {
     if parser.at_keyword(Keyword::With) {
         let _ = parser.next();
         let ctes = parse_comma_list(parser, parse_cte_def)?;
@@ -192,7 +191,7 @@ pub fn parse_statement<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>
     }
 }
 
-fn parse_declare_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+fn parse_declare_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
     if let Some(Token::Variable(var_name)) = parser.peek() {
         let var_name = var_name.clone();
         if parser.peek_at(1).map(|t| matches!(t, Token::Keyword(Keyword::Table))).unwrap_or(false) {
@@ -217,7 +216,7 @@ fn parse_declare_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<
     Ok(Statement::Procedural(ProceduralStatement::Declare(parse_declare(parser)?)))
 }
 
-fn parse_set_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
     if parser.at_keyword(Keyword::Transaction) {
         let _ = parser.next();
         parser.expect_keyword(Keyword::Isolation)?; 
@@ -255,7 +254,7 @@ fn parse_set_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>>
         return Ok(Statement::Session(SessionStatement::SetIdentityInsert { table, on }));
     }
 
-    fn matches_set_name<'a>(tok: Option<&Token<'a>>, expected: &str) -> bool {
+    fn matches_set_name(tok: Option<&Token>, expected: &str) -> bool {
         match tok {
             Some(Token::Identifier(id)) => id.eq_ignore_ascii_case(expected),
             Some(Token::Keyword(k)) => k.as_ref().eq_ignore_ascii_case(expected),
@@ -263,7 +262,7 @@ fn parse_set_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>>
         }
     }
 
-    fn parse_bool_setting<'a>(parser: &mut Parser<'a>, option: crate::parser::ast::SessionOption) -> ParseResult<Statement<'a>> {
+    fn parse_bool_setting(parser: &mut Parser, option: crate::parser::ast::SessionOption) -> ParseResult<Statement> {
         let _ = parser.next();
         let val = match parser.next() {
             Some(Token::Keyword(k)) if *k == Keyword::On => true,
@@ -278,11 +277,11 @@ fn parse_set_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>>
         }))
     }
 
-    fn parse_text_setting<'a>(parser: &mut Parser<'a>, option: crate::parser::ast::SessionOption) -> ParseResult<Statement<'a>> {
+    fn parse_text_setting(parser: &mut Parser, option: crate::parser::ast::SessionOption) -> ParseResult<Statement> {
         let _ = parser.next();
         let text = match parser.next() {
-            Some(Token::String(s)) => s.clone().into_owned(),
-            Some(Token::Identifier(id)) => id.clone().into_owned(),
+            Some(Token::String(s)) => s.clone(),
+            Some(Token::Identifier(id)) => id.clone(),
             Some(Token::Keyword(k)) => k.as_ref().to_string(),
             _ => return parser.backtrack(Expected::Description("text")),
         };
@@ -337,7 +336,7 @@ fn parse_set_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>>
     Ok(parse_set(parser)?)
 }
 
-fn parse_begin_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a>> {
+fn parse_begin_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
     if parser.at_keyword(Keyword::Distributed) {
         let _ = parser.next();
     }
@@ -353,11 +352,11 @@ fn parse_begin_dispatch<'a>(parser: &mut Parser<'a>) -> ParseResult<Statement<'a
     parse_begin_end(parser)
 }
 
-fn parse_cte_def<'a>(parser: &mut Parser<'a>) -> ParseResult<CteDef<'a>> {
+fn parse_cte_def(parser: &mut Parser) -> ParseResult<CteDef> {
     let name = if let Some(tok) = parser.next() {
         match tok {
             Token::Identifier(id) => id.clone(),
-            Token::Keyword(k) => Cow::Owned(k.as_ref().to_string()),
+            Token::Keyword(k) => k.as_ref().to_string(),
             _ => return parser.backtrack(Expected::Description("identifier or keyword")),
         }
     } else {
@@ -371,7 +370,7 @@ fn parse_cte_def<'a>(parser: &mut Parser<'a>) -> ParseResult<CteDef<'a>> {
             if let Some(tok) = p.next() {
                 match tok {
                     Token::Identifier(id) => Ok(id.clone()),
-                    Token::Keyword(k) => Ok(Cow::Owned(k.as_ref().to_string())),
+                    Token::Keyword(k) => Ok(k.as_ref().to_string()),
                     _ => p.backtrack(Expected::Description("column name")),
                 }
             } else {
@@ -389,7 +388,7 @@ fn parse_cte_def<'a>(parser: &mut Parser<'a>) -> ParseResult<CteDef<'a>> {
     Ok(CteDef { name, columns, query })
 }
 
-pub fn parse_routine_param<'a>(parser: &mut Parser<'a>) -> ParseResult<RoutineParam<'a>> {
+pub fn parse_routine_param(parser: &mut Parser) -> ParseResult<RoutineParam> {
     let name = if let Some(tok) = parser.next() {
         match tok {
             Token::Variable(v) => v.clone(),
@@ -410,7 +409,7 @@ pub fn parse_routine_param<'a>(parser: &mut Parser<'a>) -> ParseResult<RoutinePa
             Some(Token::Identifier(id)) if id.eq_ignore_ascii_case("READONLY") => {
                 is_readonly = true;
             }
-            Some(Token::Keyword(k)) if k.as_ref().eq_ignore_ascii_case("READONLY") => {
+            Some(Token::Keyword(k)) if k.as_sql().eq_ignore_ascii_case("READONLY") => {
                 is_readonly = true;
             }
             _ => return parser.backtrack(Expected::Description("READONLY")),
@@ -418,7 +417,7 @@ pub fn parse_routine_param<'a>(parser: &mut Parser<'a>) -> ParseResult<RoutinePa
     }
     let mut default = None;
     if let Some(Token::Operator(op)) = parser.peek() {
-        if op.as_ref() == "=" {
+        if *op == "=" {
             let _ = parser.next();
             default = Some(parse_expr(parser)?);
         }
@@ -426,7 +425,7 @@ pub fn parse_routine_param<'a>(parser: &mut Parser<'a>) -> ParseResult<RoutinePa
     Ok(RoutineParam { name, data_type, is_output, is_readonly, default })
 }
 
-fn try_select_assign<'a>(select: &SelectStmt<'a>) -> Option<Vec<SelectAssignTarget<'a>>> {
+fn try_select_assign(select: &SelectStmt) -> Option<Vec<SelectAssignTarget>> {
     let mut assigns = Vec::new();
     for item in &select.projection {
         if let Expr::Binary { left, op: BinaryOp::Eq, right } = &item.expr {

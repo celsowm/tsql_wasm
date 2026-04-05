@@ -2,14 +2,13 @@ use crate::parser::ast::*;
 use crate::parser::token::Keyword;
 use crate::parser::state::Parser;
 use crate::parser::error::{ParseResult, Expected};
-use std::borrow::Cow;
 
-pub fn parse_select<'a>(parser: &mut Parser<'a>) -> ParseResult<SelectStmt<'a>> {
+pub fn parse_select(parser: &mut Parser) -> ParseResult<SelectStmt> {
     parser.expect_keyword(Keyword::Select)?;
     parse_select_body(parser)
 }
 
-pub fn parse_select_body<'a>(parser: &mut Parser<'a>) -> ParseResult<SelectStmt<'a>> {
+pub fn parse_select_body(parser: &mut Parser) -> ParseResult<SelectStmt> {
     let mut current = parse_single_select_body(parser)?;
 
     loop {
@@ -49,12 +48,12 @@ pub fn parse_select_body<'a>(parser: &mut Parser<'a>) -> ParseResult<SelectStmt<
     Ok(current)
 }
 
-fn parse_single_select<'a>(parser: &mut Parser<'a>) -> ParseResult<SelectStmt<'a>> {
+fn parse_single_select(parser: &mut Parser) -> ParseResult<SelectStmt> {
     parser.expect_keyword(Keyword::Select)?;
     parse_single_select_body(parser)
 }
 
-pub fn parse_single_select_body<'a>(parser: &mut Parser<'a>) -> ParseResult<SelectStmt<'a>> {
+pub fn parse_single_select_body(parser: &mut Parser) -> ParseResult<SelectStmt> {
     let mut distinct = false;
     if let Some(Token::Keyword(Keyword::Distinct)) = parser.peek() {
         let _ = parser.next();
@@ -200,7 +199,7 @@ pub fn parse_single_select_body<'a>(parser: &mut Parser<'a>) -> ParseResult<Sele
     })
 }
 
-fn parse_projection<'a>(parser: &mut Parser<'a>) -> ParseResult<Vec<SelectItem<'a>>> {
+fn parse_projection(parser: &mut Parser) -> ParseResult<Vec<SelectItem>> {
     let mut items = Vec::new();
     loop {
         items.push(parse_select_item(parser)?);
@@ -218,7 +217,7 @@ fn parse_projection<'a>(parser: &mut Parser<'a>) -> ParseResult<Vec<SelectItem<'
     Ok(items)
 }
 
-pub fn parse_table_ref<'a>(parser: &mut Parser<'a>) -> ParseResult<TableRef<'a>> {
+pub fn parse_table_ref(parser: &mut Parser) -> ParseResult<TableRef> {
     let (factor, alias, hints) = match parser.peek() {
         Some(Token::LParen) => {
             let _ = parser.next();
@@ -241,7 +240,7 @@ pub fn parse_table_ref<'a>(parser: &mut Parser<'a>) -> ParseResult<TableRef<'a>>
                     columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
                         match p.next() {
                             Some(Token::Identifier(id)) => Ok(id.clone()),
-                            Some(Token::Keyword(kw)) => Ok(Cow::Owned(kw.as_ref().to_string())),
+                            Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
                             _ => p.backtrack(Expected::Description("column name")),
                         }
                     })?;
@@ -297,7 +296,7 @@ pub fn parse_table_ref<'a>(parser: &mut Parser<'a>) -> ParseResult<TableRef<'a>>
                         if let Some(tok) = p.next() {
                             match tok {
                                 Token::Identifier(id) => Ok(id.clone()),
-                                Token::Keyword(kw) => Ok(Cow::Owned(kw.as_ref().to_string())),
+                                Token::Keyword(kw) => Ok(kw.as_ref().to_string()),
                                 _ => p.backtrack(Expected::Description("identifier")),
                             }
                         } else {
@@ -333,20 +332,20 @@ pub fn parse_table_ref<'a>(parser: &mut Parser<'a>) -> ParseResult<TableRef<'a>>
                 parser.expect_lparen()?;
                 let aggregate_func = match parser.next() {
                     Some(Token::Identifier(id)) => id.clone(),
-                    Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
+                    Some(Token::Keyword(kw)) => kw.as_ref().to_string(),
                     _ => return parser.backtrack(Expected::Description("identifier")),
                 };
                 parser.expect_lparen()?;
                 let aggregate_col = match parser.next() {
                     Some(Token::Identifier(id)) => id.clone(),
-                    Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
+                    Some(Token::Keyword(kw)) => kw.as_ref().to_string(),
                     _ => return parser.backtrack(Expected::Description("identifier")),
                 };
                 parser.expect_rparen()?;
                 parser.expect_keyword(Keyword::For)?;
                 let pivot_col = match parser.next() {
                     Some(Token::Identifier(id)) => id.clone(),
-                    Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
+                    Some(Token::Keyword(kw)) => kw.as_ref().to_string(),
                     _ => return parser.backtrack(Expected::Description("identifier")),
                 };
                 parser.expect_keyword(Keyword::In)?;
@@ -354,7 +353,7 @@ pub fn parse_table_ref<'a>(parser: &mut Parser<'a>) -> ParseResult<TableRef<'a>>
                 let pivot_values = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
                     match p.next() {
                         Some(Token::Identifier(id)) => Ok(id.clone()),
-                        Some(Token::Keyword(kw)) => Ok(Cow::Owned(kw.as_ref().to_string())),
+                        Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
                         _ => p.backtrack(Expected::Description("identifier")),
                     }
                 })?;
@@ -374,13 +373,13 @@ pub fn parse_table_ref<'a>(parser: &mut Parser<'a>) -> ParseResult<TableRef<'a>>
                 parser.expect_lparen()?;
                 let value_col = match parser.next() {
                     Some(Token::Identifier(id)) => id.clone(),
-                    Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
+                    Some(Token::Keyword(kw)) => kw.as_ref().to_string(),
                     _ => return parser.backtrack(Expected::Description("identifier")),
                 };
                 parser.expect_keyword(Keyword::For)?;
                 let pivot_col = match parser.next() {
                     Some(Token::Identifier(id)) => id.clone(),
-                    Some(Token::Keyword(kw)) => Cow::Owned(kw.as_ref().to_string()),
+                    Some(Token::Keyword(kw)) => kw.as_ref().to_string(),
                     _ => return parser.backtrack(Expected::Description("identifier")),
                 };
                 parser.expect_keyword(Keyword::In)?;
@@ -388,7 +387,7 @@ pub fn parse_table_ref<'a>(parser: &mut Parser<'a>) -> ParseResult<TableRef<'a>>
                 let column_list = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
                     match p.next() {
                         Some(Token::Identifier(id)) => Ok(id.clone()),
-                        Some(Token::Keyword(kw)) => Ok(Cow::Owned(kw.as_ref().to_string())),
+                        Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
                         _ => p.backtrack(Expected::Description("identifier")),
                     }
                 })?;
@@ -409,7 +408,7 @@ pub fn parse_table_ref<'a>(parser: &mut Parser<'a>) -> ParseResult<TableRef<'a>>
     Ok(table)
 }
 
-fn parse_join_clause<'a>(parser: &mut Parser<'a>) -> ParseResult<Option<JoinClause<'a>>> {
+pub fn parse_join_clause(parser: &mut Parser) -> ParseResult<Option<JoinClause>> {
     let Some(Token::Keyword(k)) = parser.peek() else {
         return Ok(None);
     };
@@ -454,7 +453,7 @@ fn parse_join_clause<'a>(parser: &mut Parser<'a>) -> ParseResult<Option<JoinClau
     Ok(Some(JoinClause { join_type, table, on }))
 }
 
-fn parse_optional_alias<'a>(parser: &mut Parser<'a>) -> Option<Cow<'a, str>> {
+fn parse_optional_alias(parser: &mut Parser) -> Option<String> {
     let saved = parser.save();
     match parser.peek() {
         Some(Token::Keyword(Keyword::As)) => {
@@ -462,17 +461,17 @@ fn parse_optional_alias<'a>(parser: &mut Parser<'a>) -> Option<Cow<'a, str>> {
             match parser.next() {
                 Some(Token::Identifier(alias)) => Some(alias.clone()),
                 Some(Token::String(alias)) => Some(alias.clone()),
-                Some(Token::Keyword(kw)) => Some(Cow::Owned(kw.as_ref().to_string())),
+                Some(Token::Keyword(kw)) => Some(kw.as_ref().to_string()),
                 _ => {
                     parser.restore(saved);
                     None
                 }
             }
         }
-        Some(Token::Keyword(k)) if !crate::parser::parse::expressions::is_stop_keyword(k.as_ref()) => {
+        Some(Token::Keyword(k)) if !crate::parser::parse::expressions::is_stop_keyword(k.as_sql()) => {
             match parser.next().unwrap() {
                 Token::Identifier(alias) => Some(alias.clone()),
-                Token::Keyword(kw) => Some(Cow::Owned(kw.as_ref().to_string())),
+                Token::Keyword(kw) => Some(kw.as_ref().to_string()),
                 Token::String(alias) => Some(alias.clone()),
                 _ => {
                     parser.restore(saved);
@@ -497,11 +496,11 @@ fn parse_optional_alias<'a>(parser: &mut Parser<'a>) -> Option<Cow<'a, str>> {
     }
 }
 
-fn parse_required_alias<'a>(parser: &mut Parser<'a>) -> ParseResult<Cow<'a, str>> {
+fn parse_required_alias(parser: &mut Parser) -> ParseResult<String> {
     parse_optional_alias(parser).ok_or_else(|| parser.error(Expected::Description("alias")))
 }
 
-pub fn parse_select_item<'a>(parser: &mut Parser<'a>) -> ParseResult<SelectItem<'a>> {
+pub fn parse_select_item(parser: &mut Parser) -> ParseResult<SelectItem> {
     let expr = crate::parser::parse::expressions::parse_expr(parser)?;
     let alias = if let Some(Token::Keyword(k)) = parser.peek() {
         if *k == Keyword::As {
@@ -511,7 +510,7 @@ pub fn parse_select_item<'a>(parser: &mut Parser<'a>) -> ParseResult<SelectItem<
                 Some(Token::String(alias)) => Some(alias.clone()),
                 _ => return parser.backtrack(Expected::Description("alias")),
             }
-        } else if !crate::parser::parse::expressions::is_stop_keyword(k.as_ref()) {
+        } else if !crate::parser::parse::expressions::is_stop_keyword(k.as_sql()) {
              let next = parser.next().unwrap();
              if let Token::Identifier(id) = next {
                  Some(id.clone())
@@ -539,7 +538,7 @@ pub fn parse_select_item<'a>(parser: &mut Parser<'a>) -> ParseResult<SelectItem<
     Ok(SelectItem { expr, alias })
 }
 
-pub fn parse_order_by_expr<'a>(parser: &mut Parser<'a>) -> ParseResult<OrderByExpr<'a>> {
+pub fn parse_order_by_expr(parser: &mut Parser) -> ParseResult<OrderByExpr> {
     let expr = crate::parser::parse::expressions::parse_expr(parser)?;
     let mut asc = true;
     if let Some(Token::Keyword(Keyword::Desc)) = parser.peek() {
@@ -552,12 +551,12 @@ pub fn parse_order_by_expr<'a>(parser: &mut Parser<'a>) -> ParseResult<OrderByEx
     Ok(OrderByExpr { expr, asc })
 }
 
-pub fn parse_multipart_name<'a>(parser: &mut Parser<'a>) -> ParseResult<Vec<Cow<'a, str>>> {
+pub fn parse_multipart_name(parser: &mut Parser) -> ParseResult<Vec<String>> {
     let mut parts = Vec::new();
     if let Some(tok) = parser.next() {
         match tok {
             Token::Identifier(id) | Token::Variable(id) => parts.push(id.clone()),
-            Token::Keyword(k) => parts.push(Cow::Owned(k.as_ref().to_string())),
+            Token::Keyword(k) => parts.push(k.as_ref().to_string()),
             _ => return parser.backtrack(Expected::Description("identifier")),
         }
     } else {
@@ -568,7 +567,7 @@ pub fn parse_multipart_name<'a>(parser: &mut Parser<'a>) -> ParseResult<Vec<Cow<
         if let Some(tok) = parser.next() {
             match tok {
                 Token::Identifier(id) | Token::Variable(id) => parts.push(id.clone()),
-                Token::Keyword(k) => parts.push(Cow::Owned(k.as_ref().to_string())),
+                Token::Keyword(k) => parts.push(k.as_ref().to_string()),
                 _ => return parser.backtrack(Expected::Description("identifier")),
             }
         } else {
@@ -578,7 +577,7 @@ pub fn parse_multipart_name<'a>(parser: &mut Parser<'a>) -> ParseResult<Vec<Cow<
     Ok(parts)
 }
 
-pub fn parse_object_name<'a>(parts: Vec<Cow<'a, str>>) -> ObjectName<'a> {
+pub fn parse_object_name(parts: Vec<String>) -> ObjectName {
     let mut parts = parts;
     if parts.len() == 1 {
         ObjectName {

@@ -4,13 +4,12 @@ use winnow::prelude::*;
 use winnow::token::{take_while, any};
 use winnow::combinator::{alt, repeat, opt};
 use winnow::ascii::float;
-use std::borrow::Cow;
 
-pub fn lex<'a>(input: &mut &'a str, quoted_identifier: bool) -> ModalResult<Vec<Token<'a>>> {
+pub fn lex<'a>(input: &mut &'a str, quoted_identifier: bool) -> ModalResult<Vec<Token>> {
     repeat(0.., alt((
         parse_whitespace.map(|_| None),
         parse_comment.map(|_| None),
-        parse_binary_literal.map(|hex| Some(Token::BinaryLiteral(Cow::Borrowed(hex)))),
+        parse_binary_literal.map(|hex| Some(Token::BinaryLiteral(hex.to_string()))),
         |input: &mut _| {
             let start = *input;
             parse_number(input).map(|n| {
@@ -19,15 +18,15 @@ pub fn lex<'a>(input: &mut &'a str, quoted_identifier: bool) -> ModalResult<Vec<
                 Some(Token::Number { value: n, is_float })
             })
         },
-        parse_string.map(|s| Some(Token::String(Cow::Owned(unescape_string(s))))),
+        parse_string.map(|s| Some(Token::String(unescape_string(s)))),
         |i: &mut _| if !quoted_identifier {
-            parse_quoted_identifier(i).map(|s| Some(Token::String(Cow::Owned(unescape_quoted_identifier(s)))))
+            parse_quoted_identifier(i).map(|s| Some(Token::String(unescape_quoted_identifier(s))))
         } else {
             Err(winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new()))
         },
-        parse_variable.map(|v| Some(Token::Variable(Cow::Borrowed(v)))),
+        parse_variable.map(|v| Some(Token::Variable(v.to_string()))),
         |i: &mut _| if quoted_identifier {
-            parse_quoted_identifier(i).map(|id| Some(Token::Identifier(Cow::Owned(unescape_quoted_identifier(id)))))
+            parse_quoted_identifier(i).map(|id| Some(Token::Identifier(unescape_quoted_identifier(id))))
         } else {
             Err(winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new()))
         },
@@ -37,10 +36,10 @@ pub fn lex<'a>(input: &mut &'a str, quoted_identifier: bool) -> ModalResult<Vec<
             } else if let Some(kw) = Keyword::from_str(id) {
                 Token::Keyword(kw)
             } else {
-                Token::Identifier(Cow::Borrowed(id))
+                Token::Identifier(id.to_string())
             }
         }).map(Some),
-        parse_bracketed_identifier.map(|id| Some(Token::Identifier(Cow::Owned(unescape_bracketed_identifier(id))))),
+        parse_bracketed_identifier.map(|id| Some(Token::Identifier(unescape_bracketed_identifier(id)))),
         parse_operator_token.map(Some),
         parse_punctuation,
     ))).map(|v: Vec<Option<Token>>| v.into_iter().flatten().collect())
@@ -97,11 +96,11 @@ fn parse_string<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
         if input.starts_with('\'') {
              *input = &input[1..];
              if input.starts_with('\'') {
-                  *input = &input[1..];
-                  continue;
-             } else {
-                  break;
-             }
+                   *input = &input[1..];
+                   continue;
+              } else {
+                   break;
+              }
         } else {
              return Err(winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new()));
         }
@@ -129,11 +128,11 @@ fn parse_bracketed_identifier<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
         if input.starts_with(']') {
              *input = &input[1..];
              if input.starts_with(']') {
-                  *input = &input[1..];
-                  continue;
-             } else {
-                  break;
-             }
+                   *input = &input[1..];
+                   continue;
+              } else {
+                   break;
+              }
         } else {
              return Err(winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new()));
         }
@@ -169,11 +168,11 @@ fn parse_quoted_identifier<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
         if input.starts_with('"') {
              *input = &input[1..];
              if input.starts_with('"') {
-                  *input = &input[1..];
-                  continue;
-             } else {
-                  break;
-             }
+                   *input = &input[1..];
+                   continue;
+              } else {
+                   break;
+              }
         } else {
              return Err(winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new()));
         }
@@ -182,7 +181,7 @@ fn parse_quoted_identifier<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
     Ok(&start[..len])
 }
 
-fn parse_operator_token<'a>(input: &mut &'a str) -> ModalResult<Token<'a>> {
+fn parse_operator_token<'a>(input: &mut &'a str) -> ModalResult<Token> {
     alt((
         "~".map(|_| Token::Tilde),
         alt((
@@ -193,13 +192,13 @@ fn parse_operator_token<'a>(input: &mut &'a str) -> ModalResult<Token<'a>> {
             if op == "*" {
                 Token::Star
             } else {
-                Token::Operator(Cow::Borrowed(op))
+                Token::Operator(op.to_string())
             }
         }),
     )).parse_next(input)
 }
 
-fn parse_punctuation<'a>(input: &mut &'a str) -> ModalResult<Option<Token<'a>>> {
+fn parse_punctuation<'a>(input: &mut &'a str) -> ModalResult<Option<Token>> {
     alt((
         "(".map(|_| Some(Token::LParen)),
         ")".map(|_| Some(Token::RParen)),

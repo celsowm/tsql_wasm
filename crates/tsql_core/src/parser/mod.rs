@@ -1,4 +1,4 @@
-pub(crate) mod ast;
+pub mod ast;
 pub(crate) mod error;
 pub(crate) mod lexer;
 pub(crate) mod lower;
@@ -78,7 +78,7 @@ pub mod statements {
             let mut sql_ref = input;
             let tokens = lexer::lex(&mut sql_ref, true)
                 .map_err(|e| DbError::Parse(format!("Lexer error: {:?}", e)))?;
-            let mut parser = Parser::new(&tokens);
+            let mut parser = Parser::new(tokens);
             let params = inner_parse::parse_comma_list(&mut parser, inner_parse::parse_routine_param)
                 .map_err(|e| DbError::Parse(e.to_string()))?;
             params.into_iter().map(lower::lower_routine_param).collect()
@@ -97,7 +97,7 @@ pub fn parse_expr_with_quoted_ident(
     let mut sql_ref = input;
     let tokens = lexer::lex(&mut sql_ref, quoted_identifier)
         .map_err(|e| DbError::Parse(format!("Lexer error: {:?}", e)))?;
-    let mut parser = Parser::new(&tokens);
+    let mut parser = Parser::new(tokens);
     let expr = inner_parse::expressions::parse_expr(&mut parser)
         .map_err(|e| DbError::Parse(e.to_string()))?;
     lower::lower_expr(expr)
@@ -125,7 +125,7 @@ pub fn parse_batch_with_quoted_ident(
     let mut sql_ref = sql;
     let tokens = lexer::lex(&mut sql_ref, quoted_identifier)
         .map_err(|e| DbError::Parse(format!("Lexer error: {:?}", e)))?;
-    let mut parser = Parser::new(&tokens);
+    let mut parser = Parser::new(tokens);
     let stmts = inner_parse::parse_batch(&mut parser)
         .map_err(|e| DbError::Parse(e.to_string()))?;
     lower::lower_batch(stmts)
