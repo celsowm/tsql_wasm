@@ -302,7 +302,7 @@ impl<'a> QueryExecutor<'a> {
             // Pre-validate order by columns to ensure they can be resolved
             for item in order_by_refs {
                 if super::projection::resolve_projected_order_index(columns, item).is_none() {
-                    return Err(DbError::Semantic(format!(
+                    return Err(DbError::invalid_identifier(&format!(
                         "invalid column in ORDER BY: {}",
                         super::projection::expr_label(&item.expr)
                     )));

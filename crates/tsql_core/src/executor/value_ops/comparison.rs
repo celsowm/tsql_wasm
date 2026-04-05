@@ -1,6 +1,6 @@
-﻿use std::cmp::Ordering;
-use crate::types::Value;
 use super::super::value_helpers::{rescale_raw, value_to_f64};
+use crate::types::Value;
+use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueCategory {
@@ -18,9 +18,11 @@ pub enum ValueCategory {
 pub fn categorize(v: &Value) -> ValueCategory {
     match v {
         Value::Null => ValueCategory::Null,
-        Value::Bit(_) | Value::TinyInt(_) | Value::SmallInt(_) | Value::Int(_) | Value::BigInt(_) => {
-            ValueCategory::Integer
-        }
+        Value::Bit(_)
+        | Value::TinyInt(_)
+        | Value::SmallInt(_)
+        | Value::Int(_)
+        | Value::BigInt(_) => ValueCategory::Integer,
         Value::Float(_) => ValueCategory::Float,
         Value::Decimal(_, _) => ValueCategory::Decimal,
         Value::Money(_) | Value::SmallMoney(_) => ValueCategory::Money,
@@ -54,60 +56,66 @@ pub fn compare_values(a: &Value, b: &Value) -> Ordering {
             ai.cmp(&bi)
         }
 
-        (ValueCategory::Float, ValueCategory::Float) |
-        (ValueCategory::Float, ValueCategory::Integer) | (ValueCategory::Integer, ValueCategory::Float) |
-        (ValueCategory::Float, ValueCategory::Decimal) | (ValueCategory::Decimal, ValueCategory::Float) => {
+        (ValueCategory::Float, ValueCategory::Float)
+        | (ValueCategory::Float, ValueCategory::Integer)
+        | (ValueCategory::Integer, ValueCategory::Float)
+        | (ValueCategory::Float, ValueCategory::Decimal)
+        | (ValueCategory::Decimal, ValueCategory::Float) => {
             let af = value_to_f64(&a).unwrap_or(0.0);
             let bf = value_to_f64(&b).unwrap_or(0.0);
             af.partial_cmp(&bf).unwrap_or(Ordering::Equal)
         }
 
-        (ValueCategory::Decimal, ValueCategory::Decimal) | (ValueCategory::Decimal, ValueCategory::Integer) | (ValueCategory::Integer, ValueCategory::Decimal) => {
+        (ValueCategory::Decimal, ValueCategory::Decimal)
+        | (ValueCategory::Decimal, ValueCategory::Integer)
+        | (ValueCategory::Integer, ValueCategory::Decimal) => {
             let (a_dec, b_dec) = to_comparable_decimals(&a, &b);
             a_dec.cmp(&b_dec)
         }
 
-        (ValueCategory::Money, ValueCategory::Money) |
-        (ValueCategory::Money, ValueCategory::Integer) | (ValueCategory::Integer, ValueCategory::Money) |
-        (ValueCategory::Money, ValueCategory::Decimal) | (ValueCategory::Decimal, ValueCategory::Money) => {
+        (ValueCategory::Money, ValueCategory::Money)
+        | (ValueCategory::Money, ValueCategory::Integer)
+        | (ValueCategory::Integer, ValueCategory::Money)
+        | (ValueCategory::Money, ValueCategory::Decimal)
+        | (ValueCategory::Decimal, ValueCategory::Money) => {
             let am = extract_money_raw(&a);
             let bm = extract_money_raw(&b);
             am.cmp(&bm)
         }
 
-        (ValueCategory::Money, ValueCategory::Float) | (ValueCategory::Float, ValueCategory::Money) => {
+        (ValueCategory::Money, ValueCategory::Float)
+        | (ValueCategory::Float, ValueCategory::Money) => {
             let af = value_to_f64(&a).unwrap_or(0.0);
             let bf = value_to_f64(&b).unwrap_or(0.0);
             af.partial_cmp(&bf).unwrap_or(Ordering::Equal)
         }
 
         (ValueCategory::String, ValueCategory::String) => {
-            extract_string(&a).cmp(extract_string(&b))
+            extract_string(&a).cmp(&extract_string(&b))
         }
 
-        (ValueCategory::Integer, ValueCategory::String) | (ValueCategory::Decimal, ValueCategory::String) | (ValueCategory::Float, ValueCategory::String) | (ValueCategory::Money, ValueCategory::String) => {
-            compare_numeric_with_string(&a, &b)
-        }
+        (ValueCategory::Integer, ValueCategory::String)
+        | (ValueCategory::Decimal, ValueCategory::String)
+        | (ValueCategory::Float, ValueCategory::String)
+        | (ValueCategory::Money, ValueCategory::String) => compare_numeric_with_string(&a, &b),
 
-        (ValueCategory::String, ValueCategory::Integer) | (ValueCategory::String, ValueCategory::Decimal) | (ValueCategory::String, ValueCategory::Float) | (ValueCategory::String, ValueCategory::Money) => {
-            compare_numeric_with_string(&a, &b)
-        }
+        (ValueCategory::String, ValueCategory::Integer)
+        | (ValueCategory::String, ValueCategory::Decimal)
+        | (ValueCategory::String, ValueCategory::Float)
+        | (ValueCategory::String, ValueCategory::Money) => compare_numeric_with_string(&a, &b),
 
         (ValueCategory::DateTime, ValueCategory::DateTime) => {
-            extract_string(&a).cmp(extract_string(&b))
+            extract_string(&a).cmp(&extract_string(&b))
         }
 
-        (ValueCategory::DateTime, ValueCategory::String) | (ValueCategory::String, ValueCategory::DateTime) => {
+        (ValueCategory::DateTime, ValueCategory::String)
+        | (ValueCategory::String, ValueCategory::DateTime) => {
             a.to_string_value().cmp(&b.to_string_value())
         }
 
-        (ValueCategory::Uuid, ValueCategory::Uuid) => {
-            extract_string(&a).cmp(extract_string(&b))
-        }
+        (ValueCategory::Uuid, ValueCategory::Uuid) => extract_string(&a).cmp(&extract_string(&b)),
 
-        (ValueCategory::Binary, ValueCategory::Binary) => {
-            extract_bytes(&a).cmp(extract_bytes(&b))
-        }
+        (ValueCategory::Binary, ValueCategory::Binary) => extract_bytes(&a).cmp(extract_bytes(&b)),
 
         _ => value_key(&a).cmp(&value_key(&b)),
     }
@@ -172,8 +180,8 @@ fn unwrap_sql_variant(v: &Value) -> Value {
 
 fn compare_numeric_with_string(num: &Value, str_val: &Value) -> Ordering {
     let num_str = extract_string(num);
-    if let Some((ar, as_)) = parse_string_as_numeric(num_str) {
-        let str_parsed = parse_string_as_numeric(extract_string(str_val));
+    if let Some((ar, as_)) = parse_string_as_numeric(&num_str) {
+        let str_parsed = parse_string_as_numeric(&extract_string(str_val));
         if let Some((br, bs)) = str_parsed {
             let (an, bn) = normalize_decimals(ar, as_, br, bs);
             return an.cmp(&bn);
@@ -182,11 +190,13 @@ fn compare_numeric_with_string(num: &Value, str_val: &Value) -> Ordering {
     num.to_string_value().cmp(&str_val.to_string_value())
 }
 
-fn extract_string(v: &Value) -> &str {
+fn extract_string(v: &Value) -> String {
     match v {
-        Value::Char(s) | Value::VarChar(s) | Value::NChar(s) | Value::NVarChar(s) => s,
-        Value::Date(s) | Value::Time(s) | Value::DateTime(s) | Value::DateTime2(s) => s,
-        _ => "",
+        Value::Char(s) | Value::VarChar(s) | Value::NChar(s) | Value::NVarChar(s) => s.clone(),
+        Value::Date(d) => d.format("%Y-%m-%d").to_string(),
+        Value::Time(t) => t.format("%H:%M:%S%.f").to_string(),
+        Value::DateTime(dt) | Value::DateTime2(dt) => dt.format("%Y-%m-%d %H:%M:%S%.f").to_string(),
+        _ => String::new(),
     }
 }
 
@@ -201,9 +211,7 @@ fn extract_money_raw(v: &Value) -> i128 {
     match v {
         Value::Money(r) => *r,
         Value::SmallMoney(r) => *r as i128,
-        Value::Decimal(raw, scale) => {
-            rescale_raw(*raw, *scale, 4)
-        }
+        Value::Decimal(raw, scale) => rescale_raw(*raw, *scale, 4),
         Value::Int(v) => *v as i128 * 10000,
         Value::BigInt(v) => *v as i128 * 10000,
         Value::TinyInt(v) => *v as i128 * 10000,

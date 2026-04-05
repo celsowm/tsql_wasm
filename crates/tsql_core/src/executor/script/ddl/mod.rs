@@ -124,9 +124,7 @@ impl<'a> ScriptExecutor<'a> {
         let table = self
             .catalog
             .find_table(schema, table_name)
-            .ok_or_else(|| {
-                DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
-            })?
+            .ok_or_else(|| DbError::table_not_found(schema, table_name))?
             .clone();
         self.storage.clear_table(table.id)?;
 
@@ -155,9 +153,7 @@ impl<'a> ScriptExecutor<'a> {
         let table = self
             .catalog
             .find_table(schema, table_name)
-            .ok_or_else(|| {
-                DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
-            })?
+            .ok_or_else(|| DbError::table_not_found(schema, table_name))?
             .clone();
 
         self.schema().alter_table(stmt)?;

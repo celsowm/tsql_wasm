@@ -63,10 +63,7 @@ impl<'a> ScriptExecutor<'a> {
     ) -> Result<Option<crate::executor::result::QueryResult>, DbError> {
         let schema = stmt.name.schema_or_dbo().to_string();
         let Some(routine) = self.catalog.find_routine(&schema, &stmt.name.name).cloned() else {
-            return Err(DbError::Semantic(format!(
-                "procedure '{}.{}' not found",
-                schema, stmt.name.name
-            )));
+            return Err(DbError::object_not_found(format!("procedure '{}.{}'", schema, stmt.name.name)));
         };
         let crate::catalog::RoutineDef {
             object_id,
@@ -77,10 +74,7 @@ impl<'a> ScriptExecutor<'a> {
             ..
         } = routine;
         let RoutineKind::Procedure { body } = kind else {
-            return Err(DbError::Semantic(format!(
-                "'{}.{}' is not a procedure",
-                schema, stmt.name.name
-            )));
+            return Err(DbError::object_not_found(&format!("'{}.{}' is not a procedure", schema, stmt.name.name)));
         };
         ctx.push_module(ModuleFrame {
             object_id,

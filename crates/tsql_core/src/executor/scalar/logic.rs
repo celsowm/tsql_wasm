@@ -1,8 +1,8 @@
-﻿use crate::ast::Expr;
+use crate::ast::Expr;
 use crate::catalog::Catalog;
 use crate::error::DbError;
-use crate::types::Value;
 use crate::storage::Storage;
+use crate::types::Value;
 
 use super::super::clock::Clock;
 use super::super::context::ExecutionContext;
@@ -107,7 +107,9 @@ pub(crate) fn eval_choose(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.len() < 2 {
-        return Err(DbError::Execution("CHOOSE expects at least 2 arguments".into()));
+        return Err(DbError::Execution(
+            "CHOOSE expects at least 2 arguments".into(),
+        ));
     }
     let index_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
     let idx = index_val.to_integer_i64().unwrap_or(0);

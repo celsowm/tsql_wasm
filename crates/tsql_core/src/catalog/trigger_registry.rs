@@ -22,10 +22,7 @@ impl TriggerRegistry for CatalogImpl {
             .get(&(trigger.schema.to_lowercase(), trigger.name.to_lowercase()))
             .is_some()
         {
-            return Err(DbError::Semantic(format!(
-                "trigger '{}.{}' already exists",
-                trigger.schema, trigger.name
-            )));
+            return Err(DbError::duplicate_trigger(&trigger.schema, &trigger.name));
         }
         let idx = self.triggers.len();
         self.trigger_map.insert(
@@ -40,7 +37,7 @@ impl TriggerRegistry for CatalogImpl {
         let idx = *self
             .trigger_map
             .get(&(schema.to_lowercase(), name.to_lowercase()))
-            .ok_or_else(|| DbError::Semantic(format!("trigger '{}.{}' not found", schema, name)))?;
+            .ok_or_else(|| DbError::trigger_not_found(schema, name))?;
         self.triggers.remove(idx);
         self.rebuild_maps();
         Ok(())

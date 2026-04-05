@@ -52,7 +52,7 @@ fn extract_output_value(
         .columns
         .iter()
         .position(|c| c.name.eq_ignore_ascii_case(&output_col.column))
-        .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", output_col.column)))?;
+        .ok_or_else(|| DbError::column_not_found(&output_col.column))?;
     Ok(row.values[col_idx].clone())
 }
 
@@ -61,7 +61,7 @@ fn resolve_col_idx(col_name: &str, table: &TableDef) -> Result<usize, DbError> {
         .columns
         .iter()
         .position(|c| c.name.eq_ignore_ascii_case(col_name))
-        .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", col_name)))
+        .ok_or_else(|| DbError::column_not_found(col_name))
 }
 
 pub fn build_output_result(

@@ -1,16 +1,16 @@
-﻿use crate::ast::Expr;
+use crate::ast::Expr;
 use crate::catalog::Catalog;
 use crate::error::DbError;
 use crate::storage::Storage;
 use crate::types::Value;
 
-use crate::executor::clock::Clock;
-use crate::executor::context::ExecutionContext;
-use crate::executor::model::ContextTable;
 use super::common::{
     eval_expr_to_value, parse_object_parts, resolve_type_id, resolve_type_name, type_precision,
     type_scale, value_to_object_id,
 };
+use crate::executor::clock::Clock;
+use crate::executor::context::ExecutionContext;
+use crate::executor::model::ContextTable;
 
 pub(crate) fn eval_type_id(
     args: &[Expr],
@@ -70,7 +70,9 @@ pub(crate) fn eval_typeproperty(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.len() != 2 {
-        return Err(DbError::Execution("TYPEPROPERTY expects 2 arguments".into()));
+        return Err(DbError::Execution(
+            "TYPEPROPERTY expects 2 arguments".into(),
+        ));
     }
     let ty_val = eval_expr_to_value(&args[0], row, ctx, catalog, storage, clock)?;
     let prop_val = eval_expr_to_value(&args[1], row, ctx, catalog, storage, clock)?;
@@ -97,7 +99,9 @@ pub(crate) fn eval_typeproperty(
         "ALLOWSNULL" => Value::Int(1),
         "ISTABLETYPE" => Value::Int(0),
         "OWNERID" => Value::Null,
-        "PRECISION" => type_precision(&builtin).map(Value::Int).unwrap_or(Value::Null),
+        "PRECISION" => type_precision(&builtin)
+            .map(Value::Int)
+            .unwrap_or(Value::Null),
         "SCALE" => type_scale(&builtin).map(Value::Int).unwrap_or(Value::Null),
         "USESANSITRIM" => {
             if matches!(

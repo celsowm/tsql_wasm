@@ -13,12 +13,12 @@
 | 2 | 🔴 High | Performance | `executor/window.rs` | Excessive cloning in hot loops | ✅ Fixed |
 | 3 | 🔴 High | Bug | `executor/window.rs` | Errors silently swallowed as NULL | ✅ Fixed |
 | 4 | 🔴 High | Bug | `executor/transaction.rs` | Panic via `.expect()` in library code | ✅ Fixed |
-| 5 | 🟡 Medium | Design | `types/mod.rs` | String-typed date/time/UUID primitives | ❌ Open |
-| 6 | 🟡 Medium | Design | `error.rs` | Overly broad stringly-typed errors | ❌ Open |
+| 5 | 🟡 Medium | Design | `types/mod.rs` | String-typed date/time/UUID primitives | ✅ Fixed |
+| 6 | 🟡 Medium | Design | `error.rs` | Overly broad stringly-typed errors | ✅ Fixed |
 | 7 | 🟡 Medium | Bug | `executor/json.rs` | `.expect()` instead of Entry API | ✅ Fixed |
 | 8 | 🟡 Medium | Performance | `catalog/table_registry.rs` | O(N) table deletion with Vec + rebuild | ✅ Fixed |
-| 9 | 🟡 Medium | Design | `executor/window.rs` | Runtime type inference by data peeking | ❌ Open |
-| 10 | 🟡 Medium | Performance | `executor/evaluator.rs` | Dynamic dispatch in recursive hot path | ❌ Open |
+| 9 | 🟡 Medium | Design | `executor/window.rs` | Runtime type inference by data peeking | ✅ Fixed |
+| 10 | 🟡 Medium | Performance | `executor/evaluator.rs` | Dynamic dispatch in recursive hot path | ✅ Fixed |
 | 11 | 🟢 Low | Maintainability | `parser/parse/statements/*.rs` | `parse_multipart_name` duplicated 7× | ✅ Fixed |
 | 12 | 🟢 Low | Design | `executor/database/mod.rs` | Leaky type aliases expose storage backends | ✅ Fixed |
 

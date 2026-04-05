@@ -35,9 +35,7 @@ impl<'a> MutationExecutor<'a> {
         let table = self
             .catalog
             .find_table(&schema, &table_name)
-            .ok_or_else(|| {
-                DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
-            })?
+            .ok_or_else(|| DbError::table_not_found(&schema, &table_name))?
             .clone();
 
         let table_id = table.id;
@@ -272,9 +270,7 @@ impl<'a> MutationExecutor<'a> {
                 .columns
                 .iter()
                 .position(|c| c.name.eq_ignore_ascii_case(input_col))
-                .ok_or_else(|| {
-                    DbError::Semantic(format!("column '{}' not found", input_col))
-                })?;
+                .ok_or_else(|| DbError::column_not_found(input_col))?;
 
             let col = &table.columns[col_idx];
             if col.computed_expr.is_some() {
@@ -314,7 +310,7 @@ impl<'a> MutationExecutor<'a> {
                 .columns
                 .iter()
                 .position(|c| c.name.eq_ignore_ascii_case(input_col))
-                .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", input_col)))?;
+                .ok_or_else(|| DbError::column_not_found(input_col))?;
 
             let col = &table.columns[col_idx];
             if col.computed_expr.is_some() {

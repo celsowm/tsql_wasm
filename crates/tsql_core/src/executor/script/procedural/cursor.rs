@@ -15,10 +15,10 @@ impl<'a> ScriptExecutor<'a> {
         ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
         let mut cursor = ctx.session.cursors.get(&name).cloned().ok_or_else(|| {
-            DbError::Semantic(format!("cursor '{}' not declared", name))
+            DbError::cursor_not_declared(&name)
         })?;
         let query = cursor.query.clone().ok_or_else(|| {
-            DbError::Semantic(format!("cursor '{}' has no query", name))
+            DbError::cursor_has_no_query(&name)
         })?;
         let result = QueryExecutor {
             catalog: self.catalog as &dyn Catalog,
@@ -38,7 +38,7 @@ impl<'a> ScriptExecutor<'a> {
         ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
         let mut cursor = ctx.session.cursors.get(&name).cloned().ok_or_else(|| {
-            DbError::Semantic(format!("cursor '{}' not declared", name))
+            DbError::cursor_not_declared(&name)
         })?;
         cursor.current_row = -1;
         ctx.session.cursors.insert(name, cursor);
@@ -60,7 +60,7 @@ impl<'a> ScriptExecutor<'a> {
         ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
         let mut cursor = ctx.session.cursors.get(&stmt.name).cloned().ok_or_else(|| {
-            DbError::Semantic(format!("cursor '{}' not declared", stmt.name))
+            DbError::cursor_not_declared(&stmt.name)
         })?;
 
         let row_count = cursor.query_result.rows.len() as i64;
@@ -111,10 +111,7 @@ impl<'a> ScriptExecutor<'a> {
                     if let Some((ty, var)) = ctx.session.variables.get_mut(var_name) {
                         *var = coerce_value_to_type(row[idx].clone(), ty)?;
                     } else {
-                        return Err(DbError::Semantic(format!(
-                            "variable '{}' not declared",
-                            var_name
-                        )));
+                        return Err(DbError::invalid_identifier(var_name));
                     }
                 }
             }

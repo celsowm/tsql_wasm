@@ -1,9 +1,11 @@
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use tsql_core::{
     ast::{DataTypeSpec, DdlStatement, DmlStatement, ProceduralStatement, Statement},
     parse_sql,
     types::Value,
     Engine,
 };
+use uuid::Uuid;
 
 fn exec(engine: &mut Engine, sql: &str) {
     let stmt = parse_sql(sql).expect("parse failed");
@@ -100,7 +102,10 @@ fn test_date_type() {
     exec(&mut engine, "CREATE TABLE dbo.t (d DATE NOT NULL)");
     exec(&mut engine, "INSERT INTO dbo.t (d) VALUES ('2025-06-15')");
     let r = query(&mut engine, "SELECT d FROM dbo.t");
-    assert_eq!(r.rows[0][0], Value::Date("2025-06-15".to_string()));
+    assert_eq!(
+        r.rows[0][0],
+        Value::Date(NaiveDate::from_ymd_opt(2025, 6, 15).unwrap())
+    );
 }
 
 #[test]
@@ -109,7 +114,10 @@ fn test_time_type() {
     exec(&mut engine, "CREATE TABLE dbo.t (t TIME NOT NULL)");
     exec(&mut engine, "INSERT INTO dbo.t (t) VALUES ('14:30:00')");
     let r = query(&mut engine, "SELECT t FROM dbo.t");
-    assert_eq!(r.rows[0][0], Value::Time("14:30:00".to_string()));
+    assert_eq!(
+        r.rows[0][0],
+        Value::Time(NaiveTime::from_hms_opt(14, 30, 0).unwrap())
+    );
 }
 
 #[test]
@@ -123,7 +131,9 @@ fn test_datetime2_type() {
     let r = query(&mut engine, "SELECT dt FROM dbo.t");
     assert_eq!(
         r.rows[0][0],
-        Value::DateTime2("2025-06-15T14:30:00".to_string())
+        Value::DateTime(
+            NaiveDateTime::parse_from_str("2025-06-15T14:30:00", "%Y-%m-%dT%H:%M:%S").unwrap()
+        )
     );
 }
 
@@ -141,7 +151,7 @@ fn test_uniqueidentifier_type() {
     let r = query(&mut engine, "SELECT id FROM dbo.t");
     assert_eq!(
         r.rows[0][0],
-        Value::UniqueIdentifier("550e8400-e29b-41d4-a716-446655440000".to_string())
+        Value::UniqueIdentifier(Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap())
     );
 }
 
@@ -168,7 +178,10 @@ fn test_cast_to_new_types() {
     assert_eq!(r.rows[0][0], Value::Char("hello     ".to_string()));
 
     let r = query(&mut engine, "SELECT CAST('2025-01-01' AS DATE) AS v");
-    assert_eq!(r.rows[0][0], Value::Date("2025-01-01".to_string()));
+    assert_eq!(
+        r.rows[0][0],
+        Value::Date(NaiveDate::from_ymd_opt(2025, 1, 1).unwrap())
+    );
 }
 
 #[test]

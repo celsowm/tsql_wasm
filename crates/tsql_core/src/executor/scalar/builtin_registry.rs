@@ -200,8 +200,7 @@ const DATETIME_FUNCTIONS: &[BuiltinScalarFunction] = &[
     }),
     builtin!("CURRENT_DATE" => |_args, _row, _ctx, _catalog, _storage, clock| {
         let dt = clock.now_datetime_literal();
-        let date_str = if dt.len() >= 10 { &dt[..10] } else { "1970-01-01" };
-        Ok(Value::Date(date_str.to_string()))
+        Ok(Value::Date(dt.date()))
     }),
     builtin!("DATEADD" => datetime::eval_dateadd),
     builtin!("DATEDIFF" => datetime::eval_datediff),
@@ -306,7 +305,10 @@ const MATH_FUNCTIONS: &[BuiltinScalarFunction] = &[
     builtin!("CHECKSUM" => math::eval_checksum),
 ];
 
-fn lookup_builtin_function(functions: &[BuiltinScalarFunction], name: &str) -> Option<ScalarHandler> {
+fn lookup_builtin_function(
+    functions: &[BuiltinScalarFunction],
+    name: &str,
+) -> Option<ScalarHandler> {
     functions
         .iter()
         .find(|entry| entry.name.eq_ignore_ascii_case(name))
@@ -329,7 +331,10 @@ pub(crate) fn lookup_math_function(name: &str) -> Option<ScalarHandler> {
     lookup_builtin_function(MATH_FUNCTIONS, name)
 }
 
-pub(crate) fn lookup_system_variable(name: &str, ctx: &ExecutionContext<'_>) -> Option<Result<Value, DbError>> {
+pub(crate) fn lookup_system_variable(
+    name: &str,
+    ctx: &ExecutionContext<'_>,
+) -> Option<Result<Value, DbError>> {
     if !name.starts_with("@@") {
         return None;
     }

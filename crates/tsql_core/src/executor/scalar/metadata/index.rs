@@ -1,16 +1,16 @@
-﻿use crate::ast::Expr;
+use crate::ast::Expr;
 use crate::catalog::Catalog;
 use crate::error::DbError;
 use crate::storage::Storage;
 use crate::types::Value;
 
-use crate::executor::clock::Clock;
-use crate::executor::context::ExecutionContext;
-use crate::executor::model::ContextTable;
 use super::common::{
     eval_expr_to_value, index_by_id, index_by_name, table_by_object_id, table_has_primary_key,
     value_to_object_id,
 };
+use crate::executor::clock::Clock;
+use crate::executor::context::ExecutionContext;
+use crate::executor::model::ContextTable;
 
 pub(crate) fn eval_index_col(
     args: &[Expr],
@@ -112,7 +112,9 @@ pub(crate) fn eval_indexproperty(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.len() != 3 {
-        return Err(DbError::Execution("INDEXPROPERTY expects 3 arguments".into()));
+        return Err(DbError::Execution(
+            "INDEXPROPERTY expects 3 arguments".into(),
+        ));
     }
     let object_val = eval_expr_to_value(&args[0], row, ctx, catalog, storage, clock)?;
     let index_val = eval_expr_to_value(&args[1], row, ctx, catalog, storage, clock)?;

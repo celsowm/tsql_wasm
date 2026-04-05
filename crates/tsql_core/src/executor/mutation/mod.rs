@@ -240,12 +240,7 @@ impl<'a> MutationExecutor<'a> {
         let table = self
             .catalog
             .find_table(&target_schema, &target_name)
-            .ok_or_else(|| {
-                crate::error::DbError::Semantic(format!(
-                    "table '{}.{}' not found for OUTPUT INTO",
-                    target_schema, target_name
-                ))
-            })?
+            .ok_or_else(|| DbError::table_not_found(&target_schema, &target_name))?
             .clone();
 
         for row_values in &output_result.rows {

@@ -1,16 +1,16 @@
-﻿use crate::ast::Expr;
+use crate::ast::Expr;
 use crate::catalog::Catalog;
 use crate::error::DbError;
 use crate::storage::Storage;
 use crate::types::Value;
 
+use super::common::{
+    eval_expr_to_value, object_definition_from_id, object_name_from_id, object_schema_name_from_id,
+    schema_name_by_id, value_to_object_id,
+};
 use crate::executor::clock::Clock;
 use crate::executor::context::ExecutionContext;
 use crate::executor::model::ContextTable;
-use super::common::{
-    eval_expr_to_value, object_definition_from_id, object_name_from_id,
-    object_schema_name_from_id, schema_name_by_id, value_to_object_id,
-};
 
 pub(crate) fn eval_schema_id(
     args: &[Expr],
@@ -21,7 +21,9 @@ pub(crate) fn eval_schema_id(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.len() > 1 {
-        return Err(DbError::Execution("SCHEMA_ID expects 0 or 1 arguments".into()));
+        return Err(DbError::Execution(
+            "SCHEMA_ID expects 0 or 1 arguments".into(),
+        ));
     }
     let schema_name = if args.is_empty() {
         "dbo".to_string()
@@ -47,7 +49,9 @@ pub(crate) fn eval_schema_name(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.len() > 1 {
-        return Err(DbError::Execution("SCHEMA_NAME expects 0 or 1 arguments".into()));
+        return Err(DbError::Execution(
+            "SCHEMA_NAME expects 0 or 1 arguments".into(),
+        ));
     }
     let schema_id = if args.is_empty() {
         catalog.get_schema_id("dbo")
@@ -67,10 +71,12 @@ pub(crate) fn eval_schema_name(
             _ => None,
         }
     };
-    Ok(match schema_id.and_then(|id| schema_name_by_id(catalog, id)) {
-        Some(name) => Value::NVarChar(name),
-        None => Value::Null,
-    })
+    Ok(
+        match schema_id.and_then(|id| schema_name_by_id(catalog, id)) {
+            Some(name) => Value::NVarChar(name),
+            None => Value::Null,
+        },
+    )
 }
 
 pub(crate) fn eval_object_name(
@@ -82,7 +88,9 @@ pub(crate) fn eval_object_name(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.is_empty() || args.len() > 2 {
-        return Err(DbError::Execution("OBJECT_NAME expects 1 or 2 arguments".into()));
+        return Err(DbError::Execution(
+            "OBJECT_NAME expects 1 or 2 arguments".into(),
+        ));
     }
     let object_val = eval_expr_to_value(&args[0], row, ctx, catalog, storage, clock)?;
     if object_val.is_null() {

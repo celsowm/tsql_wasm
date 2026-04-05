@@ -1,4 +1,5 @@
-﻿use crate::error::DbError;
+use crate::error::DbError;
+use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 
 /// Typed enum for date parts, replacing string-based dispatch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,54 +96,35 @@ pub(crate) fn day_of_week_from_date(y: i32, m: i32, d: i32) -> i32 {
     (((days + 719471) % 7 + 7) % 7) as i32
 }
 
-pub(crate) fn apply_dateadd(part: &str, num: i64, date_str: &str) -> Result<String, DbError> {
+pub(crate) fn apply_dateadd(
+    part: &str,
+    num: i64,
+    date_str: &str,
+) -> Result<NaiveDateTime, DbError> {
     let date_part = DatePart::from_str(part)?;
-    let (y, m, d, h, mi, s) = parse_datetime_parts(date_str)?;
+    let dt = NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S")
+        .or_else(|_| NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S"))
+        .map_err(|_| DbError::Execution(format!("invalid datetime format: '{}'", date_str)))?;
 
-    let (ny, nm, nd, nh, nmi, ns) = match date_part {
-        DatePart::Year => (y + num as i32, m, d, h, mi, s),
+    let result = match date_part {
+        DatePart::Year => {
+            let new_year = dt.year() + num as i32;
+            dt.with_year(new_year)
+                .ok_or_else(|| DbError::Execution("invalid year after DATEADD".into()))?
+        }
         DatePart::Month => {
-            let total = (y as i64) * 12 + (m as i64 - 1) + num;
-            let ny = (total / 12) as i32;
-            let nm = (total % 12 + 1) as i32;
-            (ny, nm, d, h, mi, s)
+            let total_months = dt.year() as i64 * 12 + (dt.month() as i64 - 1) + num;
+            let new_year = (total_months / 12) as i32;
+            let new_month = (total_months % 12 + 1) as u32;
+            dt.with_year(new_year)
+                .and_then(|d| d.with_month(new_month))
+                .ok_or_else(|| DbError::Execution("invalid month after DATEADD".into()))?
         }
-        DatePart::Day => {
-            let total_days = date_to_days(y, m, d) + num;
-            let (ny, nm, nd) = days_to_date(total_days);
-            (ny, nm, nd, h, mi, s)
-        }
-        DatePart::Hour => {
-            let total_hours = (date_to_days(y, m, d) * 24) + h as i64 + num;
-            let total_days = total_hours.div_euclid(24);
-            let nh = total_hours.rem_euclid(24) as i32;
-            let (ny, nm, nd) = days_to_date(total_days);
-            (ny, nm, nd, nh, mi, s)
-        }
-        DatePart::Minute => {
-            let total_minutes = (date_to_days(y, m, d) * 24 * 60) + h as i64 * 60 + mi as i64 + num;
-            let total_days = total_minutes.div_euclid(24 * 60);
-            let remainder = total_minutes.rem_euclid(24 * 60);
-            let nh = (remainder / 60) as i32;
-            let nmi = (remainder % 60) as i32;
-            let (ny, nm, nd) = days_to_date(total_days);
-            (ny, nm, nd, nh, nmi, s)
-        }
-        DatePart::Second => {
-            let total_secs =
-                (date_to_days(y, m, d) * 86400) + h as i64 * 3600 + mi as i64 * 60 + s as i64 + num;
-            let total_days = total_secs.div_euclid(86400);
-            let remainder = total_secs.rem_euclid(86400);
-            let nh = (remainder / 3600) as i32;
-            let nmi = ((remainder % 3600) / 60) as i32;
-            let ns = (remainder % 60) as i32;
-            let (ny, nm, nd) = days_to_date(total_days);
-            (ny, nm, nd, nh, nmi, ns)
-        }
+        DatePart::Day => dt + chrono::Duration::days(num),
+        DatePart::Hour => dt + chrono::Duration::hours(num),
+        DatePart::Minute => dt + chrono::Duration::minutes(num),
+        DatePart::Second => dt + chrono::Duration::seconds(num),
     };
 
-    Ok(format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
-        ny, nm, nd, nh, nmi, ns
-    ))
+    Ok(result)
 }

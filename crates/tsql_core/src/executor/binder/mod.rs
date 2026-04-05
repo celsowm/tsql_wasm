@@ -42,7 +42,7 @@ pub fn bind_expr(
                     {
                         Ok(BoundExpr::Dynamic(expr.clone()))
                     } else {
-                        Err(DbError::Semantic(format!("column '{}' not found", name)))
+                        Err(DbError::column_not_found(name))
                     }
                 }
             }
@@ -71,10 +71,7 @@ pub fn bind_expr(
                     ) {
                         Ok(BoundExpr::Dynamic(expr.clone()))
                     } else {
-                        Err(DbError::Semantic(format!(
-                            "column '{}.{}' not found",
-                            table_name, column_name
-                        )))
+                        Err(DbError::column_not_found_qualified(table_name, column_name))
                     }
                 }
             }

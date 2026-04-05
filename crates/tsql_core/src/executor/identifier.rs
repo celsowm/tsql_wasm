@@ -18,10 +18,7 @@ pub(crate) fn resolve_identifier(
         match ctx.session.variables.get(name) {
             Some((_, val)) => return Ok(val.clone()),
             None => {
-                return Err(DbError::Semantic(format!(
-                    "variable '{}' not declared",
-                    name
-                )))
+                return Err(DbError::invalid_identifier(name));
             }
         }
     }
@@ -87,9 +84,9 @@ pub(crate) fn resolve_identifier(
     }
 
     match matches.len() {
-        0 => Err(DbError::Semantic(format!("column '{}' not found", name))),
+        0 => Err(DbError::column_not_found(name)),
         1 => Ok(matches[0].1.clone()),
-        _ => Err(DbError::Semantic(format!("ambiguous column name '{}'", name))),
+        _ => Err(DbError::invalid_identifier(&format!("ambiguous column '{}'", name))),
     }
 }
 
@@ -99,9 +96,7 @@ pub(crate) fn resolve_qualified_identifier(
     ctx: &ExecutionContext,
 ) -> Result<Value, DbError> {
     if parts.len() != 2 {
-        return Err(DbError::Semantic(
-            "only two-part identifiers are supported in this build".into(),
-        ));
+        return Err(DbError::invalid_identifier("only two-part identifiers are supported in this build"));
     }
 
     let table_name = &parts[0];
@@ -145,8 +140,5 @@ pub(crate) fn resolve_qualified_identifier(
         }
     }
 
-    Err(DbError::Semantic(format!(
-        "table or alias '{}' not found",
-        table_name
-    )))
+    Err(DbError::object_not_found(table_name))
 }

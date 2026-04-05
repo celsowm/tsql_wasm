@@ -1,9 +1,9 @@
-﻿use crate::catalog::Catalog;
+use super::super::virtual_table_def;
+use super::super::VirtualTable;
+use crate::catalog::Catalog;
+use crate::executor::tooling::formatting::format_expr;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
-use crate::executor::tooling::formatting::format_expr;
-use super::super::VirtualTable;
-use super::super::virtual_table_def;
 
 pub(crate) struct SysCheckConstraints;
 pub(crate) struct SysForeignKeys;
@@ -57,9 +57,17 @@ impl VirtualTable for SysForeignKeys {
                 ("is_ms_shipped", DataType::Bit, false),
                 ("is_disabled", DataType::Bit, false),
                 ("delete_referential_action", DataType::TinyInt, false),
-                ("delete_referential_action_desc", DataType::VarChar { max_len: 128 }, false),
+                (
+                    "delete_referential_action_desc",
+                    DataType::VarChar { max_len: 128 },
+                    false,
+                ),
                 ("update_referential_action", DataType::TinyInt, false),
-                ("update_referential_action_desc", DataType::VarChar { max_len: 128 }, false),
+                (
+                    "update_referential_action_desc",
+                    DataType::VarChar { max_len: 128 },
+                    false,
+                ),
             ],
         )
     }
@@ -67,12 +75,12 @@ impl VirtualTable for SysForeignKeys {
     fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
         let mut rows = Vec::new();
         let mut object_id = 0;
-        
+
         for table in catalog.get_tables() {
             for fk in &table.foreign_keys {
                 object_id += 1;
                 let parent_id = table.id as i32;
-                
+
                 rows.push(StoredRow {
                     values: vec![
                         Value::VarChar(fk.name.clone()),
@@ -80,8 +88,18 @@ impl VirtualTable for SysForeignKeys {
                         Value::Int(parent_id),
                         Value::Char("F ".to_string()),
                         Value::VarChar("FOREIGN_KEY_CONSTRAINT".to_string()),
-                        Value::DateTime("1970-01-01 00:00:00".to_string()),
-                        Value::DateTime("1970-01-01 00:00:00".to_string()),
+                        Value::DateTime(
+                            chrono::NaiveDate::from_ymd_opt(1970, 1, 1)
+                                .unwrap()
+                                .and_hms_opt(0, 0, 0)
+                                .unwrap(),
+                        ),
+                        Value::DateTime(
+                            chrono::NaiveDate::from_ymd_opt(1970, 1, 1)
+                                .unwrap()
+                                .and_hms_opt(0, 0, 0)
+                                .unwrap(),
+                        ),
                         Value::Bit(false),
                         Value::Bit(false),
                         Value::TinyInt(0),
@@ -178,9 +196,11 @@ impl VirtualTable for SysDefaultConstraints {
         for table in catalog.get_tables() {
             for col in &table.columns {
                 if let Some(default_expr) = &col.default {
-                    let name = col.default_constraint_name.clone()
+                    let name = col
+                        .default_constraint_name
+                        .clone()
                         .unwrap_or_else(|| format!("DF_{}_{}", table.name, col.name));
-                    
+
                     rows.push(StoredRow {
                         values: vec![
                             Value::VarChar(name),

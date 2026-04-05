@@ -87,16 +87,13 @@ impl<'a> ScriptExecutor<'a> {
         if let Some(target) = into_table {
             let schema_name = target.schema_or_dbo();
             if self.catalog.find_table(schema_name, &target.name).is_some() {
-                return Err(DbError::Semantic(format!(
-                    "Table '{}.{}' already exists",
-                    schema_name, target.name
-                )));
+                return Err(DbError::duplicate_table(schema_name, &target.name));
             }
 
             let schema_id = self
                 .catalog
                 .get_schema_id(schema_name)
-                .ok_or_else(|| DbError::Semantic(format!("schema '{}' not found", schema_name)))?;
+                .ok_or_else(|| DbError::schema_not_found(schema_name))?;
 
             let mut columns = Vec::new();
             for (i, name) in result.columns.iter().enumerate() {

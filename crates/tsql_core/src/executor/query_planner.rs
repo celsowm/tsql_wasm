@@ -347,7 +347,7 @@ pub fn bind_table(
 
     let table = catalog
         .find_table(schema, name)
-        .ok_or_else(|| DbError::Semantic(format!("table '{}.{}' not found", schema, name)))?
+        .ok_or_else(|| DbError::table_not_found(schema, name))?
         .clone();
 
     Ok(BoundTable {

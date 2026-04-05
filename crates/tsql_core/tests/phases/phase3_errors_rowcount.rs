@@ -25,7 +25,7 @@ fn test_error_taxonomy_codes() {
         .execute(parse_sql("SELECT * FROM dbo.unknown_table").unwrap())
         .unwrap_err();
     assert_eq!(semantic_err.class(), ErrorClass::Semantic);
-    assert_eq!(semantic_err.code(), "TSQL_SEMANTIC_ERROR");
+    assert_eq!(semantic_err.code(), "TSQL_TABLE_NOT_FOUND");
 
     e.execute(parse_sql("CREATE TABLE t_err (name VARCHAR(1))").unwrap())
         .expect("create table");

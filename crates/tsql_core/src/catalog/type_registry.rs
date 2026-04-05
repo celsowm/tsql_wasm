@@ -15,10 +15,7 @@ impl TypeRegistry for CatalogImpl {
 
     fn create_table_type(&mut self, def: TableTypeDef) -> Result<(), DbError> {
         if self.find_table_type(&def.schema, &def.name).is_some() {
-            return Err(DbError::Semantic(format!(
-                "type '{}.{}' already exists",
-                def.schema, def.name
-            )));
+            return Err(DbError::duplicate_type(&def.schema, &def.name));
         }
         let idx = self.table_types.len();
         self.type_map
@@ -33,10 +30,7 @@ impl TypeRegistry for CatalogImpl {
             .get(&(schema.to_lowercase(), name.to_lowercase()))
             .copied()
         else {
-            return Err(DbError::Semantic(format!(
-                "type '{}.{}' not found",
-                schema, name
-            )));
+            return Err(DbError::type_not_found(schema, name));
         };
         self.table_types.remove(idx);
         self.rebuild_maps();

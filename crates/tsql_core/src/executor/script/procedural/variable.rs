@@ -71,10 +71,7 @@ impl<'a> ScriptExecutor<'a> {
             let coerced = crate::executor::value_ops::coerce_value_to_type(val, ty)?;
             *var = coerced;
         } else {
-            return Err(DbError::Semantic(format!(
-                "variable '{}' not declared",
-                stmt.name
-            )));
+            return Err(DbError::invalid_identifier(&stmt.name));
         }
         Ok(None)
     }

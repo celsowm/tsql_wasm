@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use tsql_core::{parse_sql, types::Value, Engine};
 
 fn exec(engine: &mut Engine, sql: &str) {
@@ -59,7 +60,9 @@ fn test_dateadd_hour() {
     );
     assert_eq!(
         r.rows[0][0],
-        Value::DateTime("2025-01-01T13:00:00".to_string())
+        Value::DateTime(
+            NaiveDateTime::parse_from_str("2025-01-01T13:00:00", "%Y-%m-%dT%H:%M:%S").unwrap()
+        )
     );
 }
 
@@ -100,7 +103,9 @@ fn test_dateadd_month() {
     );
     assert_eq!(
         r.rows[0][0],
-        Value::DateTime("2025-02-15T00:00:00".to_string())
+        Value::DateTime(
+            NaiveDateTime::parse_from_str("2025-02-15T00:00:00", "%Y-%m-%dT%H:%M:%S").unwrap()
+        )
     );
 }
 
@@ -113,7 +118,9 @@ fn test_dateadd_day() {
     );
     assert_eq!(
         r.rows[0][0],
-        Value::DateTime("2025-01-02T00:00:00".to_string())
+        Value::DateTime(
+            NaiveDateTime::parse_from_str("2025-01-02T00:00:00", "%Y-%m-%dT%H:%M:%S").unwrap()
+        )
     );
 }
 
@@ -126,7 +133,9 @@ fn test_dateadd_year() {
     );
     assert_eq!(
         r.rows[0][0],
-        Value::DateTime("2025-06-15T12:00:00".to_string())
+        Value::DateTime(
+            NaiveDateTime::parse_from_str("2025-06-15T12:00:00", "%Y-%m-%dT%H:%M:%S").unwrap()
+        )
     );
 }
 

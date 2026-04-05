@@ -1,8 +1,8 @@
-﻿use crate::ast::Expr;
+use crate::ast::Expr;
 use crate::catalog::Catalog;
 use crate::error::DbError;
-use crate::types::Value;
 use crate::storage::Storage;
+use crate::types::Value;
 
 use super::super::clock::Clock;
 use super::super::context::ExecutionContext;
@@ -306,7 +306,7 @@ pub(crate) fn eval_unistr(
         return Ok(Value::Null);
     }
     let s = val.to_string_value();
-    
+
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
     while let Some(ch) = chars.next() {
@@ -336,7 +336,7 @@ pub(crate) fn eval_unistr(
         }
         result.push(ch);
     }
-    
+
     Ok(Value::NVarChar(result))
 }
 
@@ -349,7 +349,9 @@ pub(crate) fn eval_concat(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.is_empty() {
-        return Err(DbError::Execution("CONCAT requires at least one argument".into()));
+        return Err(DbError::Execution(
+            "CONCAT requires at least one argument".into(),
+        ));
     }
     let mut result = String::new();
     for arg in args {
@@ -370,7 +372,9 @@ pub(crate) fn eval_concat_ws(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.len() < 2 {
-        return Err(DbError::Execution("CONCAT_WS requires at least 2 arguments".into()));
+        return Err(DbError::Execution(
+            "CONCAT_WS requires at least 2 arguments".into(),
+        ));
     }
     let separator_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
     let separator = if separator_val.is_null() {
@@ -461,7 +465,11 @@ pub(crate) fn eval_stuff(
     };
 
     let chars: Vec<char> = s.chars().collect();
-    let start_idx = if start_i <= 0 { 0 } else { (start_i - 1) as usize };
+    let start_idx = if start_i <= 0 {
+        0
+    } else {
+        (start_i - 1) as usize
+    };
     let delete_count = if length_i < 0 { 0 } else { length_i as usize };
     let end_idx = (start_idx + delete_count).min(chars.len());
 
@@ -508,13 +516,15 @@ pub(crate) fn eval_str(
     }
     let length = if args.len() >= 2 {
         eval_expr(&args[1], row, ctx, catalog, storage, clock)?
-            .to_integer_i64().unwrap_or(10) as usize
+            .to_integer_i64()
+            .unwrap_or(10) as usize
     } else {
         10
     };
     let decimals = if args.len() == 3 {
         eval_expr(&args[2], row, ctx, catalog, storage, clock)?
-            .to_integer_i64().unwrap_or(0) as usize
+            .to_integer_i64()
+            .unwrap_or(0) as usize
     } else {
         0
     };
@@ -542,7 +552,11 @@ pub(crate) fn eval_str(
     if trimmed.len() >= length {
         Ok(Value::VarChar(trimmed.to_string()))
     } else {
-        Ok(Value::VarChar(format!("{:>width$}", trimmed, width = length)))
+        Ok(Value::VarChar(format!(
+            "{:>width$}",
+            trimmed,
+            width = length
+        )))
     }
 }
 
@@ -607,9 +621,10 @@ pub(crate) fn eval_format(
     let fmt = format_str.to_string_value();
 
     match val {
-        Value::DateTime(ref s) | Value::DateTime2(ref s) | Value::Date(ref s) => {
-            Ok(Value::NVarChar(crate::executor::scalar::datetime::format_datetime_string(s, &fmt)))
+        Value::DateTime(dt) | Value::DateTime2(dt) => {
+            Ok(Value::NVarChar(dt.format(&fmt).to_string()))
         }
+        Value::Date(d) => Ok(Value::NVarChar(d.format(&fmt).to_string())),
         Value::Int(v) => Ok(Value::NVarChar(format_integer(v, &fmt))),
         Value::BigInt(v) => Ok(Value::NVarChar(format_integer(v, &fmt))),
         Value::Float(bits) => {
@@ -634,14 +649,26 @@ fn format_integer<T: std::fmt::Display>(v: T, fmt: &str) -> String {
 
 fn format_float_value(f: f64, fmt: &str) -> String {
     if fmt.starts_with('N') || fmt.starts_with('n') {
-        let decimals: usize = if fmt.len() > 1 { fmt[1..].parse().unwrap_or(2) } else { 2 };
+        let decimals: usize = if fmt.len() > 1 {
+            fmt[1..].parse().unwrap_or(2)
+        } else {
+            2
+        };
         let s = format!("{:.*}", decimals, f);
         format_number_with_commas(&s)
     } else if fmt.starts_with('C') || fmt.starts_with('c') {
-        let decimals: usize = if fmt.len() > 1 { fmt[1..].parse().unwrap_or(2) } else { 2 };
+        let decimals: usize = if fmt.len() > 1 {
+            fmt[1..].parse().unwrap_or(2)
+        } else {
+            2
+        };
         format!("${:.*}", decimals, f)
     } else if fmt.starts_with('P') || fmt.starts_with('p') {
-        let decimals: usize = if fmt.len() > 1 { fmt[1..].parse().unwrap_or(2) } else { 2 };
+        let decimals: usize = if fmt.len() > 1 {
+            fmt[1..].parse().unwrap_or(2)
+        } else {
+            2
+        };
         format!("{:.*}%", decimals, f * 100.0)
     } else {
         format!("{}", f)
@@ -709,7 +736,11 @@ pub(crate) fn eval_patindex(
     } else if ends_with_wild {
         target.find(pat).map(|pos| (pos + 1) as i64).unwrap_or(0)
     } else {
-        if target == pat { 1 } else { 0 }
+        if target == pat {
+            1
+        } else {
+            0
+        }
     };
 
     Ok(Value::Int(result as i32))
@@ -735,7 +766,11 @@ pub(crate) fn eval_soundex(
 }
 
 fn soundex(s: &str) -> String {
-    let chars: Vec<char> = s.to_uppercase().chars().filter(|c| c.is_ascii_alphabetic()).collect();
+    let chars: Vec<char> = s
+        .to_uppercase()
+        .chars()
+        .filter(|c| c.is_ascii_alphabetic())
+        .collect();
     if chars.is_empty() {
         return "0000".to_string();
     }
@@ -747,7 +782,9 @@ fn soundex(s: &str) -> String {
         let code = soundex_code(c);
         if code != '0' && code != prev_code {
             result.push(code);
-            if result.len() == 4 { break; }
+            if result.len() == 4 {
+                break;
+            }
         }
         prev_code = code;
     }
@@ -894,7 +931,9 @@ pub(crate) fn eval_string_escape(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.len() != 2 {
-        return Err(DbError::Execution("STRING_ESCAPE expects 2 arguments".into()));
+        return Err(DbError::Execution(
+            "STRING_ESCAPE expects 2 arguments".into(),
+        ));
     }
     let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
     let escape_type = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
@@ -927,23 +966,24 @@ pub(crate) fn eval_string_escape(
             }
             out
         }
-        "HTML" => {
-            s.replace('&', "&amp;")
-                .replace('<', "&lt;")
-                .replace('>', "&gt;")
-                .replace('"', "&quot;")
-                .replace('\'', "&#39;")
+        "HTML" => s
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&#39;"),
+        "XML" => s
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&apos;"),
+        _ => {
+            return Err(DbError::Execution(format!(
+                "Unsupported escape type '{}'. Supported: JSON, HTML, XML",
+                typ
+            )))
         }
-        "XML" => {
-            s.replace('&', "&amp;")
-                .replace('<', "&lt;")
-                .replace('>', "&gt;")
-                .replace('"', "&quot;")
-                .replace('\'', "&apos;")
-        }
-        _ => return Err(DbError::Execution(format!(
-            "Unsupported escape type '{}'. Supported: JSON, HTML, XML", typ
-        ))),
     };
 
     Ok(Value::NVarChar(result))

@@ -171,6 +171,7 @@ pub(crate) fn eval_udf_body<'a>(
 
 const MAX_RECURSION_DEPTH: usize = 32;
 
+#[inline]
 pub fn eval_expr(
     expr: &Expr,
     row: &[super::model::ContextTable],
@@ -187,7 +188,21 @@ pub fn eval_expr(
     }
 
     ctx.frame.depth += 1;
-    let res = match expr {
+    let res = eval_expr_inner(expr, row, ctx, catalog, storage, clock);
+    ctx.frame.depth -= 1;
+    res
+}
+
+#[inline(always)]
+fn eval_expr_inner(
+    expr: &Expr,
+    row: &[super::model::ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    match expr {
         Expr::Identifier(name) => resolve_identifier(row, name, ctx),
         Expr::QualifiedIdentifier(parts) => resolve_qualified_identifier(row, parts, ctx),
         Expr::Wildcard => Err(DbError::Execution(
@@ -339,9 +354,7 @@ pub fn eval_expr(
                 ))
             }
         }
-    };
-    ctx.frame.depth -= 1;
-    res
+    }
 }
 
 pub(crate) fn eval_predicate(

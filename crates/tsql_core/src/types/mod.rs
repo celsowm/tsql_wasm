@@ -1,4 +1,6 @@
 ﻿use serde::{Deserialize, Serialize};
+use chrono::{NaiveDate, NaiveTime, NaiveDateTime};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DataType {
@@ -91,11 +93,11 @@ pub enum Value {
     NVarChar(String),
     Binary(Vec<u8>),
     VarBinary(Vec<u8>),
-    Date(String),
-    Time(String),
-    DateTime(String),
-    DateTime2(String),
-    UniqueIdentifier(String),
+    Date(NaiveDate),
+    Time(NaiveTime),
+    DateTime(NaiveDateTime),
+    DateTime2(NaiveDateTime),
+    UniqueIdentifier(Uuid),
     SqlVariant(Box<Value>),
 }
 
@@ -151,11 +153,10 @@ impl Value {
                 JsonValue::String(v.clone())
             }
             Value::Binary(v) | Value::VarBinary(v) => JsonValue::String(format_binary(v)),
-            Value::Date(v)
-            | Value::Time(v)
-            | Value::DateTime(v)
-            | Value::DateTime2(v)
-            | Value::UniqueIdentifier(v) => JsonValue::String(v.clone()),
+            Value::Date(v) => JsonValue::String(v.format("%Y-%m-%d").to_string()),
+            Value::Time(v) => JsonValue::String(v.format("%H:%M:%S%.f").to_string()),
+            Value::DateTime(v) | Value::DateTime2(v) => JsonValue::String(v.format("%Y-%m-%d %H:%M:%S%.f").to_string()),
+            Value::UniqueIdentifier(v) => JsonValue::String(v.to_string()),
             Value::SqlVariant(v) => v.to_json(),
         }
     }
@@ -221,12 +222,11 @@ impl Value {
             Value::Char(v)
             | Value::VarChar(v)
             | Value::NChar(v)
-            | Value::NVarChar(v)
-            | Value::Date(v)
-            | Value::Time(v)
-            | Value::DateTime(v)
-            | Value::DateTime2(v)
-            | Value::UniqueIdentifier(v) => v.clone(),
+            | Value::NVarChar(v) => v.clone(),
+            Value::Date(v) => v.format("%Y-%m-%d").to_string(),
+            Value::Time(v) => v.format("%H:%M:%S%.f").to_string(),
+            Value::DateTime(v) | Value::DateTime2(v) => v.format("%Y-%m-%d %H:%M:%S%.f").to_string(),
+            Value::UniqueIdentifier(v) => v.to_string(),
             Value::Binary(v) | Value::VarBinary(v) => format_binary(v),
             Value::SqlVariant(v) => v.to_string_value(),
         }

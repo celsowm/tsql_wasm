@@ -325,6 +325,10 @@ impl<'a> WindowExecutor<'a> {
             }
         }
 
+        if final_projected_rows.is_empty() {
+            column_types = vec![crate::types::DataType::VarChar { max_len: 4000 }; projection.len()];
+        }
+
         let columns: Vec<String> = projection
             .iter()
             .map(|i| {

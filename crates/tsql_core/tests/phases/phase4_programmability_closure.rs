@@ -1,4 +1,4 @@
-use tsql_core::{parse_batch, parse_sql, types::Value, DbError, Engine};
+use tsql_core::{parse_batch, parse_sql, types::Value, Engine, ErrorClass};
 
 fn exec(engine: &mut Engine, sql: &str) {
     let stmt = parse_sql(sql).expect("parse failed");
@@ -73,7 +73,7 @@ fn test_temp_table_isolated_between_engines() {
     );
     let stmt = parse_sql("SELECT * FROM #tmp").unwrap();
     let err = e2.execute(stmt).unwrap_err();
-    assert!(matches!(err, DbError::Semantic(_)));
+    assert!(matches!(err.class(), ErrorClass::Semantic));
 }
 
 #[test]

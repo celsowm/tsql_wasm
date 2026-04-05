@@ -15,10 +15,7 @@ impl RoutineRegistry for CatalogImpl {
 
     fn create_routine(&mut self, routine: RoutineDef) -> Result<(), DbError> {
         if self.find_routine(&routine.schema, &routine.name).is_some() {
-            return Err(DbError::Semantic(format!(
-                "routine '{}.{}' already exists",
-                routine.schema, routine.name
-            )));
+            return Err(DbError::object_not_found(format!("routine '{}.{}'", routine.schema, routine.name)));
         }
         let idx = self.routines.len();
         self.routine_map.insert(
@@ -45,18 +42,12 @@ impl RoutineRegistry for CatalogImpl {
             } else {
                 "procedure"
             };
-            return Err(DbError::Semantic(format!(
-                "{} '{}.{}' not found",
-                kind, schema, name
-            )));
+            return Err(DbError::object_not_found(format!("{} '{}.{}'", kind, schema, name)));
         };
 
         let is_function = matches!(self.routines[idx].kind, RoutineKind::Function { .. });
         if is_function != expect_function {
-            return Err(DbError::Semantic(format!(
-                "'{}.{}' has different routine kind",
-                schema, name
-            )));
+            return Err(DbError::invalid_identifier(&format!("'{}.{}' has different routine kind", schema, name)));
         }
         self.routines.remove(idx);
         self.rebuild_maps();

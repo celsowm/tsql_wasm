@@ -24,9 +24,7 @@ fn apply_table_constraint(
                 .columns
                 .iter_mut()
                 .find(|c| c.name.eq_ignore_ascii_case(&column))
-                .ok_or_else(|| {
-                    DbError::Semantic(format!("column '{}' not found", column))
-                })?;
+                .ok_or_else(|| DbError::column_not_found(&column))?;
             col.default = Some(expr);
             col.default_constraint_name = Some(name);
         }
@@ -56,9 +54,7 @@ fn apply_table_constraint(
                     .columns
                     .iter_mut()
                     .find(|c| c.name.eq_ignore_ascii_case(col_name))
-                    .ok_or_else(|| {
-                        DbError::Semantic(format!("column '{}' not found", col_name))
-                    })?;
+                    .ok_or_else(|| DbError::column_not_found(col_name))?;
                 col.primary_key = true;
                 col.nullable = false;
             }
@@ -78,9 +74,7 @@ fn apply_table_constraint(
                     .columns
                     .iter_mut()
                     .find(|c| c.name.eq_ignore_ascii_case(col_name))
-                    .ok_or_else(|| {
-                        DbError::Semantic(format!("column '{}' not found", col_name))
-                    })?;
+                    .ok_or_else(|| DbError::column_not_found(col_name))?;
                 col.unique = true;
             }
         }
@@ -97,7 +91,7 @@ impl<'a> SchemaExecutor<'a> {
     pub(crate) fn create_type(&mut self, stmt: CreateTypeStmt) -> Result<(), DbError> {
         let schema = stmt.name.schema_or_dbo().to_string();
         if self.catalog.get_schema_id(&schema).is_none() {
-            return Err(DbError::Semantic(format!("schema '{}' not found", schema)));
+            return Err(DbError::schema_not_found(schema));
         }
         let object_id = self.catalog.alloc_object_id();
         self.catalog.create_table_type(TableTypeDef {
@@ -119,17 +113,14 @@ impl<'a> SchemaExecutor<'a> {
         let schema_id = self
             .catalog
             .get_schema_id(&schema_name)
-            .ok_or_else(|| DbError::Semantic(format!("schema '{}' not found", schema_name)))?;
+            .ok_or_else(|| DbError::schema_not_found(schema_name.clone()))?;
 
         if self
             .catalog
             .find_table(&schema_name, &stmt.name.name)
             .is_some()
         {
-            return Err(DbError::Semantic(format!(
-                "table '{}.{}' already exists",
-                schema_name, stmt.name.name
-            )));
+            return Err(DbError::duplicate_table(&schema_name, &stmt.name.name));
         }
 
         let table_id = self.catalog.alloc_table_id();
@@ -263,12 +254,7 @@ impl<'a> SchemaExecutor<'a> {
             .catalog
             .find_table(&schema_name, &stmt.table.name)
             .map(|t| t.id)
-            .ok_or_else(|| {
-                DbError::Semantic(format!(
-                    "table '{}.{}' not found",
-                    schema_name, stmt.table.name
-                ))
-            })?;
+            .ok_or_else(|| DbError::table_not_found(&schema_name, &stmt.table.name))?;
 
         match stmt.action {
             AlterTableAction::AddColumn(col_spec) => {
@@ -276,10 +262,7 @@ impl<'a> SchemaExecutor<'a> {
                 let table_mut = self
                     .catalog
                     .find_table_mut(&schema_name, &stmt.table.name)
-                    .ok_or_else(|| DbError::Semantic(format!(
-                        "table '{}.{}' not found",
-                        schema_name, stmt.table.name
-                    )))?;
+                    .ok_or_else(|| DbError::table_not_found(&schema_name, &stmt.table.name))?;
                 table_mut.columns.push(col);
 
                 // Add NULL values for the new column in existing rows
@@ -302,15 +285,12 @@ impl<'a> SchemaExecutor<'a> {
                 let table_mut = self
                     .catalog
                     .find_table_mut(&schema_name, &stmt.table.name)
-                    .ok_or_else(|| DbError::Semantic(format!(
-                        "table '{}.{}' not found",
-                        schema_name, stmt.table.name
-                    )))?;
+                    .ok_or_else(|| DbError::table_not_found(&schema_name, &stmt.table.name))?;
                 let col_idx = table_mut
                     .columns
                     .iter()
                     .position(|c| c.name.eq_ignore_ascii_case(&col_name))
-                    .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", col_name)))?;
+                    .ok_or_else(|| DbError::column_not_found(&col_name))?;
                 table_mut.columns.remove(col_idx);
 
                 // Remove the column values from existing rows
@@ -335,24 +315,14 @@ impl<'a> SchemaExecutor<'a> {
                 let table_mut = self
                     .catalog
                     .find_table_mut(&schema_name, &stmt.table.name)
-                    .ok_or_else(|| {
-                        DbError::Semantic(format!(
-                            "table '{}.{}' not found",
-                            schema_name, stmt.table.name
-                        ))
-                    })?;
+                    .ok_or_else(|| DbError::table_not_found(&schema_name, &stmt.table.name))?;
                 apply_table_constraint(table_mut, constraint)?;
             }
             AlterTableAction::DropConstraint(constraint_name) => {
                 let table_mut = self
                     .catalog
                     .find_table_mut(&schema_name, &stmt.table.name)
-                    .ok_or_else(|| {
-                        DbError::Semantic(format!(
-                            "table '{}.{}' not found",
-                            schema_name, stmt.table.name
-                        ))
-                    })?;
+                    .ok_or_else(|| DbError::table_not_found(&schema_name, &stmt.table.name))?;
 
                 // Try to remove from check constraints
                 let removed = table_mut
@@ -370,10 +340,7 @@ impl<'a> SchemaExecutor<'a> {
                     if let Some(pos) = removed {
                         table_mut.foreign_keys.remove(pos);
                     } else {
-                        return Err(DbError::Semantic(format!(
-                            "constraint '{}' not found",
-                            constraint_name
-                        )));
+                        return Err(DbError::constraint_not_found(&stmt.table.name, constraint_name));
                     }
                 }
             }

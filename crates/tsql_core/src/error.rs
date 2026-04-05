@@ -34,13 +34,93 @@ pub enum DbError {
         number: i32,
         message: String,
     },
+
+    // -- Strongly-typed semantic errors --
+    #[error("schema '{schema}' not found")]
+    SchemaNotFound { schema: String },
+
+    #[error("table '{schema}.{table}' not found")]
+    TableNotFound { schema: String, table: String },
+
+    #[error("column '{column}' not found")]
+    ColumnNotFound { column: String },
+
+    #[error("column '{column}' not found in table '{table}'")]
+    ColumnNotFoundQualified { table: String, column: String },
+
+    #[error("type mismatch: expected {expected}, found {found}")]
+    TypeMismatch { expected: String, found: String },
+
+    #[error("index '{index}' not found on table '{table}'")]
+    IndexNotFound { table: String, index: String },
+
+    #[error("primary key not found on table '{table}'")]
+    PrimaryKeyNotFound { table: String },
+
+    #[error("constraint '{constraint}' not found on table '{table}'")]
+    ConstraintNotFound { table: String, constraint: String },
+
+    #[error("database '{database}' not found")]
+    DatabaseNotFound { database: String },
+
+    #[error("object '{object}' not found")]
+    ObjectNotFound { object: String },
+
+    #[error("column '{column}' already exists in table")]
+    DuplicateColumn { column: String },
+
+    #[error("table '{table}' already exists in schema '{schema}'")]
+    DuplicateTable { schema: String, table: String },
+
+    #[error("invalid identifier: '{identifier}'")]
+    InvalidIdentifier { identifier: String },
+
+    #[error("trigger '{trigger}' not found in schema '{schema}'")]
+    TriggerNotFound { schema: String, trigger: String },
+
+    #[error("trigger '{trigger}' already exists in schema '{schema}'")]
+    DuplicateTrigger { schema: String, trigger: String },
+
+    #[error("view '{schema}.{view}' not found")]
+    ViewNotFound { schema: String, view: String },
+
+    #[error("view '{view}' already exists in schema '{schema}'")]
+    DuplicateView { schema: String, view: String },
+
+    #[error("type '{schema}.{type_name}' not found")]
+    TypeNotFound { schema: String, type_name: String },
+
+    #[error("type '{type_name}' already exists in schema '{schema}'")]
+    DuplicateType { schema: String, type_name: String },
+
+    #[error("schema '{schema}' already exists")]
+    DuplicateSchema { schema: String },
+
+    #[error("cursor '{cursor}' not declared")]
+    CursorNotDeclared { cursor: String },
+
+    #[error("cursor '{cursor}' has no query")]
+    CursorHasNoQuery { cursor: String },
 }
 
 impl DbError {
     pub fn class(&self) -> ErrorClass {
         match self {
             DbError::Parse(_) => ErrorClass::Parse,
-            DbError::Semantic(_) => ErrorClass::Semantic,
+            DbError::Semantic(_) | DbError::SchemaNotFound { .. }
+            | DbError::TableNotFound { .. } | DbError::ColumnNotFound { .. }
+            | DbError::ColumnNotFoundQualified { .. } | DbError::TypeMismatch { .. }
+            | DbError::IndexNotFound { .. } | DbError::PrimaryKeyNotFound { .. }
+            | DbError::ConstraintNotFound { .. } | DbError::DatabaseNotFound { .. }
+            | DbError::ObjectNotFound { .. } | DbError::DuplicateColumn { .. }
+            | DbError::DuplicateTable { .. } | DbError::InvalidIdentifier { .. }
+            | DbError::TriggerNotFound { .. } | DbError::DuplicateTrigger { .. }
+            | DbError::ViewNotFound { .. } | DbError::DuplicateView { .. }
+            | DbError::TypeNotFound { .. } | DbError::DuplicateType { .. }
+            | DbError::DuplicateSchema { .. }
+            | DbError::CursorNotDeclared { .. } | DbError::CursorHasNoQuery { .. } => {
+                ErrorClass::Semantic
+            }
             DbError::Execution(_) | DbError::Deadlock(_) | DbError::Custom { .. } => {
                 ErrorClass::Execution
             }
@@ -51,7 +131,18 @@ impl DbError {
     pub fn number(&self) -> i32 {
         match self {
             DbError::Parse(_) => 102,
-            DbError::Semantic(_) => 207,
+            DbError::Semantic(_) | DbError::SchemaNotFound { .. }
+            | DbError::TableNotFound { .. } | DbError::ColumnNotFound { .. }
+            | DbError::ColumnNotFoundQualified { .. } | DbError::TypeMismatch { .. }
+            | DbError::IndexNotFound { .. } | DbError::PrimaryKeyNotFound { .. }
+            | DbError::ConstraintNotFound { .. } | DbError::DatabaseNotFound { .. }
+            | DbError::ObjectNotFound { .. } | DbError::DuplicateColumn { .. }
+            | DbError::DuplicateTable { .. } | DbError::InvalidIdentifier { .. }
+            | DbError::TriggerNotFound { .. } | DbError::DuplicateTrigger { .. }
+            | DbError::ViewNotFound { .. } | DbError::DuplicateView { .. }
+            | DbError::TypeNotFound { .. } | DbError::DuplicateType { .. }
+            | DbError::DuplicateSchema { .. }
+            | DbError::CursorNotDeclared { .. } | DbError::CursorHasNoQuery { .. } => 207,
             DbError::Execution(_) => 50000,
             DbError::Storage(_) => 50001,
             DbError::Deadlock(_) => 1205,
@@ -63,11 +154,122 @@ impl DbError {
         match self {
             DbError::Parse(_) => "TSQL_PARSE_ERROR",
             DbError::Semantic(_) => "TSQL_SEMANTIC_ERROR",
+            DbError::SchemaNotFound { .. } => "TSQL_SCHEMA_NOT_FOUND",
+            DbError::TableNotFound { .. } => "TSQL_TABLE_NOT_FOUND",
+            DbError::ColumnNotFound { .. } => "TSQL_COLUMN_NOT_FOUND",
+            DbError::ColumnNotFoundQualified { .. } => "TSQL_COLUMN_NOT_FOUND_QUALIFIED",
+            DbError::TypeMismatch { .. } => "TSQL_TYPE_MISMATCH",
+            DbError::IndexNotFound { .. } => "TSQL_INDEX_NOT_FOUND",
+            DbError::PrimaryKeyNotFound { .. } => "TSQL_PRIMARY_KEY_NOT_FOUND",
+            DbError::ConstraintNotFound { .. } => "TSQL_CONSTRAINT_NOT_FOUND",
+            DbError::DatabaseNotFound { .. } => "TSQL_DATABASE_NOT_FOUND",
+            DbError::ObjectNotFound { .. } => "TSQL_OBJECT_NOT_FOUND",
+            DbError::DuplicateColumn { .. } => "TSQL_DUPLICATE_COLUMN",
+            DbError::DuplicateTable { .. } => "TSQL_DUPLICATE_TABLE",
+            DbError::InvalidIdentifier { .. } => "TSQL_INVALID_IDENTIFIER",
+            DbError::TriggerNotFound { .. } => "TSQL_TRIGGER_NOT_FOUND",
+            DbError::DuplicateTrigger { .. } => "TSQL_DUPLICATE_TRIGGER",
+            DbError::ViewNotFound { .. } => "TSQL_VIEW_NOT_FOUND",
+            DbError::DuplicateView { .. } => "TSQL_DUPLICATE_VIEW",
+            DbError::TypeNotFound { .. } => "TSQL_TYPE_NOT_FOUND",
+            DbError::DuplicateType { .. } => "TSQL_DUPLICATE_TYPE",
+            DbError::DuplicateSchema { .. } => "TSQL_DUPLICATE_SCHEMA",
+            DbError::CursorNotDeclared { .. } => "TSQL_CURSOR_NOT_DECLARED",
+            DbError::CursorHasNoQuery { .. } => "TSQL_CURSOR_HAS_NO_QUERY",
             DbError::Execution(_) => "TSQL_EXECUTION_ERROR",
             DbError::Storage(_) => "TSQL_STORAGE_ERROR",
             DbError::Deadlock(_) => "TSQL_DEADLOCK_ERROR",
             DbError::Custom { .. } => "TSQL_CUSTOM_ERROR",
         }
+    }
+
+    // -- Strongly-typed constructors --
+    pub fn schema_not_found(schema: impl Into<String>) -> Self {
+        DbError::SchemaNotFound { schema: schema.into() }
+    }
+
+    pub fn table_not_found(schema: impl Into<String>, table: impl Into<String>) -> Self {
+        DbError::TableNotFound { schema: schema.into(), table: table.into() }
+    }
+
+    pub fn column_not_found(column: impl Into<String>) -> Self {
+        DbError::ColumnNotFound { column: column.into() }
+    }
+
+    pub fn column_not_found_qualified(table: impl Into<String>, column: impl Into<String>) -> Self {
+        DbError::ColumnNotFoundQualified { table: table.into(), column: column.into() }
+    }
+
+    pub fn type_mismatch(expected: impl Into<String>, found: impl Into<String>) -> Self {
+        DbError::TypeMismatch { expected: expected.into(), found: found.into() }
+    }
+
+    pub fn index_not_found(table: impl Into<String>, index: impl Into<String>) -> Self {
+        DbError::IndexNotFound { table: table.into(), index: index.into() }
+    }
+
+    pub fn primary_key_not_found(table: impl Into<String>) -> Self {
+        DbError::PrimaryKeyNotFound { table: table.into() }
+    }
+
+    pub fn constraint_not_found(table: impl Into<String>, constraint: impl Into<String>) -> Self {
+        DbError::ConstraintNotFound { table: table.into(), constraint: constraint.into() }
+    }
+
+    pub fn database_not_found(database: impl Into<String>) -> Self {
+        DbError::DatabaseNotFound { database: database.into() }
+    }
+
+    pub fn object_not_found(object: impl Into<String>) -> Self {
+        DbError::ObjectNotFound { object: object.into() }
+    }
+
+    pub fn duplicate_column(column: impl Into<String>) -> Self {
+        DbError::DuplicateColumn { column: column.into() }
+    }
+
+    pub fn duplicate_table(schema: impl Into<String>, table: impl Into<String>) -> Self {
+        DbError::DuplicateTable { schema: schema.into(), table: table.into() }
+    }
+
+    pub fn invalid_identifier(identifier: impl Into<String>) -> Self {
+        DbError::InvalidIdentifier { identifier: identifier.into() }
+    }
+
+    pub fn trigger_not_found(schema: impl Into<String>, trigger: impl Into<String>) -> Self {
+        DbError::TriggerNotFound { schema: schema.into(), trigger: trigger.into() }
+    }
+
+    pub fn duplicate_trigger(schema: impl Into<String>, trigger: impl Into<String>) -> Self {
+        DbError::DuplicateTrigger { schema: schema.into(), trigger: trigger.into() }
+    }
+
+    pub fn view_not_found(schema: impl Into<String>, view: impl Into<String>) -> Self {
+        DbError::ViewNotFound { schema: schema.into(), view: view.into() }
+    }
+
+    pub fn duplicate_view(schema: impl Into<String>, view: impl Into<String>) -> Self {
+        DbError::DuplicateView { schema: schema.into(), view: view.into() }
+    }
+
+    pub fn type_not_found(schema: impl Into<String>, type_name: impl Into<String>) -> Self {
+        DbError::TypeNotFound { schema: schema.into(), type_name: type_name.into() }
+    }
+
+    pub fn duplicate_type(schema: impl Into<String>, type_name: impl Into<String>) -> Self {
+        DbError::DuplicateType { schema: schema.into(), type_name: type_name.into() }
+    }
+
+    pub fn duplicate_schema(schema: impl Into<String>) -> Self {
+        DbError::DuplicateSchema { schema: schema.into() }
+    }
+
+    pub fn cursor_not_declared(cursor: impl Into<String>) -> Self {
+        DbError::CursorNotDeclared { cursor: cursor.into() }
+    }
+
+    pub fn cursor_has_no_query(cursor: impl Into<String>) -> Self {
+        DbError::CursorHasNoQuery { cursor: cursor.into() }
     }
 }
 

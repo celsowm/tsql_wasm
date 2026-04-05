@@ -15,10 +15,7 @@ impl ViewRegistry for CatalogImpl {
 
     fn create_view(&mut self, view: ViewDef) -> Result<(), DbError> {
         if self.find_view(&view.schema, &view.name).is_some() {
-            return Err(DbError::Semantic(format!(
-                "view '{}.{}' already exists",
-                view.schema, view.name
-            )));
+            return Err(DbError::duplicate_view(&view.schema, &view.name));
         }
         let idx = self.views.len();
         self.view_map
@@ -31,7 +28,7 @@ impl ViewRegistry for CatalogImpl {
         let idx = *self
             .view_map
             .get(&(schema.to_lowercase(), name.to_lowercase()))
-            .ok_or_else(|| DbError::Semantic(format!("view '{}.{}' not found", schema, name)))?;
+            .ok_or_else(|| DbError::view_not_found(schema, name))?;
         self.views.remove(idx);
         self.rebuild_maps();
         Ok(())

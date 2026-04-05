@@ -1,8 +1,8 @@
-﻿use crate::ast::Expr;
+use crate::ast::Expr;
 use crate::catalog::Catalog;
 use crate::error::DbError;
-use crate::types::Value;
 use crate::storage::Storage;
+use crate::types::Value;
 
 use super::super::clock::Clock;
 use super::super::context::ExecutionContext;
@@ -30,7 +30,7 @@ where
     if val.is_null() {
         return Ok(Value::Null);
     }
-    
+
     match &val {
         Value::Decimal(_, scale) => {
             let f = value_to_f64(&val)?;
@@ -257,7 +257,9 @@ pub(crate) fn eval_checksum(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.is_empty() {
-        return Err(DbError::Execution("CHECKSUM requires at least one argument".into()));
+        return Err(DbError::Execution(
+            "CHECKSUM requires at least one argument".into(),
+        ));
     }
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
@@ -266,14 +268,30 @@ pub(crate) fn eval_checksum(
     for arg in args {
         let val = eval_expr(arg, row, ctx, catalog, storage, clock)?;
         match val {
-            Value::Null => { 0i64.hash(&mut hasher); }
-            Value::Bit(v) => { v.hash(&mut hasher); }
-            Value::TinyInt(v) => { v.hash(&mut hasher); }
-            Value::SmallInt(v) => { v.hash(&mut hasher); }
-            Value::Int(v) => { v.hash(&mut hasher); }
-            Value::BigInt(v) => { v.hash(&mut hasher); }
-            Value::Float(v) => { v.hash(&mut hasher); }
-            _ => { val.to_string_value().hash(&mut hasher); }
+            Value::Null => {
+                0i64.hash(&mut hasher);
+            }
+            Value::Bit(v) => {
+                v.hash(&mut hasher);
+            }
+            Value::TinyInt(v) => {
+                v.hash(&mut hasher);
+            }
+            Value::SmallInt(v) => {
+                v.hash(&mut hasher);
+            }
+            Value::Int(v) => {
+                v.hash(&mut hasher);
+            }
+            Value::BigInt(v) => {
+                v.hash(&mut hasher);
+            }
+            Value::Float(v) => {
+                v.hash(&mut hasher);
+            }
+            _ => {
+                val.to_string_value().hash(&mut hasher);
+            }
         }
     }
     let hash = hasher.finish();
@@ -331,9 +349,7 @@ pub(crate) fn eval_log(
     Ok(Value::Float(result.to_bits()))
 }
 
-pub(crate) fn eval_pi(
-    args: &[Expr],
-) -> Result<Value, DbError> {
+pub(crate) fn eval_pi(args: &[Expr]) -> Result<Value, DbError> {
     if !args.is_empty() {
         return Err(DbError::Execution("PI expects no arguments".into()));
     }

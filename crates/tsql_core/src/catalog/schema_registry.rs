@@ -13,10 +13,7 @@ impl SchemaRegistry for CatalogImpl {
 
     fn create_schema(&mut self, name: &str) -> Result<(), DbError> {
         if self.get_schema_id(name).is_some() {
-            return Err(DbError::Semantic(format!(
-                "schema '{}' already exists",
-                name
-            )));
+            return Err(DbError::duplicate_schema(name));
         }
         let id = self.alloc_schema_id();
         let idx = self.schemas.len();
@@ -31,11 +28,11 @@ impl SchemaRegistry for CatalogImpl {
     fn drop_schema(&mut self, name: &str) -> Result<(), DbError> {
         let schema_id = self
             .get_schema_id(name)
-            .ok_or_else(|| DbError::Semantic(format!("schema '{}' not found", name)))?;
+            .ok_or_else(|| DbError::schema_not_found(name))?;
 
         let has_tables = self.tables.iter().any(|t| t.schema_id == schema_id);
         if has_tables {
-            return Err(DbError::Semantic(format!(
+            return Err(DbError::Execution(format!(
                 "schema '{}' cannot be dropped because it contains tables",
                 name
             )));

@@ -1,15 +1,15 @@
-﻿use crate::error::DbError;
-use crate::types::{DataType, Value};
-use super::coercion::coerce_value_to_type;
 use super::super::value_helpers::pad_right;
+use super::coercion::coerce_value_to_type;
+use crate::error::DbError;
+use crate::types::{DataType, Value};
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 
 pub fn convert_with_style(value: Value, ty: &DataType, style: i32) -> Result<Value, DbError> {
     match value {
         Value::Null => Ok(Value::Null),
-        Value::Date(ref s)
-        | Value::DateTime(ref s)
-        | Value::DateTime2(ref s)
-        | Value::Time(ref s) => convert_datetime_to_string(s, ty, style),
+        Value::Date(v) => convert_date_to_string(v, ty, style),
+        Value::Time(v) => convert_time_to_string(v, ty, style),
+        Value::DateTime(v) | Value::DateTime2(v) => convert_datetime_to_string(v, ty, style),
         Value::VarChar(ref s)
         | Value::NVarChar(ref s)
         | Value::Char(ref s)
@@ -18,97 +18,134 @@ pub fn convert_with_style(value: Value, ty: &DataType, style: i32) -> Result<Val
     }
 }
 
-fn convert_datetime_to_string(dt: &str, ty: &DataType, style: i32) -> Result<Value, DbError> {
-    let formatted = format_datetime(dt, style);
+fn convert_date_to_string(d: NaiveDate, ty: &DataType, style: i32) -> Result<Value, DbError> {
+    let formatted = format_date(&d, style);
+    match ty {
+        DataType::Char { len } => Ok(Value::Char(pad_right(&formatted, *len as usize))),
+        DataType::VarChar { .. } => Ok(Value::VarChar(formatted)),
+        DataType::NChar { len } => Ok(Value::NChar(pad_right(&formatted, *len as usize))),
+        DataType::NVarChar { .. } => Ok(Value::NVarChar(formatted)),
+        DataType::Date => Ok(Value::Date(d)),
+        DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Date(d)))),
+        _ => coerce_value_to_type(Value::VarChar(formatted), ty),
+    }
+}
+
+fn convert_time_to_string(t: NaiveTime, ty: &DataType, style: i32) -> Result<Value, DbError> {
+    let formatted = format_time(&t, style);
+    match ty {
+        DataType::Char { len } => Ok(Value::Char(pad_right(&formatted, *len as usize))),
+        DataType::VarChar { .. } => Ok(Value::VarChar(formatted)),
+        DataType::NChar { len } => Ok(Value::NChar(pad_right(&formatted, *len as usize))),
+        DataType::NVarChar { .. } => Ok(Value::NVarChar(formatted)),
+        DataType::Time => Ok(Value::Time(t)),
+        DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Time(t)))),
+        _ => coerce_value_to_type(Value::VarChar(formatted), ty),
+    }
+}
+
+fn convert_datetime_to_string(
+    dt: NaiveDateTime,
+    ty: &DataType,
+    style: i32,
+) -> Result<Value, DbError> {
+    let formatted = format_datetime(&dt, style);
 
     match ty {
         DataType::Char { len } => Ok(Value::Char(pad_right(&formatted, *len as usize))),
         DataType::VarChar { .. } => Ok(Value::VarChar(formatted)),
         DataType::NChar { len } => Ok(Value::NChar(pad_right(&formatted, *len as usize))),
         DataType::NVarChar { .. } => Ok(Value::NVarChar(formatted)),
-        DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::VarChar(formatted)))),
+        DataType::DateTime | DataType::DateTime2 => Ok(Value::DateTime(dt)),
+        DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::DateTime(dt)))),
         _ => coerce_value_to_type(Value::VarChar(formatted), ty),
     }
 }
 
-pub fn format_datetime(dt: &str, style: i32) -> String {
-    let (y, mo, d, h, mi, s) = parse_dt_parts(dt);
+pub fn format_date(d: &NaiveDate, style: i32) -> String {
     match style {
-        0 | 100 => "Jan  1 2026 12:00AM".to_string(),
-        1 | 101 => {
-            let (h12, ampm) = to_12hour(h);
-            format!("{:0>2}/{}/{}{:0>2}:{:0>2}:{:0>2} {}", d, mo, y, h12, mi, s, ampm)
-        }
-        2 | 102 => format!("{}.{:0>2}.{:0>2}", y, mo, d),
-        3 | 103 => {
-            let (h12, ampm) = to_12hour(h);
-            format!("{}/{}/{} {}:{:0>2}:{:0>2} {}", d, mo, y, h12, mi, s, ampm)
-        }
-        4 | 104 => format!("{}.{:0>2}.{:0>2} {}:{:0>2}:{:0>2}", d, mo, y, h, mi, s),
-        5 | 105 => format!("{}-{:0>2}-{:0>2}", y, mo, d),
-        6 | 106 => format!("{} {} {}", d, month_abbr(mo), y),
-        7 | 107 => {
-            let (h12, ampm) = to_12hour(h);
-            format!("{} {} {}  {}:{:0>2}:{:0>2} {}", month_abbr(mo), d, y, h12, mi, s, ampm)
-        }
-        8 | 108 => format!("{}:{:0>2}:{:0>2}", h, mi, s),
-        9 | 109 => "Jan  1 2026 12:00:00:000AM".to_string(),
-        10 | 110 => {
-            let (h12, ampm) = to_12hour(h);
-            format!("{}-{:0>2}-{}-{}:{:0>2}:{:0>2} {}", mo, d, y, h12, mi, s, ampm)
-        }
-        11 | 111 => {
-            let (h12, ampm) = to_12hour(h);
-            format!("{}/{}/{} {}:{:0>2}:{:0>2} {}", mo, d, y, h12, mi, s, ampm)
-        }
-        12 | 112 => format!("{}{:0>2}{:0>2}", y, mo, d),
-        13 | 113 => "01 Jan 2026 00:00:00:000".to_string(),
-        14 | 114 => "00:00:00:000".to_string(),
-        20 | 120 => format!("{}-{:0>2}-{:0>2} {:0>2}:{:0>2}:{:0>2}", y, mo, d, h, mi, s),
-        21 | 121 => format!(
-            "{}-{:0>2}-{:0>2} {:0>2}:{:0>2}:{:0>2}.000",
-            y, mo, d, h, mi, s
-        ),
-        22 | 126 => format!(
-            "{}-{:0>2}-{:0>2}T{:0>2}:{:0>2}:{:0>2}.0000000",
-            y, mo, d, h, mi, s
-        ),
-        130 => {
-            let month_name = match mo {
-                1 => "يناير",
-                2 => "فبراير",
-                3 => "مارس",
-                4 => "أبريل",
-                5 => "مايو",
-                6 => "يونيو",
-                7 => "يوليو",
-                8 => "أغسطس",
-                9 => "سبتمبر",
-                10 => "أكتوبر",
-                11 => "نوفمبر",
-                12 => "ديسمبر",
-                _ => "???",
-            };
-            format!(
-                "{} {} {} {:0>2}:{:0>2}:{:0>2}:000AM",
-                d, month_name, y, pad2(h), pad2(mi), pad2(s)
-            )
-        }
-        131 => format!(
-            "{}/{:0>2}/{} {}:{:0>2}:{:0>2}AM",
-            d, mo, y, pad2(h), pad2(mi), pad2(s)
-        ),
-        _ => dt.to_string(),
+        101 => d.format("%m/%d/%Y").to_string(),
+        103 => d.format("%d/%m/%Y").to_string(),
+        120 => d.format("%Y-%m-%d").to_string(),
+        121 => d.format("%Y-%m-%d").to_string(),
+        _ => d.format("%Y-%m-%d").to_string(),
+    }
+}
+
+pub fn format_time(t: &NaiveTime, style: i32) -> String {
+    match style {
+        108 | 114 => t.format("%H:%M:%S").to_string(),
+        _ => t.format("%H:%M:%S%.f").to_string(),
+    }
+}
+
+pub fn format_datetime(dt: &NaiveDateTime, style: i32) -> String {
+    match style {
+        0 => dt.format("%b %d %Y %I:%M%p").to_string(),
+        1 => dt.format("%m/%d/%y").to_string(),
+        2 => dt.format("%y.%m.%d").to_string(),
+        3 => dt.format("%d/%m/%y").to_string(),
+        4 => dt.format("%d.%m.%y").to_string(),
+        5 => dt.format("%d-%m-%y").to_string(),
+        6 => dt.format("%d %b %y").to_string(),
+        7 => dt.format("%b %d, %y").to_string(),
+        8 | 108 => dt.format("%H:%M:%S").to_string(),
+        9 => dt.format("%b %d %Y %I:%M:%S:%f%p").to_string(),
+        10 => dt.format("%m-%d-%y").to_string(),
+        11 => dt.format("%y/%m/%d").to_string(),
+        12 => dt.format("%y%m%d").to_string(),
+        13 => dt.format("%d %b %Y %H:%M:%S:%f").to_string(),
+        14 => dt.format("%H:%M:%S:%f").to_string(),
+        20 | 120 => dt.format("%Y-%m-%d %H:%M:%S").to_string(),
+        21 | 25 | 121 => dt.format("%Y-%m-%d %H:%M:%S%.f").to_string(),
+        101 => dt.format("%m/%d/%Y").to_string(),
+        102 => dt.format("%Y.%m.%d").to_string(),
+        103 => dt.format("%d/%m/%Y").to_string(),
+        104 => dt.format("%d.%m.%Y").to_string(),
+        105 => dt.format("%d-%m-%Y").to_string(),
+        106 => dt.format("%d %b %Y").to_string(),
+        107 => dt.format("%b %d, %Y").to_string(),
+        109 => dt.format("%b %d %Y %I:%M:%S:%f%p").to_string(),
+        110 => dt.format("%m-%d-%Y").to_string(),
+        111 => dt.format("%Y/%m/%d").to_string(),
+        112 => dt.format("%Y%m%d").to_string(),
+        113 => dt.format("%d %b %Y %H:%M:%S:%f").to_string(),
+        126 => dt.format("%Y-%m-%dT%H:%M:%S%.f").to_string(),
+        127 => dt.format("%Y-%m-%dT%H:%M:%S%.f").to_string(),
+        130 => dt.format("%d %b %Y %H:%M:%S:%f").to_string(),
+        131 => dt.format("%d/%m/%Y %H:%M:%S:%f").to_string(),
+        _ => dt.format("%Y-%m-%d %H:%M:%S%.f").to_string(),
     }
 }
 
 fn convert_string_to_datetime(s: &str, ty: &DataType, _style: i32) -> Result<Value, DbError> {
-    let normalized = normalize_datetime_string(s);
     match ty {
-        DataType::Date => Ok(Value::Date(normalized)),
-        DataType::Time => Ok(Value::Time(normalized)),
-        DataType::DateTime => Ok(Value::DateTime(normalized)),
-        DataType::DateTime2 => Ok(Value::DateTime2(normalized)),
+        DataType::Date => {
+            let parsed = NaiveDate::parse_from_str(s, "%Y-%m-%d")
+                .or_else(|_| NaiveDate::parse_from_str(s, "%m/%d/%Y"))
+                .or_else(|_| NaiveDate::parse_from_str(s, "%d/%m/%Y"));
+            match parsed {
+                Ok(d) => Ok(Value::Date(d)),
+                Err(_) => Err(DbError::Execution(format!("invalid date: {}", s))),
+            }
+        }
+        DataType::Time => {
+            let parsed = NaiveTime::parse_from_str(s, "%H:%M:%S")
+                .or_else(|_| NaiveTime::parse_from_str(s, "%H:%M:%S%.f"));
+            match parsed {
+                Ok(t) => Ok(Value::Time(t)),
+                Err(_) => Err(DbError::Execution(format!("invalid time: {}", s))),
+            }
+        }
+        DataType::DateTime | DataType::DateTime2 => {
+            let parsed = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
+                .or_else(|_| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S"))
+                .or_else(|_| NaiveDateTime::parse_from_str(s, "%m/%d/%Y %H:%M:%S"));
+            match parsed {
+                Ok(dt) => Ok(Value::DateTime(dt)),
+                Err(_) => Err(DbError::Execution(format!("invalid datetime: {}", s))),
+            }
+        }
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::VarChar(s.to_string())))),
         _ => coerce_value_to_type(Value::VarChar(s.to_string()), ty),
     }

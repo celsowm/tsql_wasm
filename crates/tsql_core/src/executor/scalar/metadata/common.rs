@@ -1,4 +1,4 @@
-﻿use crate::ast::Expr;
+use crate::ast::Expr;
 use crate::catalog::{Catalog, IndexDef, RoutineDef, TableDef, TriggerDef, ViewDef};
 use crate::error::DbError;
 use crate::storage::Storage;
@@ -62,22 +62,40 @@ pub(super) fn schema_name_by_id(catalog: &dyn Catalog, schema_id: u32) -> Option
         .map(|s| s.name.clone())
 }
 
-pub(super) fn table_by_object_id<'a>(catalog: &'a dyn Catalog, object_id: i32) -> Option<&'a TableDef> {
-    catalog.get_tables().iter().find(|t| t.id as i32 == object_id)
+pub(super) fn table_by_object_id<'a>(
+    catalog: &'a dyn Catalog,
+    object_id: i32,
+) -> Option<&'a TableDef> {
+    catalog
+        .get_tables()
+        .iter()
+        .find(|t| t.id as i32 == object_id)
 }
 
-pub(super) fn routine_by_object_id<'a>(catalog: &'a dyn Catalog, object_id: i32) -> Option<&'a RoutineDef> {
+pub(super) fn routine_by_object_id<'a>(
+    catalog: &'a dyn Catalog,
+    object_id: i32,
+) -> Option<&'a RoutineDef> {
     catalog
         .get_routines()
         .iter()
         .find(|r| r.object_id == object_id)
 }
 
-pub(super) fn view_by_object_id<'a>(catalog: &'a dyn Catalog, object_id: i32) -> Option<&'a ViewDef> {
-    catalog.get_views().iter().find(|v| v.object_id == object_id)
+pub(super) fn view_by_object_id<'a>(
+    catalog: &'a dyn Catalog,
+    object_id: i32,
+) -> Option<&'a ViewDef> {
+    catalog
+        .get_views()
+        .iter()
+        .find(|v| v.object_id == object_id)
 }
 
-pub(super) fn trigger_by_object_id<'a>(catalog: &'a dyn Catalog, object_id: i32) -> Option<&'a TriggerDef> {
+pub(super) fn trigger_by_object_id<'a>(
+    catalog: &'a dyn Catalog,
+    object_id: i32,
+) -> Option<&'a TriggerDef> {
     catalog
         .get_triggers()
         .iter()
@@ -138,7 +156,10 @@ pub(super) fn object_definition_from_id(catalog: &dyn Catalog, object_id: i32) -
     None
 }
 
-pub(super) fn resolve_object<'a>(catalog: &'a dyn Catalog, object_id: i32) -> Option<ResolvedObject<'a>> {
+pub(super) fn resolve_object<'a>(
+    catalog: &'a dyn Catalog,
+    object_id: i32,
+) -> Option<ResolvedObject<'a>> {
     if let Some(table) = table_by_object_id(catalog, object_id) {
         return Some(ResolvedObject::Table(table));
     }
@@ -213,10 +234,7 @@ pub(super) fn builtin_type_name(type_id: i32) -> Option<&'static str> {
 pub(super) fn resolve_type_id(catalog: &dyn Catalog, type_name: &str) -> Option<i32> {
     let (schema, name) = parse_object_parts(type_name);
     let schema = schema.unwrap_or("dbo");
-    if let Some(id) = catalog
-        .find_table_type(schema, name)
-        .map(|t| t.object_id)
-    {
+    if let Some(id) = catalog.find_table_type(schema, name).map(|t| t.object_id) {
         return Some(id);
     }
     builtin_type_id(name)
@@ -316,10 +334,17 @@ pub(super) fn table_has_foreign_key(table: &TableDef) -> bool {
 }
 
 pub(super) fn table_has_index(catalog: &dyn Catalog, table: &TableDef) -> bool {
-    catalog.get_indexes().iter().any(|idx| idx.table_id == table.id)
+    catalog
+        .get_indexes()
+        .iter()
+        .any(|idx| idx.table_id == table.id)
 }
 
-pub(super) fn index_by_id<'a>(catalog: &'a dyn Catalog, table_id: i32, index_id: i32) -> Option<&'a IndexDef> {
+pub(super) fn index_by_id<'a>(
+    catalog: &'a dyn Catalog,
+    table_id: i32,
+    index_id: i32,
+) -> Option<&'a IndexDef> {
     catalog
         .get_indexes()
         .iter()
@@ -337,7 +362,10 @@ pub(super) fn index_by_name<'a>(
         .find(|idx| idx.table_id as i32 == table_id && idx.name.eq_ignore_ascii_case(index_name))
 }
 
-pub(super) fn table_column_by_ordinal(table: &TableDef, ordinal: i32) -> Option<&crate::catalog::ColumnDef> {
+pub(super) fn table_column_by_ordinal(
+    table: &TableDef,
+    ordinal: i32,
+) -> Option<&crate::catalog::ColumnDef> {
     if ordinal <= 0 {
         return None;
     }
@@ -354,6 +382,3 @@ pub(super) fn eval_expr_to_value(
 ) -> Result<Value, DbError> {
     eval_expr(expr, row, ctx, catalog, storage, clock)
 }
-
-
-

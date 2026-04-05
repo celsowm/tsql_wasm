@@ -64,11 +64,11 @@ pub(crate) fn enforce_foreign_keys_on_delete(
                     let mut all_null = true;
                     for (i, ref_col_name) in fk.referenced_columns.iter().enumerate() {
                         let ref_col_idx = table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(ref_col_name))
-                            .ok_or_else(|| DbError::Semantic(format!("referenced column '{}' not found", ref_col_name)))?;
+                            .ok_or_else(|| DbError::column_not_found(ref_col_name))?;
 
                         let col_name = &fk.columns[i];
                         let col_idx = other_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
-                            .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", col_name)))?;
+                            .ok_or_else(|| DbError::column_not_found(col_name))?;
 
                         if !other_row.values[col_idx].is_null() {
                             all_null = false;
@@ -91,7 +91,7 @@ pub(crate) fn enforce_foreign_keys_on_delete(
                                 let mut new_row = other_row.clone();
                                 for (_i, col_name) in fk.columns.iter().enumerate() {
                                     let col_idx = other_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
-                                        .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", col_name)))?;
+                                        .ok_or_else(|| DbError::column_not_found(col_name))?;
                                     new_row.values[col_idx] = Value::Null;
                                 }
                                 rows_to_update.push((idx, new_row));
@@ -100,7 +100,7 @@ pub(crate) fn enforce_foreign_keys_on_delete(
                                 let mut new_row = other_row.clone();
                                 for (_i, col_name) in fk.columns.iter().enumerate() {
                                     let col_idx = other_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
-                                        .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", col_name)))?;
+                                        .ok_or_else(|| DbError::column_not_found(col_name))?;
                                     if let Some(_default) = &other_table.columns[col_idx].default {
                                         new_row.values[col_idx] = Value::Null;
                                     }
@@ -151,11 +151,11 @@ pub(crate) fn enforce_foreign_keys_on_update(
                     
                     for (i, ref_col_name) in fk.referenced_columns.iter().enumerate() {
                         let ref_col_idx = table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(ref_col_name))
-                            .ok_or_else(|| DbError::Semantic(format!("referenced column '{}' not found", ref_col_name)))?;
+                            .ok_or_else(|| DbError::column_not_found(ref_col_name))?;
 
                         let col_name = &fk.columns[i];
                         let col_idx = other_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
-                            .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", col_name)))?;
+                            .ok_or_else(|| DbError::column_not_found(col_name))?;
 
                         if !other_row.values[col_idx].is_null() {
                             all_null_old = false;
@@ -175,10 +175,10 @@ pub(crate) fn enforce_foreign_keys_on_update(
                                 let mut updated_row = other_row.clone();
                                 for (i, ref_col_name) in fk.referenced_columns.iter().enumerate() {
                                     let ref_col_idx = table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(ref_col_name))
-                                        .ok_or_else(|| DbError::Semantic(format!("referenced column '{}' not found", ref_col_name)))?;
+                                        .ok_or_else(|| DbError::column_not_found(ref_col_name))?;
                                     let col_name = &fk.columns[i];
                                     let col_idx = other_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
-                                        .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", col_name)))?;
+                                        .ok_or_else(|| DbError::column_not_found(col_name))?;
                                     updated_row.values[col_idx] = new_row.values[ref_col_idx].clone();
                                 }
                                 rows_to_update.push((idx, updated_row));
@@ -187,7 +187,7 @@ pub(crate) fn enforce_foreign_keys_on_update(
                                 let mut updated_row = other_row.clone();
                                 for (_i, col_name) in fk.columns.iter().enumerate() {
                                     let col_idx = other_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
-                                        .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", col_name)))?;
+                                        .ok_or_else(|| DbError::column_not_found(col_name))?;
                                     updated_row.values[col_idx] = Value::Null;
                                 }
                                 rows_to_update.push((idx, updated_row));
@@ -196,7 +196,7 @@ pub(crate) fn enforce_foreign_keys_on_update(
                                 let mut updated_row = other_row.clone();
                                 for (_i, col_name) in fk.columns.iter().enumerate() {
                                     let col_idx = other_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
-                                        .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", col_name)))?;
+                                        .ok_or_else(|| DbError::column_not_found(col_name))?;
                                     if let Some(_default) = &other_table.columns[col_idx].default {
                                         updated_row.values[col_idx] = Value::Null;
                                     }
@@ -233,7 +233,7 @@ pub(crate) fn enforce_foreign_keys_on_insert(
         let mut all_null = true;
         for col_name in &fk.columns {
             let col_idx = table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
-                .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", col_name)))?;
+                .ok_or_else(|| DbError::column_not_found(col_name))?;
             let val = &row.values[col_idx];
             if !val.is_null() {
                 all_null = false;
@@ -260,7 +260,7 @@ pub(crate) fn enforce_foreign_keys_on_insert(
             let mut matches = true;
             for (i, ref_col_name) in fk.referenced_columns.iter().enumerate() {
                 let ref_col_idx = ref_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(ref_col_name))
-                    .ok_or_else(|| DbError::Semantic(format!("referenced column '{}' not found", ref_col_name)))?;
+                    .ok_or_else(|| DbError::column_not_found(ref_col_name))?;
 
                 if compare_values(&row_values[i], &ref_row.values[ref_col_idx]) != std::cmp::Ordering::Equal {
                     matches = false;
@@ -359,9 +359,7 @@ pub(crate) fn apply_assignments<'a>(
             .columns
             .iter()
             .position(|c| c.name.eq_ignore_ascii_case(&assignment.column))
-            .ok_or_else(|| {
-                DbError::Semantic(format!("column '{}' not found", assignment.column))
-            })?;
+            .ok_or_else(|| DbError::column_not_found(&assignment.column))?;
         let target = &table.columns[idx].data_type;
         if table.columns[idx].computed_expr.is_some() {
             return Err(DbError::Execution(format!(

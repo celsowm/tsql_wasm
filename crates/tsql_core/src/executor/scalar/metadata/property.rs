@@ -1,17 +1,17 @@
-﻿use crate::ast::Expr;
+use crate::ast::Expr;
 use crate::catalog::{Catalog, RoutineKind};
 use crate::error::DbError;
 use crate::storage::Storage;
 use crate::types::Value;
 
-use crate::executor::clock::Clock;
-use crate::executor::context::ExecutionContext;
-use crate::executor::model::ContextTable;
 use super::common::{
     eval_expr_to_value, resolve_object, table_has_check_constraint, table_has_default_constraint,
     table_has_foreign_key, table_has_identity, table_has_index, table_has_primary_key,
     table_has_unique_constraint, value_to_object_id,
 };
+use crate::executor::clock::Clock;
+use crate::executor::context::ExecutionContext;
+use crate::executor::model::ContextTable;
 
 pub(crate) fn eval_objectproperty(
     args: &[Expr],
@@ -68,54 +68,62 @@ fn eval_objectproperty_common(
             }
             "TABLEHASPRIMARYKEY" => Value::Int(if table_has_primary_key(table) { 1 } else { 0 }),
             "TABLEHASIDENTITY" => Value::Int(if table_has_identity(table) { 1 } else { 0 }),
-            "TABLEHASINDEX" => Value::Int(if table_has_index(catalog, table) { 1 } else { 0 }),
+            "TABLEHASINDEX" => Value::Int(if table_has_index(catalog, table) {
+                1
+            } else {
+                0
+            }),
             "TABLEHASFOREIGNKEY" => Value::Int(if table_has_foreign_key(table) { 1 } else { 0 }),
-            "TABLEHASDEFAULTCNST" => {
-                Value::Int(if table_has_default_constraint(table) { 1 } else { 0 })
-            }
-            "TABLEHASCHECKCNST" => Value::Int(if table_has_check_constraint(table) { 1 } else { 0 }),
-            "TABLEHASUNIQUECNST" => {
-                Value::Int(if table_has_unique_constraint(table) { 1 } else { 0 })
-            }
+            "TABLEHASDEFAULTCNST" => Value::Int(if table_has_default_constraint(table) {
+                1
+            } else {
+                0
+            }),
+            "TABLEHASCHECKCNST" => Value::Int(if table_has_check_constraint(table) {
+                1
+            } else {
+                0
+            }),
+            "TABLEHASUNIQUECNST" => Value::Int(if table_has_unique_constraint(table) {
+                1
+            } else {
+                0
+            }),
             _ => Value::Null,
         },
         super::common::ResolvedObject::Routine(routine) => match prop.as_str() {
-            "ISPROCEDURE" => Value::Int(matches!(&routine.kind, RoutineKind::Procedure { .. }) as i32),
+            "ISPROCEDURE" => {
+                Value::Int(matches!(&routine.kind, RoutineKind::Procedure { .. }) as i32)
+            }
             "ISSCALARFUNCTION" => Value::Int(
-                (
-                    matches!(
-                        &routine.kind,
-                        RoutineKind::Function {
-                            body: crate::ast::FunctionBody::ScalarReturn(_),
-                            ..
-                        }
-                    ) || matches!(
-                        &routine.kind,
-                        RoutineKind::Function {
-                            body: crate::ast::FunctionBody::Scalar(_),
-                            ..
-                        }
-                    )
-                ) as i32,
-            ),
-            "ISTABLEFUNCTION" => Value::Int(
-                matches!(
+                (matches!(
                     &routine.kind,
                     RoutineKind::Function {
-                        body: crate::ast::FunctionBody::InlineTable(_),
+                        body: crate::ast::FunctionBody::ScalarReturn(_),
                         ..
                     }
-                ) as i32,
-            ),
-            "ISINLINEFUNCTION" => Value::Int(
-                matches!(
+                ) || matches!(
                     &routine.kind,
                     RoutineKind::Function {
-                        body: crate::ast::FunctionBody::InlineTable(_),
+                        body: crate::ast::FunctionBody::Scalar(_),
                         ..
                     }
-                ) as i32,
+                )) as i32,
             ),
+            "ISTABLEFUNCTION" => Value::Int(matches!(
+                &routine.kind,
+                RoutineKind::Function {
+                    body: crate::ast::FunctionBody::InlineTable(_),
+                    ..
+                }
+            ) as i32),
+            "ISINLINEFUNCTION" => Value::Int(matches!(
+                &routine.kind,
+                RoutineKind::Function {
+                    body: crate::ast::FunctionBody::InlineTable(_),
+                    ..
+                }
+            ) as i32),
             "EXECISANSINULLSON" => Value::Int(1),
             "EXECISQUOTEDIDENTON" => Value::Int(1),
             _ => Value::Null,

@@ -24,12 +24,10 @@ impl IndexRegistry for CatalogImpl {
     ) -> Result<(), DbError> {
         let index_schema_id = self
             .get_schema_id(schema)
-            .ok_or_else(|| DbError::Semantic(format!("schema '{}' not found", schema)))?;
+            .ok_or_else(|| DbError::schema_not_found(schema))?;
         let table = self
             .find_table(table_schema, table_name)
-            .ok_or_else(|| {
-                DbError::Semantic(format!("table '{}.{}' not found", table_schema, table_name))
-            })?
+            .ok_or_else(|| DbError::table_not_found(table_schema, table_name))?
             .clone();
 
         if self.indexes.iter().any(|idx| {
@@ -37,7 +35,7 @@ impl IndexRegistry for CatalogImpl {
                 && idx.table_id == table.id
                 && idx.name.eq_ignore_ascii_case(name)
         }) {
-            return Err(DbError::Semantic(format!(
+            return Err(DbError::Execution(format!(
                 "index '{}.{}' already exists",
                 schema, name
             )));
@@ -50,7 +48,7 @@ impl IndexRegistry for CatalogImpl {
                 .iter()
                 .find(|c| c.name.eq_ignore_ascii_case(column))
                 .map(|c| c.id)
-                .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", column)))?;
+                .ok_or_else(|| DbError::column_not_found(column))?;
             column_ids.push(col_id);
         }
 
@@ -80,23 +78,18 @@ impl IndexRegistry for CatalogImpl {
     ) -> Result<(), DbError> {
         let schema_id = self
             .get_schema_id(schema)
-            .ok_or_else(|| DbError::Semantic(format!("schema '{}' not found", schema)))?;
+            .ok_or_else(|| DbError::schema_not_found(schema))?;
         let table_id = self
             .find_table(table_schema, table_name)
             .map(|t| t.id)
-            .ok_or_else(|| {
-                DbError::Semantic(format!("table '{}.{}' not found", table_schema, table_name))
-            })?;
+            .ok_or_else(|| DbError::table_not_found(table_schema, table_name))?;
 
         let Some(pos) = self.indexes.iter().position(|idx| {
             idx.schema_id == schema_id
                 && idx.table_id == table_id
                 && idx.name.eq_ignore_ascii_case(name)
         }) else {
-            return Err(DbError::Semantic(format!(
-                "index '{}.{}' not found",
-                schema, name
-            )));
+            return Err(DbError::index_not_found(table_name, name));
         };
 
         self.indexes.remove(pos);

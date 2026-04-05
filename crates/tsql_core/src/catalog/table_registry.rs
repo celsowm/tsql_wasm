@@ -34,12 +34,12 @@ impl TableRegistry for CatalogImpl {
     fn drop_table(&mut self, schema: &str, name: &str) -> Result<u32, DbError> {
         let schema_id = self
             .get_schema_id(schema)
-            .ok_or_else(|| DbError::Semantic(format!("schema '{}' not found", schema)))?;
+            .ok_or_else(|| DbError::schema_not_found(schema))?;
 
         let idx = *self
             .table_map
             .get(&(schema_id, name.to_lowercase()))
-            .ok_or_else(|| DbError::Semantic(format!("table '{}.{}' not found", schema, name)))?;
+            .ok_or_else(|| DbError::table_not_found(schema, name))?;
 
         let table_id = self.tables[idx].id;
         self.remove_table_at(idx);
@@ -51,13 +51,13 @@ impl TableRegistry for CatalogImpl {
             .tables
             .iter_mut()
             .find(|t| t.id == table_id)
-            .ok_or_else(|| DbError::Semantic(format!("table ID {} not found", table_id)))?;
+            .ok_or_else(|| DbError::object_not_found(format!("table ID {}", table_id)))?;
 
         let col = table
             .columns
             .iter_mut()
             .find(|c| c.name.eq_ignore_ascii_case(column_name))
-            .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", column_name)))?;
+            .ok_or_else(|| DbError::column_not_found(column_name))?;
 
         if let Some(identity) = &mut col.identity {
             Ok(identity.next_value())

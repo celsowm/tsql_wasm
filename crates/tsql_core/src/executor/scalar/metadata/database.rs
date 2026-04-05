@@ -1,13 +1,13 @@
-﻿use crate::ast::Expr;
+use crate::ast::Expr;
 use crate::catalog::Catalog;
 use crate::error::DbError;
 use crate::storage::Storage;
 use crate::types::Value;
 
+use super::common::eval_expr_to_value;
 use crate::executor::clock::Clock;
 use crate::executor::context::ExecutionContext;
 use crate::executor::model::ContextTable;
-use super::common::eval_expr_to_value;
 
 pub(crate) fn eval_databasepropertyex(
     args: &[Expr],

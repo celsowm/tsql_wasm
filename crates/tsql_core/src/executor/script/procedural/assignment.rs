@@ -32,10 +32,7 @@ impl<'a> ScriptExecutor<'a> {
                 if let Some((ty, var)) = ctx.session.variables.get_mut(&t.variable) {
                     *var = coerce_value_to_type(val, ty)?;
                 } else {
-                    return Err(DbError::Semantic(format!(
-                        "variable '{}' not declared",
-                        t.variable
-                    )));
+                    return Err(DbError::invalid_identifier(&t.variable));
                 }
             }
             return Ok(None);
@@ -74,10 +71,7 @@ impl<'a> ScriptExecutor<'a> {
                 if let Some((ty, var)) = ctx.session.variables.get_mut(&t.variable) {
                     *var = coerce_value_to_type(last[idx].clone(), ty)?;
                 } else {
-                    return Err(DbError::Semantic(format!(
-                        "variable '{}' not declared",
-                        t.variable
-                    )));
+                    return Err(DbError::invalid_identifier(&t.variable));
                 }
             }
         }

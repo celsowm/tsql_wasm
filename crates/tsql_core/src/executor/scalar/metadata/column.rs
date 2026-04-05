@@ -1,16 +1,16 @@
-﻿use crate::ast::Expr;
+use crate::ast::Expr;
 use crate::catalog::Catalog;
 use crate::error::DbError;
 use crate::storage::Storage;
 use crate::types::Value;
 
-use crate::executor::clock::Clock;
-use crate::executor::context::ExecutionContext;
-use crate::executor::model::ContextTable;
 use super::common::{
     eval_expr_to_value, storage_length, table_by_object_id, table_column_by_ordinal,
     value_to_object_id,
 };
+use crate::executor::clock::Clock;
+use crate::executor::context::ExecutionContext;
+use crate::executor::model::ContextTable;
 
 pub(crate) fn eval_col_name(
     args: &[Expr],

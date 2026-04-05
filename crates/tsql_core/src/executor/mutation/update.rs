@@ -39,10 +39,10 @@ impl<'a> MutationExecutor<'a> {
                         None => {
                             if let Some(mapped) = ctx.resolve_table_name(tname) {
                                 self.catalog.find_table("dbo", &mapped).ok_or_else(|| {
-                                    DbError::Semantic(format!("table '{}' not found", tname))
+                                    DbError::table_not_found("dbo", &mapped)
                                 })?
                             } else {
-                                return Err(DbError::Semantic(format!("table '{}.{}' not found", schema, tname)));
+                                return Err(DbError::table_not_found(schema, tname));
                             }
                         }
                     };
@@ -61,10 +61,10 @@ impl<'a> MutationExecutor<'a> {
                             None => {
                                 if let Some(mapped) = ctx.resolve_table_name(tname) {
                                     self.catalog.find_table("dbo", &mapped).ok_or_else(|| {
-                                        DbError::Semantic(format!("table '{}' not found", tname))
+                                        DbError::table_not_found("dbo", &mapped)
                                     })?
                                 } else {
-                                    return Err(DbError::Semantic(format!("table '{}.{}' not found", schema, tname)));
+                                    return Err(DbError::table_not_found(schema, tname));
                                 }
                             }
                         };
@@ -80,7 +80,7 @@ impl<'a> MutationExecutor<'a> {
                 let schema = stmt.table.schema_or_dbo().to_string();
                 let table_name = stmt.table.name.clone();
                 let t = self.catalog.find_table(&schema, &table_name).ok_or_else(|| {
-                    DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
+                    DbError::table_not_found(&schema, &table_name)
                 })?;
                 (t.clone(), table_name)
             }
@@ -88,7 +88,7 @@ impl<'a> MutationExecutor<'a> {
             let schema = stmt.table.schema_or_dbo().to_string();
             let table_name = stmt.table.name.clone();
             let t = self.catalog.find_table(&schema, &table_name).ok_or_else(|| {
-                DbError::Semantic(format!("table '{}.{}' not found", schema, table_name))
+                DbError::table_not_found(&schema, &table_name)
             })?;
             (t.clone(), table_name)
         };

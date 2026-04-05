@@ -1,8 +1,8 @@
-﻿use crate::ast::Expr;
+use crate::ast::Expr;
 use crate::catalog::Catalog;
 use crate::error::DbError;
-use crate::types::Value;
 use crate::storage::Storage;
+use crate::types::Value;
 
 use super::super::clock::Clock;
 use super::super::context::ExecutionContext;
@@ -156,7 +156,9 @@ pub(crate) fn eval_serverproperty(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.len() != 1 {
-        return Err(DbError::Execution("SERVERPROPERTY expects 1 argument".into()));
+        return Err(DbError::Execution(
+            "SERVERPROPERTY expects 1 argument".into(),
+        ));
     }
 
     let property = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
@@ -190,7 +192,9 @@ pub(crate) fn eval_connectionproperty(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.len() != 1 {
-        return Err(DbError::Execution("CONNECTIONPROPERTY expects 1 argument".into()));
+        return Err(DbError::Execution(
+            "CONNECTIONPROPERTY expects 1 argument".into(),
+        ));
     }
 
     let property = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
@@ -213,184 +217,210 @@ pub(crate) fn eval_microsoft_version() -> Value {
     Value::Int(0x1000_0000)
 }
 
-pub(crate) fn deterministic_uuid(state: &mut u64) -> String {
-    *state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+pub(crate) fn deterministic_uuid(state: &mut u64) -> uuid::Uuid {
+    *state = state
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     let bytes = state.to_be_bytes();
-    format!(
-        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-        bytes[0], bytes[1], bytes[2], bytes[3],
-        bytes[4], bytes[5],
-        bytes[6], bytes[7],
-        bytes[0] ^ bytes[4], bytes[1] ^ bytes[5],
-        bytes[2] ^ bytes[6], bytes[3] ^ bytes[7],
-        bytes[4] ^ bytes[0], bytes[5] ^ bytes[1],
-        bytes[6] ^ bytes[2], bytes[7] ^ bytes[3]
-    )
+    let mut uuid_bytes = [0u8; 16];
+    uuid_bytes[0] = bytes[0];
+    uuid_bytes[1] = bytes[1];
+    uuid_bytes[2] = bytes[2];
+    uuid_bytes[3] = bytes[3];
+    uuid_bytes[4] = bytes[4];
+    uuid_bytes[5] = bytes[5];
+    uuid_bytes[6] = bytes[6];
+    uuid_bytes[7] = bytes[7];
+    uuid_bytes[8] = bytes[0] ^ bytes[4];
+    uuid_bytes[9] = bytes[1] ^ bytes[5];
+    uuid_bytes[10] = bytes[2] ^ bytes[6];
+    uuid_bytes[11] = bytes[3] ^ bytes[7];
+    uuid_bytes[12] = bytes[4] ^ bytes[0];
+    uuid_bytes[13] = bytes[5] ^ bytes[1];
+    uuid_bytes[14] = bytes[6] ^ bytes[2];
+    uuid_bytes[15] = bytes[7] ^ bytes[3];
+    uuid::Uuid::from_bytes(uuid_bytes)
 }
 
 pub(crate) fn deterministic_rand(state: &mut u64) -> f64 {
-    *state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    *state = state
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     let bits = (*state >> 33) as u32;
     bits as f64 / (1u64 << 31) as f64
 }
 
-pub(crate) fn eval_error_message(
-    ctx: &ExecutionContext,
-) -> Result<Value, DbError> {
+pub(crate) fn eval_error_message(ctx: &ExecutionContext) -> Result<Value, DbError> {
     Ok(match &ctx.frame.last_error {
         Some(e) => Value::VarChar(e.to_string()),
         None => Value::Null,
     })
 }
 
-pub(crate) fn eval_error_number(
-    ctx: &ExecutionContext,
-) -> Result<Value, DbError> {
+pub(crate) fn eval_error_number(ctx: &ExecutionContext) -> Result<Value, DbError> {
     Ok(match &ctx.frame.last_error {
         Some(_) => Value::Int(50000), // Default error number
         None => Value::Null,
     })
 }
 
-pub(crate) fn eval_error_severity(
-    ctx: &ExecutionContext,
-) -> Result<Value, DbError> {
+pub(crate) fn eval_error_severity(ctx: &ExecutionContext) -> Result<Value, DbError> {
     Ok(match &ctx.frame.last_error {
         Some(_) => Value::Int(16), // Default severity
         None => Value::Null,
     })
 }
 
-pub(crate) fn eval_error_state(
-    ctx: &ExecutionContext,
-) -> Result<Value, DbError> {
+pub(crate) fn eval_error_state(ctx: &ExecutionContext) -> Result<Value, DbError> {
     Ok(match &ctx.frame.last_error {
         Some(_) => Value::Int(1), // Default state
         None => Value::Null,
     })
 }
 
-pub(crate) fn eval_db_name(
-    args: &[Expr],
-    ctx: &ExecutionContext,
-) -> Result<Value, DbError> {
+pub(crate) fn eval_db_name(args: &[Expr], ctx: &ExecutionContext) -> Result<Value, DbError> {
     if args.len() > 1 {
-        return Err(DbError::Execution("DB_NAME expects 0 or 1 arguments".into()));
+        return Err(DbError::Execution(
+            "DB_NAME expects 0 or 1 arguments".into(),
+        ));
     }
     if !args.is_empty() {
         // DB_NAME(database_id) - for now always return current db
     }
-    Ok(Value::NVarChar(ctx.metadata.database.clone().unwrap_or_else(|| "master".to_string())))
+    Ok(Value::NVarChar(
+        ctx.metadata
+            .database
+            .clone()
+            .unwrap_or_else(|| "master".to_string()),
+    ))
 }
 
-pub(crate) fn eval_db_id(
-    args: &[Expr],
-    _ctx: &ExecutionContext,
-) -> Result<Value, DbError> {
+pub(crate) fn eval_db_id(args: &[Expr], _ctx: &ExecutionContext) -> Result<Value, DbError> {
     if args.len() > 1 {
         return Err(DbError::Execution("DB_ID expects 0 or 1 arguments".into()));
     }
     Ok(Value::Int(1)) // Always db_id=1 for emulator
 }
 
-pub(crate) fn eval_suser_sname(
-    args: &[Expr],
-    ctx: &ExecutionContext,
-) -> Result<Value, DbError> {
+pub(crate) fn eval_suser_sname(args: &[Expr], ctx: &ExecutionContext) -> Result<Value, DbError> {
     if args.len() > 1 {
-        return Err(DbError::Execution("SUSER_SNAME expects 0 or 1 arguments".into()));
+        return Err(DbError::Execution(
+            "SUSER_SNAME expects 0 or 1 arguments".into(),
+        ));
     }
-    Ok(Value::NVarChar(ctx.metadata.user.clone().unwrap_or_else(|| "sa".to_string())))
+    Ok(Value::NVarChar(
+        ctx.metadata
+            .user
+            .clone()
+            .unwrap_or_else(|| "sa".to_string()),
+    ))
 }
 
-pub(crate) fn eval_suser_id(
-    args: &[Expr],
-    _ctx: &ExecutionContext,
-) -> Result<Value, DbError> {
+pub(crate) fn eval_suser_id(args: &[Expr], _ctx: &ExecutionContext) -> Result<Value, DbError> {
     if args.len() > 1 {
-        return Err(DbError::Execution("SUSER_ID expects 0 or 1 arguments".into()));
+        return Err(DbError::Execution(
+            "SUSER_ID expects 0 or 1 arguments".into(),
+        ));
     }
     Ok(Value::Int(1))
 }
 
-pub(crate) fn eval_user_name(
-    args: &[Expr],
-    _ctx: &ExecutionContext,
-) -> Result<Value, DbError> {
+pub(crate) fn eval_user_name(args: &[Expr], _ctx: &ExecutionContext) -> Result<Value, DbError> {
     if args.len() > 1 {
-        return Err(DbError::Execution("USER_NAME expects 0 or 1 arguments".into()));
+        return Err(DbError::Execution(
+            "USER_NAME expects 0 or 1 arguments".into(),
+        ));
     }
     Ok(Value::NVarChar("dbo".to_string()))
 }
 
-pub(crate) fn eval_user_id(
-    args: &[Expr],
-    _ctx: &ExecutionContext,
-) -> Result<Value, DbError> {
+pub(crate) fn eval_user_id(args: &[Expr], _ctx: &ExecutionContext) -> Result<Value, DbError> {
     if args.len() > 1 {
-        return Err(DbError::Execution("USER_ID expects 0 or 1 arguments".into()));
+        return Err(DbError::Execution(
+            "USER_ID expects 0 or 1 arguments".into(),
+        ));
     }
     Ok(Value::Int(1))
 }
 
-pub(crate) fn eval_app_name(
-    args: &[Expr],
-    ctx: &ExecutionContext,
-) -> Result<Value, DbError> {
+pub(crate) fn eval_app_name(args: &[Expr], ctx: &ExecutionContext) -> Result<Value, DbError> {
     if !args.is_empty() {
         return Err(DbError::Execution("APP_NAME expects no arguments".into()));
     }
-    Ok(Value::NVarChar(ctx.metadata.app_name.clone().unwrap_or_else(|| "tsql_wasm".to_string())))
+    Ok(Value::NVarChar(
+        ctx.metadata
+            .app_name
+            .clone()
+            .unwrap_or_else(|| "tsql_wasm".to_string()),
+    ))
 }
 
-pub(crate) fn eval_host_name(
-    args: &[Expr],
-    ctx: &ExecutionContext,
-) -> Result<Value, DbError> {
+pub(crate) fn eval_host_name(args: &[Expr], ctx: &ExecutionContext) -> Result<Value, DbError> {
     if !args.is_empty() {
         return Err(DbError::Execution("HOST_NAME expects no arguments".into()));
     }
-    Ok(Value::NVarChar(ctx.metadata.host_name.clone().unwrap_or_else(|| "localhost".to_string())))
+    Ok(Value::NVarChar(
+        ctx.metadata
+            .host_name
+            .clone()
+            .unwrap_or_else(|| "localhost".to_string()),
+    ))
 }
 
-pub(crate) fn eval_system_user(
-    args: &[Expr],
-    ctx: &ExecutionContext,
-) -> Result<Value, DbError> {
+pub(crate) fn eval_system_user(args: &[Expr], ctx: &ExecutionContext) -> Result<Value, DbError> {
     if !args.is_empty() {
-        return Err(DbError::Execution("SYSTEM_USER expects no arguments".into()));
+        return Err(DbError::Execution(
+            "SYSTEM_USER expects no arguments".into(),
+        ));
     }
-    Ok(Value::NVarChar(ctx.metadata.user.clone().unwrap_or_else(|| "sa".to_string())))
+    Ok(Value::NVarChar(
+        ctx.metadata
+            .user
+            .clone()
+            .unwrap_or_else(|| "sa".to_string()),
+    ))
 }
 
-pub(crate) fn eval_original_login(
-    args: &[Expr],
-    ctx: &ExecutionContext,
-) -> Result<Value, DbError> {
+pub(crate) fn eval_original_login(args: &[Expr], ctx: &ExecutionContext) -> Result<Value, DbError> {
     if !args.is_empty() {
-        return Err(DbError::Execution("ORIGINAL_LOGIN expects no arguments".into()));
+        return Err(DbError::Execution(
+            "ORIGINAL_LOGIN expects no arguments".into(),
+        ));
     }
-    Ok(Value::NVarChar(ctx.metadata.user.clone().unwrap_or_else(|| "sa".to_string())))
+    Ok(Value::NVarChar(
+        ctx.metadata
+            .user
+            .clone()
+            .unwrap_or_else(|| "sa".to_string()),
+    ))
 }
 
-pub(crate) fn eval_session_user(
-    args: &[Expr],
-    ctx: &ExecutionContext,
-) -> Result<Value, DbError> {
+pub(crate) fn eval_session_user(args: &[Expr], ctx: &ExecutionContext) -> Result<Value, DbError> {
     if !args.is_empty() {
-        return Err(DbError::Execution("SESSION_USER expects no arguments".into()));
+        return Err(DbError::Execution(
+            "SESSION_USER expects no arguments".into(),
+        ));
     }
-    Ok(Value::NVarChar(ctx.metadata.user.clone().unwrap_or_else(|| "dbo".to_string())))
+    Ok(Value::NVarChar(
+        ctx.metadata
+            .user
+            .clone()
+            .unwrap_or_else(|| "dbo".to_string()),
+    ))
 }
 
-pub(crate) fn eval_current_user(
-    args: &[Expr],
-    ctx: &ExecutionContext,
-) -> Result<Value, DbError> {
+pub(crate) fn eval_current_user(args: &[Expr], ctx: &ExecutionContext) -> Result<Value, DbError> {
     if !args.is_empty() {
-        return Err(DbError::Execution("CURRENT_USER expects no arguments".into()));
+        return Err(DbError::Execution(
+            "CURRENT_USER expects no arguments".into(),
+        ));
     }
-    Ok(Value::NVarChar(ctx.metadata.user.clone().unwrap_or_else(|| "dbo".to_string())))
+    Ok(Value::NVarChar(
+        ctx.metadata
+            .user
+            .clone()
+            .unwrap_or_else(|| "dbo".to_string()),
+    ))
 }
 
 pub(crate) fn eval_hashbytes(
@@ -463,9 +493,12 @@ pub(crate) fn eval_hashbytes(
             }
             bytes
         }
-        _ => return Err(DbError::Execution(format!(
-            "Unsupported hash algorithm '{}'. Supported: MD5, SHA1, SHA2_256, SHA2_512", algo
-        ))),
+        _ => {
+            return Err(DbError::Execution(format!(
+                "Unsupported hash algorithm '{}'. Supported: MD5, SHA1, SHA2_256, SHA2_512",
+                algo
+            )))
+        }
     };
 
     Ok(Value::VarBinary(hash_bytes))
@@ -495,9 +528,27 @@ pub(crate) fn eval_parsename(
     let parts: Vec<&str> = obj.split('.').rev().collect();
     let result = match piece {
         1 => parts.first().copied(), // Object name
-        2 => if parts.len() >= 2 { Some(parts[1]) } else { None }, // Schema name
-        3 => if parts.len() >= 3 { Some(parts[2]) } else { None }, // Database name
-        4 => if parts.len() >= 4 { Some(parts[3]) } else { None }, // Server name
+        2 => {
+            if parts.len() >= 2 {
+                Some(parts[1])
+            } else {
+                None
+            }
+        } // Schema name
+        3 => {
+            if parts.len() >= 3 {
+                Some(parts[2])
+            } else {
+                None
+            }
+        } // Database name
+        4 => {
+            if parts.len() >= 4 {
+                Some(parts[3])
+            } else {
+                None
+            }
+        } // Server name
         _ => None,
     };
 
@@ -516,21 +567,26 @@ pub(crate) fn eval_quotename(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.is_empty() || args.len() > 2 {
-        return Err(DbError::Execution("QUOTENAME expects 1 or 2 arguments".into()));
+        return Err(DbError::Execution(
+            "QUOTENAME expects 1 or 2 arguments".into(),
+        ));
     }
     let name_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
     if name_val.is_null() {
         return Ok(Value::Null);
     }
     let quote_char = if args.len() == 2 {
-        eval_expr(&args[1], row, ctx, catalog, storage, clock)?
-            .to_string_value()
+        eval_expr(&args[1], row, ctx, catalog, storage, clock)?.to_string_value()
     } else {
         "]".to_string()
     };
 
     let name = name_val.to_string_value();
-    let open = if quote_char == "]" { "[" } else { &quote_char[..quote_char.len().min(1)] };
+    let open = if quote_char == "]" {
+        "["
+    } else {
+        &quote_char[..quote_char.len().min(1)]
+    };
     let close = &quote_char;
 
     Ok(Value::NVarChar(format!("{}{}{}", open, name, close)))

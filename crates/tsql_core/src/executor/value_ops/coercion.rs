@@ -1,8 +1,9 @@
-﻿use std::fmt::Debug;
 use crate::error::DbError;
 use crate::types::{DataType, Value};
+use std::fmt::Debug;
+use uuid::Uuid;
 
-use super::super::value_helpers::{rescale_raw, pad_right, pad_binary_right};
+use super::super::value_helpers::{pad_binary_right, pad_right, rescale_raw};
 
 pub fn coerce_value_to_type(value: Value, ty: &DataType) -> Result<Value, DbError> {
     if matches!(ty, DataType::SqlVariant) {
@@ -33,10 +34,11 @@ pub fn coerce_value_to_type(value: Value, ty: &DataType) -> Result<Value, DbErro
             coerce_string(&v, ty)
         }
         Value::Binary(v) | Value::VarBinary(v) => coerce_binary(&v, ty),
-        Value::Date(v) | Value::Time(v) | Value::DateTime(v) | Value::DateTime2(v) => {
-            coerce_date_time_string(&v, ty)
-        }
-        Value::UniqueIdentifier(v) => coerce_uuid(&v, ty),
+        Value::Date(v) => coerce_date_value(v, ty),
+        Value::Time(v) => coerce_time_value(v, ty),
+        Value::DateTime(v) => coerce_datetime_value(v, ty),
+        Value::DateTime2(v) => coerce_datetime_value(v, ty),
+        Value::UniqueIdentifier(v) => coerce_uuid_value(v, ty),
         Value::SqlVariant(inner) => coerce_value_to_type(*inner, ty),
     }
 }
@@ -57,12 +59,8 @@ fn coerce_bit(v: bool, ty: &DataType) -> Result<Value, DbError> {
         DataType::NChar { .. } | DataType::NVarChar { .. } => {
             Ok(Value::NVarChar(int_val.to_string()))
         }
-        DataType::Binary { .. } => {
-            Ok(Value::Binary(int_val.to_le_bytes().to_vec()))
-        }
-        DataType::VarBinary { .. } => {
-            Ok(Value::VarBinary(int_val.to_le_bytes().to_vec()))
-        }
+        DataType::Binary { .. } => Ok(Value::Binary(int_val.to_le_bytes().to_vec())),
+        DataType::VarBinary { .. } => Ok(Value::VarBinary(int_val.to_le_bytes().to_vec())),
         DataType::DateTime | DataType::DateTime2 | DataType::Date | DataType::Time => Err(
             DbError::Execution(format!("cannot convert bit to {:?}", ty)),
         ),
@@ -90,12 +88,8 @@ fn coerce_int(v: i64, ty: &DataType) -> Result<Value, DbError> {
         DataType::SmallMoney => Ok(Value::SmallMoney(v * 10000)),
         DataType::Char { .. } | DataType::VarChar { .. } => Ok(Value::VarChar(v.to_string())),
         DataType::NChar { .. } | DataType::NVarChar { .. } => Ok(Value::NVarChar(v.to_string())),
-        DataType::Binary { .. } => {
-            Ok(Value::Binary(v.to_le_bytes().to_vec()))
-        }
-        DataType::VarBinary { .. } => {
-            Ok(Value::VarBinary(v.to_le_bytes().to_vec()))
-        }
+        DataType::Binary { .. } => Ok(Value::Binary(v.to_le_bytes().to_vec())),
+        DataType::VarBinary { .. } => Ok(Value::VarBinary(v.to_le_bytes().to_vec())),
         DataType::DateTime | DataType::DateTime2 | DataType::Date | DataType::Time => Err(
             DbError::Execution(format!("cannot convert integer to {:?}", ty)),
         ),
@@ -215,28 +209,36 @@ fn coerce_float(bits: u64, ty: &DataType) -> Result<Value, DbError> {
         DataType::Bit => Ok(Value::Bit(f != 0.0)),
         DataType::TinyInt => {
             if !(0.0..=255.0).contains(&f) {
-                Err(DbError::Execution("Arithmetic overflow error converting FLOAT to TINYINT".into()))
+                Err(DbError::Execution(
+                    "Arithmetic overflow error converting FLOAT to TINYINT".into(),
+                ))
             } else {
                 Ok(Value::TinyInt(f as u8))
             }
         }
         DataType::SmallInt => {
             if f < i16::MIN as f64 || f > i16::MAX as f64 {
-                Err(DbError::Execution("Arithmetic overflow error converting FLOAT to SMALLINT".into()))
+                Err(DbError::Execution(
+                    "Arithmetic overflow error converting FLOAT to SMALLINT".into(),
+                ))
             } else {
                 Ok(Value::SmallInt(f as i16))
             }
         }
         DataType::Int => {
             if f < i32::MIN as f64 || f > i32::MAX as f64 {
-                Err(DbError::Execution("Arithmetic overflow error converting FLOAT to INT".into()))
+                Err(DbError::Execution(
+                    "Arithmetic overflow error converting FLOAT to INT".into(),
+                ))
             } else {
                 Ok(Value::Int(f as i32))
             }
         }
         DataType::BigInt => {
             if f < i64::MIN as f64 || f > i64::MAX as f64 {
-                Err(DbError::Execution("Arithmetic overflow error converting FLOAT to BIGINT".into()))
+                Err(DbError::Execution(
+                    "Arithmetic overflow error converting FLOAT to BIGINT".into(),
+                ))
             } else {
                 Ok(Value::BigInt(f as i64))
             }
@@ -262,7 +264,10 @@ fn coerce_float(bits: u64, ty: &DataType) -> Result<Value, DbError> {
         DataType::Binary { .. } => Ok(Value::Binary((f as i64).to_le_bytes().to_vec())),
         DataType::VarBinary { .. } => Ok(Value::VarBinary((f as i64).to_le_bytes().to_vec())),
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Float(bits)))),
-        _ => Err(DbError::Execution(format!("cannot convert FLOAT to {:?}", ty))),
+        _ => Err(DbError::Execution(format!(
+            "cannot convert FLOAT to {:?}",
+            ty
+        ))),
     }
 }
 
@@ -271,7 +276,9 @@ fn coerce_money(raw: i128, ty: &DataType) -> Result<Value, DbError> {
         DataType::Money => Ok(Value::Money(raw)),
         DataType::SmallMoney => {
             if raw < i64::MIN as i128 || raw > i64::MAX as i128 {
-                Err(DbError::Execution("Arithmetic overflow error converting MONEY to SMALLMONEY".into()))
+                Err(DbError::Execution(
+                    "Arithmetic overflow error converting MONEY to SMALLMONEY".into(),
+                ))
             } else {
                 Ok(Value::SmallMoney(raw as i64))
             }
@@ -280,7 +287,9 @@ fn coerce_money(raw: i128, ty: &DataType) -> Result<Value, DbError> {
         DataType::TinyInt => {
             let v = raw / 10000;
             if !(0..=255).contains(&v) {
-                Err(DbError::Execution("Arithmetic overflow error converting MONEY to TINYINT".into()))
+                Err(DbError::Execution(
+                    "Arithmetic overflow error converting MONEY to TINYINT".into(),
+                ))
             } else {
                 Ok(Value::TinyInt(v as u8))
             }
@@ -288,7 +297,9 @@ fn coerce_money(raw: i128, ty: &DataType) -> Result<Value, DbError> {
         DataType::SmallInt => {
             let v = raw / 10000;
             if v < i16::MIN as i128 || v > i16::MAX as i128 {
-                Err(DbError::Execution("Arithmetic overflow error converting MONEY to SMALLINT".into()))
+                Err(DbError::Execution(
+                    "Arithmetic overflow error converting MONEY to SMALLINT".into(),
+                ))
             } else {
                 Ok(Value::SmallInt(v as i16))
             }
@@ -296,7 +307,9 @@ fn coerce_money(raw: i128, ty: &DataType) -> Result<Value, DbError> {
         DataType::Int => {
             let v = raw / 10000;
             if v < i32::MIN as i128 || v > i32::MAX as i128 {
-                Err(DbError::Execution("Arithmetic overflow error converting MONEY to INT".into()))
+                Err(DbError::Execution(
+                    "Arithmetic overflow error converting MONEY to INT".into(),
+                ))
             } else {
                 Ok(Value::Int(v as i32))
             }
@@ -304,14 +317,14 @@ fn coerce_money(raw: i128, ty: &DataType) -> Result<Value, DbError> {
         DataType::BigInt => {
             let v = raw / 10000;
             if v < i64::MIN as i128 || v > i64::MAX as i128 {
-                Err(DbError::Execution("Arithmetic overflow error converting MONEY to BIGINT".into()))
+                Err(DbError::Execution(
+                    "Arithmetic overflow error converting MONEY to BIGINT".into(),
+                ))
             } else {
                 Ok(Value::BigInt(v as i64))
             }
         }
-        DataType::Float => {
-            Ok(Value::Float((raw as f64 / 10000.0).to_bits()))
-        }
+        DataType::Float => Ok(Value::Float((raw as f64 / 10000.0).to_bits())),
         DataType::Decimal { scale, .. } => {
             let money_scale = 4u8;
             let converted = rescale_raw(raw, money_scale, *scale);
@@ -326,7 +339,10 @@ fn coerce_money(raw: i128, ty: &DataType) -> Result<Value, DbError> {
         DataType::Binary { .. } => Ok(Value::Binary(raw.to_le_bytes().to_vec())),
         DataType::VarBinary { .. } => Ok(Value::VarBinary(raw.to_le_bytes().to_vec())),
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Money(raw)))),
-        _ => Err(DbError::Execution(format!("cannot convert MONEY to {:?}", ty))),
+        _ => Err(DbError::Execution(format!(
+            "cannot convert MONEY to {:?}",
+            ty
+        ))),
     }
 }
 
@@ -397,13 +413,90 @@ fn coerce_string(v: &str, ty: &DataType) -> Result<Value, DbError> {
             };
             Ok(Value::VarBinary(bytes))
         }
-        DataType::Date => Ok(Value::Date(v.to_string())),
-        DataType::Time => Ok(Value::Time(v.to_string())),
-        DataType::DateTime => Ok(Value::DateTime(v.to_string())),
-        DataType::DateTime2 => Ok(Value::DateTime2(v.to_string())),
-        DataType::UniqueIdentifier => Ok(Value::UniqueIdentifier(v.to_string())),
+        DataType::Date => {
+            let parsed = chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d")
+                .or_else(|_| chrono::NaiveDate::parse_from_str(v, "%m/%d/%Y"));
+            match parsed {
+                Ok(d) => Ok(Value::Date(d)),
+                Err(_) => Err(DbError::Execution(format!("invalid date: {}", v))),
+            }
+        }
+        DataType::Time => {
+            let parsed = chrono::NaiveTime::parse_from_str(v, "%H:%M:%S")
+                .or_else(|_| chrono::NaiveTime::parse_from_str(v, "%H:%M:%S%.f"));
+            match parsed {
+                Ok(t) => Ok(Value::Time(t)),
+                Err(_) => Err(DbError::Execution(format!("invalid time: {}", v))),
+            }
+        }
+        DataType::DateTime | DataType::DateTime2 => {
+            let parsed = chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%d %H:%M:%S")
+                .or_else(|_| chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%dT%H:%M:%S"));
+            match parsed {
+                Ok(dt) => Ok(Value::DateTime(dt)),
+                Err(_) => Err(DbError::Execution(format!("invalid datetime: {}", v))),
+            }
+        }
+        DataType::UniqueIdentifier => {
+            let uuid = Uuid::parse_str(v)
+                .map_err(|_| DbError::Execution(format!("invalid UNIQUEIDENTIFIER: {}", v)))?;
+            Ok(Value::UniqueIdentifier(uuid))
+        }
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::VarChar(v.to_string())))),
         DataType::Xml => Ok(Value::VarChar(v.to_string())),
+    }
+}
+
+fn coerce_date_value(v: chrono::NaiveDate, ty: &DataType) -> Result<Value, DbError> {
+    match ty {
+        DataType::Char { .. } | DataType::VarChar { .. } => {
+            Ok(Value::VarChar(v.format("%Y-%m-%d").to_string()))
+        }
+        DataType::NChar { .. } | DataType::NVarChar { .. } => {
+            Ok(Value::NVarChar(v.format("%Y-%m-%d").to_string()))
+        }
+        DataType::Date => Ok(Value::Date(v)),
+        DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Date(v)))),
+        _ => Err(DbError::Execution(format!(
+            "cannot convert DATE value to {:?}",
+            ty
+        ))),
+    }
+}
+
+fn coerce_time_value(v: chrono::NaiveTime, ty: &DataType) -> Result<Value, DbError> {
+    match ty {
+        DataType::Char { .. } | DataType::VarChar { .. } => {
+            Ok(Value::VarChar(v.format("%H:%M:%S%.f").to_string()))
+        }
+        DataType::NChar { .. } | DataType::NVarChar { .. } => {
+            Ok(Value::NVarChar(v.format("%H:%M:%S%.f").to_string()))
+        }
+        DataType::Time => Ok(Value::Time(v)),
+        DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Time(v)))),
+        _ => Err(DbError::Execution(format!(
+            "cannot convert TIME value to {:?}",
+            ty
+        ))),
+    }
+}
+
+fn coerce_datetime_value(v: chrono::NaiveDateTime, ty: &DataType) -> Result<Value, DbError> {
+    match ty {
+        DataType::Char { .. } | DataType::VarChar { .. } => {
+            Ok(Value::VarChar(v.format("%Y-%m-%d %H:%M:%S%.f").to_string()))
+        }
+        DataType::NChar { .. } | DataType::NVarChar { .. } => Ok(Value::NVarChar(
+            v.format("%Y-%m-%d %H:%M:%S%.f").to_string(),
+        )),
+        DataType::DateTime | DataType::DateTime2 => Ok(Value::DateTime(v)),
+        DataType::Date => Ok(Value::Date(v.date())),
+        DataType::Time => Ok(Value::Time(v.time())),
+        DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::DateTime(v)))),
+        _ => Err(DbError::Execution(format!(
+            "cannot convert DATETIME value to {:?}",
+            ty
+        ))),
     }
 }
 
@@ -411,10 +504,30 @@ fn coerce_date_time_string(v: &str, ty: &DataType) -> Result<Value, DbError> {
     match ty {
         DataType::Char { .. } | DataType::VarChar { .. } => Ok(Value::VarChar(v.to_string())),
         DataType::NChar { .. } | DataType::NVarChar { .. } => Ok(Value::NVarChar(v.to_string())),
-        DataType::Date => Ok(Value::Date(v.to_string())),
-        DataType::Time => Ok(Value::Time(v.to_string())),
-        DataType::DateTime => Ok(Value::DateTime(v.to_string())),
-        DataType::DateTime2 => Ok(Value::DateTime2(v.to_string())),
+        DataType::Date => {
+            let parsed = chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d")
+                .or_else(|_| chrono::NaiveDate::parse_from_str(v, "%m/%d/%Y"));
+            match parsed {
+                Ok(d) => Ok(Value::Date(d)),
+                Err(_) => Err(DbError::Execution(format!("invalid date: {}", v))),
+            }
+        }
+        DataType::Time => {
+            let parsed = chrono::NaiveTime::parse_from_str(v, "%H:%M:%S")
+                .or_else(|_| chrono::NaiveTime::parse_from_str(v, "%H:%M:%S%.f"));
+            match parsed {
+                Ok(t) => Ok(Value::Time(t)),
+                Err(_) => Err(DbError::Execution(format!("invalid time: {}", v))),
+            }
+        }
+        DataType::DateTime | DataType::DateTime2 => {
+            let parsed = chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%d %H:%M:%S")
+                .or_else(|_| chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%dT%H:%M:%S"));
+            match parsed {
+                Ok(dt) => Ok(Value::DateTime(dt)),
+                Err(_) => Err(DbError::Execution(format!("invalid datetime: {}", v))),
+            }
+        }
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::VarChar(v.to_string())))),
         _ => Err(DbError::Execution(format!(
             "cannot convert datetime-like value to {:?}",
@@ -437,18 +550,34 @@ fn coerce_binary(data: &[u8], ty: &DataType) -> Result<Value, DbError> {
             Ok(Value::NVarChar(crate::types::format_binary(data)))
         }
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Binary(data.to_vec())))),
-        _ => Err(DbError::Execution(format!("cannot convert BINARY to {:?}", ty))),
+        _ => Err(DbError::Execution(format!(
+            "cannot convert BINARY to {:?}",
+            ty
+        ))),
     }
 }
 
 fn coerce_uuid(v: &str, ty: &DataType) -> Result<Value, DbError> {
+    let uuid = Uuid::parse_str(v)
+        .map_err(|_| DbError::Execution(format!("invalid UNIQUEIDENTIFIER: {}", v)))?;
     match ty {
-        DataType::UniqueIdentifier => Ok(Value::UniqueIdentifier(v.to_string())),
+        DataType::UniqueIdentifier => Ok(Value::UniqueIdentifier(uuid)),
         DataType::Char { .. } | DataType::VarChar { .. } => Ok(Value::VarChar(v.to_string())),
         DataType::NChar { .. } | DataType::NVarChar { .. } => Ok(Value::NVarChar(v.to_string())),
-        DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::UniqueIdentifier(
-            v.to_string(),
-        )))),
+        DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::UniqueIdentifier(uuid)))),
+        _ => Err(DbError::Execution(format!(
+            "cannot convert UNIQUEIDENTIFIER to {:?}",
+            ty
+        ))),
+    }
+}
+
+fn coerce_uuid_value(v: Uuid, ty: &DataType) -> Result<Value, DbError> {
+    match ty {
+        DataType::Char { .. } | DataType::VarChar { .. } => Ok(Value::VarChar(v.to_string())),
+        DataType::NChar { .. } | DataType::NVarChar { .. } => Ok(Value::NVarChar(v.to_string())),
+        DataType::UniqueIdentifier => Ok(Value::UniqueIdentifier(v)),
+        DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::UniqueIdentifier(v)))),
         _ => Err(DbError::Execution(format!(
             "cannot convert UNIQUEIDENTIFIER to {:?}",
             ty
@@ -544,7 +673,9 @@ pub fn parse_money_string(s: &str) -> Result<Value, DbError> {
 pub fn parse_hex_string(s: &str) -> Result<Vec<u8>, DbError> {
     let s = s.trim();
     if s.len() % 2 != 0 {
-        return Err(DbError::Execution("hex string must have even number of digits".into()));
+        return Err(DbError::Execution(
+            "hex string must have even number of digits".into(),
+        ));
     }
     let mut bytes = Vec::with_capacity(s.len() / 2);
     let chars: Vec<char> = s.chars().collect();

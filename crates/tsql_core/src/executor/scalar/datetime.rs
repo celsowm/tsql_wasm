@@ -1,14 +1,16 @@
-﻿use crate::ast::Expr;
+use crate::ast::Expr;
 use crate::catalog::Catalog;
 use crate::error::DbError;
-use crate::types::Value;
 use crate::storage::Storage;
+use crate::types::Value;
 
 use super::super::clock::Clock;
 use super::super::context::ExecutionContext;
+use super::super::date_time::{
+    apply_dateadd, date_to_days, day_of_week_from_date, parse_datetime_parts,
+};
 use super::super::evaluator::eval_expr;
 use super::super::model::ContextTable;
-use super::super::date_time::{apply_dateadd, day_of_week_from_date, date_to_days, parse_datetime_parts};
 
 pub(crate) fn extract_datepart(expr: &Expr) -> Result<String, DbError> {
     match expr {
@@ -51,7 +53,7 @@ pub(crate) fn eval_dateadd(
     let result = apply_dateadd(&part, num, &date_str)?;
 
     match date_val {
-        Value::Date(_) => Ok(Value::Date(result)),
+        Value::Date(_) => Ok(Value::Date(result.date())),
         Value::DateTime(_) => Ok(Value::DateTime(result)),
         Value::DateTime2(_) => Ok(Value::DateTime2(result)),
         _ => Ok(Value::DateTime(result)),
@@ -143,9 +145,7 @@ pub(crate) fn eval_datepart(
             let jan1 = date_to_days(y, 1, 1);
             ((days - jan1) + 1) as i32
         }
-        "quarter" | "qq" | "q" => {
-            ((m - 1) / 3 + 1) as i32
-        }
+        "quarter" | "qq" | "q" => ((m - 1) / 3 + 1) as i32,
         "millisecond" | "ms" => 0i32,
         "microsecond" | "mcs" => 0i32,
         "nanosecond" | "ns" => 0i32,
@@ -176,8 +176,19 @@ pub(crate) fn eval_datename(
         "year" | "yy" | "yyyy" => format!("{}", y),
         "month" | "mm" | "m" => {
             let months = [
-                "", "January", "February", "March", "April", "May", "June",
-                "July", "August", "September", "October", "November", "December",
+                "",
+                "January",
+                "February",
+                "March",
+                "April",
+                "May",
+                "June",
+                "July",
+                "August",
+                "September",
+                "October",
+                "November",
+                "December",
             ];
             months.get(m as usize).unwrap_or(&"").to_string()
         }
@@ -186,7 +197,15 @@ pub(crate) fn eval_datename(
             let dow = day_of_week_from_date(y, m, d);
             let datefirst = ctx.metadata.datefirst;
             let adjusted = ((dow - datefirst + 7) % 7) as usize;
-            let day_names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+            let day_names = [
+                "Sunday",
+                "Monday",
+                "Tuesday",
+                "Wednesday",
+                "Thursday",
+                "Friday",
+                "Saturday",
+            ];
             day_names[adjusted].to_string()
         }
         "dayofyear" | "dy" => {
@@ -197,7 +216,12 @@ pub(crate) fn eval_datename(
         "quarter" | "qq" | "q" => format!("{}", ((m - 1) / 3 + 1)),
         "hour" | "hh" => {
             let time_part = date_str.split('T').nth(1).unwrap_or("00:00:00");
-            let hour: i32 = time_part.split(':').next().unwrap_or("0").parse().unwrap_or(0);
+            let hour: i32 = time_part
+                .split(':')
+                .next()
+                .unwrap_or("0")
+                .parse()
+                .unwrap_or(0);
             format!("{}", hour)
         }
         "minute" | "mi" | "n" => {
@@ -288,7 +312,11 @@ pub(crate) fn eval_day(
 pub(crate) fn format_datetime_string(dt: &str, fmt: &str) -> String {
     match fmt.to_lowercase().as_str() {
         "yyyy" | "yyyy-mm-dd" => {
-            if dt.len() >= 10 { dt[..10].to_string() } else { dt.to_string() }
+            if dt.len() >= 10 {
+                dt[..10].to_string()
+            } else {
+                dt.to_string()
+            }
         }
         "mm/dd/yyyy" => {
             if let Ok((y, m, d, _, _, _)) = parse_datetime_parts(dt) {
@@ -306,9 +334,15 @@ pub(crate) fn format_datetime_string(dt: &str, fmt: &str) -> String {
         }
         "dd MMM yyyy" | "dd MMM yyyy hh:mi:ss" => {
             if let Ok((y, m, d, h, mi, s)) = parse_datetime_parts(dt) {
-                let months = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-                let mon = if m >= 1 && m <= 12 { months[m as usize] } else { "???" };
+                let months = [
+                    "", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct",
+                    "Nov", "Dec",
+                ];
+                let mon = if m >= 1 && m <= 12 {
+                    months[m as usize]
+                } else {
+                    "???"
+                };
                 if h > 0 || mi > 0 || s > 0 {
                     format!("{:02} {} {} {:02}:{:02}:{:02}", d, mon, y, h, mi, s)
                 } else {
