@@ -94,8 +94,10 @@ where
             continue;
         }
         let tid = table_def.id;
-        if let Ok(committed_rows) = storage_guard.storage.get_rows(tid) {
-            workspace.storage.replace_table(tid, committed_rows)?;
+        if let Ok(rows) = storage_guard.storage.scan_rows(tid) {
+            if let Ok(committed_rows) = rows.collect::<Result<Vec<_>, DbError>>() {
+                workspace.storage.replace_table(tid, committed_rows)?;
+            }
         }
     }
     for table_def in storage_guard.catalog.get_tables() {

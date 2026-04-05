@@ -162,14 +162,23 @@ impl<'a> ScriptExecutor<'a> {
 
         self.schema().alter_table(stmt)?;
 
-        if let Ok(rows) = self.storage.get_rows(table.id) {
-            let mut_exec = MutationExecutor {
-                catalog: self.catalog,
-                storage: self.storage,
-                clock: self.clock,
+        let rows = {
+            let rows = match self.storage.scan_rows(table.id) {
+                Ok(rows) => rows,
+                Err(_) => return Ok(None),
             };
-            mut_exec.push_dirty_replace(ctx, &table.name, rows);
-        }
+            match rows.collect::<Result<Vec<_>, DbError>>() {
+                Ok(rows) => rows,
+                Err(_) => return Ok(None),
+            }
+        };
+
+        let mut_exec = MutationExecutor {
+            catalog: self.catalog,
+            storage: self.storage,
+            clock: self.clock,
+        };
+        mut_exec.push_dirty_replace(ctx, &table.name, rows);
 
         Ok(None)
     }

@@ -26,8 +26,9 @@ This document summarizes the anti-patterns, performance bottlenecks, and archite
 - **FIXED:** Peer-matching in `resolve_bound_optimized` uses cached values, eliminating redundant `eval_expr` calls during frame resolution.
 
 ### 2.2 Memory Scalability (Storage Trait)
-- **Problem:** The `Storage::get_rows` method returns a `Vec<StoredRow>`, forcing the entire table into memory.
-- **Recommendation:** Transition to an iterator-based or streaming approach (`impl Iterator<Item = ...>`) to support large datasets.
+- **FIXED:** `Storage` now exposes `scan_rows`, an iterator-based streaming API, and `get_rows` is only a compatibility shim.
+- **FIXED:** The redb backend no longer materializes every row before handing data to callers.
+- **IMPROVED:** The main read-heavy callers (`query_planner`, mutation validation, merge, schema refresh) now consume the stream directly or only collect at the final boundary.
 
 ### 2.3 Excessive Cloning
 - Frequent `.clone()` calls on AST nodes, `JoinedRow`, and large `Value` types (Binary/VarChar) increase CPU and memory overhead.
@@ -57,7 +58,8 @@ This document summarizes the anti-patterns, performance bottlenecks, and archite
 - **TESTED:** Verified with `tests/recursion_limit.rs`.
 
 ### 4.2 Resource Exhaustion
-- The lack of streaming in the `Storage` layer combined with `Vec` allocations makes the engine vulnerable to OOM (Out-of-Memory) errors when processing large tables.
+- The biggest storage-layer allocation hot spots have been addressed by moving reads to `scan_rows`.
+- Some code paths still collect rows intentionally when a full table snapshot is semantically required, but the engine is no longer forced to materialize every read upfront.
 
 ---
 
@@ -65,5 +67,5 @@ This document summarizes the anti-patterns, performance bottlenecks, and archite
 
 1. **Refactor `lower.rs`:** Split into `dml.rs`, `ddl.rs`, and `procedural.rs`.
 2. **Registry-based Evaluator:** Move from a single `match` in `eval_expr` to a registry of function/operator handlers to improve OCP.
-3. **Streaming Storage:** Refactor the `Storage` trait to return iterators.
+3. **Streaming Storage:** Done for the core read path; keep migrating any remaining `get_rows` callers to `scan_rows` when they do not need a full table snapshot.
 4. **Safe Error Handling:** Keep preferring explicit error propagation in new production code; remaining `.unwrap()` usage should stay limited to tests or hard invariants.

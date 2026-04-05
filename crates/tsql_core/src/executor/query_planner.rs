@@ -381,21 +381,23 @@ fn bind_table_rows(
             .collect());
     }
 
-    let stored_rows = storage.get_rows(bound.table.id)?;
+    let stored_rows = storage.scan_rows(bound.table.id)?;
+    let mut rows = Vec::new();
 
-    Ok(stored_rows
-        .iter()
-        .enumerate()
-        .filter(|(_, r)| !r.deleted)
-        .map(|(i, row)| {
-            vec![super::model::ContextTable {
-                table: bound.table.clone(),
-                alias: bound.alias.clone(),
-                row: Some(row.clone()),
-                storage_index: Some(i),
-            }]
-        })
-        .collect())
+    for (i, row) in stored_rows.enumerate() {
+        let row = row?;
+        if row.deleted {
+            continue;
+        }
+        rows.push(vec![super::model::ContextTable {
+            table: bound.table.clone(),
+            alias: bound.alias.clone(),
+            row: Some(row),
+            storage_index: Some(i),
+        }]);
+    }
+
+    Ok(rows)
 }
 
 fn apply_index_strategy(

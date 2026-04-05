@@ -62,25 +62,26 @@ impl RedbStorage {
 }
 
 impl Storage for RedbStorage {
-    fn get_rows(&self, table_id: u32) -> Result<Vec<StoredRow>, DbError> {
+    fn scan_rows<'a>(&'a self, table_id: u32) -> Result<crate::storage::StorageRowStream<'a>, DbError> {
         let db = self.db()?;
         let read_txn = db.begin_read()
             .map_err(|e| DbError::Storage(format!("failed to begin read txn: {}", e)))?;
         let table = read_txn.open_table(ROWS_TABLE)
             .map_err(|e| DbError::Storage(format!("failed to open table: {}", e)))?;
 
-        let mut rows = Vec::new();
-        let range = table.range((table_id, 0)..(table_id + 1, 0))
+        let range = if table_id == u32::MAX {
+            table.range((table_id, 0)..)
+        } else {
+            table.range((table_id, 0)..(table_id + 1, 0))
+        }
             .map_err(|e| DbError::Storage(format!("failed to scan range: {}", e)))?;
 
-        for result in range {
-            let (_key, value): (AccessGuard<'_, (u32, u64)>, AccessGuard<'_, &[u8]>) = result.map_err(|e| DbError::Storage(format!("error reading row: {}", e)))?;
-            let row: StoredRow = serde_json::from_slice(value.value())
-                .map_err(|e| DbError::Storage(format!("failed to deserialize row: {}", e)))?;
-            rows.push(row);
-        }
-
-        Ok(rows)
+        Ok(Box::new(range.map(|result| {
+            let (_key, value): (AccessGuard<'_, (u32, u64)>, AccessGuard<'_, &[u8]>) = result
+                .map_err(|e| DbError::Storage(format!("error reading row: {}", e)))?;
+            serde_json::from_slice(value.value())
+                .map_err(|e| DbError::Storage(format!("failed to deserialize row: {}", e)))
+        })))
     }
 
     fn insert_row(&mut self, table_id: u32, row: StoredRow) -> Result<(), DbError> {
@@ -92,12 +93,16 @@ impl Storage for RedbStorage {
                 .map_err(|e| DbError::Storage(format!("failed to open table: {}", e)))?;
 
             let next_idx = {
-                let last_idx = table.range((table_id, 0)..(table_id + 1, 0))
+                let range = if table_id == u32::MAX {
+                    table.range((table_id, 0)..)
+                } else {
+                    table.range((table_id, 0)..(table_id + 1, 0))
+                }
                     .map_err(|e| DbError::Storage(format!("failed to scan range: {}", e)))?
                     .rev()
                     .next();
 
-                match last_idx {
+                match range {
                     Some(Ok((key, _val))) => key.value().1 + 1,
                     _ => 0,
                 }
@@ -176,7 +181,11 @@ impl Storage for RedbStorage {
                 .map_err(|e| DbError::Storage(format!("failed to open table: {}", e)))?;
 
             let keys_to_delete: Vec<(u32, u64)> = {
-                let range = table.range((table_id, 0)..(table_id + 1, 0))
+                let range = if table_id == u32::MAX {
+                    table.range((table_id, 0)..)
+                } else {
+                    table.range((table_id, 0)..(table_id + 1, 0))
+                }
                     .map_err(|e| DbError::Storage(format!("failed to scan range: {}", e)))?;
                 range.flatten().map(|(k, _v): (AccessGuard<'_, (u32, u64)>, AccessGuard<'_, &[u8]>)| k.value()).collect()
             };
@@ -207,7 +216,11 @@ impl Storage for RedbStorage {
                 .map_err(|e| DbError::Storage(format!("failed to open table: {}", e)))?;
 
             let keys_to_delete: Vec<(u32, u64)> = {
-                let range = table.range((table_id, 0)..(table_id + 1, 0))
+                let range = if table_id == u32::MAX {
+                    table.range((table_id, 0)..)
+                } else {
+                    table.range((table_id, 0)..(table_id + 1, 0))
+                }
                     .map_err(|e| DbError::Storage(format!("failed to scan range: {}", e)))?;
                 range.flatten().map(|(k, _v): (AccessGuard<'_, (u32, u64)>, AccessGuard<'_, &[u8]>)| k.value()).collect()
             };

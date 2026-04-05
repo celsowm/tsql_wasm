@@ -7,6 +7,8 @@ use crate::error::DbError;
 use crate::types::Value;
 use serde::{Deserialize, Serialize};
 
+pub type StorageRowStream<'a> = Box<dyn Iterator<Item = Result<StoredRow, DbError>> + 'a>;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredRow {
     pub values: Vec<Value>,
@@ -20,7 +22,13 @@ pub enum StorageCheckpointData {
 }
 
 pub trait Storage: std::fmt::Debug + Send + Sync {
-    fn get_rows(&self, table_id: u32) -> Result<Vec<StoredRow>, DbError>;
+    fn scan_rows<'a>(&'a self, table_id: u32) -> Result<StorageRowStream<'a>, DbError>;
+
+    /// Compatibility shim for callers that still need a fully materialized table snapshot.
+    fn get_rows(&self, table_id: u32) -> Result<Vec<StoredRow>, DbError> {
+        self.scan_rows(table_id)?.collect()
+    }
+
     fn insert_row(&mut self, table_id: u32, row: StoredRow) -> Result<(), DbError>;
     fn update_row(&mut self, table_id: u32, index: usize, row: StoredRow) -> Result<(), DbError>;
     fn delete_row(&mut self, table_id: u32, index: usize) -> Result<(), DbError>;
@@ -46,11 +54,12 @@ pub struct InMemoryStorage {
 }
 
 impl Storage for InMemoryStorage {
-    fn get_rows(&self, table_id: u32) -> Result<Vec<StoredRow>, DbError> {
-        self.tables
-            .get(&table_id)
-            .cloned()
-            .ok_or_else(|| DbError::Storage(format!("table {} not found in storage", table_id)))
+    fn scan_rows<'a>(&'a self, table_id: u32) -> Result<StorageRowStream<'a>, DbError> {
+        let rows = self.tables.get(&table_id).ok_or_else(|| {
+            DbError::Storage(format!("table {} not found in storage", table_id))
+        })?;
+
+        Ok(Box::new(rows.iter().cloned().map(Ok)))
     }
 
     fn insert_row(&mut self, table_id: u32, row: StoredRow) -> Result<(), DbError> {

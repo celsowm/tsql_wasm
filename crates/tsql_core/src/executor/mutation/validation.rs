@@ -53,10 +53,10 @@ pub(crate) fn enforce_foreign_keys_on_delete(
             if fk.referenced_table.schema_or_dbo().eq_ignore_ascii_case(table.schema_or_dbo())
                 && fk.referenced_table.name.eq_ignore_ascii_case(&table.name)
             {
-                let other_rows = storage.get_rows(other_table.id)?;
                 let mut rows_to_update: Vec<(usize, StoredRow)> = Vec::new();
-                
-                for (idx, other_row) in other_rows.iter().enumerate() {
+
+                for (idx, other_row) in storage.scan_rows(other_table.id)?.enumerate() {
+                    let other_row = other_row?;
                     if other_row.deleted {
                         continue;
                     }
@@ -138,10 +138,10 @@ pub(crate) fn enforce_foreign_keys_on_update(
             if fk.referenced_table.schema_or_dbo().eq_ignore_ascii_case(table.schema_or_dbo())
                 && fk.referenced_table.name.eq_ignore_ascii_case(&table.name)
             {
-                let other_rows = storage.get_rows(other_table.id)?;
                 let mut rows_to_update: Vec<(usize, StoredRow)> = Vec::new();
-                
-                for (idx, other_row) in other_rows.iter().enumerate() {
+
+                for (idx, other_row) in storage.scan_rows(other_table.id)?.enumerate() {
+                    let other_row = other_row?;
                     if other_row.deleted {
                         continue;
                     }
@@ -250,10 +250,13 @@ pub(crate) fn enforce_foreign_keys_on_insert(
         let ref_table = catalog.find_table(ref_schema, ref_name)
             .ok_or_else(|| DbError::Execution(format!("referenced table '{}.{}' not found", ref_schema, ref_name)))?;
 
-        let ref_rows = storage.get_rows(ref_table.id)?;
         let mut found = false;
 
-        for ref_row in ref_rows.iter().filter(|r| !r.deleted) {
+        for ref_row in storage.scan_rows(ref_table.id)? {
+            let ref_row = ref_row?;
+            if ref_row.deleted {
+                continue;
+            }
             let mut matches = true;
             for (i, ref_col_name) in fk.referenced_columns.iter().enumerate() {
                 let ref_col_idx = ref_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(ref_col_name))
@@ -286,14 +289,16 @@ pub(crate) fn enforce_unique_on_insert(
     table_id: u32,
     new_row: &StoredRow,
 ) -> Result<(), DbError> {
-    let rows = storage.get_rows(table_id)?;
-
     for (col_idx, col) in table.columns.iter().enumerate().filter(|(_, c)| c.unique) {
         let new_val = &new_row.values[col_idx];
         if new_val.is_null() {
             continue;
         }
-        for existing in rows.iter().filter(|r| !r.deleted) {
+        for existing in storage.scan_rows(table_id)? {
+            let existing = existing?;
+            if existing.deleted {
+                continue;
+            }
             let existing_val = &existing.values[col_idx];
             if !existing_val.is_null()
                 && compare_values(new_val, existing_val) == std::cmp::Ordering::Equal
@@ -315,14 +320,13 @@ pub(crate) fn enforce_unique_on_update(
     updated_row: &StoredRow,
     updated_idx: usize,
 ) -> Result<(), DbError> {
-    let rows = storage.get_rows(table_id)?;
-
     for (col_idx, col) in table.columns.iter().enumerate().filter(|(_, c)| c.unique) {
         let new_val = &updated_row.values[col_idx];
         if new_val.is_null() {
             continue;
         }
-        for (i, existing) in rows.iter().enumerate() {
+        for (i, existing) in storage.scan_rows(table_id)?.enumerate() {
+            let existing = existing?;
             if i == updated_idx || existing.deleted {
                 continue;
             }

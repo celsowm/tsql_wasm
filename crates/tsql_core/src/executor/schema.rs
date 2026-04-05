@@ -7,7 +7,7 @@ use crate::catalog::{
     Catalog, CheckConstraintDef, ColumnDef, ForeignKeyDef, IdentityDef, TableDef, TableTypeDef,
 };
 use crate::error::DbError;
-use crate::storage::{Storage, StoredRow};
+use crate::storage::Storage;
 
 use super::type_mapping::data_type_spec_to_runtime;
 use super::tooling::format_view_definition;
@@ -283,13 +283,20 @@ impl<'a> SchemaExecutor<'a> {
                 table_mut.columns.push(col);
 
                 // Add NULL values for the new column in existing rows
-                if let Ok(rows) = self.storage.get_rows(table_id) {
-                    let mut rows_vec: Vec<StoredRow> = rows.into_iter().collect();
-                    for row in rows_vec.iter_mut() {
-                        row.values.push(crate::types::Value::Null);
+                let mut rows_vec = {
+                    let rows = match self.storage.scan_rows(table_id) {
+                        Ok(rows) => rows,
+                        Err(_) => return Ok(()),
+                    };
+                    match rows.collect::<Result<Vec<_>, DbError>>() {
+                        Ok(rows_vec) => rows_vec,
+                        Err(_) => return Ok(()),
                     }
-                    self.storage.replace_table(table_id, rows_vec)?;
+                };
+                for row in rows_vec.iter_mut() {
+                    row.values.push(crate::types::Value::Null);
                 }
+                self.storage.replace_table(table_id, rows_vec)?;
             }
             AlterTableAction::DropColumn(col_name) => {
                 let table_mut = self
@@ -307,15 +314,22 @@ impl<'a> SchemaExecutor<'a> {
                 table_mut.columns.remove(col_idx);
 
                 // Remove the column values from existing rows
-                if let Ok(rows) = self.storage.get_rows(table_id) {
-                    let mut rows_vec: Vec<StoredRow> = rows.into_iter().collect();
-                    for row in rows_vec.iter_mut() {
-                        if col_idx < row.values.len() {
-                            row.values.remove(col_idx);
-                        }
+                let mut rows_vec = {
+                    let rows = match self.storage.scan_rows(table_id) {
+                        Ok(rows) => rows,
+                        Err(_) => return Ok(()),
+                    };
+                    match rows.collect::<Result<Vec<_>, DbError>>() {
+                        Ok(rows_vec) => rows_vec,
+                        Err(_) => return Ok(()),
                     }
-                    self.storage.replace_table(table_id, rows_vec)?;
+                };
+                for row in rows_vec.iter_mut() {
+                    if col_idx < row.values.len() {
+                        row.values.remove(col_idx);
+                    }
                 }
+                self.storage.replace_table(table_id, rows_vec)?;
             }
             AlterTableAction::AddConstraint(constraint) => {
                 let table_mut = self

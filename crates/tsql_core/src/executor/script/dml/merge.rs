@@ -69,17 +69,15 @@ impl<'a> ScriptExecutor<'a> {
                         ))
                     })?
                     .clone();
-                let rows = self.storage.get_rows(source_table.id)?;
-                rows.into_iter()
-                    .filter(|r| !r.deleted)
-                    .map(|r| {
-                        let mut row = Vec::new();
-                        for val in &r.values {
-                            row.push(val.clone());
-                        }
-                        row
-                    })
-                    .collect::<Vec<Vec<crate::types::Value>>>()
+                let mut rows = Vec::new();
+                for row in self.storage.scan_rows(source_table.id)? {
+                    let row = row?;
+                    if row.deleted {
+                        continue;
+                    }
+                    rows.push(row.values.clone());
+                }
+                rows
             }
             crate::ast::MergeSource::Subquery(select_stmt, _alias) => {
                 let qe = QueryExecutor {
@@ -98,7 +96,10 @@ impl<'a> ScriptExecutor<'a> {
             .clone()
             .unwrap_or_else(|| target_name.clone());
 
-        let target_rows = self.storage.get_rows(target_table.id)?;
+        let target_rows = self
+            .storage
+            .scan_rows(target_table.id)?
+            .collect::<Result<Vec<_>, DbError>>()?;
         let mut source_matched_to_target = vec![false; source_rows.len()];
         let mut target_row_matched = vec![false; target_rows.len()];
         let mut updated_target_rows = target_rows.clone();
