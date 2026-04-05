@@ -361,6 +361,28 @@ impl CatalogImpl {
             .map(|(i, idx)| ((idx.schema_id, idx.name.to_lowercase()), i))
             .collect();
     }
+
+    /// Remove the table at `idx` using swap_remove (O(1)) and fix up only the
+    /// table_map and index_map entries that were affected.
+    pub(crate) fn remove_table_at(&mut self, idx: usize) {
+        let removed = self.tables.swap_remove(idx);
+        self.table_map.remove(&(removed.schema_id, removed.name.to_lowercase()));
+
+        // If swap_remove moved the last element into `idx`, update its map entry.
+        if idx < self.tables.len() {
+            let swapped = &self.tables[idx];
+            self.table_map.insert((swapped.schema_id, swapped.name.to_lowercase()), idx);
+        }
+
+        // Remove associated indexes and rebuild only the index_map.
+        self.indexes.retain(|i| i.table_id != removed.id);
+        self.index_map = self
+            .indexes
+            .iter()
+            .enumerate()
+            .map(|(i, idx)| ((idx.schema_id, idx.name.to_lowercase()), i))
+            .collect();
+    }
 }
 
 impl Default for CatalogImpl {

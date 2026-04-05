@@ -26,8 +26,9 @@ impl TableRegistry for CatalogImpl {
     }
 
     fn unregister_table_by_id(&mut self, id: u32) {
-        self.tables.retain(|t| t.id != id);
-        self.rebuild_maps();
+        if let Some(idx) = self.tables.iter().position(|t| t.id == id) {
+            self.remove_table_at(idx);
+        }
     }
 
     fn drop_table(&mut self, schema: &str, name: &str) -> Result<u32, DbError> {
@@ -41,9 +42,7 @@ impl TableRegistry for CatalogImpl {
             .ok_or_else(|| DbError::Semantic(format!("table '{}.{}' not found", schema, name)))?;
 
         let table_id = self.tables[idx].id;
-        self.tables.remove(idx);
-        self.indexes.retain(|idx| idx.table_id != table_id);
-        self.rebuild_maps();
+        self.remove_table_at(idx);
         Ok(table_id)
     }
 

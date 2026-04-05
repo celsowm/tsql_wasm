@@ -67,12 +67,26 @@ pub struct FrameState {
     pub(crate) last_error: Option<DbError>,
 }
 
+/// Stores pre-computed window function results and a row index so that
+/// per-row lookups avoid cloning every key/value into a new HashMap.
+#[derive(Debug, Clone)]
+pub struct WindowContext {
+    pub(crate) results: HashMap<String, Vec<Value>>,
+    pub(crate) row_idx: usize,
+}
+
+impl WindowContext {
+    pub fn get(&self, key: &str) -> Option<Value> {
+        self.results.get(key).and_then(|vals| vals.get(self.row_idx)).cloned()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RowContext {
     pub(crate) outer_row: Option<JoinedRow>,
     pub(crate) apply_stack: Vec<JoinedRow>,
     pub(crate) current_group: Option<super::model::Group>,
-    pub(crate) window_context: Option<HashMap<String, Value>>,
+    pub(crate) window_context: Option<WindowContext>,
     pub(crate) ctes: CteStorage,
 }
 
@@ -315,7 +329,7 @@ impl RowContext {
     pub fn get_window_value(&self, key: &str) -> Option<Value> {
         self.window_context
             .as_ref()
-            .and_then(|m| m.get(key).cloned())
+            .and_then(|wc| wc.get(key))
     }
 }
 

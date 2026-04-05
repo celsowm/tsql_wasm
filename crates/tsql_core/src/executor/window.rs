@@ -300,13 +300,13 @@ impl<'a> WindowExecutor<'a> {
 
         // 5. Final pass to evaluate all projected expressions
         let mut final_projected_rows = Vec::with_capacity(rows.len());
+        let wc = super::context::WindowContext {
+            results: results_map,
+            row_idx: 0,
+        };
+        ctx.row.window_context = Some(wc);
         for (idx, row) in rows.iter().enumerate() {
-            let mut window_map = HashMap::new();
-            for (key, values) in &results_map {
-                window_map.insert(key.clone(), values[idx].clone());
-            }
-
-            ctx.row.window_context = Some(window_map);
+            ctx.row.window_context.as_mut().unwrap().row_idx = idx;
             let mut projected_row = Vec::with_capacity(projection.len());
             for item in projection {
                 projected_row.push(eval_expr(&item.expr, row, ctx, self.catalog, self.storage, self.clock)?);
