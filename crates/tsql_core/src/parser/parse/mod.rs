@@ -340,7 +340,7 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
             value: crate::parser::ast::SessionOptionValue::Int(val)
         }));
     }
-    Ok(parse_set(parser)?)
+    parse_set(parser)
 }
 
 fn parse_begin_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
@@ -396,11 +396,8 @@ fn parse_cte_def(parser: &mut Parser) -> ParseResult<CteDef> {
 }
 
 pub fn parse_routine_param(parser: &mut Parser) -> ParseResult<RoutineParam> {
-    let name = if let Some(tok) = parser.next() {
-        match tok {
-            Token::Variable(v) => v.clone(),
-            _ => return parser.backtrack(Expected::Description("variable")),
-        }
+    let name = if let Some(Token::Variable(v)) = parser.next() {
+        v.clone()
     } else {
         return parser.backtrack(Expected::Description("variable"));
     };

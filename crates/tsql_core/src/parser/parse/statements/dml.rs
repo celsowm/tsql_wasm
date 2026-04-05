@@ -44,7 +44,7 @@ pub fn parse_insert(parser: &mut Parser) -> ParseResult<InsertStmt> {
     if let Some(Token::Keyword(Keyword::Into)) = parser.peek() {
         let _ = parser.next();
     }
-    let table = parse_multipart_name(parser)?;
+    let table = super::parse_multipart_name(parser)?;
     
     let mut columns = Vec::new();
     if matches!(parser.peek(), Some(Token::LParen)) {
@@ -97,7 +97,7 @@ pub fn parse_insert(parser: &mut Parser) -> ParseResult<InsertStmt> {
              InsertSource::Select(Box::new(crate::parser::parse::statements::query::parse_select_body(parser)?))
         }
         Keyword::Exec | Keyword::Execute => {
-             let procedure = parse_multipart_name(parser)?;
+             let procedure = super::parse_multipart_name(parser)?;
              let args = if !parser.is_empty()
                  && !matches!(parser.peek(), Some(Token::Semicolon) | Some(Token::Go))
                  && !is_statement_starter(parser.peek())
@@ -157,7 +157,7 @@ pub fn parse_update(parser: &mut Parser) -> ParseResult<UpdateStmt> {
 }
 
 fn parse_update_assignment(parser: &mut Parser) -> ParseResult<UpdateAssignment> {
-    let parts = parse_multipart_name(parser)?;
+    let parts = super::parse_multipart_name(parser)?;
     let column = parts
         .last()
         .cloned()
@@ -281,7 +281,7 @@ pub fn parse_output_clause(parser: &mut Parser) -> ParseResult<(Vec<OutputColumn
     let mut output_into = None;
     if matches!(parser.peek(), Some(Token::Keyword(Keyword::Into))) {
         let _ = parser.next();
-        output_into = Some(parse_multipart_name(parser)?);
+        output_into = Some(super::parse_multipart_name(parser)?);
     }
     Ok((columns, output_into))
 }
@@ -378,6 +378,3 @@ pub fn parse_merge(parser: &mut Parser) -> ParseResult<MergeStmt> {
     Ok(MergeStmt { target, source, on_condition, when_clauses, output, output_into })
 }
 
-fn parse_multipart_name(parser: &mut Parser) -> ParseResult<Vec<String>> {
-    crate::parser::parse::statements::query::parse_multipart_name(parser)
-}

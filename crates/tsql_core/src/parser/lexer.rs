@@ -33,7 +33,7 @@ pub fn lex<'a>(input: &mut &'a str, quoted_identifier: bool) -> ModalResult<Vec<
         parse_identifier.map(|id| {
             if id.eq_ignore_ascii_case("GO") {
                 Token::Go
-            } else if let Some(kw) = Keyword::from_str(id) {
+            } else if let Some(kw) = Keyword::parse(id) {
                 Token::Keyword(kw)
             } else {
                 Token::Identifier(id.to_string())

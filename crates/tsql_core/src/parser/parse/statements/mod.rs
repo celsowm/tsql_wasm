@@ -8,3 +8,5 @@ pub mod transaction;
 pub mod drop;
 pub mod alter;
 pub mod create;
+
+pub use query::parse_multipart_name;

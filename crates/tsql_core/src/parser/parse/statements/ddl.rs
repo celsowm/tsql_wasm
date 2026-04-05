@@ -116,7 +116,7 @@ pub fn parse_column_def(parser: &mut Parser) -> ParseResult<ColumnDef> {
             }
             Keyword::References => {
                 let _ = parser.next();
-                let ref_table = parse_multipart_name(parser)?;
+                let ref_table = super::parse_multipart_name(parser)?;
                 let mut ref_columns = Vec::new();
                 if matches!(parser.peek(), Some(Token::LParen)) {
                     let _ = parser.next();
@@ -243,7 +243,7 @@ pub fn parse_table_constraint(parser: &mut Parser) -> ParseResult<TableConstrain
             })?;
             parser.expect_rparen()?;
             parser.expect_keyword(Keyword::References)?;
-            let ref_table = parse_multipart_name(parser)?;
+            let ref_table = super::parse_multipart_name(parser)?;
             let mut ref_columns = Vec::new();
             if matches!(parser.peek(), Some(Token::LParen)) {
                 let _ = parser.next();
@@ -306,9 +306,9 @@ pub fn parse_table_constraint(parser: &mut Parser) -> ParseResult<TableConstrain
 }
 
 pub fn parse_create_index(parser: &mut Parser) -> ParseResult<Statement> {
-    let name = parse_multipart_name(parser)?;
+    let name = super::parse_multipart_name(parser)?;
     parser.expect_keyword(Keyword::On)?;
-    let table = parse_multipart_name(parser)?;
+    let table = super::parse_multipart_name(parser)?;
     parser.expect_lparen()?;
     let columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
         match p.next() {
@@ -322,7 +322,7 @@ pub fn parse_create_index(parser: &mut Parser) -> ParseResult<Statement> {
 }
 
 pub fn parse_create_type(parser: &mut Parser) -> ParseResult<Statement> {
-    let name = parse_multipart_name(parser)?;
+    let name = super::parse_multipart_name(parser)?;
     parser.expect_keyword(Keyword::As)?;
     parser.expect_keyword(Keyword::Table)?;
     parser.expect_lparen()?;
@@ -365,10 +365,6 @@ fn parse_referential_action(parser: &mut Parser) -> ParseResult<ReferentialActio
     }
 }
 
-fn parse_multipart_name(parser: &mut Parser) -> ParseResult<Vec<String>> {
-    crate::parser::parse::statements::query::parse_multipart_name(parser)
-}
-
 pub fn parse_alter_table_add_constraint(parser: &mut Parser) -> ParseResult<TableConstraint> {
     let constraint_name = match parser.next() {
         Some(Token::Identifier(id)) => id.clone(),
@@ -404,7 +400,7 @@ pub fn parse_alter_table_add_constraint(parser: &mut Parser) -> ParseResult<Tabl
         })?;
         parser.expect_rparen()?;
         parser.expect_keyword(Keyword::References)?;
-        let ref_table = parse_multipart_name(parser)?;
+        let ref_table = super::parse_multipart_name(parser)?;
         let mut ref_columns = Vec::new();
         if matches!(parser.peek(), Some(Token::LParen)) {
             let _ = parser.next();

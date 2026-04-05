@@ -15,7 +15,7 @@ macro_rules! define_keywords {
         }
 
         impl Keyword {
-            pub fn from_str(s: &str) -> Option<Keyword> {
+            pub fn parse(s: &str) -> Option<Keyword> {
                 match s.to_uppercase().as_str() {
                     $( $sql => Some(Keyword::$variant), )*
                     _ => None,

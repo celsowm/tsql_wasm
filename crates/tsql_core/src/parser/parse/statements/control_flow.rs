@@ -44,12 +44,12 @@ pub fn parse_try_catch(parser: &mut Parser) -> ParseResult<Statement> {
         while matches!(parser.peek(), Some(Token::Semicolon)) {
             let _ = parser.next();
         }
-        if matches!(parser.peek(), Some(Token::Keyword(Keyword::End))) {
-            if matches!(parser.peek_at(1), Some(Token::Keyword(Keyword::Try))) {
-                let _ = parser.next();
-                let _ = parser.next();
-                break;
-            }
+        if matches!(parser.peek(), Some(Token::Keyword(Keyword::End)))
+            && matches!(parser.peek_at(1), Some(Token::Keyword(Keyword::Try)))
+        {
+            let _ = parser.next();
+            let _ = parser.next();
+            break;
         }
         try_body.push(crate::parser::parse::parse_statement(parser)?);
     }
@@ -61,12 +61,12 @@ pub fn parse_try_catch(parser: &mut Parser) -> ParseResult<Statement> {
         while matches!(parser.peek(), Some(Token::Semicolon)) {
             let _ = parser.next();
         }
-        if matches!(parser.peek(), Some(Token::Keyword(Keyword::End))) {
-            if matches!(parser.peek_at(1), Some(Token::Keyword(Keyword::Catch))) {
-                let _ = parser.next();
-                let _ = parser.next();
-                break;
-            }
+        if matches!(parser.peek(), Some(Token::Keyword(Keyword::End)))
+            && matches!(parser.peek_at(1), Some(Token::Keyword(Keyword::Catch)))
+        {
+            let _ = parser.next();
+            let _ = parser.next();
+            break;
         }
         catch_body.push(crate::parser::parse::parse_statement(parser)?);
     }

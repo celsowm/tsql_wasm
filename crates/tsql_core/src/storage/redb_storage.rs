@@ -8,7 +8,7 @@ use serde::{Serialize, Deserialize};
 
 const ROWS_TABLE: TableDefinition<(u32, u64), &[u8]> = TableDefinition::new("rows");
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RedbStorage {
     db: Option<Arc<Database>>,
 }
@@ -32,11 +32,6 @@ impl<'de> Deserialize<'de> for RedbStorage {
     }
 }
 
-impl Default for RedbStorage {
-    fn default() -> Self {
-        Self { db: None }
-    }
-}
 
 impl RedbStorage {
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, DbError> {
@@ -99,8 +94,7 @@ impl Storage for RedbStorage {
                     table.range((table_id, 0)..(table_id + 1, 0))
                 }
                     .map_err(|e| DbError::Storage(format!("failed to scan range: {}", e)))?
-                    .rev()
-                    .next();
+                    .next_back();
 
                 match range {
                     Some(Ok((key, _val))) => key.value().1 + 1,

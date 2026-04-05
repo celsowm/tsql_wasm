@@ -155,7 +155,7 @@ where
         let tx = self
             .active
             .take()
-            .expect("active tx must exist at depth > 0");
+            .ok_or_else(|| DbError::Execution("active tx must exist at depth > 0".into()))?;
         if tx.isolation_level == IsolationLevel::Snapshot
             && !tx.write_set.is_empty()
             && tx.snapshot_ts != self.commit_ts

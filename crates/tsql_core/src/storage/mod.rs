@@ -91,8 +91,8 @@ impl Storage for InMemoryStorage {
     }
 
     fn replace_table(&mut self, table_id: u32, rows: Vec<StoredRow>) -> Result<(), DbError> {
-        if self.tables.contains_key(&table_id) {
-            self.tables.insert(table_id, rows);
+        if let std::collections::hash_map::Entry::Occupied(mut e) = self.tables.entry(table_id) {
+            e.insert(rows);
             Ok(())
         } else {
             Err(DbError::Storage(format!("table {} not found in storage", table_id)))
@@ -109,7 +109,7 @@ impl Storage for InMemoryStorage {
     }
 
     fn ensure_table(&mut self, table_id: u32) {
-        self.tables.entry(table_id).or_insert_with(Vec::new);
+        self.tables.entry(table_id).or_default();
     }
 
     fn remove_table(&mut self, table_id: u32) {

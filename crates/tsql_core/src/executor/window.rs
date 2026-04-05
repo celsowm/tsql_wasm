@@ -309,7 +309,7 @@ impl<'a> WindowExecutor<'a> {
             ctx.row.window_context = Some(window_map);
             let mut projected_row = Vec::with_capacity(projection.len());
             for item in projection {
-                projected_row.push(eval_expr(&item.expr, row, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null));
+                projected_row.push(eval_expr(&item.expr, row, ctx, self.catalog, self.storage, self.clock)?);
             }
             final_projected_rows.push(projected_row);
         }

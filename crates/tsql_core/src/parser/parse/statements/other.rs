@@ -122,7 +122,7 @@ pub fn parse_exec_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
                  return Ok(Statement::Procedural(ProceduralStatement::SpExecuteSql { sql_expr, params_def, args }));
              }
 
-              let name = parse_multipart_name(parser)?;
+              let name = super::parse_multipart_name(parser)?;
               let mut args = Vec::new();
               if !parser.is_empty()
                   && !matches!(parser.peek(), Some(Token::Semicolon) | Some(Token::Go))
@@ -157,6 +157,3 @@ fn parse_exec_arg(parser: &mut Parser) -> ParseResult<ExecArg> {
     Ok(ExecArg { name, expr, is_output })
 }
 
-fn parse_multipart_name(parser: &mut Parser) -> ParseResult<Vec<String>> {
-    crate::parser::parse::statements::query::parse_multipart_name(parser)
-}

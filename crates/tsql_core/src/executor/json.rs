@@ -184,16 +184,18 @@ fn set_json_value(json: &mut JsonValue, path: &str, new_value: JsonValue) {
                     current = &mut arr[idx];
                 }
             } else if let JsonValue::Object(map) = current {
-                if !map.contains_key(&key) {
+                current = if map.contains_key(&key) {
+                    map.get_mut(&key).unwrap()
+                } else {
                     let next_part = &parts[i + 1];
                     let (_, next_index) = parse_path_part(next_part);
-                    if next_index.is_some() {
-                        map.insert(key.clone(), JsonValue::Array(vec![]));
+                    let default = if next_index.is_some() {
+                        JsonValue::Array(vec![])
                     } else {
-                        map.insert(key.clone(), JsonValue::Object(serde_json::Map::new()));
-                    }
-                }
-                current = map.get_mut(&key).expect("JSON key was just inserted");
+                        JsonValue::Object(serde_json::Map::new())
+                    };
+                    map.entry(key).or_insert(default)
+                };
             }
         }
     }

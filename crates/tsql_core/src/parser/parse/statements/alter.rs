@@ -6,7 +6,7 @@ use crate::parser::error::{ParseResult, Expected};
 pub fn parse_alter(parser: &mut Parser) -> ParseResult<Statement> {
     if parser.at_keyword(Keyword::Table) {
         let _ = parser.next();
-        let table = parse_multipart_name(parser)?;
+        let table = super::parse_multipart_name(parser)?;
         if parser.at_keyword(Keyword::Add) {
             let _ = parser.next();
             if parser.at_keyword(Keyword::Constraint) {
@@ -46,6 +46,3 @@ pub fn parse_alter(parser: &mut Parser) -> ParseResult<Statement> {
     }
 }
 
-fn parse_multipart_name(parser: &mut Parser) -> ParseResult<Vec<String>> {
-    crate::parser::parse::statements::query::parse_multipart_name(parser)
-}

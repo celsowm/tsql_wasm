@@ -21,7 +21,7 @@ pub enum Token {
 }
 
 pub fn is_keyword(id: &str) -> bool {
-    Keyword::from_str(id).is_some()
+    Keyword::parse(id).is_some()
 }
 
 pub fn unescape_string(s: &str) -> String {

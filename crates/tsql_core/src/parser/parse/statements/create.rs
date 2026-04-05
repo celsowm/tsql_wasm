@@ -4,7 +4,7 @@ use crate::parser::state::Parser;
 use crate::parser::error::{ParseResult, Expected};
 
 pub fn parse_create_table(parser: &mut Parser) -> ParseResult<CreateStmt> {
-    let name = parse_multipart_name(parser)?;
+    let name = super::parse_multipart_name(parser)?;
     parser.expect_lparen()?;
     let (columns, constraints) = super::ddl::parse_table_body(parser)?;
     parser.expect_rparen()?;
@@ -12,14 +12,14 @@ pub fn parse_create_table(parser: &mut Parser) -> ParseResult<CreateStmt> {
 }
 
 pub fn parse_create_view(parser: &mut Parser) -> ParseResult<CreateStmt> {
-    let name = parse_multipart_name(parser)?;
+    let name = super::parse_multipart_name(parser)?;
     parser.expect_keyword(Keyword::As)?;
     let query = crate::parser::parse::statements::query::parse_select(parser)?;
     Ok(CreateStmt::View { name, query })
 }
 
 pub fn parse_create_procedure(parser: &mut Parser) -> ParseResult<CreateStmt> {
-    let name = parse_multipart_name(parser)?;
+    let name = super::parse_multipart_name(parser)?;
     let mut params = Vec::new();
     if matches!(parser.peek(), Some(Token::Variable(_))) {
         params = crate::parser::parse::parse_comma_list(parser, crate::parser::parse::parse_routine_param)?;
@@ -38,7 +38,7 @@ pub fn parse_create_procedure(parser: &mut Parser) -> ParseResult<CreateStmt> {
 }
 
 pub fn parse_create_function(parser: &mut Parser) -> ParseResult<CreateStmt> {
-    let name = parse_multipart_name(parser)?;
+    let name = super::parse_multipart_name(parser)?;
     let mut params = Vec::new();
     if matches!(parser.peek(), Some(Token::LParen)) {
         let _ = parser.next();
@@ -88,19 +88,17 @@ pub fn parse_create_function(parser: &mut Parser) -> ParseResult<CreateStmt> {
 }
 
 pub fn parse_create_trigger(parser: &mut Parser) -> ParseResult<CreateStmt> {
-    let name = parse_multipart_name(parser)?;
+    let name = super::parse_multipart_name(parser)?;
     parser.expect_keyword(Keyword::On)?;
-    let table = parse_multipart_name(parser)?;
+    let table = super::parse_multipart_name(parser)?;
 
     let mut is_instead_of = false;
     if parser.at_keyword(Keyword::Instead) {
         let _ = parser.next();
         parser.expect_keyword(Keyword::Of)?;
         is_instead_of = true;
-    } else {
-        if matches!(parser.peek(), Some(Token::Keyword(k)) if matches!(k, Keyword::After | Keyword::For)) {
-            let _ = parser.next();
-        }
+    } else if matches!(parser.peek(), Some(Token::Keyword(k)) if matches!(k, Keyword::After | Keyword::For)) {
+        let _ = parser.next();
     }
 
     let events = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
@@ -128,6 +126,3 @@ pub fn parse_create_trigger(parser: &mut Parser) -> ParseResult<CreateStmt> {
     Ok(CreateStmt::Trigger { name, table, events, is_instead_of, body })
 }
 
-fn parse_multipart_name(parser: &mut Parser) -> ParseResult<Vec<String>> {
-    crate::parser::parse::statements::query::parse_multipart_name(parser)
-}

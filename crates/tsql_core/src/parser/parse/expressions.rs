@@ -579,7 +579,7 @@ where P: FnMut(&mut Parser) -> ParseResult<R>
 }
 
 pub fn is_stop_keyword(k: &str) -> bool {
-    Keyword::from_str(k).map(|kw| matches!(kw,
+    Keyword::parse(k).map(|kw| matches!(kw,
         Keyword::Where | Keyword::Group | Keyword::Order | Keyword::Having |
         Keyword::Else | Keyword::End | Keyword::If | Keyword::Declare |
         Keyword::Set | Keyword::Exec | Keyword::Execute | Keyword::Print |
