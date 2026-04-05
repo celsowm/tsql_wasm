@@ -1,4 +1,4 @@
-﻿pub mod common;
+pub mod common;
 pub mod data_types;
 pub mod expressions;
 pub mod statements;
@@ -12,9 +12,9 @@ pub use statements::dml::*;
 pub use statements::procedural::*;
 pub use statements::query::*;
 pub use statements::{
-    IsolationLevel, RoutineParam, RoutineParamType, SessionOption, SessionOptionValue,
-    SetIdentityInsertStmt, Statement,
-    DmlStatement, DdlStatement, ProceduralStatement, TransactionStatement, CursorStatement, SessionStatement,
+    CursorStatement, DdlStatement, DmlStatement, IsolationLevel, ProceduralStatement, RoutineParam,
+    RoutineParamType, SessionOption, SessionOptionValue, SessionStatement, SetIdentityInsertStmt,
+    Statement, TransactionStatement,
 };
 
 pub use crate::parser::ast as parser_ast;

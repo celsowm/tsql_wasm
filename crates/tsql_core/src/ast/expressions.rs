@@ -1,6 +1,6 @@
-﻿use serde::{Deserialize, Serialize};
-use crate::ast::statements::query::OrderByExpr;
 use crate::ast::data_types::DataTypeSpec;
+use crate::ast::statements::query::OrderByExpr;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Expr {

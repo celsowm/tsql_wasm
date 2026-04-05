@@ -1,4 +1,4 @@
-use tsql_server::{Credentials, ServerConfig, TdsServer, playground};
+use tsql_server::{playground, Credentials, ServerConfig, TdsServer};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -19,10 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             "--port" | "-p" => {
                 i += 1;
-                config.port = args
-                    .get(i)
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(1433);
+                config.port = args.get(i).and_then(|s| s.parse().ok()).unwrap_or(1433);
             }
             "--user" | "-u" => {
                 i += 1;
@@ -139,10 +136,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "TLS: {}",
         if config.tls_enabled {
-            format!(
-                "enabled ({})",
-                config.tls_cert_path.as_ref().unwrap()
-            )
+            format!("enabled ({})", config.tls_cert_path.as_ref().unwrap())
         } else {
             "disabled".to_string()
         }
@@ -150,9 +144,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Database: {}", config.database);
     println!(
         "Session pool: min={}, max={}, idle_timeout={}s",
-        config.pool_min_size,
-        config.pool_max_size,
-        config.pool_idle_timeout_secs
+        config.pool_min_size, config.pool_max_size, config.pool_idle_timeout_secs
     );
     println!();
 

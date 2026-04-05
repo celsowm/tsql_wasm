@@ -12,7 +12,11 @@ use crate::executor::result::QueryResult;
 /// This is the correct extensibility mechanism for a SQL engine with a fixed grammar: the grammar
 /// defines the closed set of node kinds, while new *behaviors* are added by implementing this trait.
 pub trait StatementVisitor<Context> {
-    fn visit_statement(&mut self, stmt: Statement, ctx: &mut Context) -> StmtResult<Option<QueryResult>> {
+    fn visit_statement(
+        &mut self,
+        stmt: Statement,
+        ctx: &mut Context,
+    ) -> StmtResult<Option<QueryResult>> {
         match stmt {
             Statement::Dml(s) => self.visit_dml(s, ctx),
             Statement::Ddl(s) => self.visit_ddl(s, ctx),
@@ -24,11 +28,39 @@ pub trait StatementVisitor<Context> {
         }
     }
 
-    fn visit_dml(&mut self, stmt: DmlStatement, ctx: &mut Context) -> StmtResult<Option<QueryResult>>;
-    fn visit_ddl(&mut self, stmt: DdlStatement, ctx: &mut Context) -> StmtResult<Option<QueryResult>>;
-    fn visit_procedural(&mut self, stmt: ProceduralStatement, ctx: &mut Context) -> StmtResult<Option<QueryResult>>;
-    fn visit_transaction(&mut self, stmt: TransactionStatement, ctx: &mut Context) -> StmtResult<Option<QueryResult>>;
-    fn visit_cursor(&mut self, stmt: CursorStatement, ctx: &mut Context) -> StmtResult<Option<QueryResult>>;
-    fn visit_session(&mut self, stmt: SessionStatement, ctx: &mut Context) -> StmtResult<Option<QueryResult>>;
-    fn visit_with_cte(&mut self, stmt: WithCteStmt, ctx: &mut Context) -> StmtResult<Option<QueryResult>>;
+    fn visit_dml(
+        &mut self,
+        stmt: DmlStatement,
+        ctx: &mut Context,
+    ) -> StmtResult<Option<QueryResult>>;
+    fn visit_ddl(
+        &mut self,
+        stmt: DdlStatement,
+        ctx: &mut Context,
+    ) -> StmtResult<Option<QueryResult>>;
+    fn visit_procedural(
+        &mut self,
+        stmt: ProceduralStatement,
+        ctx: &mut Context,
+    ) -> StmtResult<Option<QueryResult>>;
+    fn visit_transaction(
+        &mut self,
+        stmt: TransactionStatement,
+        ctx: &mut Context,
+    ) -> StmtResult<Option<QueryResult>>;
+    fn visit_cursor(
+        &mut self,
+        stmt: CursorStatement,
+        ctx: &mut Context,
+    ) -> StmtResult<Option<QueryResult>>;
+    fn visit_session(
+        &mut self,
+        stmt: SessionStatement,
+        ctx: &mut Context,
+    ) -> StmtResult<Option<QueryResult>>;
+    fn visit_with_cte(
+        &mut self,
+        stmt: WithCteStmt,
+        ctx: &mut Context,
+    ) -> StmtResult<Option<QueryResult>>;
 }

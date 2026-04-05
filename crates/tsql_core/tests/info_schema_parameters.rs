@@ -2,7 +2,9 @@ use tsql_core::{parse_sql, types::Value, Engine};
 
 fn exec(engine: &mut Engine, sql: &str) {
     let stmt = parse_sql(sql).expect(&format!("parse failed: {}", sql));
-    engine.execute(stmt).expect(&format!("execute failed: {}", sql));
+    engine
+        .execute(stmt)
+        .expect(&format!("execute failed: {}", sql));
 }
 
 fn query(engine: &mut Engine, sql: &str) -> tsql_core::QueryResult {
@@ -16,8 +18,11 @@ fn query(engine: &mut Engine, sql: &str) -> tsql_core::QueryResult {
 #[test]
 fn test_info_schema_parameters_procedure() {
     let mut e = Engine::new();
-    exec(&mut e, "CREATE PROCEDURE test_proc @p1 INT, @p2 BIGINT AS BEGIN END");
-    
+    exec(
+        &mut e,
+        "CREATE PROCEDURE test_proc @p1 INT, @p2 BIGINT AS BEGIN END",
+    );
+
     let r = query(&mut e, "SELECT SPECIFIC_NAME, PARAMETER_NAME, PARAMETER_MODE, DATA_TYPE FROM INFORMATION_SCHEMA.PARAMETERS WHERE SPECIFIC_NAME = 'test_proc' ORDER BY ORDINAL_POSITION");
     println!("test_info_schema_parameters_procedure: {:?}", r);
     assert_eq!(r.rows.len(), 2);
@@ -31,8 +36,11 @@ fn test_info_schema_parameters_procedure() {
 #[test]
 fn test_info_schema_parameters_function() {
     let mut e = Engine::new();
-    exec(&mut e, "CREATE FUNCTION test_func (@x INT, @y BIGINT) RETURNS INT AS BEGIN RETURN 0 END");
-    
+    exec(
+        &mut e,
+        "CREATE FUNCTION test_func (@x INT, @y BIGINT) RETURNS INT AS BEGIN RETURN 0 END",
+    );
+
     let r = query(&mut e, "SELECT PARAMETER_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.PARAMETERS WHERE SPECIFIC_NAME = 'test_func' ORDER BY ORDINAL_POSITION");
     println!("test_info_schema_parameters_function: {:?}", r);
     assert_eq!(r.rows.len(), 2);
@@ -44,8 +52,11 @@ fn test_info_schema_parameters_function() {
 fn test_info_schema_parameters_empty() {
     let mut e = Engine::new();
     exec(&mut e, "CREATE PROCEDURE no_params AS BEGIN END");
-    
-    let r = query(&mut e, "SELECT * FROM INFORMATION_SCHEMA.PARAMETERS WHERE SPECIFIC_NAME = 'no_params'");
+
+    let r = query(
+        &mut e,
+        "SELECT * FROM INFORMATION_SCHEMA.PARAMETERS WHERE SPECIFIC_NAME = 'no_params'",
+    );
     println!("test_info_schema_parameters_empty: {:?}", r);
     assert_eq!(r.rows.len(), 0);
 }

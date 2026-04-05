@@ -28,14 +28,20 @@ fn test_try_cast_null_input() {
 #[test]
 fn test_try_cast_datetime_valid() {
     let mut engine = Engine::new();
-    let r = query(&mut engine, "SELECT TRY_CAST('2025-01-15' AS DATETIME) AS v");
+    let r = query(
+        &mut engine,
+        "SELECT TRY_CAST('2025-01-15' AS DATETIME) AS v",
+    );
     assert!(!r.rows[0][0].is_null());
 }
 
 #[test]
 fn test_try_cast_datetime_from_string() {
     let mut engine = Engine::new();
-    let r = query(&mut engine, "SELECT TRY_CAST('2025-01-15T10:30:00' AS DATETIME) AS v");
+    let r = query(
+        &mut engine,
+        "SELECT TRY_CAST('2025-01-15T10:30:00' AS DATETIME) AS v",
+    );
     assert!(!r.rows[0][0].is_null());
 }
 

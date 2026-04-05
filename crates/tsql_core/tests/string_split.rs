@@ -65,7 +65,10 @@ fn test_string_split_ordinal_disabled() {
 fn test_string_split_ordinal_enabled() {
     let mut e = Engine::new();
 
-    let r = query(&mut e, "SELECT value, ordinal FROM STRING_SPLIT('a,b,c', ',', 1)");
+    let r = query(
+        &mut e,
+        "SELECT value, ordinal FROM STRING_SPLIT('a,b,c', ',', 1)",
+    );
     assert_eq!(r.columns.len(), 2);
     assert_eq!(r.columns[0], "value");
     assert_eq!(r.columns[1], "ordinal");

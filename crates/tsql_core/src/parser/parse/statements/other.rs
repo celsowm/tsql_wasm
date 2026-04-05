@@ -99,12 +99,12 @@ pub fn parse_exec_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
              Ok(Statement::Procedural(ProceduralStatement::ExecDynamic { sql_expr }))
         }
         Some(Token::Identifier(_)) | Some(Token::Keyword(_)) | Some(Token::Variable(_)) => {
-             let id_str = match parser.peek().unwrap() {
-                 Token::Identifier(id) => id.clone(),
-                  Token::Keyword(kw) => kw.as_ref().to_string(),
-                 Token::Variable(v) => v.clone(),
-                 _ => unreachable!(),
-             };
+            let id_str = match parser.peek() {
+                Some(Token::Identifier(id)) => id.clone(),
+                Some(Token::Keyword(kw)) => kw.as_ref().to_string(),
+                Some(Token::Variable(v)) => v.clone(),
+                _ => unreachable!(),
+            };
              
              if id_str.eq_ignore_ascii_case("sp_executesql") {
                  let _ = parser.next();

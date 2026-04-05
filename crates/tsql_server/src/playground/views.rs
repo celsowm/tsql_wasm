@@ -1,5 +1,5 @@
 //! View definitions for playground database
-//! 
+//!
 //! Follows SRP: only responsible for view DDL
 
 /// DDL statements to create playground views

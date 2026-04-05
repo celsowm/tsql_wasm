@@ -29,7 +29,11 @@ pub enum DbError {
     /// Allows callers to raise domain-specific errors (e.g. timeout, permission)
     /// without modifying the DbError enum itself.
     #[error("error {class}/{number}: {message}")]
-    Custom { class: u8, number: i32, message: String },
+    Custom {
+        class: u8,
+        number: i32,
+        message: String,
+    },
 }
 
 impl DbError {
@@ -37,7 +41,9 @@ impl DbError {
         match self {
             DbError::Parse(_) => ErrorClass::Parse,
             DbError::Semantic(_) => ErrorClass::Semantic,
-            DbError::Execution(_) | DbError::Deadlock(_) | DbError::Custom { .. } => ErrorClass::Execution,
+            DbError::Execution(_) | DbError::Deadlock(_) | DbError::Custom { .. } => {
+                ErrorClass::Execution
+            }
             DbError::Storage(_) => ErrorClass::Storage,
         }
     }

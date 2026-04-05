@@ -152,7 +152,7 @@ pub fn build_prelogin_response(encryption: u8) -> Vec<u8> {
 
     // Data section
     b.put_u8(16); // major
-    b.put_u8(0);  // minor
+    b.put_u8(0); // minor
     b.put_u16_be(0x1009); // build = 4105
     b.put_u16_be(1); // sub_build = 1
     b.put_u8(encryption); // encryption level

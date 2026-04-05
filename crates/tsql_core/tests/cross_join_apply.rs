@@ -14,17 +14,26 @@ fn query(engine: &mut Engine, sql: &str) -> tsql_core::QueryResult {
 }
 
 fn setup(engine: &mut Engine) {
-    exec(engine, "CREATE TABLE employees (id INT, name VARCHAR(50), dept_id INT)");
+    exec(
+        engine,
+        "CREATE TABLE employees (id INT, name VARCHAR(50), dept_id INT)",
+    );
     exec(engine, "INSERT INTO employees VALUES (1, 'Alice', 10)");
     exec(engine, "INSERT INTO employees VALUES (2, 'Bob', 20)");
     exec(engine, "INSERT INTO employees VALUES (3, 'Charlie', 30)");
 
-    exec(engine, "CREATE TABLE departments (id INT, dept_name VARCHAR(50))");
+    exec(
+        engine,
+        "CREATE TABLE departments (id INT, dept_name VARCHAR(50))",
+    );
     exec(engine, "INSERT INTO departments VALUES (10, 'Engineering')");
     exec(engine, "INSERT INTO departments VALUES (20, 'Marketing')");
     exec(engine, "INSERT INTO departments VALUES (40, 'Finance')");
 
-    exec(engine, "CREATE TABLE orders (id INT, emp_id INT, amount INT)");
+    exec(
+        engine,
+        "CREATE TABLE orders (id INT, emp_id INT, amount INT)",
+    );
     exec(engine, "INSERT INTO orders VALUES (1, 1, 100)");
     exec(engine, "INSERT INTO orders VALUES (2, 1, 200)");
     exec(engine, "INSERT INTO orders VALUES (3, 2, 50)");
@@ -44,7 +53,10 @@ fn test_cross_join_basic() {
     exec(&mut e, "INSERT INTO sizes VALUES ('M')");
     exec(&mut e, "INSERT INTO sizes VALUES ('L')");
 
-    let r = query(&mut e, "SELECT c.c, s.s FROM colors c CROSS JOIN sizes s ORDER BY c.c, s.s");
+    let r = query(
+        &mut e,
+        "SELECT c.c, s.s FROM colors c CROSS JOIN sizes s ORDER BY c.c, s.s",
+    );
     assert_eq!(r.rows.len(), 6); // 2 × 3 = 6
     assert_eq!(r.rows[0][0], Value::VarChar("Blue".to_string()));
     assert_eq!(r.rows[0][1], Value::VarChar("L".to_string()));
@@ -101,10 +113,11 @@ fn test_cross_apply_no_match_excluded() {
     let mut e = Engine::new();
     setup(&mut e);
 
-    let r = query(&mut e,
+    let r = query(
+        &mut e,
         "SELECT e.name, o.amount FROM employees e \
          CROSS APPLY (SELECT amount FROM orders WHERE orders.emp_id = e.id) o \
-         ORDER BY e.name, o.amount"
+         ORDER BY e.name, o.amount",
     );
     // Alice: 2 orders, Bob: 1 order, Charlie: 0 → 3 rows total
     assert_eq!(r.rows.len(), 3);
@@ -140,10 +153,11 @@ fn test_outer_apply_all_match() {
     exec(&mut e, "INSERT INTO t2 VALUES (1, 10)");
     exec(&mut e, "INSERT INTO t2 VALUES (2, 20)");
 
-    let r = query(&mut e,
+    let r = query(
+        &mut e,
         "SELECT t1.id, x.val FROM t1 \
          OUTER APPLY (SELECT val FROM t2 WHERE t2.pid = t1.id) x \
-         ORDER BY t1.id"
+         ORDER BY t1.id",
     );
     assert_eq!(r.rows.len(), 2);
     assert_eq!(r.rows[0][1], Value::Int(10));
@@ -155,10 +169,11 @@ fn test_outer_apply_multiple_rows() {
     let mut e = Engine::new();
     setup(&mut e);
 
-    let r = query(&mut e,
+    let r = query(
+        &mut e,
         "SELECT e.name, o.amount FROM employees e \
          OUTER APPLY (SELECT amount FROM orders WHERE orders.emp_id = e.id) o \
-         ORDER BY e.name, o.amount"
+         ORDER BY e.name, o.amount",
     );
     // Alice: 2 rows (100, 200), Bob: 1 row (50), Charlie: 1 row (NULL) → 4 rows
     assert_eq!(r.rows.len(), 4);

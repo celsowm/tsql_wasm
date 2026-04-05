@@ -1,5 +1,5 @@
 //! Sample data for playground database
-//! 
+//!
 //! Follows SRP: only responsible for INSERT statements
 
 /// INSERT statements to populate playground tables

@@ -24,7 +24,6 @@ pub struct ModuleFrame {
     pub kind: ModuleKind,
 }
 
-
 pub struct SessionStateRefs<'a> {
     pub(crate) variables: &'a mut Variables,
     pub(crate) last_identity: &'a mut Option<i64>,
@@ -36,7 +35,8 @@ pub struct SessionStateRefs<'a> {
     pub(crate) cursors: &'a mut HashMap<String, Cursor>,
     pub(crate) fetch_status: &'a mut i32,
     pub(crate) print_output: &'a mut Vec<String>,
-    pub(crate) dirty_buffer: Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>>,
+    pub(crate) dirty_buffer:
+        Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>>,
     pub(crate) identity_insert: HashSet<String>,
 }
 
@@ -88,7 +88,9 @@ pub struct ScopeGuard<F: FnOnce()> {
 
 impl<F: FnOnce()> ScopeGuard<F> {
     pub fn new(cleanup: F) -> Self {
-        Self { cleanup: Some(cleanup) }
+        Self {
+            cleanup: Some(cleanup),
+        }
     }
 
     /// Consume the guard without running cleanup.
@@ -232,34 +234,102 @@ impl<'a> ExecutionContext<'a> {
     }
 
     // Delegation methods for backward compatibility
-    #[inline] pub fn variables(&self) -> &Variables { self.session.variables }
-    #[inline] pub fn variables_mut(&mut self) -> &mut Variables { self.session.variables }
-    #[inline] pub fn session_id(&self) -> super::locks::SessionId { self.metadata.id }
-    #[inline] pub fn loop_depth(&self) -> usize { self.frame.loop_depth }
-    #[inline] pub fn loop_depth_mut(&mut self) -> &mut usize { &mut self.frame.loop_depth }
-    #[inline] pub fn trancount(&self) -> u32 { self.frame.trancount }
-    #[inline] pub fn xact_state(&self) -> i8 { self.frame.xact_state }
-    #[inline] pub fn trigger_depth(&self) -> usize { self.frame.trigger_depth }
-    #[inline] pub fn trigger_depth_mut(&mut self) -> &mut usize { &mut self.frame.trigger_depth }
-    #[inline] pub fn outer_row(&self) -> &Option<JoinedRow> { &self.row.outer_row }
-    #[inline] pub fn outer_row_mut(&mut self) -> &mut Option<JoinedRow> { &mut self.row.outer_row }
-    #[inline] pub fn current_group(&self) -> &Option<super::model::Group> { &self.row.current_group }
-    #[inline] pub fn current_group_mut(&mut self) -> &mut Option<super::model::Group> { &mut self.row.current_group }
+    #[inline]
+    pub fn variables(&self) -> &Variables {
+        self.session.variables
+    }
+    #[inline]
+    pub fn variables_mut(&mut self) -> &mut Variables {
+        self.session.variables
+    }
+    #[inline]
+    pub fn session_id(&self) -> super::locks::SessionId {
+        self.metadata.id
+    }
+    #[inline]
+    pub fn loop_depth(&self) -> usize {
+        self.frame.loop_depth
+    }
+    #[inline]
+    pub fn loop_depth_mut(&mut self) -> &mut usize {
+        &mut self.frame.loop_depth
+    }
+    #[inline]
+    pub fn trancount(&self) -> u32 {
+        self.frame.trancount
+    }
+    #[inline]
+    pub fn xact_state(&self) -> i8 {
+        self.frame.xact_state
+    }
+    #[inline]
+    pub fn trigger_depth(&self) -> usize {
+        self.frame.trigger_depth
+    }
+    #[inline]
+    pub fn trigger_depth_mut(&mut self) -> &mut usize {
+        &mut self.frame.trigger_depth
+    }
+    #[inline]
+    pub fn outer_row(&self) -> &Option<JoinedRow> {
+        &self.row.outer_row
+    }
+    #[inline]
+    pub fn outer_row_mut(&mut self) -> &mut Option<JoinedRow> {
+        &mut self.row.outer_row
+    }
+    #[inline]
+    pub fn current_group(&self) -> &Option<super::model::Group> {
+        &self.row.current_group
+    }
+    #[inline]
+    pub fn current_group_mut(&mut self) -> &mut Option<super::model::Group> {
+        &mut self.row.current_group
+    }
 
     // Session option accessors
-    #[inline] pub fn ansi_nulls(&self) -> bool { self.metadata.ansi_nulls }
-    #[inline] pub fn ansi_nulls_mut(&mut self) -> &mut bool { &mut self.metadata.ansi_nulls }
-    #[inline] pub fn datefirst(&self) -> i32 { self.metadata.datefirst }
-    #[inline] pub fn datefirst_mut(&mut self) -> &mut i32 { &mut self.metadata.datefirst }
+    #[inline]
+    pub fn ansi_nulls(&self) -> bool {
+        self.metadata.ansi_nulls
+    }
+    #[inline]
+    pub fn ansi_nulls_mut(&mut self) -> &mut bool {
+        &mut self.metadata.ansi_nulls
+    }
+    #[inline]
+    pub fn datefirst(&self) -> i32 {
+        self.metadata.datefirst
+    }
+    #[inline]
+    pub fn datefirst_mut(&mut self) -> &mut i32 {
+        &mut self.metadata.datefirst
+    }
 
     // Session state accessors
-    #[inline] pub fn dirty_buffer(&self) -> &Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>> { &self.session.dirty_buffer }
-    #[inline] pub fn identity_insert(&self) -> &HashSet<String> { &self.session.identity_insert }
-    #[inline] pub fn identity_insert_mut(&mut self) -> &mut HashSet<String> { &mut self.session.identity_insert }
+    #[inline]
+    pub fn dirty_buffer(
+        &self,
+    ) -> &Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>> {
+        &self.session.dirty_buffer
+    }
+    #[inline]
+    pub fn identity_insert(&self) -> &HashSet<String> {
+        &self.session.identity_insert
+    }
+    #[inline]
+    pub fn identity_insert_mut(&mut self) -> &mut HashSet<String> {
+        &mut self.session.identity_insert
+    }
 
     // Frame state accessors
-    #[inline] pub fn last_error(&self) -> &Option<DbError> { &self.frame.last_error }
-    #[inline] pub fn last_error_mut(&mut self) -> &mut Option<DbError> { &mut self.frame.last_error }
+    #[inline]
+    pub fn last_error(&self) -> &Option<DbError> {
+        &self.frame.last_error
+    }
+    #[inline]
+    pub fn last_error_mut(&mut self) -> &mut Option<DbError> {
+        &mut self.frame.last_error
+    }
 
     pub fn subquery(&mut self) -> ExecutionContext<'_> {
         ExecutionContext {
@@ -315,7 +385,6 @@ impl<'a> ExecutionContext<'a> {
         sub.row.outer_row = Some(row);
         sub
     }
-
 
     pub fn enter_scope(&mut self) {
         self.frame.scope_vars.push(vec![]);
@@ -384,11 +453,15 @@ impl<'a> ExecutionContext<'a> {
 
     pub fn register_table_var(&mut self, logical_name: &str, physical_name: &str) {
         if let Some(scope) = self.frame.table_vars.last_mut() {
-            scope.insert(normalize_identifier(logical_name), physical_name.to_string());
+            scope.insert(
+                normalize_identifier(logical_name),
+                physical_name.to_string(),
+            );
         }
-        self.session
-            .var_map
-            .insert(normalize_identifier(logical_name), physical_name.to_string());
+        self.session.var_map.insert(
+            normalize_identifier(logical_name),
+            physical_name.to_string(),
+        );
     }
 
     pub fn mark_table_var_readonly(&mut self, logical_name: &str) {
@@ -399,7 +472,8 @@ impl<'a> ExecutionContext<'a> {
 
     pub fn is_readonly_table_var(&self, logical_name: &str) -> bool {
         let upper = normalize_identifier(strip_dbo_prefix(logical_name));
-        self.frame.readonly_table_vars
+        self.frame
+            .readonly_table_vars
             .iter()
             .rev()
             .any(|scope| scope.contains(&upper))
@@ -473,7 +547,8 @@ impl<'a> ExecutionContext<'a> {
     }
 
     pub fn get_window_value(&self, key: &str) -> Option<Value> {
-        self.row.window_context
+        self.row
+            .window_context
             .as_ref()
             .and_then(|m| m.get(key).cloned())
     }

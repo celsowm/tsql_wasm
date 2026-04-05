@@ -1,8 +1,8 @@
 use wasm_bindgen::prelude::*;
 
 use tsql_core::{
-    parse_batch, parse_sql, Database, SessionId,
-    CheckpointManager, SessionManager, StatementExecutor, SqlAnalyzer,
+    parse_batch, parse_sql, CheckpointManager, Database, SessionId, SessionManager, SqlAnalyzer,
+    StatementExecutor,
 };
 
 #[wasm_bindgen]
@@ -47,7 +47,10 @@ impl WasmDb {
     }
 
     pub fn close_session(&self, session_id: u64) -> Result<(), JsValue> {
-        self.inner.session_manager().close_session(session_id).map_err(js_err)
+        self.inner
+            .session_manager()
+            .close_session(session_id)
+            .map_err(js_err)
     }
 
     pub fn exec_session(&mut self, session_id: u64, sql: &str) -> Result<(), JsValue> {
@@ -112,7 +115,11 @@ impl WasmDb {
     }
 
     pub fn session_options(&self, session_id: u64) -> Result<String, JsValue> {
-        let options = self.inner.analyzer().session_options(session_id).map_err(js_err)?;
+        let options = self
+            .inner
+            .analyzer()
+            .session_options(session_id)
+            .map_err(js_err)?;
         serde_json::to_string(&options).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
@@ -121,11 +128,17 @@ impl WasmDb {
     }
 
     pub fn export_checkpoint(&self) -> Result<String, JsValue> {
-        self.inner.checkpoint_manager().export_checkpoint().map_err(js_err)
+        self.inner
+            .checkpoint_manager()
+            .export_checkpoint()
+            .map_err(js_err)
     }
 
     pub fn import_checkpoint(&mut self, payload: &str) -> Result<(), JsValue> {
-        self.inner.checkpoint_manager().import_checkpoint(payload).map_err(js_err)
+        self.inner
+            .checkpoint_manager()
+            .import_checkpoint(payload)
+            .map_err(js_err)
     }
 }
 

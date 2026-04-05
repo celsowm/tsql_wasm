@@ -1,4 +1,9 @@
-use tsql_core::{ast::{DataTypeSpec, DdlStatement, DmlStatement, ProceduralStatement, Statement}, parse_sql, types::Value, Engine};
+use tsql_core::{
+    ast::{DataTypeSpec, DdlStatement, DmlStatement, ProceduralStatement, Statement},
+    parse_sql,
+    types::Value,
+    Engine,
+};
 
 fn exec(engine: &mut Engine, sql: &str) {
     let stmt = parse_sql(sql).expect("parse failed");
@@ -221,13 +226,41 @@ fn test_float_basic() {
 #[test]
 fn test_float_arithmetic() {
     let mut engine = Engine::new();
-    exec(&mut engine, "CREATE TABLE dbo.t (a FLOAT NOT NULL, b FLOAT NOT NULL)");
+    exec(
+        &mut engine,
+        "CREATE TABLE dbo.t (a FLOAT NOT NULL, b FLOAT NOT NULL)",
+    );
     exec(&mut engine, "INSERT INTO dbo.t (a, b) VALUES (10.0, 3.0)");
     let r = query(&mut engine, "SELECT a + b, a - b, a * b, a / b FROM dbo.t");
-    assert_eq!(f64::from_bits(match &r.rows[0][0] { Value::Float(b) => *b, _ => panic!() }), 13.0);
-    assert_eq!(f64::from_bits(match &r.rows[0][1] { Value::Float(b) => *b, _ => panic!() }), 7.0);
-    assert_eq!(f64::from_bits(match &r.rows[0][2] { Value::Float(b) => *b, _ => panic!() }), 30.0);
-    assert!((f64::from_bits(match &r.rows[0][3] { Value::Float(b) => *b, _ => panic!() }) - 10.0/3.0).abs() < 1e-10);
+    assert_eq!(
+        f64::from_bits(match &r.rows[0][0] {
+            Value::Float(b) => *b,
+            _ => panic!(),
+        }),
+        13.0
+    );
+    assert_eq!(
+        f64::from_bits(match &r.rows[0][1] {
+            Value::Float(b) => *b,
+            _ => panic!(),
+        }),
+        7.0
+    );
+    assert_eq!(
+        f64::from_bits(match &r.rows[0][2] {
+            Value::Float(b) => *b,
+            _ => panic!(),
+        }),
+        30.0
+    );
+    assert!(
+        (f64::from_bits(match &r.rows[0][3] {
+            Value::Float(b) => *b,
+            _ => panic!(),
+        }) - 10.0 / 3.0)
+            .abs()
+            < 1e-10
+    );
 }
 
 #[test]
@@ -270,7 +303,10 @@ fn test_float_sum_avg() {
     exec(&mut engine, "INSERT INTO dbo.t (val) VALUES (2.0)");
     exec(&mut engine, "INSERT INTO dbo.t (val) VALUES (3.0)");
     let r = query(&mut engine, "SELECT SUM(val), AVG(val) FROM dbo.t");
-    let sum = f64::from_bits(match &r.rows[0][0] { Value::Float(b) => *b, _ => panic!() });
+    let sum = f64::from_bits(match &r.rows[0][0] {
+        Value::Float(b) => *b,
+        _ => panic!(),
+    });
     assert!((sum - 6.0).abs() < 1e-10);
 }
 
@@ -310,8 +346,14 @@ fn test_money_cast() {
 #[test]
 fn test_money_arithmetic() {
     let mut engine = Engine::new();
-    exec(&mut engine, "CREATE TABLE dbo.t (a MONEY NOT NULL, b MONEY NOT NULL)");
-    exec(&mut engine, "INSERT INTO dbo.t (a, b) VALUES ('$10.00', '$5.00')");
+    exec(
+        &mut engine,
+        "CREATE TABLE dbo.t (a MONEY NOT NULL, b MONEY NOT NULL)",
+    );
+    exec(
+        &mut engine,
+        "INSERT INTO dbo.t (a, b) VALUES ('$10.00', '$5.00')",
+    );
     let r = query(&mut engine, "SELECT a + b, a - b FROM dbo.t");
     assert_eq!(r.rows[0][0], Value::Money(150000));
     assert_eq!(r.rows[0][1], Value::Money(50000));
@@ -323,7 +365,10 @@ fn test_money_comparison() {
     exec(&mut engine, "CREATE TABLE dbo.t (amount MONEY NOT NULL)");
     exec(&mut engine, "INSERT INTO dbo.t (amount) VALUES ('$10.00')");
     exec(&mut engine, "INSERT INTO dbo.t (amount) VALUES ('$20.00')");
-    let r = query(&mut engine, "SELECT amount FROM dbo.t WHERE amount > '$15.00'");
+    let r = query(
+        &mut engine,
+        "SELECT amount FROM dbo.t WHERE amount > '$15.00'",
+    );
     assert_eq!(r.rows.len(), 1);
 }
 
@@ -338,7 +383,10 @@ fn test_money_to_string() {
 #[test]
 fn test_smallmoney_basic() {
     let mut engine = Engine::new();
-    exec(&mut engine, "CREATE TABLE dbo.t (amount SMALLMONEY NOT NULL)");
+    exec(
+        &mut engine,
+        "CREATE TABLE dbo.t (amount SMALLMONEY NOT NULL)",
+    );
     exec(&mut engine, "INSERT INTO dbo.t (amount) VALUES ('$99.99')");
     let r = query(&mut engine, "SELECT amount FROM dbo.t");
     assert_eq!(r.rows[0][0], Value::SmallMoney(999900));
@@ -380,7 +428,10 @@ fn test_binary_comparison() {
 #[test]
 fn test_varbinary_basic() {
     let mut engine = Engine::new();
-    exec(&mut engine, "CREATE TABLE dbo.t (data VARBINARY(10) NOT NULL)");
+    exec(
+        &mut engine,
+        "CREATE TABLE dbo.t (data VARBINARY(10) NOT NULL)",
+    );
     exec(&mut engine, "INSERT INTO dbo.t (data) VALUES (0xCAFEBABE)");
     let r = query(&mut engine, "SELECT data FROM dbo.t");
     assert_eq!(r.rows[0][0], Value::VarBinary(vec![0xCA, 0xFE, 0xBA, 0xBE]));

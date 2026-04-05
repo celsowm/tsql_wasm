@@ -3,8 +3,12 @@ use tsql_core::Engine;
 #[test]
 fn test_cursor_extended_directions() {
     let engine = Engine::new();
-    engine.exec("CREATE TABLE dbo.Items (Id INT PRIMARY KEY, Val NVARCHAR(10))").unwrap();
-    engine.exec("INSERT INTO dbo.Items VALUES (1, 'A'), (2, 'B'), (3, 'C'), (4, 'D')").unwrap();
+    engine
+        .exec("CREATE TABLE dbo.Items (Id INT PRIMARY KEY, Val NVARCHAR(10))")
+        .unwrap();
+    engine
+        .exec("INSERT INTO dbo.Items VALUES (1, 'A'), (2, 'B'), (3, 'C'), (4, 'D')")
+        .unwrap();
 
     let batch = "
         DECLARE @id INT;
@@ -54,8 +58,12 @@ fn test_cursor_extended_directions() {
 #[test]
 fn test_cursor_boundaries() {
     let engine = Engine::new();
-    engine.exec("CREATE TABLE dbo.Items (Id INT PRIMARY KEY)").unwrap();
-    engine.exec("INSERT INTO dbo.Items VALUES (1), (2)").unwrap();
+    engine
+        .exec("CREATE TABLE dbo.Items (Id INT PRIMARY KEY)")
+        .unwrap();
+    engine
+        .exec("INSERT INTO dbo.Items VALUES (1), (2)")
+        .unwrap();
 
     let batch = "
         DECLARE @id INT;

@@ -63,7 +63,10 @@ fn test_try_catch_nested() {
     }
     let output = engine.print_output();
     assert_eq!(output.len(), 1);
-    assert_eq!(output[0], "Outer caught: execution error: Rethrown: execution error: Inner error");
+    assert_eq!(
+        output[0],
+        "Outer caught: execution error: Rethrown: execution error: Inner error"
+    );
 }
 
 #[test]

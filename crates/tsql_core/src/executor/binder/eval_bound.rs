@@ -1,10 +1,10 @@
 use crate::error::DbError;
 use crate::types::Value;
 
-use super::bind_expr::BoundExpr;
 use super::super::clock::Clock;
 use super::super::context::ExecutionContext;
 use super::super::model::ContextTable;
+use super::bind_expr::BoundExpr;
 use crate::catalog::Catalog;
 use crate::storage::Storage;
 
@@ -48,12 +48,20 @@ pub fn eval_bound_expr_inner(
                 Err(_) => Ok(Value::Null),
             }
         }
-        BoundExpr::Convert { target, expr, style: _ } => {
+        BoundExpr::Convert {
+            target,
+            expr,
+            style: _,
+        } => {
             let v = eval_bound_expr_inner(expr, row, ctx, catalog, storage, clock)?;
             let rt = super::super::type_mapping::data_type_spec_to_runtime(target);
             super::super::value_ops::coerce_value_to_type(v, &rt)
         }
-        BoundExpr::TryConvert { target, expr, style: _ } => {
+        BoundExpr::TryConvert {
+            target,
+            expr,
+            style: _,
+        } => {
             let v = eval_bound_expr_inner(expr, row, ctx, catalog, storage, clock)?;
             let rt = super::super::type_mapping::data_type_spec_to_runtime(target);
             match super::super::value_ops::coerce_value_to_type(v, &rt) {
@@ -65,20 +73,29 @@ pub fn eval_bound_expr_inner(
             // For function calls with bound args, we need to fall back to dynamic eval
             // because eval_function expects Expr trees, not pre-evaluated values.
             // We reconstruct a synthetic Expr tree with literal values.
-            let arg_exprs = args.iter()
+            let arg_exprs = args
+                .iter()
                 .map(|a| bound_to_literal_expr(a))
                 .collect::<Result<Vec<_>, _>>()?;
             super::super::scalar::eval_function(name, &arg_exprs, row, ctx, catalog, storage, clock)
         }
-        BoundExpr::Case { operand, when_clauses, else_result } => {
-            let operand_val = operand.as_ref()
+        BoundExpr::Case {
+            operand,
+            when_clauses,
+            else_result,
+        } => {
+            let operand_val = operand
+                .as_ref()
                 .map(|o| eval_bound_expr_inner(o, row, ctx, catalog, storage, clock))
                 .transpose()?;
             for (cond, result) in when_clauses {
                 let cond_val = eval_bound_expr_inner(cond, row, ctx, catalog, storage, clock)?;
                 let matched = if let Some(ref op) = operand_val {
                     super::super::value_ops::truthy(&super::super::operators::eval_binary(
-                        &crate::ast::BinaryOp::Eq, op.clone(), cond_val, ctx.metadata.ansi_nulls,
+                        &crate::ast::BinaryOp::Eq,
+                        op.clone(),
+                        cond_val,
+                        ctx.metadata.ansi_nulls,
                     )?)
                 } else {
                     super::super::value_ops::truthy(&cond_val)
@@ -93,7 +110,11 @@ pub fn eval_bound_expr_inner(
                 Ok(Value::Null)
             }
         }
-        BoundExpr::InList { expr, list, negated } => {
+        BoundExpr::InList {
+            expr,
+            list,
+            negated,
+        } => {
             let val = eval_bound_expr_inner(expr, row, ctx, catalog, storage, clock)?;
             if val.is_null() {
                 return Ok(Value::Null);
@@ -120,7 +141,12 @@ pub fn eval_bound_expr_inner(
                 Ok(Value::Bit(false))
             }
         }
-        BoundExpr::Between { expr, low, high, negated } => {
+        BoundExpr::Between {
+            expr,
+            low,
+            high,
+            negated,
+        } => {
             let val = eval_bound_expr_inner(expr, row, ctx, catalog, storage, clock)?;
             let lo = eval_bound_expr_inner(low, row, ctx, catalog, storage, clock)?;
             let hi = eval_bound_expr_inner(high, row, ctx, catalog, storage, clock)?;
@@ -130,7 +156,11 @@ pub fn eval_bound_expr_inner(
             let in_range = val >= lo && val <= hi;
             Ok(Value::Bit(if *negated { !in_range } else { in_range }))
         }
-        BoundExpr::Like { expr, pattern, negated } => {
+        BoundExpr::Like {
+            expr,
+            pattern,
+            negated,
+        } => {
             let val = eval_bound_expr_inner(expr, row, ctx, catalog, storage, clock)?;
             let pat = eval_bound_expr_inner(pattern, row, ctx, catalog, storage, clock)?;
             let val_str = format!("{:?}", val);
@@ -138,14 +168,15 @@ pub fn eval_bound_expr_inner(
             let matched = simple_like_match(&val_str, &pat_str);
             Ok(Value::Bit(if *negated { !matched } else { matched }))
         }
-        BoundExpr::Subquery(_) | BoundExpr::Exists { .. } | BoundExpr::InSubquery { .. } => {
-            Err(DbError::Execution("subquery expression reached bound evaluator".into()))
-        }
-        BoundExpr::WindowFunction { key } => {
-            ctx.get_window_value(key)
-                .ok_or_else(|| DbError::Execution("window function value not found".into()))
-        }
-        BoundExpr::Column { table_idx, col_idx, .. } => {
+        BoundExpr::Subquery(_) | BoundExpr::Exists { .. } | BoundExpr::InSubquery { .. } => Err(
+            DbError::Execution("subquery expression reached bound evaluator".into()),
+        ),
+        BoundExpr::WindowFunction { key } => ctx
+            .get_window_value(key)
+            .ok_or_else(|| DbError::Execution("window function value not found".into())),
+        BoundExpr::Column {
+            table_idx, col_idx, ..
+        } => {
             if let Some(table) = row.get(*table_idx) {
                 if let Some(ref stored_row) = table.row {
                     if let Some(val) = stored_row.values.get(*col_idx) {
@@ -204,8 +235,14 @@ fn simple_like_match(s: &str, pattern: &str) -> bool {
             pi += 1;
         } else if let Some(spi) = star_pi {
             pi = spi + 1;
-            star_si = Some(star_si.unwrap() + 1);
-            si = star_si.unwrap();
+            match star_si {
+                Some(current_si) => {
+                    let next_si = current_si + 1;
+                    star_si = Some(next_si);
+                    si = next_si;
+                }
+                None => return false,
+            }
         } else {
             return false;
         }

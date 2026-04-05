@@ -1,7 +1,7 @@
 pub(crate) mod analyzer;
-pub(crate) mod execution;
 pub(crate) mod dispatch;
 pub(crate) mod engine;
+pub(crate) mod execution;
 pub(crate) mod persistence;
 
 use crate::ast::{IsolationLevel, Statement};
@@ -9,10 +9,10 @@ use crate::catalog::CatalogImpl;
 use crate::error::DbError;
 use crate::storage::InMemoryStorage;
 
-use crate::executor::locks::SessionId;
 use super::result::QueryResult;
 use super::session::SharedState;
 use super::tooling::{ExecutionTrace, ExplainPlan, SessionOptions};
+use crate::executor::locks::SessionId;
 use std::sync::Arc;
 
 pub trait CheckpointManager {
@@ -82,8 +82,8 @@ pub struct SessionManagerService<C, S> {
     pub(crate) state: Arc<SharedState<C, S>>,
 }
 
-pub use persistence::DatabaseInner;
 pub use engine::EngineInner;
+pub use persistence::DatabaseInner;
 
 /// Convenience alias — prefer `DatabaseInner<C, S>` with generics in new code.
 #[doc(hidden)]

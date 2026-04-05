@@ -79,13 +79,13 @@ pub async fn read_message<R: AsyncReadExt + Unpin>(
 ) -> io::Result<(PacketHeader, Vec<u8>)> {
     let (header, mut data) = read_packet(reader).await?;
     let mut current_header = header.clone();
-    
+
     while (current_header.status & STATUS_EOM) == 0 {
         let (next_header, next_data) = read_packet(reader).await?;
         data.extend_from_slice(&next_data);
         current_header = next_header;
     }
-    
+
     // Return the first header (containing the packet type) but with final status
     let mut final_header = header;
     final_header.status = current_header.status;
@@ -307,14 +307,19 @@ impl<'a> PacketReader<'a> {
             ));
         }
         let v = u64::from_le_bytes([
-            self.data[self.pos], self.data[self.pos+1],
-            self.data[self.pos+2], self.data[self.pos+3],
-            self.data[self.pos+4], self.data[self.pos+5],
-            self.data[self.pos+6], self.data[self.pos+7],
+            self.data[self.pos],
+            self.data[self.pos + 1],
+            self.data[self.pos + 2],
+            self.data[self.pos + 3],
+            self.data[self.pos + 4],
+            self.data[self.pos + 5],
+            self.data[self.pos + 6],
+            self.data[self.pos + 7],
         ]);
         self.pos += 8;
         Ok(v)
-    }    pub fn read_bytes(&mut self, n: usize) -> io::Result<&[u8]> {
+    }
+    pub fn read_bytes(&mut self, n: usize) -> io::Result<&[u8]> {
         if self.pos + n > self.data.len() {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,

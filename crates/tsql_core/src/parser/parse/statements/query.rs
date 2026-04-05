@@ -469,11 +469,11 @@ fn parse_optional_alias(parser: &mut Parser) -> Option<String> {
             }
         }
         Some(Token::Keyword(k)) if !crate::parser::parse::expressions::is_stop_keyword(k.as_sql()) => {
-            match parser.next().unwrap() {
-                Token::Identifier(alias) => Some(alias.clone()),
-                Token::Keyword(kw) => Some(kw.as_ref().to_string()),
-                Token::String(alias) => Some(alias.clone()),
-                _ => {
+            match parser.next() {
+                Some(Token::Identifier(alias)) => Some(alias.clone()),
+                Some(Token::Keyword(kw)) => Some(kw.as_ref().to_string()),
+                Some(Token::String(alias)) => Some(alias.clone()),
+                Some(_) | None => {
                     parser.restore(saved);
                     None
                 }
@@ -511,12 +511,10 @@ pub fn parse_select_item(parser: &mut Parser) -> ParseResult<SelectItem> {
                 _ => return parser.backtrack(Expected::Description("alias")),
             }
         } else if !crate::parser::parse::expressions::is_stop_keyword(k.as_sql()) {
-             let next = parser.next().unwrap();
-             if let Token::Identifier(id) = next {
-                 Some(id.clone())
-             } else {
-                 None
-             }
+            match parser.next() {
+                Some(Token::Identifier(id)) => Some(id.clone()),
+                Some(_) | None => None,
+            }
         } else {
             None
         }
@@ -577,16 +575,14 @@ pub fn parse_multipart_name(parser: &mut Parser) -> ParseResult<Vec<String>> {
     Ok(parts)
 }
 
-pub fn parse_object_name(parts: Vec<String>) -> ObjectName {
-    let mut parts = parts;
-    if parts.len() == 1 {
-        ObjectName {
-            schema: None,
-            name: parts.remove(0),
+pub fn parse_object_name(mut parts: Vec<String>) -> ObjectName {
+    match parts.len() {
+        0 => ObjectName { schema: None, name: "".to_string() },
+        1 => ObjectName { schema: None, name: parts.remove(0) },
+        _ => {
+            let name = parts.pop().unwrap_or_default();
+            let schema = Some(parts.pop().unwrap_or_default());
+            ObjectName { schema, name }
         }
-    } else {
-        let name = parts.pop().unwrap();
-        let schema = Some(parts.pop().unwrap());
-        ObjectName { schema, name }
     }
 }

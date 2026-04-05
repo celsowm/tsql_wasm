@@ -61,12 +61,7 @@ pub fn build_batch_response(
         super::tokens::write_result_set(&mut b, columns, &types, rows, 1);
     } else {
         // DDL/DML with no result set
-        super::tokens::write_done(
-            &mut b,
-            super::tokens::DONE_COUNT,
-            1,
-            row_count,
-        );
+        super::tokens::write_done(&mut b, super::tokens::DONE_COUNT, 1, row_count);
     }
 
     BatchResult { data: b.into_vec() }
@@ -77,9 +72,9 @@ pub fn build_error_response(message: &str) -> BatchResult {
 
     super::tokens::write_error(
         &mut b,
-        10000,   // generic error number
-        1,       // state
-        15,      // class (severity)
+        10000, // generic error number
+        1,     // state
+        15,    // class (severity)
         message,
         "tsql_server",
         "",

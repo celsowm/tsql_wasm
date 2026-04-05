@@ -24,5 +24,8 @@ fn parse_sp_executesql_tvp_decl() {
     let stmt =
         parse_sql("EXEC sp_executesql N'SELECT 1', N'@items dbo.IntList READONLY', @items = @tvp")
             .unwrap();
-    assert!(matches!(stmt, Statement::Procedural(ProceduralStatement::SpExecuteSql(_))));
+    assert!(matches!(
+        stmt,
+        Statement::Procedural(ProceduralStatement::SpExecuteSql(_))
+    ));
 }

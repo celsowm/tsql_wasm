@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
 use crate::ast::statements::query::SelectStmt;
 use crate::ast::Expr;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ObjectName {

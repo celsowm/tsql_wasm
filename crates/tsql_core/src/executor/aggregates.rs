@@ -1,15 +1,15 @@
-﻿use crate::ast::Expr;
+use crate::ast::Expr;
 use crate::error::DbError;
 use crate::types::Value;
 
 use super::clock::Clock;
 use super::context::ExecutionContext;
 use super::evaluator::eval_expr;
+pub use super::model::Group;
 use super::string_norm::normalize_identifier;
 use super::value_ops::compare_values;
 use crate::catalog::Catalog;
 use crate::storage::Storage;
-pub use super::model::Group;
 
 /// Typed enum for aggregate functions, replacing string-based dispatch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,12 +54,24 @@ pub fn dispatch_aggregate(
 ) -> Option<Result<Value, DbError>> {
     let agg = AggregateFn::from_name(name)?;
     match agg {
-        AggregateFn::Count => Some(Ok(eval_aggregate_count(args, group, ctx, catalog, storage, clock))),
-        AggregateFn::Sum => Some(eval_aggregate_sum(args, group, ctx, catalog, storage, clock)),
-        AggregateFn::Avg => Some(eval_aggregate_avg(args, group, ctx, catalog, storage, clock)),
-        AggregateFn::Min => Some(eval_aggregate_min(args, group, ctx, catalog, storage, clock)),
-        AggregateFn::Max => Some(eval_aggregate_max(args, group, ctx, catalog, storage, clock)),
-        AggregateFn::StringAgg => Some(eval_aggregate_string_agg(args, group, ctx, catalog, storage, clock)),
+        AggregateFn::Count => Some(Ok(eval_aggregate_count(
+            args, group, ctx, catalog, storage, clock,
+        ))),
+        AggregateFn::Sum => Some(eval_aggregate_sum(
+            args, group, ctx, catalog, storage, clock,
+        )),
+        AggregateFn::Avg => Some(eval_aggregate_avg(
+            args, group, ctx, catalog, storage, clock,
+        )),
+        AggregateFn::Min => Some(eval_aggregate_min(
+            args, group, ctx, catalog, storage, clock,
+        )),
+        AggregateFn::Max => Some(eval_aggregate_max(
+            args, group, ctx, catalog, storage, clock,
+        )),
+        AggregateFn::StringAgg => Some(eval_aggregate_string_agg(
+            args, group, ctx, catalog, storage, clock,
+        )),
     }
 }
 
@@ -121,9 +133,16 @@ pub fn eval_aggregate_sum(
         if !has_values {
             has_values = true;
             match &val {
-                Value::Decimal(_, s) => { is_decimal = true; current_scale = *s; }
-                Value::Float(_) => { is_float = true; }
-                Value::Money(_) | Value::SmallMoney(_) => { is_money = true; }
+                Value::Decimal(_, s) => {
+                    is_decimal = true;
+                    current_scale = *s;
+                }
+                Value::Float(_) => {
+                    is_float = true;
+                }
+                Value::Money(_) | Value::SmallMoney(_) => {
+                    is_money = true;
+                }
                 _ => {}
             }
         }
@@ -137,7 +156,7 @@ pub fn eval_aggregate_sum(
                 is_decimal = true;
                 let max_scale = current_scale.max(*scale);
                 sum_i128 = super::value_helpers::rescale_raw(sum_i128, current_scale, max_scale)
-                         + super::value_helpers::rescale_raw(*raw, *scale, max_scale);
+                    + super::value_helpers::rescale_raw(*raw, *scale, max_scale);
                 current_scale = max_scale;
             }
             Value::Money(v) => {
@@ -224,12 +243,8 @@ pub fn eval_aggregate_avg(
                 _ => Ok(Value::BigInt(res)),
             }
         }
-        Value::Decimal(v, s) => {
-            Ok(Value::Decimal(v / n, s))
-        }
-        Value::Float(v) => {
-            Ok(Value::Float((f64::from_bits(v) / n as f64).to_bits()))
-        }
+        Value::Decimal(v, s) => Ok(Value::Decimal(v / n, s)),
+        Value::Float(v) => Ok(Value::Float((f64::from_bits(v) / n as f64).to_bits())),
         Value::Money(v) => Ok(Value::Money(v / n)),
         Value::SmallMoney(v) => Ok(Value::SmallMoney((v as i128 / n) as i64)),
         _ => Ok(Value::Null),
@@ -281,7 +296,9 @@ pub fn eval_aggregate_string_agg(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.len() < 2 {
-        return Err(DbError::Execution("STRING_AGG requires at least 2 arguments: expression and separator".into()));
+        return Err(DbError::Execution(
+            "STRING_AGG requires at least 2 arguments: expression and separator".into(),
+        ));
     }
 
     let expr = &args[0];
@@ -293,7 +310,11 @@ pub fn eval_aggregate_string_agg(
         Value::NVarChar(s) => s,
         Value::Char(s) => s,
         Value::NChar(s) => s,
-        _ => return Err(DbError::Execution("STRING_AGG separator must be a string".into())),
+        _ => {
+            return Err(DbError::Execution(
+                "STRING_AGG separator must be a string".into(),
+            ))
+        }
     };
 
     let values = collect_group_values(expr, group, ctx, catalog, storage, clock);
@@ -301,10 +322,7 @@ pub fn eval_aggregate_string_agg(
         return Ok(Value::Null);
     }
 
-    let string_values: Vec<String> = values
-        .iter()
-        .map(|v| v.to_string_value())
-        .collect();
+    let string_values: Vec<String> = values.iter().map(|v| v.to_string_value()).collect();
 
     let result = string_values.join(&separator_str);
     Ok(Value::VarChar(result))

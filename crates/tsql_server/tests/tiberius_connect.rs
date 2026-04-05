@@ -80,7 +80,7 @@ async fn connect(port: u16) -> Client<tokio_util::compat::Compat<TcpStream>> {
     // Retry connection a few times to handle server startup timing
     let mut attempts = 0;
     let max_attempts = 5;
-    
+
     loop {
         match TcpStream::connect(config.get_addr()).await {
             Ok(tcp) => {
@@ -90,7 +90,10 @@ async fn connect(port: u16) -> Client<tokio_util::compat::Compat<TcpStream>> {
                     Err(e) => {
                         attempts += 1;
                         if attempts >= max_attempts {
-                            panic!("Failed TDS handshake after {} attempts: {}", max_attempts, e);
+                            panic!(
+                                "Failed TDS handshake after {} attempts: {}",
+                                max_attempts, e
+                            );
                         }
                         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                     }
@@ -111,8 +114,14 @@ async fn query_sql(
     client: &mut Client<tokio_util::compat::Compat<TcpStream>>,
     sql: &str,
 ) -> (Vec<String>, Vec<Vec<String>>) {
-    let stream = client.query(sql, &[]).await.expect(&format!("Query failed: {}", sql));
-    let rows: Vec<Row> = stream.into_first_result().await.expect("Failed to read result");
+    let stream = client
+        .query(sql, &[])
+        .await
+        .expect(&format!("Query failed: {}", sql));
+    let rows: Vec<Row> = stream
+        .into_first_result()
+        .await
+        .expect("Failed to read result");
 
     let columns = if let Some(first) = rows.first() {
         let ncols: usize = first.len();
@@ -127,10 +136,7 @@ async fn query_sql(
     (columns, data)
 }
 
-async fn exec_sql(
-    client: &mut Client<tokio_util::compat::Compat<TcpStream>>,
-    sql: &str,
-) {
+async fn exec_sql(client: &mut Client<tokio_util::compat::Compat<TcpStream>>, sql: &str) {
     client
         .execute(sql, &[])
         .await
@@ -142,12 +148,9 @@ async fn test_prelogin_and_login() {
     let port = start_server().await;
     eprintln!("Server started on port {}", port);
 
-    let mut client = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        connect(port),
-    )
-    .await
-    .expect("Connection timed out");
+    let mut client = tokio::time::timeout(std::time::Duration::from_secs(10), connect(port))
+        .await
+        .expect("Connection timed out");
 
     eprintln!("Connected, running query...");
     let (cols, rows) = query_sql(&mut client, "SELECT 1 as n").await;
@@ -196,7 +199,11 @@ async fn test_create_table_and_insert() {
     .await;
 
     // Insert rows
-    exec_sql(&mut client, "INSERT INTO test_users VALUES (1, N'Alice', 1)").await;
+    exec_sql(
+        &mut client,
+        "INSERT INTO test_users VALUES (1, N'Alice', 1)",
+    )
+    .await;
     exec_sql(&mut client, "INSERT INTO test_users VALUES (2, N'Bob', 0)").await;
 
     // Query back
@@ -225,8 +232,16 @@ async fn test_join() {
     )
     .await;
 
-    exec_sql(&mut client, "INSERT INTO t_customers VALUES (1, N'Alice'), (2, N'Bob')").await;
-    exec_sql(&mut client, "INSERT INTO t_orders VALUES (100, 1, 50), (101, 1, 75), (102, 2, 30)").await;
+    exec_sql(
+        &mut client,
+        "INSERT INTO t_customers VALUES (1, N'Alice'), (2, N'Bob')",
+    )
+    .await;
+    exec_sql(
+        &mut client,
+        "INSERT INTO t_orders VALUES (100, 1, 50), (101, 1, 75), (102, 2, 30)",
+    )
+    .await;
 
     let (_, rows) = query_sql(
         &mut client,
@@ -255,7 +270,10 @@ async fn test_error_handling() {
     match result {
         Ok(stream) => {
             let first_result = stream.into_first_result().await;
-            assert!(first_result.is_err(), "Expected error from nonexistent table");
+            assert!(
+                first_result.is_err(),
+                "Expected error from nonexistent table"
+            );
         }
         Err(_) => {
             // Also acceptable - error at query level
@@ -421,7 +439,11 @@ async fn test_playground_tables() {
     assert!(rows[0][0].parse::<i32>().unwrap() > 0);
 
     // Test Products table
-    let (_, rows) = query_sql(&mut client, "SELECT TOP 3 Name FROM dbo.Products ORDER BY ProductId").await;
+    let (_, rows) = query_sql(
+        &mut client,
+        "SELECT TOP 3 Name FROM dbo.Products ORDER BY ProductId",
+    )
+    .await;
     assert_eq!(rows.len(), 3);
 
     // Test Orders table
@@ -429,21 +451,37 @@ async fn test_playground_tables() {
     assert!(rows[0][0].parse::<i32>().unwrap() > 0);
 
     // Test vCustomerOrders view
-    let (cols, rows) = query_sql(&mut client, "SELECT TOP 2 FirstName, TotalOrders FROM dbo.vCustomerOrders ORDER BY CustomerId").await;
+    let (cols, rows) = query_sql(
+        &mut client,
+        "SELECT TOP 2 FirstName, TotalOrders FROM dbo.vCustomerOrders ORDER BY CustomerId",
+    )
+    .await;
     assert_eq!(cols[0], "FirstName");
     assert_eq!(cols[1], "TotalOrders");
     assert_eq!(rows.len(), 2);
 
     // Test vProductSales view
-    let (_, rows) = query_sql(&mut client, "SELECT ProductName, TotalSold FROM dbo.vProductSales ORDER BY TotalSold DESC").await;
+    let (_, rows) = query_sql(
+        &mut client,
+        "SELECT ProductName, TotalSold FROM dbo.vProductSales ORDER BY TotalSold DESC",
+    )
+    .await;
     assert!(rows.len() > 0);
 
     // Test vEmployeeHierarchy view
-    let (_, rows) = query_sql(&mut client, "SELECT FirstName, Department FROM dbo.vEmployeeHierarchy").await;
+    let (_, rows) = query_sql(
+        &mut client,
+        "SELECT FirstName, Department FROM dbo.vEmployeeHierarchy",
+    )
+    .await;
     assert!(rows.len() > 0);
 
     // Test vMonthlySales view
-    let (_, rows) = query_sql(&mut client, "SELECT SaleYear, SaleMonth, TotalRevenue FROM dbo.vMonthlySales").await;
+    let (_, rows) = query_sql(
+        &mut client,
+        "SELECT SaleYear, SaleMonth, TotalRevenue FROM dbo.vMonthlySales",
+    )
+    .await;
     assert!(rows.len() > 0);
 }
 #[tokio::test]
@@ -498,7 +536,11 @@ async fn test_session_pool_reuse_resets_session_state() {
     let port = start_server_with_config(config).await;
 
     let mut client1 = connect(port).await;
-    exec_sql(&mut client1, "CREATE TABLE pool_reset_t (id INT PRIMARY KEY)").await;
+    exec_sql(
+        &mut client1,
+        "CREATE TABLE pool_reset_t (id INT PRIMARY KEY)",
+    )
+    .await;
     exec_sql(&mut client1, "INSERT INTO pool_reset_t VALUES (1)").await;
     exec_sql(&mut client1, "CREATE TABLE #pool_tmp (id INT)").await;
     exec_sql(&mut client1, "BEGIN TRANSACTION").await;

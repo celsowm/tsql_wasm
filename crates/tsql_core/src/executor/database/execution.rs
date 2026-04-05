@@ -20,14 +20,23 @@ use super::dispatch::execute_non_transaction_statement;
 impl<C, S> StatementExecutor for super::StatementExecutorService<C, S>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     fn execute_session(
         &self,
         session_id: SessionId,
         stmt: Statement,
     ) -> Result<Option<QueryResult>, DbError> {
-        let session_mutex = self.state.sessions.get(&session_id)
+        let session_mutex = self
+            .state
+            .sessions
+            .get(&session_id)
             .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
         let mut session = session_mutex.lock();
         execute_single_statement(&self.state, session_id, &mut session, stmt)
@@ -38,7 +47,10 @@ where
         session_id: SessionId,
         stmts: Vec<Statement>,
     ) -> Result<Option<QueryResult>, DbError> {
-        let session_mutex = self.state.sessions.get(&session_id)
+        let session_mutex = self
+            .state
+            .sessions
+            .get(&session_id)
             .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
         let mut session = session_mutex.lock();
         execute_batch_statements(&self.state, session_id, &mut session, stmts)
@@ -50,8 +62,10 @@ where
         sql: &str,
     ) -> Result<Option<QueryResult>, DbError> {
         let quoted_ident = {
-            let session_mutex = self.state.sessions.get(&session_id)
-                .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
+            let session_mutex =
+                self.state.sessions.get(&session_id).ok_or_else(|| {
+                    DbError::Execution(format!("session {} not found", session_id))
+                })?;
             let session = session_mutex.lock();
             session.options.quoted_identifier
         };
@@ -66,14 +80,19 @@ where
         sql: &str,
     ) -> Result<Vec<Option<QueryResult>>, DbError> {
         let quoted_ident = {
-            let session_mutex = self.state.sessions.get(&session_id)
-                .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
+            let session_mutex =
+                self.state.sessions.get(&session_id).ok_or_else(|| {
+                    DbError::Execution(format!("session {} not found", session_id))
+                })?;
             let session = session_mutex.lock();
             session.options.quoted_identifier
         };
 
         let stmts = parse_batch_with_quoted_ident(sql, quoted_ident)?;
-        let session_mutex = self.state.sessions.get(&session_id)
+        let session_mutex = self
+            .state
+            .sessions
+            .get(&session_id)
             .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
         let mut session = session_mutex.lock();
         execute_batch_statements_multi(&self.state, session_id, &mut session, stmts)
@@ -86,7 +105,10 @@ where
         app_name: Option<String>,
         host_name: Option<String>,
     ) -> Result<(), DbError> {
-        let session_mutex = self.state.sessions.get(&session_id)
+        let session_mutex = self
+            .state
+            .sessions
+            .get(&session_id)
             .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
         let mut session = session_mutex.lock();
         session.user = user;
@@ -96,7 +118,6 @@ where
     }
 }
 
-
 fn build_execution_context<'a, C, S>(
     session_id: SessionId,
     session: &'a mut SessionRuntime<C, S>,
@@ -104,7 +125,13 @@ fn build_execution_context<'a, C, S>(
 ) -> ExecutionContext<'a>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     let dirty_buffer = if session.tx_manager.active.is_some() {
         Some(state.dirty_buffer.clone())
@@ -117,7 +144,11 @@ where
 fn execute_stmt_loop<C, S, F>(
     state: &SharedState<C, S>,
     session_id: SessionId,
-    tx_manager: &mut crate::executor::transaction::TransactionManager<C, S, crate::executor::session::SessionSnapshot>,
+    tx_manager: &mut crate::executor::transaction::TransactionManager<
+        C,
+        S,
+        crate::executor::session::SessionSnapshot,
+    >,
     journal: &mut Box<dyn crate::executor::journal::Journal>,
     workspace: &mut Option<crate::executor::locks::TxWorkspace<C, S>>,
     clock: &dyn crate::executor::clock::Clock,
@@ -128,7 +159,13 @@ fn execute_stmt_loop<C, S, F>(
 ) -> Result<(), DbError>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
     F: FnMut(Option<QueryResult>),
 {
     for stmt in stmts {
@@ -137,14 +174,7 @@ where
         ctx.session.identity_insert = options.identity_insert.clone();
         if is_transaction_statement(&stmt) {
             match transaction_exec::execute_transaction_statement(
-                state,
-                session_id,
-                tx_manager,
-                journal,
-                workspace,
-                ctx,
-                options,
-                stmt,
+                state, session_id, tx_manager, journal, workspace, ctx, options, stmt,
             ) {
                 Ok(r) => on_result(r),
                 Err(e) => {
@@ -217,12 +247,22 @@ fn execute_batch_core_inner<C, S, F>(
 ) -> Result<(), DbError>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
     F: FnOnce(
         &mut ExecutionContext,
         &SharedState<C, S>,
         SessionId,
-        &mut crate::executor::transaction::TransactionManager<C, S, crate::executor::session::SessionSnapshot>,
+        &mut crate::executor::transaction::TransactionManager<
+            C,
+            S,
+            crate::executor::session::SessionSnapshot,
+        >,
         &mut Box<dyn crate::executor::journal::Journal>,
         &mut Option<crate::executor::locks::TxWorkspace<C, S>>,
         &dyn crate::executor::clock::Clock,
@@ -245,7 +285,9 @@ where
         let workspace = &mut session_ref.workspace;
         let clock = session_ref.clock.as_ref();
         let options = &mut session_ref.options;
-        body(&mut ctx, state, session_id, tx_manager, journal, workspace, clock, options)
+        body(
+            &mut ctx, state, session_id, tx_manager, journal, workspace, clock, options,
+        )
     };
 
     // Scope cleanup always runs before error propagation — guarantees no leak
@@ -267,15 +309,33 @@ pub(crate) fn execute_batch_statements<C, S>(
 ) -> Result<Option<QueryResult>, DbError>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     let mut last_res = None;
     let exec_res = execute_batch_core_inner(
-        state, session_id, session,
+        state,
+        session_id,
+        session,
         |ctx, state, session_id, tx_manager, journal, workspace, clock, options| {
             execute_stmt_loop(
-                state, session_id, tx_manager, journal, workspace, clock, options, ctx,
-                stmts, |r| { last_res = r; },
+                state,
+                session_id,
+                tx_manager,
+                journal,
+                workspace,
+                clock,
+                options,
+                ctx,
+                stmts,
+                |r| {
+                    last_res = r;
+                },
             )
         },
     );
@@ -291,15 +351,33 @@ pub(crate) fn execute_batch_statements_multi<C, S>(
 ) -> Result<Vec<Option<QueryResult>>, DbError>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     let mut results = Vec::new();
     let exec_res = execute_batch_core_inner(
-        state, session_id, session,
+        state,
+        session_id,
+        session,
         |ctx, state, session_id, tx_manager, journal, workspace, clock, options| {
             execute_stmt_loop(
-                state, session_id, tx_manager, journal, workspace, clock, options, ctx,
-                stmts, |r| { results.push(r); },
+                state,
+                session_id,
+                tx_manager,
+                journal,
+                workspace,
+                clock,
+                options,
+                ctx,
+                stmts,
+                |r| {
+                    results.push(r);
+                },
             )
         },
     );
@@ -315,7 +393,13 @@ pub(crate) fn execute_single_statement<C, S>(
 ) -> Result<Option<QueryResult>, DbError>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     let session_ptr = session as *mut SessionRuntime<C, S>;
     let mut ctx = unsafe {
@@ -340,7 +424,9 @@ where
             options,
             &mut ctx,
             vec![stmt],
-            |r| { res = r; },
+            |r| {
+                res = r;
+            },
         )
     };
     drop(ctx);
@@ -352,10 +438,15 @@ fn cleanup_scope_tables<C, S>(
     state: &SharedState<C, S>,
     session: &mut SessionRuntime<C, S>,
     dropped_physical: Vec<String>,
-)
-where
+) where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     fn drop_physical_table(
         catalog: &mut dyn Catalog,
@@ -382,7 +473,8 @@ where
     if session.tx_manager.active.is_some() {
         if let Some(workspace) = session.workspace.as_mut() {
             for physical in dropped_physical {
-                let _ = drop_physical_table(&mut workspace.catalog, &mut workspace.storage, &physical);
+                let _ =
+                    drop_physical_table(&mut workspace.catalog, &mut workspace.storage, &physical);
             }
         }
     } else {

@@ -51,11 +51,11 @@ impl RandomProvider for ThreadRng {
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let mut hasher = DefaultHasher::new();
-        SystemTime::now()
+        let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-            .hash(&mut hasher);
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        nanos.hash(&mut hasher);
         let bits = hasher.finish() >> 33;
         bits as f64 / (1u64 << 31) as f64
     }
@@ -66,11 +66,11 @@ impl RandomProvider for ThreadRng {
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let mut hasher = DefaultHasher::new();
-        SystemTime::now()
+        let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-            .hash(&mut hasher);
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        nanos.hash(&mut hasher);
         hasher.finish()
     }
 }

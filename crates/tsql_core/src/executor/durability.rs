@@ -1,7 +1,7 @@
-﻿use std::collections::HashMap;
+use std::collections::HashMap;
+use std::fs;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-use std::fs;
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -97,10 +97,7 @@ impl<C> InMemoryDurability<C> {
     where
         C: Catalog + Serialize + DeserializeOwned,
     {
-        self.latest
-            .as_ref()
-            .map(|cp| cp.to_json())
-            .transpose()
+        self.latest.as_ref().map(|cp| cp.to_json()).transpose()
     }
 }
 
@@ -136,8 +133,9 @@ where
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, DbError> {
         let path = path.as_ref().to_path_buf();
         let latest = if path.exists() {
-            let payload = fs::read_to_string(&path)
-                .map_err(|e| DbError::Execution(format!("failed to read checkpoint file: {}", e)))?;
+            let payload = fs::read_to_string(&path).map_err(|e| {
+                DbError::Execution(format!("failed to read checkpoint file: {}", e))
+            })?;
             Some(RecoveryCheckpoint::from_json(&payload)?)
         } else {
             None

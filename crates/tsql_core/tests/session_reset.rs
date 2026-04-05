@@ -5,10 +5,16 @@ fn test_reset_session_clears_runtime_and_releases_locks() {
     let db = Database::new();
 
     let setup_sid = db.create_session();
-    db.execute_session(setup_sid, parse_sql("CREATE TABLE t (id INT PRIMARY KEY)").unwrap())
-        .unwrap();
-    db.execute_session(setup_sid, parse_sql("INSERT INTO t (id) VALUES (1)").unwrap())
-        .unwrap();
+    db.execute_session(
+        setup_sid,
+        parse_sql("CREATE TABLE t (id INT PRIMARY KEY)").unwrap(),
+    )
+    .unwrap();
+    db.execute_session(
+        setup_sid,
+        parse_sql("INSERT INTO t (id) VALUES (1)").unwrap(),
+    )
+    .unwrap();
     db.close_session(setup_sid).unwrap();
 
     let sid = db.create_session();
@@ -28,7 +34,8 @@ fn test_reset_session_clears_runtime_and_releases_locks() {
     let sid2 = db.create_session();
     db.execute_session(sid2, parse_sql("SET LOCK_TIMEOUT 0").unwrap())
         .unwrap();
-    let lock_conflict = db.execute_session(sid2, parse_sql("UPDATE t SET id = 1 WHERE id = 1").unwrap());
+    let lock_conflict =
+        db.execute_session(sid2, parse_sql("UPDATE t SET id = 1 WHERE id = 1").unwrap());
     assert!(lock_conflict.is_err());
 
     db.reset_session(sid).unwrap();

@@ -5,14 +5,32 @@ use crate::parser::token::Keyword;
 pub struct Parser {
     tokens: Vec<Token>,
     position: usize,
+    depth: usize,
 }
+
+const MAX_PARSER_DEPTH: usize = 8;
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
         Self {
             tokens,
             position: 0,
+            depth: 0,
         }
+    }
+
+    pub fn enter_recursion(&mut self) -> ParseResult<()> {
+        self.depth += 1;
+        if self.depth > MAX_PARSER_DEPTH {
+            return Err(ParseError::new(self.position)
+                .expected_desc("recursion limit exceeded")
+                .found(format!("depth {}", self.depth)));
+        }
+        Ok(())
+    }
+
+    pub fn leave_recursion(&mut self) {
+        self.depth = self.depth.saturating_sub(1);
     }
 
     pub fn peek(&self) -> Option<&Token> {

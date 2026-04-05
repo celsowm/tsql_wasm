@@ -158,7 +158,10 @@ pub fn parse_update(parser: &mut Parser) -> ParseResult<UpdateStmt> {
 
 fn parse_update_assignment(parser: &mut Parser) -> ParseResult<UpdateAssignment> {
     let parts = parse_multipart_name(parser)?;
-    let column = parts.last().unwrap().clone();
+    let column = parts
+        .last()
+        .cloned()
+        .ok_or_else(|| parser.error(Expected::Description("column name")))?;
     if let Some(Token::Operator(op)) = parser.next() {
         if *op != "=" {
              return parser.backtrack(Expected::Description("="));

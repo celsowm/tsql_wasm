@@ -1,7 +1,7 @@
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use crate::ast::{IsolationLevel, Statement, SessionStatement, DmlStatement};
+use crate::ast::{DmlStatement, IsolationLevel, SessionStatement, Statement};
 use crate::catalog::Catalog;
 use crate::error::{DbError, StmtOutcome, StmtResult};
 use crate::storage::Storage;
@@ -15,7 +15,7 @@ use super::super::result::QueryResult;
 use super::super::script::ScriptExecutor;
 use super::super::session::{SessionSnapshot, SharedState};
 use super::super::string_norm::normalize_identifier;
-use super::super::table_util::{collect_write_tables, collect_read_tables};
+use super::super::table_util::{collect_read_tables, collect_write_tables};
 use super::super::tooling::{apply_set_option, SessionOptions};
 use super::super::transaction::TransactionManager;
 use super::super::transaction_exec;
@@ -75,7 +75,13 @@ fn refresh_workspace_for_read_committed<C, S>(
 ) -> Result<(), DbError>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     let storage_guard = state.storage.read();
     let read_tables = collect_read_tables(stmt);
@@ -89,7 +95,7 @@ where
         }
         let tid = table_def.id;
         if let Ok(committed_rows) = storage_guard.storage.get_rows(tid) {
-                        workspace.storage.replace_table(tid, committed_rows)?;
+            workspace.storage.replace_table(tid, committed_rows)?;
         }
     }
     for table_def in storage_guard.catalog.get_tables() {
@@ -100,7 +106,11 @@ where
         if !read_tables.is_empty() && !read_tables.contains(&tname) {
             continue;
         }
-        if workspace.catalog.find_table(table_def.schema_or_dbo(), &table_def.name).is_none() {
+        if workspace
+            .catalog
+            .find_table(table_def.schema_or_dbo(), &table_def.name)
+            .is_none()
+        {
             workspace.catalog.register_table(table_def.clone());
         }
     }
@@ -120,7 +130,13 @@ fn update_transaction_state<C, S>(
     stmt: &Statement,
 ) where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     let is_control_flow = out.as_ref().map_or(false, |o| o.is_control_flow());
     if out.is_ok() && !is_control_flow {
@@ -159,7 +175,13 @@ fn execute_in_transaction<C, S>(
 ) -> StmtResult<Option<QueryResult>>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     LockTable::acquire_statement_locks(
         &state.table_locks,
@@ -189,18 +211,28 @@ where
             DbError::Execution("internal error: missing transaction workspace".into())
         })?;
         refresh_workspace_for_read_committed(state, workspace, &stmt)?;
-        let mut script = create_script_executor(&mut workspace.catalog, &mut workspace.storage, clock);
+        let mut script =
+            create_script_executor(&mut workspace.catalog, &mut workspace.storage, clock);
         script.execute(stmt.clone(), ctx)
     } else {
         let workspace = workspace_slot.as_mut().ok_or_else(|| {
             DbError::Execution("internal error: missing transaction workspace".into())
         })?;
-        let mut script = create_script_executor(&mut workspace.catalog, &mut workspace.storage, clock);
+        let mut script =
+            create_script_executor(&mut workspace.catalog, &mut workspace.storage, clock);
         script.execute(stmt.clone(), ctx)
     };
 
     update_transaction_state(
-        &out, tx_manager, state, session_id, journal, workspace_slot, ctx, session_options, &stmt,
+        &out,
+        tx_manager,
+        state,
+        session_id,
+        journal,
+        workspace_slot,
+        ctx,
+        session_options,
+        &stmt,
     );
     out
 }
@@ -219,7 +251,13 @@ fn execute_write_without_transaction<C, S>(
 ) -> StmtResult<Option<QueryResult>>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     LockTable::acquire_statement_locks(
         &state.table_locks,
@@ -276,7 +314,13 @@ fn execute_read_without_transaction<C, S>(
 ) -> StmtResult<Option<QueryResult>>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     LockTable::acquire_statement_locks(
         &state.table_locks,
@@ -321,7 +365,13 @@ fn execute_dirty_read_without_transaction<C, S>(
 ) -> StmtResult<Option<QueryResult>>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     let (mut dirty_catalog, mut dirty_storage) =
         dirty_buffer::build_dirty_read_storage(state, session_id, workspace_slot);
@@ -344,7 +394,13 @@ pub(crate) fn execute_non_transaction_statement<C, S>(
 ) -> StmtResult<Option<QueryResult>>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     // Handle session-level statements early (SetOption, SetIdentityInsert)
     if let Some(result) = handle_session_statement(&stmt, session_options, ctx, journal) {
@@ -361,24 +417,41 @@ where
 
     if tx_manager.active.is_some() {
         execute_in_transaction(
-            state, session_id, tx_manager, journal, workspace_slot,
-            clock, session_options, stmt, ctx,
+            state,
+            session_id,
+            tx_manager,
+            journal,
+            workspace_slot,
+            clock,
+            session_options,
+            stmt,
+            ctx,
         )
     } else if read_uncommitted_dirty {
-        execute_dirty_read_without_transaction(
-            state, session_id, workspace_slot, stmt, ctx, clock,
-        )
+        execute_dirty_read_without_transaction(state, session_id, workspace_slot, stmt, ctx, clock)
     } else {
         let written_tables = collect_write_tables(&stmt);
         if written_tables.is_empty() {
             execute_read_without_transaction(
-                state, session_id, tx_manager, workspace_slot,
-                session_options, stmt, ctx, clock,
+                state,
+                session_id,
+                tx_manager,
+                workspace_slot,
+                session_options,
+                stmt,
+                ctx,
+                clock,
             )
         } else {
             execute_write_without_transaction(
-                state, session_id, tx_manager, workspace_slot,
-                session_options, stmt, ctx, clock,
+                state,
+                session_id,
+                tx_manager,
+                workspace_slot,
+                session_options,
+                stmt,
+                ctx,
+                clock,
             )
         }
     }

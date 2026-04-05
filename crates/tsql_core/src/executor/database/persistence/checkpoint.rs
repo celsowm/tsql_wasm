@@ -1,10 +1,10 @@
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 use crate::catalog::Catalog;
 use crate::error::DbError;
+use crate::executor::database::{CheckpointManager, CheckpointManagerService};
 use crate::executor::durability::RecoveryCheckpoint;
 use crate::storage::CheckpointableStorage;
-use crate::executor::database::{CheckpointManager, CheckpointManagerService};
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 impl<C, S> CheckpointManager for CheckpointManagerService<C, S>
 where

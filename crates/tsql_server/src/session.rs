@@ -8,10 +8,12 @@ use super::pool::{CheckoutError, SessionPool};
 use super::tds::batch::{build_error_response, parse_sql_batch};
 use super::tds::login::parse_login7;
 use super::tds::packet::{
-    self, PacketBuilder, ATTENTION, RPC, SQL_BATCH, TABULAR_RESULT, TDS7_LOGIN,
-    TDS7_PRELOGIN,
+    self, PacketBuilder, ATTENTION, RPC, SQL_BATCH, TABULAR_RESULT, TDS7_LOGIN, TDS7_PRELOGIN,
 };
-use super::tds::prelogin::{build_prelogin_response, parse_prelogin, ENCRYPT_NOT_SUP, ENCRYPT_OFF, ENCRYPT_ON, ENCRYPT_REQUIRED};
+use super::tds::prelogin::{
+    build_prelogin_response, parse_prelogin, ENCRYPT_NOT_SUP, ENCRYPT_OFF, ENCRYPT_ON,
+    ENCRYPT_REQUIRED,
+};
 use super::tds::rpc::{build_param_preamble, parse_rpc};
 use super::tds::tokens;
 use super::tls;
@@ -51,11 +53,19 @@ impl TdsSession {
             let (header, data) = packet::read_message(&mut stream)
                 .await
                 .map_err(|e| format!("Handshake read error: {}", e))?;
-            log::debug!("Received handshake packet type=0x{:02X} len={}", header.packet_type, header.length);
+            log::debug!(
+                "Received handshake packet type=0x{:02X} len={}",
+                header.packet_type,
+                header.length
+            );
 
             if header.packet_type == TDS7_PRELOGIN {
                 let prelogin = parse_prelogin(&data).map_err(|e| e.to_string())?;
-                log::debug!("PRELOGIN: version={:?}, encryption={}", prelogin.version, prelogin.encryption);
+                log::debug!(
+                    "PRELOGIN: version={:?}, encryption={}",
+                    prelogin.version,
+                    prelogin.encryption
+                );
 
                 // When TLS is disabled, respond based on client's request:
                 // - If client requested ENCRYPT_ON/REQUIRED, respond with ENCRYPT_NOT_SUP
@@ -63,20 +73,26 @@ impl TdsSession {
                 // This maintains compatibility with various TDS clients
                 let server_encrypt = if self.config.tls_enabled {
                     ENCRYPT_ON
-                } else if prelogin.encryption == ENCRYPT_ON || prelogin.encryption == ENCRYPT_REQUIRED {
+                } else if prelogin.encryption == ENCRYPT_ON
+                    || prelogin.encryption == ENCRYPT_REQUIRED
+                {
                     ENCRYPT_NOT_SUP
                 } else {
                     ENCRYPT_OFF
                 };
 
                 needs_tls_upgrade = self.config.tls_enabled
-                    && (prelogin.encryption == ENCRYPT_ON || prelogin.encryption == ENCRYPT_REQUIRED);
+                    && (prelogin.encryption == ENCRYPT_ON
+                        || prelogin.encryption == ENCRYPT_REQUIRED);
 
                 let response = build_prelogin_response(server_encrypt);
                 packet::write_packet(&mut stream, TDS7_PRELOGIN, &response)
                     .await
                     .map_err(|e| format!("Failed to write PRELOGIN response: {}", e))?;
-                stream.flush().await.map_err(|e| format!("Failed to flush: {}", e))?;
+                stream
+                    .flush()
+                    .await
+                    .map_err(|e| format!("Failed to flush: {}", e))?;
                 log::debug!("Sent PRELOGIN response (encryption={})", server_encrypt);
 
                 if needs_tls_upgrade {
@@ -86,21 +102,29 @@ impl TdsSession {
                 login_packet = Some((header, data));
                 break;
             } else {
-                return Err(format!("Expected PRELOGIN or LOGIN7, got 0x{:02X}", header.packet_type));
+                return Err(format!(
+                    "Expected PRELOGIN or LOGIN7, got 0x{:02X}",
+                    header.packet_type
+                ));
             }
         }
 
-        self.handle_login(stream, login_packet, needs_tls_upgrade).await
+        self.handle_login(stream, login_packet, needs_tls_upgrade)
+            .await
     }
 
-    async fn handle_login(mut self, stream: TcpStream, login_packet: Option<(packet::PacketHeader, Vec<u8>)>, needs_tls_upgrade: bool) -> Result<(), String> {
-
+    async fn handle_login(
+        mut self,
+        stream: TcpStream,
+        login_packet: Option<(packet::PacketHeader, Vec<u8>)>,
+        needs_tls_upgrade: bool,
+    ) -> Result<(), String> {
         // Perform TLS upgrade if needed
         let stream: Box<dyn AsyncReadWrite> = if needs_tls_upgrade {
             log::info!("Client requested TLS, upgrading connection");
-            
-            let tls_config = if let (Some(cert_path), Some(key_path)) = 
-                (&self.config.tls_cert_path, &self.config.tls_key_path) 
+
+            let tls_config = if let (Some(cert_path), Some(key_path)) =
+                (&self.config.tls_cert_path, &self.config.tls_key_path)
             {
                 tls::load_tls_config(cert_path, key_path)
                     .map_err(|e| format!("Failed to load TLS config: {}", e))?
@@ -109,10 +133,12 @@ impl TdsSession {
             };
 
             let acceptor = tokio_rustls::TlsAcceptor::from(std::sync::Arc::new(tls_config));
-            
-            let tls_stream = acceptor.accept(stream).await
+
+            let tls_stream = acceptor
+                .accept(stream)
+                .await
                 .map_err(|e| format!("TLS handshake failed: {}", e))?;
-            
+
             log::info!("TLS handshake completed");
             Box::new(tls_stream)
         } else {
@@ -129,7 +155,10 @@ impl TdsSession {
                 .await
                 .map_err(|e| format!("Failed to read LOGIN7: {}", e))?;
             if header.packet_type != TDS7_LOGIN {
-                return Err(format!("Expected LOGIN7 (0x10), got 0x{:02X}", header.packet_type));
+                return Err(format!(
+                    "Expected LOGIN7 (0x10), got 0x{:02X}",
+                    header.packet_type
+                ));
             }
             data
         };
@@ -137,7 +166,10 @@ impl TdsSession {
         let login = parse_login7(&login_data).map_err(|e| e.to_string())?;
         log::info!(
             "LOGIN7: user={}, database={}, app={}, packet_size={}",
-            login.username, login.database, login.app_name, login.packet_size
+            login.username,
+            login.database,
+            login.app_name,
+            login.packet_size
         );
 
         if let Some(ref creds) = self.config.auth {
@@ -205,48 +237,71 @@ impl TdsSession {
             let result = packet::read_message(&mut reader).await;
             match result {
                 Ok((header, data)) => {
-                    log::debug!("Received packet type=0x{:02X} len={}", header.packet_type, header.length);
+                    log::debug!(
+                        "Received packet type=0x{:02X} len={}",
+                        header.packet_type,
+                        header.length
+                    );
                     match header.packet_type {
                         SQL_BATCH => {
                             if let Err(e) = self.handle_sql_batch(&data, &mut writer).await {
                                 log::error!("SQL batch error: {}", e);
                                 let err_resp = build_error_response(&e);
-                                let _ = packet::write_packet(&mut writer, TABULAR_RESULT, &err_resp.data).await;
+                                let _ = packet::write_packet(
+                                    &mut writer,
+                                    TABULAR_RESULT,
+                                    &err_resp.data,
+                                )
+                                .await;
                                 break;
                             }
                         }
-                        RPC => {
-                            match parse_rpc(&data) {
-                                Ok(Some(rpc)) => {
-                                    let preamble = build_param_preamble(&rpc.params);
-                                    let full_sql = if preamble.is_empty() {
-                                        rpc.sql
-                                    } else {
-                                        format!("{}{}", preamble, rpc.sql)
-                                    };
-                                    if let Err(e) = self.execute_sql(full_sql.trim(), &mut writer).await {
-                                        log::error!("RPC SQL error: {}", e);
-                                        let err_resp = build_error_response(&e);
-                                        let _ = packet::write_packet(&mut writer, TABULAR_RESULT, &err_resp.data).await;
-                                        break;
-                                    }
-                                }
-                                Ok(None) => {
-                                    let mut b = PacketBuilder::new();
-                                    tokens::write_done(&mut b, tokens::DONE_FINAL, 1, 0);
-                                    let _ = packet::write_packet(&mut writer, TABULAR_RESULT, b.as_bytes()).await;
-                                }
-                                Err(e) => {
-                                    let err_resp = build_error_response(&format!("RPC parse error: {}", e));
-                                    let _ = packet::write_packet(&mut writer, TABULAR_RESULT, &err_resp.data).await;
+                        RPC => match parse_rpc(&data) {
+                            Ok(Some(rpc)) => {
+                                let preamble = build_param_preamble(&rpc.params);
+                                let full_sql = if preamble.is_empty() {
+                                    rpc.sql
+                                } else {
+                                    format!("{}{}", preamble, rpc.sql)
+                                };
+                                if let Err(e) = self.execute_sql(full_sql.trim(), &mut writer).await
+                                {
+                                    log::error!("RPC SQL error: {}", e);
+                                    let err_resp = build_error_response(&e);
+                                    let _ = packet::write_packet(
+                                        &mut writer,
+                                        TABULAR_RESULT,
+                                        &err_resp.data,
+                                    )
+                                    .await;
+                                    break;
                                 }
                             }
-                        }
+                            Ok(None) => {
+                                let mut b = PacketBuilder::new();
+                                tokens::write_done(&mut b, tokens::DONE_FINAL, 1, 0);
+                                let _ =
+                                    packet::write_packet(&mut writer, TABULAR_RESULT, b.as_bytes())
+                                        .await;
+                            }
+                            Err(e) => {
+                                let err_resp =
+                                    build_error_response(&format!("RPC parse error: {}", e));
+                                let _ = packet::write_packet(
+                                    &mut writer,
+                                    TABULAR_RESULT,
+                                    &err_resp.data,
+                                )
+                                .await;
+                            }
+                        },
                         ATTENTION => {
                             log::debug!("ATTENTION received");
                             let mut attn = PacketBuilder::new();
                             tokens::write_done(&mut attn, tokens::DONE_ATTN, 0, 0);
-                            let _ = packet::write_packet(&mut writer, TABULAR_RESULT, attn.as_bytes()).await;
+                            let _ =
+                                packet::write_packet(&mut writer, TABULAR_RESULT, attn.as_bytes())
+                                    .await;
                         }
                         _ => {
                             log::warn!("Unsupported packet type 0x{:02X}", header.packet_type);
@@ -298,7 +353,6 @@ impl TdsSession {
         sql: &str,
         writer: &mut W,
     ) -> Result<bool, String> {
-
         if sql.is_empty() {
             let mut b = PacketBuilder::new();
             tokens::write_done(&mut b, tokens::DONE_FINAL, 1, 0);
@@ -308,11 +362,18 @@ impl TdsSession {
             return Ok(true);
         }
 
-        let session_id = self.session_id.ok_or_else(|| "session not initialized".to_string())?;
+        let session_id = self
+            .session_id
+            .ok_or_else(|| "session not initialized".to_string())?;
 
         let upper = sql.to_uppercase();
         if upper.starts_with("USE ") {
-            let db_name = sql[4..].trim().trim_end_matches(';').trim().trim_matches('[').trim_matches(']');
+            let db_name = sql[4..]
+                .trim()
+                .trim_end_matches(';')
+                .trim()
+                .trim_matches('[')
+                .trim_matches(']');
             let old_db = self.database.clone();
             self.database = db_name.to_string();
 
@@ -326,19 +387,31 @@ impl TdsSession {
         }
 
         log::info!("Executing SQL:\n{}", sql);
-        match self.db.executor().execute_session_batch_sql_multi(session_id, sql) {
+        match self
+            .db
+            .executor()
+            .execute_session_batch_sql_multi(session_id, sql)
+        {
             Ok(results) => {
                 let count = results.len();
                 let mut b = PacketBuilder::with_capacity(4096);
 
                 for (i, result) in results.into_iter().enumerate() {
                     let is_last = i == count - 1;
-                    let done_status = if is_last { tokens::DONE_FINAL } else { tokens::DONE_MORE };
+                    let done_status = if is_last {
+                        tokens::DONE_FINAL
+                    } else {
+                        tokens::DONE_MORE
+                    };
 
                     match result {
                         Some(query_result) if !query_result.columns.is_empty() => {
                             let mut types = Vec::new();
-                            log::debug!("Result set: columns={}, types={}", query_result.columns.len(), query_result.column_types.len());
+                            log::debug!(
+                                "Result set: columns={}, types={}",
+                                query_result.columns.len(),
+                                query_result.column_types.len()
+                            );
                             for ct in &query_result.column_types {
                                 types.push(crate::tds::type_mapping::runtime_type_to_tds(ct));
                             }

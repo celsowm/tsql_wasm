@@ -1,7 +1,7 @@
-﻿use serde::{Deserialize, Serialize};
-use crate::ast::expressions::Expr;
 use crate::ast::common::TableRef;
+use crate::ast::expressions::Expr;
 use crate::ast::ObjectName;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SelectStmt {

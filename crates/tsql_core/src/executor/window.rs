@@ -1,4 +1,4 @@
-﻿use crate::ast::{Expr, OrderByExpr, SelectItem, WindowFunc, WindowFrame, WindowFrameUnits, WindowFrameExtent, WindowFrameBound};
+use crate::ast::{Expr, OrderByExpr, SelectItem, WindowFunc, WindowFrame, WindowFrameUnits, WindowFrameExtent, WindowFrameBound};
 use crate::error::DbError;
 use crate::types::Value;
 
@@ -23,6 +23,14 @@ struct WindowSpec {
     partition_by: Vec<Expr>,
     order_by: Vec<OrderByExpr>,
     frame: Option<WindowFrame>,
+}
+
+/// A wrapper around a row and its pre-evaluated sort keys for window processing.
+struct WindowRow<'a> {
+    original_idx: usize,
+    row: &'a JoinedRow,
+    partition_values: Vec<Value>,
+    order_values: Vec<Value>,
 }
 
 impl<'a> WindowExecutor<'a> {
@@ -58,267 +66,239 @@ impl<'a> WindowExecutor<'a> {
             self.collect_window_exprs(&item.expr, &mut window_specs);
         }
 
-        // Map to store calculated values: results_map[window_expr][row_idx] = value
+        // Map to store calculated values: results_map[window_expr_debug_string][row_idx] = value
         let mut results_map: HashMap<String, Vec<Value>> = HashMap::new();
 
         // Process each window specification group
         for (spec, win_exprs) in &window_specs {
-            let mut sorted_rows_with_indices: Vec<(usize, JoinedRow)> = rows.iter().cloned().enumerate().collect();
+            // 1. Pre-evaluate all partition and order expressions (Schwartzian Transform)
+            let mut window_rows: Vec<WindowRow> = rows.iter().enumerate().map(|(idx, row)| {
+                let p_vals = spec.partition_by.iter()
+                    .map(|e| eval_expr(e, row, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null))
+                    .collect();
+                let o_vals = spec.order_by.iter()
+                    .map(|o| eval_expr(&o.expr, row, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null))
+                    .collect();
+                
+                WindowRow {
+                    original_idx: idx,
+                    row,
+                    partition_values: p_vals,
+                    order_values: o_vals,
+                }
+            }).collect();
 
-            // Sort rows based on PARTITION BY and ORDER BY
-            sorted_rows_with_indices.sort_by(|(idx_a, a), (idx_b, b)| {
-                for expr in &spec.partition_by {
-                    let va = eval_expr(expr, a, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null);
-                    let vb = eval_expr(expr, b, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null);
-                    let ord = compare_values(&va, &vb);
+            // 2. Sort rows based on cached PARTITION BY and ORDER BY values
+            window_rows.sort_by(|a, b| {
+                // First by partition
+                for i in 0..spec.partition_by.len() {
+                    let ord = compare_values(&a.partition_values[i], &b.partition_values[i]);
                     if ord != Ordering::Equal {
                         return ord;
                     }
                 }
-                let ord = self.compare_rows(a, b, &spec.order_by, ctx);
-                if ord != Ordering::Equal {
-                    return ord;
+                // Then by order
+                for (i, order_expr) in spec.order_by.iter().enumerate() {
+                    let ord = compare_values(&a.order_values[i], &b.order_values[i]);
+                    if ord != Ordering::Equal {
+                        return if order_expr.asc { ord } else { ord.reverse() };
+                    }
                 }
-                // Stable sort by original index in the input Vec<JoinedRow>
-                idx_a.cmp(idx_b)
+                // Stable sort by original index
+                a.original_idx.cmp(&b.original_idx)
             });
 
-            // Identify partitions
+            // 3. Identify partition boundaries
             let mut partition_starts = Vec::new();
-            if !sorted_rows_with_indices.is_empty() {
+            if !window_rows.is_empty() {
                 partition_starts.push(0);
-                for i in 1..sorted_rows_with_indices.len() {
-                    let mut equal = true;
-                    for expr in &spec.partition_by {
-                        let v_prev = eval_expr(expr, &sorted_rows_with_indices[i-1].1, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null);
-                        let v_curr = eval_expr(expr, &sorted_rows_with_indices[i].1, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null);
-                        if compare_values(&v_prev, &v_curr) != Ordering::Equal {
-                            equal = false;
+                for i in 1..window_rows.len() {
+                    let mut in_same_partition = true;
+                    for j in 0..spec.partition_by.len() {
+                        if compare_values(&window_rows[i-1].partition_values[j], &window_rows[i].partition_values[j]) != Ordering::Equal {
+                            in_same_partition = false;
                             break;
                         }
                     }
-                    if !equal {
+                    if !in_same_partition {
                         partition_starts.push(i);
                     }
                 }
             }
-            partition_starts.push(sorted_rows_with_indices.len());
+            partition_starts.push(window_rows.len());
 
+            // 4. Calculate window functions for each partition
             for p in 0..partition_starts.len() - 1 {
                 let start = partition_starts[p];
                 let end = partition_starts[p+1];
-                let partition = &sorted_rows_with_indices[start..end];
+                let partition = &window_rows[start..end];
 
-                // For each row in the partition, calculate each window function
-                for (i, (original_idx, _)) in partition.iter().enumerate() {
+                let mut current_rank = 1;
+                let mut current_dense_rank = 1;
+
+                for (i, w_row) in partition.iter().enumerate() {
+                    // Update rank/dense_rank if not the first row and not a peer of the previous row
+                    if i > 0 {
+                        let is_peer = self.are_peers(&partition[i-1], w_row);
+                        if !is_peer {
+                            current_rank = (i + 1) as i32;
+                            current_dense_rank += 1;
+                        }
+                    }
+
                     for win_expr in win_exprs {
-                        if let Expr::WindowFunction { func, args, .. } = win_expr {
-                            let val = match func {
-                                WindowFunc::RowNumber => Value::Int((i + 1) as i32),
-                                WindowFunc::Rank => {
-                                    let mut final_rank = 1;
-                                    for j in 0..i {
-                                        if self.compare_rows(&partition[j].1, &partition[i].1, &spec.order_by, ctx) == Ordering::Less {
-                                            final_rank = (j + 2) as i32;
+                        let val = match win_expr {
+                            Expr::WindowFunction { func, args, .. } => {
+                                match func {
+                                    WindowFunc::RowNumber => Value::Int((i + 1) as i32),
+                                    WindowFunc::Rank => Value::Int(current_rank),
+                                    WindowFunc::DenseRank => Value::Int(current_dense_rank),
+                                    WindowFunc::Lag => {
+                                        let offset = args.get(1).and_then(|e| {
+                                            if let Expr::Integer(n) = e { Some(*n as usize) } else { None }
+                                        }).unwrap_or(1);
+                                        if i >= offset {
+                                            eval_expr(&args[0], partition[i - offset].row, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null)
                                         } else {
-                                            break;
+                                            args.get(2).map(|e| eval_expr(e, w_row.row, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null)).unwrap_or(Value::Null)
                                         }
                                     }
-                                    Value::Int(final_rank)
-                                }
-                                WindowFunc::DenseRank => {
-                                    let mut dense_rank = 1;
-                                    for j in 1..=i {
-                                        if self.compare_rows(&partition[j-1].1, &partition[j].1, &spec.order_by, ctx) == Ordering::Less {
-                                            dense_rank += 1;
+                                    WindowFunc::Lead => {
+                                        let offset = args.get(1).and_then(|e| {
+                                            if let Expr::Integer(n) = e { Some(*n as usize) } else { None }
+                                        }).unwrap_or(1);
+                                        if i + offset < partition.len() {
+                                            eval_expr(&args[0], partition[i + offset].row, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null)
+                                        } else {
+                                            args.get(2).map(|e| eval_expr(e, w_row.row, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null)).unwrap_or(Value::Null)
                                         }
                                     }
-                                    Value::Int(dense_rank)
-                                }
-                                WindowFunc::Lag => {
-                                    let offset = args.get(1).and_then(|e| {
-                                        if let Expr::Integer(n) = e { Some(*n as usize) } else { None }
-                                    }).unwrap_or(1);
-                                    if i >= offset {
-                                        eval_expr(&args[0], &partition[i - offset].1, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null)
-                                    } else {
-                                        args.get(2).map(|e| eval_expr(e, &partition[i].1, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null)).unwrap_or(Value::Null)
-                                    }
-                                }
-                                WindowFunc::Lead => {
-                                    let offset = args.get(1).and_then(|e| {
-                                        if let Expr::Integer(n) = e { Some(*n as usize) } else { None }
-                                    }).unwrap_or(1);
-                                    if i + offset < partition.len() {
-                                        eval_expr(&args[0], &partition[i + offset].1, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null)
-                                    } else {
-                                        args.get(2).map(|e| eval_expr(e, &partition[i].1, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null)).unwrap_or(Value::Null)
-                                    }
-                                }
-                                WindowFunc::FirstValue => {
-                                    let frame_rows = self.get_frame_rows(partition, i, &spec.frame, &spec.order_by, ctx);
-                                    if frame_rows.is_empty() {
-                                        Value::Null
-                                    } else {
-                                        eval_expr(&args[0], &frame_rows[0], ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null)
-                                    }
-                                }
-                                WindowFunc::LastValue => {
-                                    let frame_rows = self.get_frame_rows(partition, i, &spec.frame, &spec.order_by, ctx);
-                                    if frame_rows.is_empty() {
-                                        Value::Null
-                                    } else {
-                                        eval_expr(&args[0], &frame_rows[frame_rows.len() - 1], ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null)
-                                    }
-                                }
-                                WindowFunc::NTile => {
-                                    let n_buckets = if let Some(e) = args.get(0) {
-                                        match eval_expr(e, &partition[i].1, ctx, self.catalog, self.storage, self.clock) {
-                                            Ok(Value::Int(n)) => n as i64,
-                                            Ok(Value::BigInt(n)) => n,
-                                            Ok(Value::TinyInt(n)) => n as i64,
-                                            Ok(Value::SmallInt(n)) => n as i64,
-                                            _ => 1,
-                                        }
-                                    } else {
-                                        1
-                                    };
-
-                                    if n_buckets <= 0 {
-                                        Value::Null
-                                    } else {
-                                        let partition_size = partition.len() as i64;
-                                        let bucket_size = partition_size / n_buckets;
-                                        let remainder = partition_size % n_buckets;
-
-                                        let mut current_row = 0i64;
-                                        let mut found_bucket = 1i64;
-                                        for b in 1..=n_buckets {
-                                            let rows_in_this_bucket = bucket_size + if b <= remainder { 1 } else { 0 };
-                                            if (i as i64) >= current_row && (i as i64) < current_row + rows_in_this_bucket {
-                                                found_bucket = b;
-                                                break;
-                                            }
-                                            current_row += rows_in_this_bucket;
-                                        }
-                                        Value::BigInt(found_bucket)
-                                    }
-                                }
-                                WindowFunc::PercentileCont | WindowFunc::PercentileDisc => {
-                                    let percentile = if let Some(e) = args.get(0) {
-                                        match eval_expr(e, &partition[i].1, ctx, self.catalog, self.storage, self.clock) {
-                                            Ok(Value::Float(v)) => f64::from_bits(v),
-                                            Ok(v) => value_to_f64(&v).unwrap_or(f64::NAN),
-                                            _ => f64::NAN,
-                                        }
-                                    } else {
-                                        f64::NAN
-                                    };
-
-                                    if percentile.is_nan() || percentile < 0.0 || percentile > 1.0 {
-                                        Value::Null
-                                    } else {
-                                        // Collect all non-null values from the ORDER BY column across the partition
-                                        let mut values: Vec<f64> = Vec::new();
-                                        for (_, row) in partition.iter() {
-                                            if let Some(order_expr) = spec.order_by.first() {
-                                                match eval_expr(&order_expr.expr, row, ctx, self.catalog, self.storage, self.clock) {
-                                                    Ok(v) if !v.is_null() => {
-                                                        if let Ok(f) = value_to_f64(&v) {
-                                                            values.push(f);
-                                                        }
-                                                    }
-                                                    _ => {}
-                                                }
-                                            }
-                                        }
-
-                                        values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
-
-                                        if values.is_empty() {
+                                    WindowFunc::FirstValue => {
+                                        let frame_rows = self.get_frame_rows_optimized(partition, i, &spec.frame, &spec.order_by, ctx);
+                                        if frame_rows.is_empty() {
                                             Value::Null
-                                        } else if values.len() == 1 {
-                                            Value::Float(values[0].to_bits())
                                         } else {
-                                            let n = values.len();
-                                            let exact_index = percentile * (n - 1) as f64;
-                                            let lo = exact_index.floor() as usize;
-                                            let hi = exact_index.ceil() as usize;
-
-                                            if lo == hi {
-                                                Value::Float(values[lo].to_bits())
-                                            } else {
-                                                let frac = exact_index - lo as f64;
-                                                let result = values[lo] * (1.0 - frac) + values[hi] * frac;
-                                                Value::Float(result.to_bits())
-                                            }
+                                            eval_expr(&args[0], frame_rows[0], ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null)
                                         }
                                     }
-                                }
-                                WindowFunc::PercentileRank => {
-                                    if partition.len() <= 1 {
-                                        Value::Null
-                                    } else {
-                                        // Get current row's ORDER BY value
-                                        let current_val = if let Some(order_expr) = spec.order_by.first() {
-                                            eval_expr(&order_expr.expr, &partition[i].1, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null)
-                                        } else {
+                                    WindowFunc::LastValue => {
+                                        let frame_rows = self.get_frame_rows_optimized(partition, i, &spec.frame, &spec.order_by, ctx);
+                                        if frame_rows.is_empty() {
                                             Value::Null
+                                        } else {
+                                            eval_expr(&args[0], frame_rows[frame_rows.len() - 1], ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null)
+                                        }
+                                    }
+                                    WindowFunc::NTile => {
+                                        let n_buckets = if let Some(e) = args.get(0) {
+                                            match eval_expr(e, w_row.row, ctx, self.catalog, self.storage, self.clock) {
+                                                Ok(Value::Int(n)) => n as i64,
+                                                Ok(Value::BigInt(n)) => n,
+                                                Ok(Value::TinyInt(n)) => n as i64,
+                                                Ok(Value::SmallInt(n)) => n as i64,
+                                                _ => 1,
+                                            }
+                                        } else {
+                                            1
                                         };
 
-                                        if current_val.is_null() {
+                                        if n_buckets <= 0 {
                                             Value::Null
                                         } else {
-                                            // Count values strictly less than current
-                                            let mut count_less = 0i64;
-                                            // Count values equal to current (to find first tie position)
-                                            let mut first_equal_idx: Option<i64> = None;
+                                            let partition_size = partition.len() as i64;
+                                            let bucket_size = partition_size / n_buckets;
+                                            let remainder = partition_size % n_buckets;
 
-                                            for (j, (_, row)) in partition.iter().enumerate() {
-                                                if let Some(order_expr) = spec.order_by.first() {
-                                                    let v = eval_expr(&order_expr.expr, row, ctx, self.catalog, self.storage, self.clock).unwrap_or(Value::Null);
-                                                    if !v.is_null() {
-                                                        let ord = compare_values(&v, &current_val);
-                                                        if ord == Ordering::Less {
-                                                            count_less += 1;
-                                                        } else if ord == Ordering::Equal && first_equal_idx.is_none() {
-                                                            first_equal_idx = Some(j as i64);
-                                                        }
+                                            let mut current_row = 0i64;
+                                            let mut found_bucket = 1i64;
+                                            for b in 1..=n_buckets {
+                                                let rows_in_this_bucket = bucket_size + if b <= remainder { 1 } else { 0 };
+                                                if (i as i64) >= current_row && (i as i64) < current_row + rows_in_this_bucket {
+                                                    found_bucket = b;
+                                                    break;
+                                                }
+                                                current_row += rows_in_this_bucket;
+                                            }
+                                            Value::BigInt(found_bucket)
+                                        }
+                                    }
+                                    WindowFunc::PercentileCont | WindowFunc::PercentileDisc => {
+                                        let percentile = if let Some(e) = args.get(0) {
+                                            match eval_expr(e, w_row.row, ctx, self.catalog, self.storage, self.clock) {
+                                                Ok(Value::Float(v)) => f64::from_bits(v),
+                                                Ok(v) => value_to_f64(&v).unwrap_or(f64::NAN),
+                                                _ => f64::NAN,
+                                            }
+                                        } else {
+                                            f64::NAN
+                                        };
+
+                                        if percentile.is_nan() || percentile < 0.0 || percentile > 1.0 {
+                                            Value::Null
+                                        } else {
+                                            let mut values: Vec<f64> = Vec::new();
+                                            for p_row in partition.iter() {
+                                                if !p_row.order_values.is_empty() {
+                                                    if let Ok(f) = value_to_f64(&p_row.order_values[0]) {
+                                                        values.push(f);
                                                     }
                                                 }
                                             }
 
-                                            let rank = if let Some(first_idx) = first_equal_idx {
-                                                first_idx + 1
-                                            } else {
-                                                count_less + 1
-                                            };
+                                            values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
 
-                                            let result = (rank - 1) as f64 / (partition.len() - 1) as f64;
+                                            if values.is_empty() {
+                                                Value::Null
+                                            } else {
+                                                let n = values.len();
+                                                let exact_index = percentile * (n - 1) as f64;
+                                                let lo = exact_index.floor() as usize;
+                                                let hi = exact_index.ceil() as usize;
+
+                                                if func == &WindowFunc::PercentileDisc {
+                                                     Value::Float(values[hi].to_bits())
+                                                } else {
+                                                    if lo == hi {
+                                                        Value::Float(values[lo].to_bits())
+                                                    } else {
+                                                        let frac = exact_index - lo as f64;
+                                                        let result = values[lo] * (1.0 - frac) + values[hi] * frac;
+                                                        Value::Float(result.to_bits())
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    WindowFunc::PercentileRank => {
+                                        if partition.len() <= 1 {
+                                            Value::Float(0.0f64.to_bits())
+                                        } else {
+                                            let result = (current_rank - 1) as f64 / (partition.len() - 1) as f64;
                                             Value::Float(result.to_bits())
                                         }
                                     }
-                                }
-                                WindowFunc::Aggregate(name) => {
-                                    let frame_rows = self.get_frame_rows(partition, i, &spec.frame, &spec.order_by, ctx);
-                                    let group = Group { key: vec![], rows: frame_rows };
-                                    let res = dispatch_aggregate(name.as_str(), args, &group, ctx, self.catalog, self.storage, self.clock);
-                                    match res {
-                                        Some(Ok(v)) => v,
-                                        Some(Err(e)) => return Err(e),
-                                        None => Value::Null,
+                                    WindowFunc::Aggregate(name) => {
+                                        let frame_rows = self.get_frame_rows_optimized(partition, i, &spec.frame, &spec.order_by, ctx);
+                                        let group = Group { key: vec![], rows: frame_rows.into_iter().cloned().collect() };
+                                        let res = dispatch_aggregate(name.as_str(), args, &group, ctx, self.catalog, self.storage, self.clock);
+                                        match res {
+                                            Some(Ok(v)) => v,
+                                            Some(Err(e)) => return Err(e),
+                                            None => Value::Null,
+                                        }
                                     }
                                 }
-                            };
-                            let key = format!("{:?}", win_expr);
-                            results_map.entry(key).or_insert_with(|| vec![Value::Null; rows.len()])[*original_idx] = val;
-                        }
+                            }
+                            _ => Value::Null,
+                        };
+                        let key = format!("{:?}", win_expr);
+                        results_map.entry(key).or_insert_with(|| vec![Value::Null; rows.len()])[w_row.original_idx] = val;
                     }
                 }
             }
         }
 
-        // One final pass to evaluate all projected expressions with window results available in context
+        // 5. Final pass to evaluate all projected expressions
         let mut final_projected_rows = Vec::with_capacity(rows.len());
         for (idx, row) in rows.iter().enumerate() {
             let mut window_map = HashMap::new();
@@ -359,6 +339,16 @@ impl<'a> WindowExecutor<'a> {
             column_types,
             rows: final_projected_rows,
         })
+    }
+
+    fn are_peers(&self, a: &WindowRow, b: &WindowRow) -> bool {
+        if a.order_values.len() != b.order_values.len() { return false; }
+        for i in 0..a.order_values.len() {
+            if compare_values(&a.order_values[i], &b.order_values[i]) != Ordering::Equal {
+                return false;
+            }
+        }
+        true
     }
 
     fn collect_window_exprs<'b>(
@@ -430,26 +420,31 @@ impl<'a> WindowExecutor<'a> {
         }
     }
 
-    fn get_frame_rows(&self, partition: &[(usize, JoinedRow)], current_idx: usize, frame_spec: &Option<WindowFrame>, order_by: &[OrderByExpr], ctx: &mut ExecutionContext) -> Vec<JoinedRow> {
+    fn get_frame_rows_optimized<'b>(
+        &self, 
+        partition: &'b [WindowRow<'a>], 
+        current_idx: usize, 
+        frame_spec: &Option<WindowFrame>, 
+        order_by: &[OrderByExpr], 
+        _ctx: &mut ExecutionContext
+    ) -> Vec<&'a JoinedRow> {
         let (start_idx, end_idx) = match frame_spec {
             None => {
-                // T-SQL default for OVER(ORDER BY ...) is RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW.
-                // Without ORDER BY, it is the whole partition.
                 if order_by.is_empty() {
                     (0, partition.len())
                 } else {
-                    (0, self.resolve_bound(partition, current_idx, &WindowFrameBound::CurrentRow, true, WindowFrameUnits::Range, order_by, ctx))
+                    (0, self.resolve_bound_optimized(partition, current_idx, &WindowFrameBound::CurrentRow, true, WindowFrameUnits::Range))
                 }
             }
             Some(f) => {
                 match &f.extent {
                     WindowFrameExtent::Bound(b) => {
-                        (self.resolve_bound(partition, current_idx, b, false, f.units, order_by, ctx),
-                         self.resolve_bound(partition, current_idx, &WindowFrameBound::CurrentRow, true, f.units, order_by, ctx))
+                        (self.resolve_bound_optimized(partition, current_idx, b, false, f.units),
+                         self.resolve_bound_optimized(partition, current_idx, &WindowFrameBound::CurrentRow, true, f.units))
                     }
                     WindowFrameExtent::Between(b1, b2) => {
-                        (self.resolve_bound(partition, current_idx, b1, false, f.units, order_by, ctx),
-                         self.resolve_bound(partition, current_idx, b2, true, f.units, order_by, ctx))
+                        (self.resolve_bound_optimized(partition, current_idx, b1, false, f.units),
+                         self.resolve_bound_optimized(partition, current_idx, b2, true, f.units))
                     }
                 }
             }
@@ -462,10 +457,10 @@ impl<'a> WindowExecutor<'a> {
             return vec![];
         }
 
-        partition[start_clamped..end_clamped].iter().map(|(_, r)| r.clone()).collect()
+        partition[start_clamped..end_clamped].iter().map(|w| w.row).collect()
     }
 
-    fn resolve_bound(&self, partition: &[(usize, JoinedRow)], current_idx: usize, bound: &WindowFrameBound, is_end: bool, units: WindowFrameUnits, order_by: &[OrderByExpr], ctx: &mut ExecutionContext) -> usize {
+    fn resolve_bound_optimized(&self, partition: &[WindowRow], current_idx: usize, bound: &WindowFrameBound, is_end: bool, units: WindowFrameUnits) -> usize {
         match units {
             WindowFrameUnits::Rows => {
                 match bound {
@@ -482,16 +477,14 @@ impl<'a> WindowExecutor<'a> {
                     WindowFrameBound::UnboundedFollowing => partition.len(),
                     WindowFrameBound::CurrentRow => {
                         if is_end {
-                            // Find last peer
                             let mut i = current_idx;
-                            while i + 1 < partition.len() && self.compare_rows(&partition[i].1, &partition[i+1].1, order_by, ctx) == Ordering::Equal {
+                            while i + 1 < partition.len() && self.are_peers(&partition[i], &partition[i+1]) {
                                 i += 1;
                             }
                             i + 1
                         } else {
-                            // Find first peer
                             let mut i = current_idx;
-                            while i > 0 && self.compare_rows(&partition[i].1, &partition[i-1].1, order_by, ctx) == Ordering::Equal {
+                            while i > 0 && self.are_peers(&partition[i], &partition[i-1]) {
                                 i -= 1;
                             }
                             i
@@ -553,27 +546,6 @@ impl<'a> WindowExecutor<'a> {
             column_types,
             rows: result,
         })
-    }
-
-    fn compare_rows(
-        &self,
-        a: &JoinedRow,
-        b: &JoinedRow,
-        order_by: &[OrderByExpr],
-        ctx: &mut ExecutionContext,
-    ) -> Ordering {
-        for item in order_by {
-            let val_a = eval_expr(&item.expr, a, ctx, self.catalog, self.storage, self.clock)
-                .unwrap_or(Value::Null);
-            let val_b = eval_expr(&item.expr, b, ctx, self.catalog, self.storage, self.clock)
-                .unwrap_or(Value::Null);
-
-            let ord = compare_values(&val_a, &val_b);
-            if ord != Ordering::Equal {
-                return if item.asc { ord } else { ord.reverse() };
-            }
-        }
-        Ordering::Equal
     }
 }
 

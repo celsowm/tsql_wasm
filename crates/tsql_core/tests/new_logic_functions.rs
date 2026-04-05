@@ -83,9 +83,18 @@ fn test_nullif_strings() {
 #[test]
 fn test_nullif_with_divide_by_zero() {
     let mut engine = Engine::new();
-    exec(&mut engine, "CREATE TABLE dbo.t (numerator INT, denominator INT)");
-    exec(&mut engine, "INSERT INTO dbo.t (numerator, denominator) VALUES (10, 2)");
-    exec(&mut engine, "INSERT INTO dbo.t (numerator, denominator) VALUES (5, 0)");
+    exec(
+        &mut engine,
+        "CREATE TABLE dbo.t (numerator INT, denominator INT)",
+    );
+    exec(
+        &mut engine,
+        "INSERT INTO dbo.t (numerator, denominator) VALUES (10, 2)",
+    );
+    exec(
+        &mut engine,
+        "INSERT INTO dbo.t (numerator, denominator) VALUES (5, 0)",
+    );
     let r = query(
         &mut engine,
         "SELECT numerator / NULLIF(denominator, 0) AS result FROM dbo.t ORDER BY numerator DESC",
@@ -98,8 +107,14 @@ fn test_nullif_with_divide_by_zero() {
 fn test_nullif_prevents_division() {
     let mut engine = Engine::new();
     exec(&mut engine, "CREATE TABLE dbo.orders (amount INT, qty INT)");
-    exec(&mut engine, "INSERT INTO dbo.orders (amount, qty) VALUES (100, 5)");
-    exec(&mut engine, "INSERT INTO dbo.orders (amount, qty) VALUES (50, 0)");
+    exec(
+        &mut engine,
+        "INSERT INTO dbo.orders (amount, qty) VALUES (100, 5)",
+    );
+    exec(
+        &mut engine,
+        "INSERT INTO dbo.orders (amount, qty) VALUES (50, 0)",
+    );
     let r = query(
         &mut engine,
         "SELECT ISNULL(amount / NULLIF(qty, 0), 0) AS unit_price FROM dbo.orders ORDER BY amount",

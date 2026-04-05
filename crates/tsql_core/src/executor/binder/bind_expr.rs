@@ -23,10 +23,7 @@ pub enum BoundExpr {
         right: Box<BoundExpr>,
     },
     /// A unary operation on a bound sub-expression.
-    Unary {
-        op: UnaryOp,
-        expr: Box<BoundExpr>,
-    },
+    Unary { op: UnaryOp, expr: Box<BoundExpr> },
     /// IS NULL check on a bound sub-expression.
     IsNull(Box<BoundExpr>),
     /// IS NOT NULL check on a bound sub-expression.
@@ -54,10 +51,7 @@ pub enum BoundExpr {
         style: Option<i32>,
     },
     /// Function call with bound arguments.
-    FunctionCall {
-        name: String,
-        args: Vec<BoundExpr>,
-    },
+    FunctionCall { name: String, args: Vec<BoundExpr> },
     /// CASE expression.
     Case {
         operand: Option<Box<BoundExpr>>,
@@ -97,9 +91,7 @@ pub enum BoundExpr {
         negated: bool,
     },
     /// Window function — value is precomputed and stored in context.
-    WindowFunction {
-        key: String,
-    },
+    WindowFunction { key: String },
     /// An expression that could not be statically bound (e.g., references outer row
     /// in a correlated subquery). Falls back to dynamic evaluation at runtime.
     Dynamic(crate::ast::Expr),

@@ -5,23 +5,25 @@ This document summarizes the anti-patterns, performance bottlenecks, and archite
 ## 1. Anti-Patterns
 
 ### 1.1 Monolithic Files and "God Objects"
-- **`crates/tsql_core/src/parser/lower.rs` (56KB, 1000+ lines):** Acts as a central hub for all AST transformations. This makes maintenance difficult and increases the risk of merge conflicts.
-- **`crates/tsql_core/src/executor/window.rs` (30KB, 600+ lines):** Manages all window function logic in a single, complex file.
-- **`ExecutionContext` / `SessionStateRefs`:** These structs bundle excessive mutable state and references, leading to complex lifetimes and high coupling across the execution layer.
+- **DONE:** `crates/tsql_core/src/parser/lower.rs` has been removed. The logic is now correctly split into `parser/lower/*.rs` (DML, DDL, Procedural, Common), following SRP.
+- **IMPROVED:** `crates/tsql_core/src/executor/window.rs` has been refactored to be more efficient, though it remains a complex module due to the nature of window functions.
+- **TODO:** `ExecutionContext` / `SessionStateRefs` still bundle excessive mutable state and references.
 
 ### 1.2 "Stringly-Typed" Programming
-- Identifiers are frequently passed as raw `String` objects. While centralized normalization exists in `string_norm.rs`, the type system does not enforce it, allowing for accidental use of unnormalized strings.
+- Identifiers are frequently passed as raw `String` objects.
 
 ### 1.3 Panic Risks
-- **`unwrap()` in Production Code:** Several instances of `.unwrap()` were found in core logic (e.g., `lower.rs` and `locks/mod.rs`), which could lead to engine-wide panics on malformed input or unexpected states.
+- **DONE:** Production `unwrap()` call sites in `parser/` and `executor/` have been replaced with explicit error handling or defensive fallbacks.
+- **DONE:** Stale `unwrap()` calls in the old `lower.rs` are gone. `lower_object_name` is now defensive.
 
 ---
 
 ## 2. Performance & Scalability Bottlenecks
 
 ### 2.1 Inefficient Sorting in Window Functions
-- **Problem:** `WindowExecutor` evaluates partition/order expressions inside the `sort_by` closure, leading to $O(M \cdot N \log N)$ evaluations for $N$ rows and $M$ expressions.
-- **Recommendation:** Implement a Schwartzian Transform (Decorate-Sort-Undecorate) to evaluate expressions exactly once per row.
+- **FIXED:** `WindowExecutor` now uses a Schwartzian Transform (Decorate-Sort-Undecorate) via the `WindowRow` wrapper. Expressions are evaluated exactly once per row.
+- **FIXED:** `RANK` and `DENSE_RANK` now use $O(N)$ calculation based on sorted peer identification instead of $O(N^2)$ re-comparison.
+- **FIXED:** Peer-matching in `resolve_bound_optimized` uses cached values, eliminating redundant `eval_expr` calls during frame resolution.
 
 ### 2.2 Memory Scalability (Storage Trait)
 - **Problem:** The `Storage::get_rows` method returns a `Vec<StoredRow>`, forcing the entire table into memory.
@@ -51,8 +53,8 @@ This document summarizes the anti-patterns, performance bottlenecks, and archite
 ## 4. Security & Stability Concerns
 
 ### 4.1 Unbounded Recursion
-- The `eval_expr` function is recursive but lacks a depth limit. Deeply nested expressions could trigger a stack overflow.
-- **Recommendation:** Implement a `MAX_RECURSION_DEPTH` check.
+- **FIXED:** The `Parser` (state.rs) and `eval_expr` (evaluator.rs) now implement explicit recursion depth limits (`MAX_PARSER_DEPTH=8`, `MAX_RECURSION_DEPTH=32`). This prevents stack overflow panics from deeply nested expressions or statements.
+- **TESTED:** Verified with `tests/recursion_limit.rs`.
 
 ### 4.2 Resource Exhaustion
 - The lack of streaming in the `Storage` layer combined with `Vec` allocations makes the engine vulnerable to OOM (Out-of-Memory) errors when processing large tables.
@@ -64,4 +66,4 @@ This document summarizes the anti-patterns, performance bottlenecks, and archite
 1. **Refactor `lower.rs`:** Split into `dml.rs`, `ddl.rs`, and `procedural.rs`.
 2. **Registry-based Evaluator:** Move from a single `match` in `eval_expr` to a registry of function/operator handlers to improve OCP.
 3. **Streaming Storage:** Refactor the `Storage` trait to return iterators.
-4. **Safe Error Handling:** Audit and replace all `.unwrap()` calls in `src/` with proper error propagation using `DbError`.
+4. **Safe Error Handling:** Keep preferring explicit error propagation in new production code; remaining `.unwrap()` usage should stay limited to tests or hard invariants.

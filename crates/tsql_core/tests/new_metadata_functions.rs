@@ -4,7 +4,10 @@ include!("new_functions/helpers.rs");
 fn test_schema_object_and_column_metadata() {
     let mut engine = Engine::new();
     exec(&mut engine, "CREATE SCHEMA app");
-    exec(&mut engine, "CREATE TABLE app.users (id INT, name NVARCHAR(10), note VARCHAR(10))");
+    exec(
+        &mut engine,
+        "CREATE TABLE app.users (id INT, name NVARCHAR(10), note VARCHAR(10))",
+    );
 
     let r = query(
         &mut engine,
@@ -55,8 +58,14 @@ fn test_type_metadata() {
 fn test_index_metadata() {
     let mut engine = Engine::new();
     exec(&mut engine, "CREATE SCHEMA app");
-    exec(&mut engine, "CREATE TABLE app.users (id INT, name NVARCHAR(10))");
-    exec(&mut engine, "CREATE INDEX app.ix_users_name ON app.users (name)");
+    exec(
+        &mut engine,
+        "CREATE TABLE app.users (id INT, name NVARCHAR(10))",
+    );
+    exec(
+        &mut engine,
+        "CREATE INDEX app.ix_users_name ON app.users (name)",
+    );
 
     let r = query(
         &mut engine,
@@ -110,10 +119,18 @@ fn test_object_definition_and_properties() {
             OBJECTPROPERTYEX(OBJECT_ID('dbo.capture_proc'), 'TableHasIndex') AS has_index",
     );
 
-    assert!(defs.rows[0][0].to_string_value().starts_with("CREATE PROCEDURE dbo.capture_proc"));
-    assert!(defs.rows[0][1].to_string_value().starts_with("CREATE FUNCTION dbo.capture_fn"));
-    assert!(defs.rows[0][2].to_string_value().starts_with("CREATE VIEW dbo.capture_view"));
-    assert!(defs.rows[0][3].to_string_value().starts_with("CREATE TRIGGER dbo.capture_trg"));
+    assert!(defs.rows[0][0]
+        .to_string_value()
+        .starts_with("CREATE PROCEDURE dbo.capture_proc"));
+    assert!(defs.rows[0][1]
+        .to_string_value()
+        .starts_with("CREATE FUNCTION dbo.capture_fn"));
+    assert!(defs.rows[0][2]
+        .to_string_value()
+        .starts_with("CREATE VIEW dbo.capture_view"));
+    assert!(defs.rows[0][3]
+        .to_string_value()
+        .starts_with("CREATE TRIGGER dbo.capture_trg"));
     assert!(defs.rows[0][4].is_null());
     assert_eq!(defs.rows[0][5], Value::Int(1));
     assert_eq!(defs.rows[0][6], Value::Int(1));
@@ -131,7 +148,10 @@ fn test_object_definition_and_properties() {
 
     exec(&mut engine, "INSERT INTO dbo.trg_src VALUES (1)");
     let trg_result = query(&mut engine, "SELECT pid FROM dbo.log ORDER BY pid");
-    assert!(trg_result.rows.iter().all(|row| matches!(row[0], Value::Int(v) if v < 0)));
+    assert!(trg_result
+        .rows
+        .iter()
+        .all(|row| matches!(row[0], Value::Int(v) if v < 0)));
 }
 
 #[test]

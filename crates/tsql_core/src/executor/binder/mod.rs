@@ -60,27 +60,42 @@ pub fn bind_expr(
                     data_type: binding.data_type,
                 }),
                 None => {
-                    if qualified_exists_in_apply_stack(&ctx.row.apply_stack, table_name, column_name)
-                        || qualified_exists_in_outer_row(ctx.row.outer_row.as_deref(), table_name, column_name)
-                    {
+                    if qualified_exists_in_apply_stack(
+                        &ctx.row.apply_stack,
+                        table_name,
+                        column_name,
+                    ) || qualified_exists_in_outer_row(
+                        ctx.row.outer_row.as_deref(),
+                        table_name,
+                        column_name,
+                    ) {
                         Ok(BoundExpr::Dynamic(expr.clone()))
                     } else {
                         Err(DbError::Semantic(format!(
-                            "column '{}.{}' not found", table_name, column_name
+                            "column '{}.{}' not found",
+                            table_name, column_name
                         )))
                     }
                 }
             }
         }
-        Expr::Wildcard => Err(DbError::Execution("wildcard is not a scalar expression".into())),
-        Expr::QualifiedWildcard(_) => Err(DbError::Execution("qualified wildcard is not a scalar expression".into())),
-        Expr::Integer(v) => Ok(BoundExpr::Literal(if *v >= i32::MIN as i64 && *v <= i32::MAX as i64 {
-            Value::Int(*v as i32)
-        } else {
-            Value::BigInt(*v)
-        })),
+        Expr::Wildcard => Err(DbError::Execution(
+            "wildcard is not a scalar expression".into(),
+        )),
+        Expr::QualifiedWildcard(_) => Err(DbError::Execution(
+            "qualified wildcard is not a scalar expression".into(),
+        )),
+        Expr::Integer(v) => Ok(BoundExpr::Literal(
+            if *v >= i32::MIN as i64 && *v <= i32::MAX as i64 {
+                Value::Int(*v as i32)
+            } else {
+                Value::BigInt(*v)
+            },
+        )),
         Expr::FloatLiteral(s) => {
-            let f: f64 = s.parse().map_err(|_| DbError::Execution(format!("invalid float literal '{}'", s)))?;
+            let f: f64 = s
+                .parse()
+                .map_err(|_| DbError::Execution(format!("invalid float literal '{}'", s)))?;
             Ok(BoundExpr::Literal(Value::Float(f.to_bits())))
         }
         Expr::BinaryLiteral(b) => Ok(BoundExpr::Literal(Value::VarBinary(b.clone()))),
@@ -88,7 +103,8 @@ pub fn bind_expr(
         Expr::UnicodeString(s) => Ok(BoundExpr::Literal(Value::NVarChar(s.clone()))),
         Expr::Null => Ok(BoundExpr::Literal(Value::Null)),
         Expr::FunctionCall { name, args } => {
-            let bound_args = args.iter()
+            let bound_args = args
+                .iter()
                 .map(|a| bind_expr(a, row, ctx))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(BoundExpr::FunctionCall {
@@ -107,35 +123,59 @@ pub fn bind_expr(
         }),
         Expr::IsNull(inner) => Ok(BoundExpr::IsNull(Box::new(bind_expr(inner, row, ctx)?))),
         Expr::IsNotNull(inner) => Ok(BoundExpr::IsNotNull(Box::new(bind_expr(inner, row, ctx)?))),
-        Expr::Cast { expr: inner, target } => Ok(BoundExpr::Cast {
+        Expr::Cast {
+            expr: inner,
+            target,
+        } => Ok(BoundExpr::Cast {
             expr: Box::new(bind_expr(inner, row, ctx)?),
             target: target.clone(),
         }),
-        Expr::TryCast { expr: inner, target } => Ok(BoundExpr::TryCast {
+        Expr::TryCast {
+            expr: inner,
+            target,
+        } => Ok(BoundExpr::TryCast {
             expr: Box::new(bind_expr(inner, row, ctx)?),
             target: target.clone(),
         }),
-        Expr::Convert { target, expr: inner, style } => Ok(BoundExpr::Convert {
+        Expr::Convert {
+            target,
+            expr: inner,
+            style,
+        } => Ok(BoundExpr::Convert {
             target: target.clone(),
             expr: Box::new(bind_expr(inner, row, ctx)?),
             style: *style,
         }),
-        Expr::TryConvert { target, expr: inner, style } => Ok(BoundExpr::TryConvert {
+        Expr::TryConvert {
+            target,
+            expr: inner,
+            style,
+        } => Ok(BoundExpr::TryConvert {
             target: target.clone(),
             expr: Box::new(bind_expr(inner, row, ctx)?),
             style: *style,
         }),
-        Expr::Case { operand, when_clauses, else_result } => {
-            let bound_operand = operand.as_ref()
+        Expr::Case {
+            operand,
+            when_clauses,
+            else_result,
+        } => {
+            let bound_operand = operand
+                .as_ref()
                 .map(|o| bind_expr(o, row, ctx))
                 .transpose()?
                 .map(Box::new);
-            let bound_when_clauses = when_clauses.iter()
+            let bound_when_clauses = when_clauses
+                .iter()
                 .map(|wc| {
-                    Ok((bind_expr(&wc.condition, row, ctx)?, bind_expr(&wc.result, row, ctx)?))
+                    Ok((
+                        bind_expr(&wc.condition, row, ctx)?,
+                        bind_expr(&wc.result, row, ctx)?,
+                    ))
                 })
                 .collect::<Result<Vec<_>, DbError>>()?;
-            let bound_else = else_result.as_ref()
+            let bound_else = else_result
+                .as_ref()
                 .map(|e| bind_expr(e, row, ctx))
                 .transpose()?
                 .map(Box::new);
@@ -145,9 +185,14 @@ pub fn bind_expr(
                 else_result: bound_else,
             })
         }
-        Expr::InList { expr: inner, list, negated } => {
+        Expr::InList {
+            expr: inner,
+            list,
+            negated,
+        } => {
             let bound_inner = Box::new(bind_expr(inner, row, ctx)?);
-            let bound_list = list.iter()
+            let bound_list = list
+                .iter()
                 .map(|e| bind_expr(e, row, ctx))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(BoundExpr::InList {
@@ -156,13 +201,22 @@ pub fn bind_expr(
                 negated: *negated,
             })
         }
-        Expr::Between { expr: inner, low, high, negated } => Ok(BoundExpr::Between {
+        Expr::Between {
+            expr: inner,
+            low,
+            high,
+            negated,
+        } => Ok(BoundExpr::Between {
             expr: Box::new(bind_expr(inner, row, ctx)?),
             low: Box::new(bind_expr(low, row, ctx)?),
             high: Box::new(bind_expr(high, row, ctx)?),
             negated: *negated,
         }),
-        Expr::Like { expr: inner, pattern, negated } => Ok(BoundExpr::Like {
+        Expr::Like {
+            expr: inner,
+            pattern,
+            negated,
+        } => Ok(BoundExpr::Like {
             expr: Box::new(bind_expr(inner, row, ctx)?),
             pattern: Box::new(bind_expr(pattern, row, ctx)?),
             negated: *negated,
@@ -188,7 +242,9 @@ pub fn eval_bound_expr(
     clock: &dyn crate::executor::clock::Clock,
 ) -> Result<Value, DbError> {
     match bound {
-        BoundExpr::Column { table_idx, col_idx, .. } => {
+        BoundExpr::Column {
+            table_idx, col_idx, ..
+        } => {
             if let Some(table) = row.get(*table_idx) {
                 if let Some(ref stored_row) = table.row {
                     if let Some(val) = stored_row.values.get(*col_idx) {
@@ -198,9 +254,7 @@ pub fn eval_bound_expr(
             }
             Ok(Value::Null)
         }
-        BoundExpr::Dynamic(expr) => {
-            eval_expr(expr, row, ctx, catalog, storage, clock)
-        }
+        BoundExpr::Dynamic(expr) => eval_expr(expr, row, ctx, catalog, storage, clock),
         _ => eval_bound::eval_bound_expr_inner(bound, row, ctx, catalog, storage, clock),
     }
 }

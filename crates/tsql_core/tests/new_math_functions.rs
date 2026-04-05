@@ -345,7 +345,10 @@ fn test_tan_null() {
 fn test_trig_identity_sin_cos() {
     let mut engine = Engine::new();
     // sin²(x) + cos²(x) = 1
-    let r = query(&mut engine, "SELECT SQUARE(SIN(PI() / 6)) + SQUARE(COS(PI() / 6)) AS v");
+    let r = query(
+        &mut engine,
+        "SELECT SQUARE(SIN(PI() / 6)) + SQUARE(COS(PI() / 6)) AS v",
+    );
     assert!((to_f64(&r.rows[0][0]) - 1.0).abs() < 1e-10);
 }
 

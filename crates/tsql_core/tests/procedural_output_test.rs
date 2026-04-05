@@ -16,7 +16,9 @@ fn test_raiserror_severity() {
 #[test]
 fn test_insert_output() {
     let engine = Engine::new();
-    engine.exec("CREATE TABLE dbo.Users (Id INT PRIMARY KEY, Name NVARCHAR(100))").unwrap();
+    engine
+        .exec("CREATE TABLE dbo.Users (Id INT PRIMARY KEY, Name NVARCHAR(100))")
+        .unwrap();
 
     let sql = "
         INSERT INTO dbo.Users (Id, Name)
@@ -34,8 +36,12 @@ fn test_insert_output() {
 fn test_update_output_into() {
     let engine = Engine::new();
     engine.exec("CREATE TABLE dbo.Source (Val INT)").unwrap();
-    engine.exec("INSERT INTO dbo.Source VALUES (10), (20)").unwrap();
-    engine.exec("CREATE TABLE #Audit (OldVal INT, NewVal INT)").unwrap();
+    engine
+        .exec("INSERT INTO dbo.Source VALUES (10), (20)")
+        .unwrap();
+    engine
+        .exec("CREATE TABLE #Audit (OldVal INT, NewVal INT)")
+        .unwrap();
 
     let sql = "
         UPDATE dbo.Source
@@ -46,7 +52,9 @@ fn test_update_output_into() {
 
     engine.exec(sql).unwrap();
 
-    let result = engine.query("SELECT OldVal, NewVal FROM #Audit ORDER BY OldVal").unwrap();
+    let result = engine
+        .query("SELECT OldVal, NewVal FROM #Audit ORDER BY OldVal")
+        .unwrap();
     assert_eq!(result.rows[0][0].to_string_value(), "10");
     assert_eq!(result.rows[0][1].to_string_value(), "15");
 }

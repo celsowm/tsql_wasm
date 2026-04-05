@@ -1,10 +1,10 @@
-﻿use serde::{Deserialize, Serialize};
-use crate::ast::ObjectName;
-use crate::ast::expressions::Expr;
-use crate::ast::data_types::DataTypeSpec;
-use crate::ast::statements::query::SelectStmt;
 use crate::ast::common::TableRef;
+use crate::ast::data_types::DataTypeSpec;
+use crate::ast::expressions::Expr;
 use crate::ast::statements::ddl::{ColumnSpec, TableConstraintSpec};
+use crate::ast::statements::query::SelectStmt;
+use crate::ast::ObjectName;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IfStmt {

@@ -1,5 +1,5 @@
 //! Schema definitions for playground database
-//! 
+//!
 //! Follows SRP: only responsible for DDL structure
 
 /// DDL statements to create playground tables

@@ -108,26 +108,22 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
             precision: None,
             flags: 0x0001,
         },
-        Value::Char(_) | Value::VarChar(_) => {
-            TypeInfo {
-                tds_type: BIGVARCHARTYPE,
-                length_prefix: 8000u16.to_le_bytes().to_vec(),
-                collation: Some(DEFAULT_COLLATION),
-                scale: None,
-                precision: None,
-                flags: 0x0001,
-            }
-        }
-        Value::NChar(_) | Value::NVarChar(_) => {
-            TypeInfo {
-                tds_type: NVARCHARTYPE,
-                length_prefix: 8000u16.to_le_bytes().to_vec(),
-                collation: Some(DEFAULT_COLLATION),
-                scale: None,
-                precision: None,
-                flags: 0x0001,
-            }
-        }
+        Value::Char(_) | Value::VarChar(_) => TypeInfo {
+            tds_type: BIGVARCHARTYPE,
+            length_prefix: 8000u16.to_le_bytes().to_vec(),
+            collation: Some(DEFAULT_COLLATION),
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
+        Value::NChar(_) | Value::NVarChar(_) => TypeInfo {
+            tds_type: NVARCHARTYPE,
+            length_prefix: 8000u16.to_le_bytes().to_vec(),
+            collation: Some(DEFAULT_COLLATION),
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
         Value::Binary(v) => {
             let len = v.len().max(1) as u16;
             TypeInfo {
@@ -204,7 +200,8 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
 pub fn value_to_wire_bytes(value: &Value, ti: &TypeInfo) -> Vec<u8> {
     if value.is_null() {
         match ti.tds_type {
-            BIGVARCHARTYPE | BIGCHARTYPE | NVARCHARTYPE | NCHARTYPE | BIGVARBINARYTYPE | BIGBINARYTYPE => {
+            BIGVARCHARTYPE | BIGCHARTYPE | NVARCHARTYPE | NCHARTYPE | BIGVARBINARYTYPE
+            | BIGBINARYTYPE => {
                 return vec![0xFF, 0xFF];
             }
             _ => return vec![0x00],
@@ -251,7 +248,10 @@ pub fn value_to_wire_bytes(value: &Value, ti: &TypeInfo) -> Vec<u8> {
             let mut buf = vec![len];
             let raw = match value {
                 Value::Decimal(r, _s) => *r,
-                _ => value.to_integer_i64().unwrap_or(0) as i128 * 10i128.pow(ti.scale.unwrap_or(0) as u32),
+                _ => {
+                    value.to_integer_i64().unwrap_or(0) as i128
+                        * 10i128.pow(ti.scale.unwrap_or(0) as u32)
+                }
             };
             let negative = raw < 0;
             let abs_val = raw.abs() as u128;
@@ -655,10 +655,7 @@ pub fn runtime_type_to_tds(ty: &tsql_core::types::DataType) -> TypeInfo {
     }
 }
 
-pub fn infer_column_types(
-    columns: &[String],
-    rows: &[Vec<Value>],
-) -> Vec<TypeInfo> {
+pub fn infer_column_types(columns: &[String], rows: &[Vec<Value>]) -> Vec<TypeInfo> {
     columns
         .iter()
         .enumerate()

@@ -1,8 +1,8 @@
-use tsql_core::executor::engine::Engine;
-use tsql_core::error::DbError;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use tsql_core::error::DbError;
+use tsql_core::executor::engine::Engine;
 
 #[test]
 fn test_deadlock_2_sessions() {
@@ -16,14 +16,22 @@ fn test_deadlock_2_sessions() {
     let s2 = engine.create_session();
 
     // Set lock timeout so they wait and can be deadlocked
-    engine.execute_session_batch_sql(s1, "SET LOCK_TIMEOUT 5000;").unwrap();
-    engine.execute_session_batch_sql(s2, "SET LOCK_TIMEOUT 5000;").unwrap();
+    engine
+        .execute_session_batch_sql(s1, "SET LOCK_TIMEOUT 5000;")
+        .unwrap();
+    engine
+        .execute_session_batch_sql(s2, "SET LOCK_TIMEOUT 5000;")
+        .unwrap();
 
     // Session 1: Begin Tran, Lock A
-    engine.execute_session_batch_sql(s1, "BEGIN TRANSACTION; INSERT INTO A VALUES (1);").unwrap();
+    engine
+        .execute_session_batch_sql(s1, "BEGIN TRANSACTION; INSERT INTO A VALUES (1);")
+        .unwrap();
 
     // Session 2: Begin Tran, Lock B
-    engine.execute_session_batch_sql(s2, "BEGIN TRANSACTION; INSERT INTO B VALUES (1);").unwrap();
+    engine
+        .execute_session_batch_sql(s2, "BEGIN TRANSACTION; INSERT INTO B VALUES (1);")
+        .unwrap();
 
     let (tx, rx) = std::sync::mpsc::channel();
 
@@ -46,7 +54,12 @@ fn test_deadlock_2_sessions() {
     let s1_deadlock = matches!(res_s1, Err(DbError::Deadlock(_)));
     let s2_deadlock = matches!(res_s2, Err(DbError::Deadlock(_)));
 
-    assert!(s1_deadlock || s2_deadlock, "One session should have deadlocked. S1: {:?}, S2: {:?}", res_s1, res_s2);
+    assert!(
+        s1_deadlock || s2_deadlock,
+        "One session should have deadlocked. S1: {:?}, S2: {:?}",
+        res_s1,
+        res_s2
+    );
 
     // The victim's transaction should be rolled back.
     if s1_deadlock {
@@ -72,16 +85,28 @@ fn test_deadlock_3_sessions() {
     let s3 = engine.create_session();
 
     // Set lock timeout
-    engine.execute_session_batch_sql(s1, "SET LOCK_TIMEOUT 5000;").unwrap();
-    engine.execute_session_batch_sql(s2, "SET LOCK_TIMEOUT 5000;").unwrap();
-    engine.execute_session_batch_sql(s3, "SET LOCK_TIMEOUT 5000;").unwrap();
+    engine
+        .execute_session_batch_sql(s1, "SET LOCK_TIMEOUT 5000;")
+        .unwrap();
+    engine
+        .execute_session_batch_sql(s2, "SET LOCK_TIMEOUT 5000;")
+        .unwrap();
+    engine
+        .execute_session_batch_sql(s3, "SET LOCK_TIMEOUT 5000;")
+        .unwrap();
 
     // S1 locks A
-    engine.execute_session_batch_sql(s1, "BEGIN TRANSACTION; INSERT INTO A VALUES (1);").unwrap();
+    engine
+        .execute_session_batch_sql(s1, "BEGIN TRANSACTION; INSERT INTO A VALUES (1);")
+        .unwrap();
     // S2 locks B
-    engine.execute_session_batch_sql(s2, "BEGIN TRANSACTION; INSERT INTO B VALUES (1);").unwrap();
+    engine
+        .execute_session_batch_sql(s2, "BEGIN TRANSACTION; INSERT INTO B VALUES (1);")
+        .unwrap();
     // S3 locks C
-    engine.execute_session_batch_sql(s3, "BEGIN TRANSACTION; INSERT INTO C VALUES (1);").unwrap();
+    engine
+        .execute_session_batch_sql(s3, "BEGIN TRANSACTION; INSERT INTO C VALUES (1);")
+        .unwrap();
 
     let (tx1, rx1) = std::sync::mpsc::channel();
     let (tx2, rx2) = std::sync::mpsc::channel();
@@ -89,23 +114,35 @@ fn test_deadlock_3_sessions() {
     // S1 waits for B (held by S2)
     let e1 = engine.clone();
     thread::spawn(move || {
-        tx1.send(e1.execute_session_batch_sql(s1, "INSERT INTO B VALUES (2);")).unwrap();
+        tx1.send(e1.execute_session_batch_sql(s1, "INSERT INTO B VALUES (2);"))
+            .unwrap();
     });
     thread::sleep(Duration::from_millis(100));
 
     // S2 waits for C (held by S3)
     let e2 = engine.clone();
     thread::spawn(move || {
-        tx2.send(e2.execute_session_batch_sql(s2, "INSERT INTO C VALUES (2);")).unwrap();
+        tx2.send(e2.execute_session_batch_sql(s2, "INSERT INTO C VALUES (2);"))
+            .unwrap();
     });
     thread::sleep(Duration::from_millis(100));
 
     // S3 waits for A (held by S1) -> CYCLE: S1->S2->S3->S1
     let res_s3 = engine.execute_session_batch_sql(s3, "INSERT INTO A VALUES (2);");
 
-    let res_s1 = rx1.recv_timeout(Duration::from_secs(5)).expect("S1 failed to report");
-    let res_s2 = rx2.recv_timeout(Duration::from_secs(5)).expect("S2 failed to report");
+    let res_s1 = rx1
+        .recv_timeout(Duration::from_secs(5))
+        .expect("S1 failed to report");
+    let res_s2 = rx2
+        .recv_timeout(Duration::from_secs(5))
+        .expect("S2 failed to report");
 
-    let deadlocks = [res_s1, res_s2, res_s3].iter().filter(|r| matches!(r, Err(DbError::Deadlock(_)))).count();
-    assert!(deadlocks >= 1, "At least one session should have deadlocked");
+    let deadlocks = [res_s1, res_s2, res_s3]
+        .iter()
+        .filter(|r| matches!(r, Err(DbError::Deadlock(_))))
+        .count();
+    assert!(
+        deadlocks >= 1,
+        "At least one session should have deadlocked"
+    );
 }

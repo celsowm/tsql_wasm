@@ -134,7 +134,7 @@ impl LockTable {
             }
 
             if timeout_ms == 0 {
-                let (table, mode) = conflict_info.unwrap();
+                let (table, mode) = conflict_info.ok_or_else(|| DbError::Execution("lock conflict without conflict info".into()))?;
                 return Err(DbError::Execution(format!(
                     "lock conflict (no-wait): {:?} lock on '{}' is blocked",
                     mode, table
@@ -157,7 +157,7 @@ impl LockTable {
             let elapsed = start.elapsed();
             if timeout_ms > 0 && elapsed.as_millis() >= timeout_ms as u128 {
                 guard.wait_for_graph.remove_waiter(session_id);
-                let (table, mode) = conflict_info.unwrap();
+                let (table, mode) = conflict_info.ok_or_else(|| DbError::Execution("lock timeout without conflict info".into()))?;
                 return Err(DbError::Execution(format!(
                     "lock timeout ({}ms): {:?} lock on '{}' is blocked",
                     timeout_ms, mode, table
@@ -172,7 +172,7 @@ impl LockTable {
                     .saturating_sub(elapsed);
                 if condvar.wait_for(&mut guard, remaining).timed_out() {
                     guard.wait_for_graph.remove_waiter(session_id);
-                    let (table, mode) = conflict_info.unwrap();
+                    let (table, mode) = conflict_info.ok_or_else(|| DbError::Execution("lock timeout without conflict info".into()))?;
                     return Err(DbError::Execution(format!(
                         "lock timeout ({}ms): {:?} lock on '{}' is blocked",
                         timeout_ms, mode, table

@@ -276,7 +276,10 @@ impl<'a> SchemaExecutor<'a> {
                 let table_mut = self
                     .catalog
                     .find_table_mut(&schema_name, &stmt.table.name)
-                    .unwrap();
+                    .ok_or_else(|| DbError::Semantic(format!(
+                        "table '{}.{}' not found",
+                        schema_name, stmt.table.name
+                    )))?;
                 table_mut.columns.push(col);
 
                 // Add NULL values for the new column in existing rows
@@ -292,7 +295,10 @@ impl<'a> SchemaExecutor<'a> {
                 let table_mut = self
                     .catalog
                     .find_table_mut(&schema_name, &stmt.table.name)
-                    .unwrap();
+                    .ok_or_else(|| DbError::Semantic(format!(
+                        "table '{}.{}' not found",
+                        schema_name, stmt.table.name
+                    )))?;
                 let col_idx = table_mut
                     .columns
                     .iter()

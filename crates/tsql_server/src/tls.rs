@@ -36,7 +36,12 @@ pub fn load_tls_config(cert_path: &str, key_path: &str) -> io::Result<ServerConf
         Some(rustls_pemfile::Item::Pkcs8Key(key)) => rustls::pki_types::PrivateKeyDer::Pkcs8(key),
         Some(rustls_pemfile::Item::Pkcs1Key(key)) => rustls::pki_types::PrivateKeyDer::Pkcs1(key),
         Some(rustls_pemfile::Item::Sec1Key(key)) => rustls::pki_types::PrivateKeyDer::Sec1(key),
-        _ => return Err(io::Error::new(io::ErrorKind::InvalidInput, "No private key found")),
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "No private key found",
+            ))
+        }
     };
 
     let config = ServerConfig::builder()

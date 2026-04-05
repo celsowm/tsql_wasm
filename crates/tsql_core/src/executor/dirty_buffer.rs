@@ -1,17 +1,26 @@
-use std::collections::HashMap;
 use crate::catalog::Catalog;
 use crate::storage::{Storage, StoredRow};
+use std::collections::HashMap;
 
 use super::locks::SessionId;
 use super::session::SharedState;
 
 #[derive(Debug, Clone)]
 pub enum DirtyOp {
-    Insert { row: StoredRow },
-    Update { row_index: usize, new_row: StoredRow },
-    Delete { row_index: usize },
+    Insert {
+        row: StoredRow,
+    },
+    Update {
+        row_index: usize,
+        new_row: StoredRow,
+    },
+    Delete {
+        row_index: usize,
+    },
     Truncate,
-    ReplaceTable { rows: Vec<StoredRow> },
+    ReplaceTable {
+        rows: Vec<StoredRow>,
+    },
 }
 
 #[derive(Debug, Default, Clone)]
@@ -84,7 +93,8 @@ where
                             let _ = merged_storage.insert_row(table_id, row.clone());
                         }
                         DirtyOp::Update { row_index, new_row } => {
-                            let _ = merged_storage.update_row(table_id, *row_index, new_row.clone());
+                            let _ =
+                                merged_storage.update_row(table_id, *row_index, new_row.clone());
                         }
                         DirtyOp::Delete { row_index } => {
                             let _ = merged_storage.delete_row(table_id, *row_index);
@@ -106,7 +116,10 @@ where
 
 fn merge_catalog<C: Catalog + Clone>(target: &mut C, source: &C) {
     for table in source.get_tables() {
-        if target.find_table(table.schema_or_dbo(), &table.name).is_none() {
+        if target
+            .find_table(table.schema_or_dbo(), &table.name)
+            .is_none()
+        {
             target.register_table(table.clone());
         }
     }

@@ -6,10 +6,7 @@ impl ObjectResolver for CatalogImpl {
             return Some(table.id as i32);
         }
         if let Some(schema_id) = self.get_schema_id(schema) {
-            if let Some(idx) = self
-                .index_map
-                .get(&(schema_id, name.to_lowercase()))
-            {
+            if let Some(idx) = self.index_map.get(&(schema_id, name.to_lowercase())) {
                 return Some(self.indexes[*idx].id as i32);
             }
         }

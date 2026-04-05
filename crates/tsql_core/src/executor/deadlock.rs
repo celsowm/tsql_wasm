@@ -1,5 +1,5 @@
-﻿use std::collections::{HashMap, HashSet};
 use super::locks::SessionId;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Default)]
 pub struct WaitForGraph {

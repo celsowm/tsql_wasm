@@ -30,8 +30,13 @@ fn eval_having_expr(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     match expr {
-        Expr::FunctionCall { name, args } if dispatch_aggregate(name, args, group, ctx, catalog, storage, clock).is_some() => {
-            dispatch_aggregate(name, args, group, ctx, catalog, storage, clock).unwrap()
+        Expr::FunctionCall { name, args } => {
+            if let Some(res) = dispatch_aggregate(name, args, group, ctx, catalog, storage, clock) {
+                res
+            } else {
+                // Fallback to standard eval_expr if it's not an aggregate
+                eval_expr(expr, row, ctx, catalog, storage, clock)
+            }
         }
         Expr::Binary { left, op, right } => {
             let lv = eval_having_expr(left, row, group, ctx, catalog, storage, clock)?;

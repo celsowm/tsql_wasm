@@ -8,156 +8,161 @@ pub fn parse_expr(parser: &mut Parser) -> ParseResult<Expr> {
 }
 
 fn parse_pratt_expr(parser: &mut Parser, min_bp: u8) -> ParseResult<Expr> {
-    let mut left = parse_primary(parser)?;
+    parser.enter_recursion()?;
+    let res = (|| {
+        let mut left = parse_primary(parser)?;
 
-    loop {
-        if let Some(Token::Keyword(k)) = parser.peek() {
-            if *k == Keyword::Is {
-                let (l_bp, ()) = postfix_binding_power(k);
-                if l_bp < min_bp { break; }
-                let _ = parser.next();
-                let mut negated = false;
-                if parser.at_keyword(Keyword::Not) {
+        loop {
+            if let Some(Token::Keyword(k)) = parser.peek() {
+                if *k == Keyword::Is {
+                    let (l_bp, ()) = postfix_binding_power(k);
+                    if l_bp < min_bp { break; }
                     let _ = parser.next();
-                    negated = true;
-                }
-                parser.expect_keyword(Keyword::Null)?;
-                left = if negated { Expr::IsNotNull(Box::new(left)) } else { Expr::IsNull(Box::new(left)) };
-                continue;
-            }
-            if *k == Keyword::Like {
-                let (l_bp, r_bp) = infix_binding_power_special("LIKE");
-                if l_bp < min_bp { break; }
-                let _ = parser.next();
-                let pattern = parse_pratt_expr(parser, r_bp)?;
-                left = Expr::Like {
-                    expr: Box::new(left),
-                    pattern: Box::new(pattern),
-                    negated: false,
-                };
-                continue;
-            }
-            if *k == Keyword::Between {
-                let (l_bp, _) = infix_binding_power_special("BETWEEN");
-                if l_bp < min_bp { break; }
-                let _ = parser.next();
-                let low = parse_pratt_expr(parser, 6)?;
-                parser.expect_keyword(Keyword::And)?;
-                let high = parse_pratt_expr(parser, 6)?;
-                left = Expr::Between {
-                    expr: Box::new(left),
-                    low: Box::new(low),
-                    high: Box::new(high),
-                    negated: false,
-                };
-                continue;
-            }
-            if *k == Keyword::In {
-                let (l_bp, _) = infix_binding_power_special("IN");
-                if l_bp < min_bp { break; }
-                let _ = parser.next();
-                parser.expect_lparen()?;
-                if parser.at_keyword(Keyword::Select) {
-                    let subquery = Box::new(crate::parser::parse::statements::query::parse_select(parser)?);
-                    parser.expect_rparen()?;
-                    left = Expr::InSubquery { expr: Box::new(left), subquery, negated: false };
-                } else {
-                    let list = parse_comma_list(parser, parse_expr)?;
-                    parser.expect_rparen()?;
-                    left = Expr::InList { expr: Box::new(left), list, negated: false };
-                }
-                continue;
-            }
-            if *k == Keyword::Not {
-                if let Some(Token::Keyword(k2)) = parser.peek_at(1) {
-                    if *k2 == Keyword::Like {
-                         let (l_bp, r_bp) = infix_binding_power_special("LIKE");
-                         if l_bp < min_bp { break; }
-                         let _ = parser.next();
-                         let _ = parser.next();
-                         let pattern = parse_pratt_expr(parser, r_bp)?;
-                         left = Expr::Like {
-                             expr: Box::new(left),
-                             pattern: Box::new(pattern),
-                             negated: true,
-                         };
-                         continue;
+                    let mut negated = false;
+                    if parser.at_keyword(Keyword::Not) {
+                        let _ = parser.next();
+                        negated = true;
                     }
-                    if *k2 == Keyword::Between {
-                         let (l_bp, _) = infix_binding_power_special("BETWEEN");
-                         if l_bp < min_bp { break; }
-                         let _ = parser.next();
-                         let _ = parser.next();
-                         let low = parse_pratt_expr(parser, 6)?;
-                         parser.expect_keyword(Keyword::And)?;
-                         let high = parse_pratt_expr(parser, 6)?;
-                         left = Expr::Between {
-                             expr: Box::new(left),
-                             low: Box::new(low),
-                             high: Box::new(high),
-                             negated: true,
-                         };
-                         continue;
+                    parser.expect_keyword(Keyword::Null)?;
+                    left = if negated { Expr::IsNotNull(Box::new(left)) } else { Expr::IsNull(Box::new(left)) };
+                    continue;
+                }
+                if *k == Keyword::Like {
+                    let (l_bp, r_bp) = infix_binding_power_special("LIKE");
+                    if l_bp < min_bp { break; }
+                    let _ = parser.next();
+                    let pattern = parse_pratt_expr(parser, r_bp)?;
+                    left = Expr::Like {
+                        expr: Box::new(left),
+                        pattern: Box::new(pattern),
+                        negated: false,
+                    };
+                    continue;
+                }
+                if *k == Keyword::Between {
+                    let (l_bp, _) = infix_binding_power_special("BETWEEN");
+                    if l_bp < min_bp { break; }
+                    let _ = parser.next();
+                    let low = parse_pratt_expr(parser, 6)?;
+                    parser.expect_keyword(Keyword::And)?;
+                    let high = parse_pratt_expr(parser, 6)?;
+                    left = Expr::Between {
+                        expr: Box::new(left),
+                        low: Box::new(low),
+                        high: Box::new(high),
+                        negated: false,
+                    };
+                    continue;
+                }
+                if *k == Keyword::In {
+                    let (l_bp, _) = infix_binding_power_special("IN");
+                    if l_bp < min_bp { break; }
+                    let _ = parser.next();
+                    parser.expect_lparen()?;
+                    if parser.at_keyword(Keyword::Select) {
+                        let subquery = Box::new(crate::parser::parse::statements::query::parse_select(parser)?);
+                        parser.expect_rparen()?;
+                        left = Expr::InSubquery { expr: Box::new(left), subquery, negated: false };
+                    } else {
+                        let list = parse_comma_list(parser, parse_expr)?;
+                        parser.expect_rparen()?;
+                        left = Expr::InList { expr: Box::new(left), list, negated: false };
                     }
-                    if *k2 == Keyword::In {
-                         let (l_bp, _) = infix_binding_power_special("IN");
-                         if l_bp < min_bp { break; }
-                         let _ = parser.next();
-                         let _ = parser.next();
-                         parser.expect_lparen()?;
-                         if parser.at_keyword(Keyword::Select) {
-                             let subquery = Box::new(crate::parser::parse::statements::query::parse_select(parser)?);
-                             parser.expect_rparen()?;
-                             left = Expr::InSubquery { expr: Box::new(left), subquery, negated: true };
-                         } else {
-                             let list = parse_comma_list(parser, parse_expr)?;
-                             parser.expect_rparen()?;
-                             left = Expr::InList { expr: Box::new(left), list, negated: true };
-                         }
-                         continue;
+                    continue;
+                }
+                if *k == Keyword::Not {
+                    if let Some(Token::Keyword(k2)) = parser.peek_at(1) {
+                        if *k2 == Keyword::Like {
+                             let (l_bp, r_bp) = infix_binding_power_special("LIKE");
+                             if l_bp < min_bp { break; }
+                             let _ = parser.next();
+                             let _ = parser.next();
+                             let pattern = parse_pratt_expr(parser, r_bp)?;
+                             left = Expr::Like {
+                                 expr: Box::new(left),
+                                 pattern: Box::new(pattern),
+                                 negated: true,
+                             };
+                             continue;
+                        }
+                        if *k2 == Keyword::Between {
+                             let (l_bp, _) = infix_binding_power_special("BETWEEN");
+                             if l_bp < min_bp { break; }
+                             let _ = parser.next();
+                             let _ = parser.next();
+                             let low = parse_pratt_expr(parser, 6)?;
+                             parser.expect_keyword(Keyword::And)?;
+                             let high = parse_pratt_expr(parser, 6)?;
+                             left = Expr::Between {
+                                 expr: Box::new(left),
+                                 low: Box::new(low),
+                                 high: Box::new(high),
+                                 negated: true,
+                             };
+                             continue;
+                        }
+                        if *k2 == Keyword::In {
+                             let (l_bp, _) = infix_binding_power_special("IN");
+                             if l_bp < min_bp { break; }
+                             let _ = parser.next();
+                             let _ = parser.next();
+                             parser.expect_lparen()?;
+                             if parser.at_keyword(Keyword::Select) {
+                                 let subquery = Box::new(crate::parser::parse::statements::query::parse_select(parser)?);
+                                 parser.expect_rparen()?;
+                                 left = Expr::InSubquery { expr: Box::new(left), subquery, negated: true };
+                             } else {
+                                 let list = parse_comma_list(parser, parse_expr)?;
+                                 parser.expect_rparen()?;
+                                 left = Expr::InList { expr: Box::new(left), list, negated: true };
+                             }
+                             continue;
+                        }
                     }
                 }
             }
-        }
 
-        let op = match parser.peek() {
-            Some(Token::Operator(op_str)) => match op_str.as_ref() {
-                "=" => BinaryOp::Eq,
-                "<>" | "!=" => BinaryOp::NotEq,
-                ">" => BinaryOp::Gt,
-                "<" => BinaryOp::Lt,
-                ">=" => BinaryOp::Gte,
-                "<=" => BinaryOp::Lte,
-                "+" => BinaryOp::Add,
-                "-" => BinaryOp::Subtract,
-                "/" => BinaryOp::Divide,
-                "%" => BinaryOp::Modulo,
-                "&" => BinaryOp::BitwiseAnd,
-                "|" => BinaryOp::BitwiseOr,
-                "^" => BinaryOp::BitwiseXor,
+            let op = match parser.peek() {
+                Some(Token::Operator(op_str)) => match op_str.as_ref() {
+                    "=" => BinaryOp::Eq,
+                    "<>" | "!=" => BinaryOp::NotEq,
+                    ">" => BinaryOp::Gt,
+                    "<" => BinaryOp::Lt,
+                    ">=" => BinaryOp::Gte,
+                    "<=" => BinaryOp::Lte,
+                    "+" => BinaryOp::Add,
+                    "-" => BinaryOp::Subtract,
+                    "/" => BinaryOp::Divide,
+                    "%" => BinaryOp::Modulo,
+                    "&" => BinaryOp::BitwiseAnd,
+                    "|" => BinaryOp::BitwiseOr,
+                    "^" => BinaryOp::BitwiseXor,
+                    _ => break,
+                },
+                Some(Token::Star) => BinaryOp::Multiply,
+                Some(Token::Keyword(k)) if *k == Keyword::And => BinaryOp::And,
+                Some(Token::Keyword(k)) if *k == Keyword::Or => BinaryOp::Or,
                 _ => break,
-            },
-            Some(Token::Star) => BinaryOp::Multiply,
-            Some(Token::Keyword(k)) if *k == Keyword::And => BinaryOp::And,
-            Some(Token::Keyword(k)) if *k == Keyword::Or => BinaryOp::Or,
-            _ => break,
-        };
+            };
 
-        let (l_bp, r_bp) = infix_binding_power(&op);
-        if l_bp < min_bp {
-            break;
+            let (l_bp, r_bp) = infix_binding_power(&op);
+            if l_bp < min_bp {
+                break;
+            }
+
+            let _ = parser.next();
+            let right = parse_pratt_expr(parser, r_bp)?;
+            left = Expr::Binary {
+                left: Box::new(left),
+                op,
+                right: Box::new(right),
+            };
         }
 
-        let _ = parser.next();
-        let right = parse_pratt_expr(parser, r_bp)?;
-        left = Expr::Binary {
-            left: Box::new(left),
-            op,
-            right: Box::new(right),
-        };
-    }
-
-    Ok(left)
+        Ok(left)
+    })();
+    parser.leave_recursion();
+    res
 }
 
 fn infix_binding_power(op: &BinaryOp) -> (u8, u8) {

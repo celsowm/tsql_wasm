@@ -142,28 +142,40 @@ fn test_hashbytes_in_where() {
 #[test]
 fn test_parsename_object() {
     let mut engine = Engine::new();
-    let r = query(&mut engine, "SELECT PARSENAME('server.db.dbo.table', 1) AS v");
+    let r = query(
+        &mut engine,
+        "SELECT PARSENAME('server.db.dbo.table', 1) AS v",
+    );
     assert_eq!(r.rows[0][0], Value::NVarChar("table".to_string()));
 }
 
 #[test]
 fn test_parsename_schema() {
     let mut engine = Engine::new();
-    let r = query(&mut engine, "SELECT PARSENAME('server.db.dbo.table', 2) AS v");
+    let r = query(
+        &mut engine,
+        "SELECT PARSENAME('server.db.dbo.table', 2) AS v",
+    );
     assert_eq!(r.rows[0][0], Value::NVarChar("dbo".to_string()));
 }
 
 #[test]
 fn test_parsename_database() {
     let mut engine = Engine::new();
-    let r = query(&mut engine, "SELECT PARSENAME('server.db.dbo.table', 3) AS v");
+    let r = query(
+        &mut engine,
+        "SELECT PARSENAME('server.db.dbo.table', 3) AS v",
+    );
     assert_eq!(r.rows[0][0], Value::NVarChar("db".to_string()));
 }
 
 #[test]
 fn test_parsename_server() {
     let mut engine = Engine::new();
-    let r = query(&mut engine, "SELECT PARSENAME('server.db.dbo.table', 4) AS v");
+    let r = query(
+        &mut engine,
+        "SELECT PARSENAME('server.db.dbo.table', 4) AS v",
+    );
     assert_eq!(r.rows[0][0], Value::NVarChar("server".to_string()));
 }
 
@@ -184,9 +196,18 @@ fn test_parsename_invalid_part() {
 #[test]
 fn test_parsename_in_query() {
     let mut engine = Engine::new();
-    exec(&mut engine, "CREATE TABLE dbo.objects (full_name VARCHAR(100))");
-    exec(&mut engine, "INSERT INTO dbo.objects (full_name) VALUES ('server1.mydb.dbo.users')");
-    exec(&mut engine, "INSERT INTO dbo.objects (full_name) VALUES ('server2.otherdb.dbo.orders')");
+    exec(
+        &mut engine,
+        "CREATE TABLE dbo.objects (full_name VARCHAR(100))",
+    );
+    exec(
+        &mut engine,
+        "INSERT INTO dbo.objects (full_name) VALUES ('server1.mydb.dbo.users')",
+    );
+    exec(
+        &mut engine,
+        "INSERT INTO dbo.objects (full_name) VALUES ('server2.otherdb.dbo.orders')",
+    );
     let r = query(
         &mut engine,
         "SELECT PARSENAME(full_name, 3) AS database_name FROM dbo.objects ORDER BY full_name",

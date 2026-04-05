@@ -68,9 +68,14 @@ pub(crate) fn execute_pivot(
     {
         let first_row = &rows[0];
         for (alias, col_name, _) in &grouping_cols {
-            let original_col = first_row.iter().find(|ct| ct.alias == *alias)
+            let original_col = first_row
+                .iter()
+                .find(|ct| ct.alias == *alias)
                 .and_then(|ct| ct.table.columns.iter().find(|c| c.name == *col_name))
-                .unwrap();
+                .ok_or_else(|| DbError::Execution(format!(
+                    "pivot grouping column '{}' not found",
+                    col_name
+                )))?;
             pivot_columns.push(original_col.clone());
         }
     }
@@ -182,7 +187,11 @@ fn apply_aggregate_to_values(func: &str, values: Vec<Value>, ansi_nulls: bool) -
                 }
             }
             if count == 0 { return Ok(Value::Null); }
-            super::super::operators::eval_binary(&BinaryOp::Divide, sum.unwrap(), Value::BigInt(count), ansi_nulls)
+            let sum = match sum {
+                Some(v) => v,
+                None => return Ok(Value::Null),
+            };
+            super::super::operators::eval_binary(&BinaryOp::Divide, sum, Value::BigInt(count), ansi_nulls)
         }
         "COUNT" => Ok(Value::Int(values.iter().filter(|v| !v.is_null()).count() as i32)),
         "MIN" => {

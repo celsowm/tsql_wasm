@@ -1,9 +1,9 @@
-pub mod session;
-pub mod server;
+pub mod playground;
 pub mod pool;
+pub mod server;
+pub mod session;
 pub mod tds;
 pub mod tls;
-pub mod playground;
 
 pub use server::TdsServer;
 
@@ -76,7 +76,11 @@ impl ServerConfig {
         self
     }
 
-    pub fn with_tls_cert(mut self, cert_path: impl Into<String>, key_path: impl Into<String>) -> Self {
+    pub fn with_tls_cert(
+        mut self,
+        cert_path: impl Into<String>,
+        key_path: impl Into<String>,
+    ) -> Self {
         self.tls_enabled = true;
         self.tls_cert_path = Some(cert_path.into());
         self.tls_key_path = Some(key_path.into());

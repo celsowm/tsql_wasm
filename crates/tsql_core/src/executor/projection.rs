@@ -52,7 +52,10 @@ fn expand_projection_labels(item: &SelectItem, sample: Option<&JoinedRow>) -> Ve
         }
         Expr::QualifiedWildcard(parts) => {
             if let Some(row) = sample {
-                let table_name = parts.last().unwrap();
+                let table_name = match parts.last() {
+                    Some(name) => name,
+                    None => return vec!["*".to_string()],
+                };
                 row.iter()
                     .filter(|binding| {
                         binding.alias.eq_ignore_ascii_case(table_name)

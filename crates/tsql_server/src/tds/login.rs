@@ -116,12 +116,14 @@ pub fn parse_login7(data: &[u8]) -> io::Result<Login7Data> {
 
     let hostname = extract_utf16(ib_hostname, cch_hostname);
     let username = extract_utf16(ib_username, cch_username);
-    let password = if cch_password > 0 && ib_password as usize + (cch_password as usize * 2) <= data.len() {
-        let pw_data = &data[ib_password as usize..ib_password as usize + (cch_password as usize * 2)];
-        decode_password(pw_data)
-    } else {
-        String::new()
-    };
+    let password =
+        if cch_password > 0 && ib_password as usize + (cch_password as usize * 2) <= data.len() {
+            let pw_data =
+                &data[ib_password as usize..ib_password as usize + (cch_password as usize * 2)];
+            decode_password(pw_data)
+        } else {
+            String::new()
+        };
     let app_name = extract_utf16(ib_app_name, cch_app_name);
     let server_name = extract_utf16(ib_server_name, cch_server_name);
     let client_interface_name = extract_utf16(ib_clt_int_name, cch_clt_int_name);

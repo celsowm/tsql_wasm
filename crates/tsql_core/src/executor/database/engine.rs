@@ -66,9 +66,7 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
         self.db.reset();
     }
 
-    pub fn new_with_durability(
-        durability: Box<dyn DurabilitySink<CatalogImpl>>,
-    ) -> Self {
+    pub fn new_with_durability(durability: Box<dyn DurabilitySink<CatalogImpl>>) -> Self {
         let db = DatabaseInner::new_with_durability(durability);
         let default_session = db.session_manager().create_session();
         Self {
@@ -82,15 +80,22 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
     }
 
     pub fn execute(&self, stmt: Statement) -> Result<Option<QueryResult>, DbError> {
-        self.db.executor().execute_session(self.default_session, stmt)
+        self.db
+            .executor()
+            .execute_session(self.default_session, stmt)
     }
 
     pub fn exec(&self, sql: &str) -> Result<(), DbError> {
         let quoted_ident = self.session_options().quoted_identifier;
         let stmt = parse_sql_with_quoted_ident(sql, quoted_ident)?;
-        let res = self.db.executor().execute_session(self.default_session, stmt)?;
+        let res = self
+            .db
+            .executor()
+            .execute_session(self.default_session, stmt)?;
         if res.is_some() {
-            return Err(DbError::Execution("exec() received a query statement; use query()".into()));
+            return Err(DbError::Execution(
+                "exec() received a query statement; use query()".into(),
+            ));
         }
         Ok(())
     }
@@ -98,15 +103,17 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
     pub fn query(&self, sql: &str) -> Result<QueryResult, DbError> {
         let quoted_ident = self.session_options().quoted_identifier;
         let stmt = parse_sql_with_quoted_ident(sql, quoted_ident)?;
-        let res = self.db.executor().execute_session(self.default_session, stmt)?;
+        let res = self
+            .db
+            .executor()
+            .execute_session(self.default_session, stmt)?;
         res.ok_or_else(|| DbError::Execution("query() expected a result set".into()))
     }
 
-    pub fn execute_batch(
-        &self,
-        stmts: Vec<Statement>,
-    ) -> Result<Option<QueryResult>, DbError> {
-        self.db.executor().execute_session_batch(self.default_session, stmts)
+    pub fn execute_batch(&self, stmts: Vec<Statement>) -> Result<Option<QueryResult>, DbError> {
+        self.db
+            .executor()
+            .execute_session_batch(self.default_session, stmts)
     }
 
     pub fn execute_session_batch_sql(
@@ -114,17 +121,19 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
         session_id: SessionId,
         sql: &str,
     ) -> Result<Option<QueryResult>, DbError> {
-        self.db.executor().execute_session_batch_sql(session_id, sql)
+        self.db
+            .executor()
+            .execute_session_batch_sql(session_id, sql)
     }
 
     pub fn set_journal(&self, journal: Box<dyn Journal>) {
-        let _ = self.db.session_manager().set_session_journal(self.default_session, journal);
+        let _ = self
+            .db
+            .session_manager()
+            .set_session_journal(self.default_session, journal);
     }
 
-    pub fn set_durability_sink(
-        &self,
-        durability: Box<dyn DurabilitySink<CatalogImpl>>,
-    ) {
+    pub fn set_durability_sink(&self, durability: Box<dyn DurabilitySink<CatalogImpl>>) {
         self.db.set_durability_sink(durability);
     }
 
@@ -137,16 +146,24 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
     }
 
     pub fn session_isolation_level(&self) -> IsolationLevel {
-        self.db.analyzer().session_isolation_level(self.default_session)
+        self.db
+            .analyzer()
+            .session_isolation_level(self.default_session)
             .unwrap_or(IsolationLevel::ReadCommitted)
     }
 
     pub fn transaction_is_active(&self) -> bool {
-        self.db.analyzer().transaction_is_active(self.default_session).unwrap_or(false)
+        self.db
+            .analyzer()
+            .transaction_is_active(self.default_session)
+            .unwrap_or(false)
     }
 
     pub fn session_options(&self) -> SessionOptions {
-        self.db.analyzer().session_options(self.default_session).unwrap_or_default()
+        self.db
+            .analyzer()
+            .session_options(self.default_session)
+            .unwrap_or_default()
     }
 
     pub fn explain_sql(&self, sql: &str) -> Result<ExplainPlan, DbError> {
@@ -154,7 +171,9 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
     }
 
     pub fn trace_execute_sql(&self, sql: &str) -> Result<ExecutionTrace, DbError> {
-        self.db.analyzer().trace_execute_session_sql(self.default_session, sql)
+        self.db
+            .analyzer()
+            .trace_execute_session_sql(self.default_session, sql)
     }
 
     pub fn print_output(&self) -> Vec<String> {
@@ -165,7 +184,13 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
 impl<C, S> EngineInner<C, S>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     pub fn create_session(&self) -> SessionId {
         self.db.session_manager().create_session()

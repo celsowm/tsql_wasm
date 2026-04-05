@@ -148,5 +148,9 @@ pub fn parse_sql_with_quoted_ident(
     if stmts.len() != 1 {
         return Err(DbError::Parse("Expected exactly one statement".into()));
     }
-    Ok(stmts.into_iter().next().unwrap())
+    if let Some(stmt) = stmts.into_iter().next() {
+        Ok(stmt)
+    } else {
+        Err(DbError::Parse("Expected exactly one statement".into()))
+    }
 }

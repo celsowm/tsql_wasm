@@ -620,7 +620,11 @@ impl<'a> ScriptExecutor<'a> {
                 &merge_output_rows,
             )?;
             if let Some(ref target) = stmt.output_into {
-                mut_exec.insert_output_into(target, result.as_ref().unwrap(), ctx)?;
+                if let Some(result) = result.as_ref() {
+                    mut_exec.insert_output_into(target, result, ctx)?;
+                } else {
+                    return Err(DbError::Execution("OUTPUT INTO produced no result".into()));
+                }
                 return Ok(None);
             }
             return Ok(result);

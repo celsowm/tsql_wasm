@@ -12,13 +12,11 @@ use crate::executor::session::SessionManager as SessionManagerTrait;
 use crate::executor::tooling::{ExecutionTrace, ExplainPlan, SessionOptions};
 use crate::storage::Storage;
 
-use super::super::durability::{DurabilitySink, RecoveryReader, RecoveryCheckpoint};
+use super::super::durability::{DurabilitySink, RecoveryCheckpoint, RecoveryReader};
 use super::super::session::{SharedState, SharedStorage};
 use super::{
-    CheckpointManager as CheckpointManagerTrait,
-    RandomSeed as RandomSeedTrait,
-    SqlAnalyzer as SqlAnalyzerTrait,
-    StatementExecutor as StatementExecutorTrait,
+    CheckpointManager as CheckpointManagerTrait, RandomSeed as RandomSeedTrait,
+    SqlAnalyzer as SqlAnalyzerTrait, StatementExecutor as StatementExecutorTrait,
 };
 
 mod checkpoint;
@@ -61,7 +59,13 @@ impl DatabaseInner<CatalogImpl, crate::storage::RedbStorage> {
 impl<C, S> DatabaseInner<C, S>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     pub fn new() -> Self {
         let mut catalog = C::default();
@@ -72,9 +76,7 @@ where
         }
     }
 
-    pub fn new_with_durability(
-        durability: Box<dyn DurabilitySink<C>>,
-    ) -> Self {
+    pub fn new_with_durability(durability: Box<dyn DurabilitySink<C>>) -> Self {
         let state = if let Some(checkpoint) = durability.latest_checkpoint() {
             SharedState::from_checkpoint(checkpoint, durability, S::default())
         } else {
@@ -111,32 +113,39 @@ where
         }
     }
 
-    pub fn set_durability_sink(
-        &self,
-        durability: Box<dyn DurabilitySink<C>>,
-    ) {
+    pub fn set_durability_sink(&self, durability: Box<dyn DurabilitySink<C>>) {
         let mut guard = self.inner.durability.lock();
         *guard = durability;
     }
 
     pub fn executor(&self) -> super::StatementExecutorService<C, S> {
-        super::StatementExecutorService { state: self.inner.clone() }
+        super::StatementExecutorService {
+            state: self.inner.clone(),
+        }
     }
 
     pub fn checkpoint_manager(&self) -> super::CheckpointManagerService<C, S> {
-        super::CheckpointManagerService { state: self.inner.clone() }
+        super::CheckpointManagerService {
+            state: self.inner.clone(),
+        }
     }
 
     pub fn analyzer(&self) -> super::SqlAnalyzerService<C, S> {
-        super::SqlAnalyzerService { state: self.inner.clone() }
+        super::SqlAnalyzerService {
+            state: self.inner.clone(),
+        }
     }
 
     pub fn session_manager(&self) -> super::SessionManagerService<C, S> {
-        super::SessionManagerService { state: self.inner.clone() }
+        super::SessionManagerService {
+            state: self.inner.clone(),
+        }
     }
 
     pub fn print_output(&self, session_id: SessionId) -> Vec<String> {
-        self.inner.sessions.get(&session_id)
+        self.inner
+            .sessions
+            .get(&session_id)
             .map(|s| s.lock().diagnostics.print_output.clone())
             .unwrap_or_default()
     }
@@ -178,7 +187,8 @@ where
         session_id: SessionId,
         sql: &str,
     ) -> Result<Vec<Option<QueryResult>>, DbError> {
-        self.executor().execute_session_batch_sql_multi(session_id, sql)
+        self.executor()
+            .execute_session_batch_sql_multi(session_id, sql)
     }
 
     pub fn set_session_seed(&self, session_id: SessionId, seed: u64) -> Result<(), DbError> {
@@ -213,7 +223,13 @@ where
 impl<C, S> SessionManagerTrait for DatabaseInner<C, S>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     fn create_session(&self) -> SessionId {
         self.session_manager().create_session()
@@ -232,14 +248,21 @@ where
         session_id: SessionId,
         journal: Box<dyn crate::executor::journal::Journal>,
     ) -> Result<(), DbError> {
-        self.session_manager().set_session_journal(session_id, journal)
+        self.session_manager()
+            .set_session_journal(session_id, journal)
     }
 }
 
 impl<C, S> StatementExecutorTrait for DatabaseInner<C, S>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     fn execute_session(
         &self,
@@ -270,7 +293,8 @@ where
         session_id: SessionId,
         sql: &str,
     ) -> Result<Vec<Option<QueryResult>>, DbError> {
-        self.executor().execute_session_batch_sql_multi(session_id, sql)
+        self.executor()
+            .execute_session_batch_sql_multi(session_id, sql)
     }
 
     fn set_session_metadata(
@@ -288,7 +312,13 @@ where
 impl<C, S> SqlAnalyzerTrait for DatabaseInner<C, S>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     fn explain_sql(&self, sql: &str) -> Result<ExplainPlan, DbError> {
         self.analyzer().explain_sql(sql)
@@ -302,7 +332,10 @@ where
         self.analyzer().trace_execute_session_sql(session_id, sql)
     }
 
-    fn session_isolation_level(&self, session_id: SessionId) -> Result<crate::ast::IsolationLevel, DbError> {
+    fn session_isolation_level(
+        &self,
+        session_id: SessionId,
+    ) -> Result<crate::ast::IsolationLevel, DbError> {
         self.analyzer().session_isolation_level(session_id)
     }
 
@@ -318,7 +351,13 @@ where
 impl<C, S> RandomSeedTrait for DatabaseInner<C, S>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     fn set_session_seed(&self, session_id: SessionId, seed: u64) -> Result<(), DbError> {
         self.analyzer().set_session_seed(session_id, seed)
@@ -328,7 +367,13 @@ where
 impl<C, S> super::CheckpointManager for DatabaseInner<C, S>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     fn export_checkpoint(&self) -> Result<String, DbError> {
         self.checkpoint_manager().export_checkpoint()
@@ -339,11 +384,15 @@ where
     }
 }
 
-
 impl<C, S> SharedState<C, S>
 where
     C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
 {
     pub fn from_checkpoint(
         checkpoint: RecoveryCheckpoint<C>,
@@ -362,7 +411,9 @@ where
             durability: parking_lot::Mutex::new(durability),
             sessions: dashmap::DashMap::new(),
             next_session_id: std::sync::atomic::AtomicU64::new(1),
-            dirty_buffer: std::sync::Arc::new(parking_lot::Mutex::new(super::super::dirty_buffer::DirtyBuffer::new())),
+            dirty_buffer: std::sync::Arc::new(parking_lot::Mutex::new(
+                super::super::dirty_buffer::DirtyBuffer::new(),
+            )),
         }
     }
 
@@ -377,17 +428,23 @@ where
                 table_versions: checkpoint.table_versions,
             }),
             table_locks: parking_lot::Mutex::new(super::super::locks::LockTable::new()),
-            durability: parking_lot::Mutex::new(Box::new(super::super::durability::NoopDurability::default())),
+            durability: parking_lot::Mutex::new(Box::new(
+                super::super::durability::NoopDurability::default(),
+            )),
             sessions: dashmap::DashMap::new(),
             next_session_id: std::sync::atomic::AtomicU64::new(1),
-            dirty_buffer: std::sync::Arc::new(parking_lot::Mutex::new(super::super::dirty_buffer::DirtyBuffer::new())),
+            dirty_buffer: std::sync::Arc::new(parking_lot::Mutex::new(
+                super::super::dirty_buffer::DirtyBuffer::new(),
+            )),
         }
     }
 
     pub fn apply_checkpoint(&self, checkpoint: RecoveryCheckpoint<C>) {
         let mut storage = self.storage.write();
         storage.catalog = checkpoint.catalog;
-        let _ = storage.storage.restore_from_checkpoint(checkpoint.storage_data);
+        let _ = storage
+            .storage
+            .restore_from_checkpoint(checkpoint.storage_data);
         storage.commit_ts = checkpoint.commit_ts;
         storage.table_versions = checkpoint.table_versions;
         self.table_locks.lock().clear();

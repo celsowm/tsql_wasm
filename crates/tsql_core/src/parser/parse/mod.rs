@@ -32,6 +32,13 @@ pub fn parse_batch(parser: &mut Parser) -> ParseResult<Vec<Statement>> {
 }
 
 pub fn parse_statement(parser: &mut Parser) -> ParseResult<Statement> {
+    parser.enter_recursion()?;
+    let res = parse_statement_inner(parser);
+    parser.leave_recursion();
+    res
+}
+
+fn parse_statement_inner(parser: &mut Parser) -> ParseResult<Statement> {
     if parser.at_keyword(Keyword::With) {
         let _ = parser.next();
         let ctes = parse_comma_list(parser, parse_cte_def)?;

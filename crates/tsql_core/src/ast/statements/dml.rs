@@ -1,9 +1,9 @@
-﻿use serde::{Deserialize, Serialize};
-use crate::ast::ObjectName;
-use crate::ast::expressions::Expr;
-use crate::ast::statements::query::{SelectStmt, JoinClause, ApplyClause, TopSpec};
 use crate::ast::common::TableRef;
+use crate::ast::expressions::Expr;
+use crate::ast::statements::query::{ApplyClause, JoinClause, SelectStmt, TopSpec};
+use crate::ast::ObjectName;
 use crate::ast::Statement;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InsertStmt {
@@ -75,8 +75,13 @@ pub struct MergeWhenClause {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MergeAction {
-    Update { assignments: Vec<Assignment> },
-    Insert { columns: Vec<String>, values: Vec<Expr> },
+    Update {
+        assignments: Vec<Assignment>,
+    },
+    Insert {
+        columns: Vec<String>,
+        values: Vec<Expr>,
+    },
     Delete,
 }
 

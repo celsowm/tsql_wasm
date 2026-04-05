@@ -11,12 +11,12 @@ use super::context::ExecutionContext;
 use super::identifier::{resolve_identifier, resolve_qualified_identifier};
 use super::model::JoinedRow;
 use super::operators::{eval_binary, eval_unary};
-use super::script::ScriptExecutor;
 use super::predicates::{
     eval_between, eval_case, eval_exists, eval_in_list, eval_in_subquery, eval_like,
     eval_scalar_subquery,
 };
 use super::scalar::eval_function;
+use super::script::ScriptExecutor;
 use super::type_mapping::data_type_spec_to_runtime;
 use super::value_ops::{coerce_value_to_type, truthy};
 
@@ -67,8 +67,9 @@ pub(crate) fn eval_constant_expr(
 fn is_read_only_statement(stmt: &crate::ast::Statement) -> bool {
     use crate::ast::{DmlStatement, ProceduralStatement, Statement};
     match stmt {
-        Statement::Dml(DmlStatement::Select(_))
-        | Statement::Dml(DmlStatement::SelectAssign(_)) => true,
+        Statement::Dml(DmlStatement::Select(_)) | Statement::Dml(DmlStatement::SelectAssign(_)) => {
+            true
+        }
         Statement::Procedural(ps) => match ps {
             ProceduralStatement::Declare(_)
             | ProceduralStatement::Set(_)
@@ -168,6 +169,8 @@ pub(crate) fn eval_udf_body<'a>(
     }
 }
 
+const MAX_RECURSION_DEPTH: usize = 32;
+
 pub fn eval_expr(
     expr: &Expr,
     row: &[super::model::ContextTable],
@@ -176,7 +179,15 @@ pub fn eval_expr(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    match expr {
+    if ctx.frame.depth > MAX_RECURSION_DEPTH {
+        return Err(DbError::Execution(format!(
+            "Maximum recursion depth ({}) exceeded",
+            MAX_RECURSION_DEPTH
+        )));
+    }
+
+    ctx.frame.depth += 1;
+    let res = match expr {
         Expr::Identifier(name) => resolve_identifier(row, name, ctx),
         Expr::QualifiedIdentifier(parts) => resolve_qualified_identifier(row, parts, ctx),
         Expr::Wildcard => Err(DbError::Execution(
@@ -328,7 +339,9 @@ pub fn eval_expr(
                 ))
             }
         }
-    }
+    };
+    ctx.frame.depth -= 1;
+    res
 }
 
 pub(crate) fn eval_predicate(

@@ -26,9 +26,18 @@ fn test_concat_with_numbers() {
 #[test]
 fn test_concat_with_column() {
     let mut engine = Engine::new();
-    exec(&mut engine, "CREATE TABLE dbo.t (first_name VARCHAR(10), last_name VARCHAR(10))");
-    exec(&mut engine, "INSERT INTO dbo.t (first_name, last_name) VALUES ('John', 'Doe')");
-    let r = query(&mut engine, "SELECT CONCAT(first_name, ' ', last_name) AS full_name FROM dbo.t");
+    exec(
+        &mut engine,
+        "CREATE TABLE dbo.t (first_name VARCHAR(10), last_name VARCHAR(10))",
+    );
+    exec(
+        &mut engine,
+        "INSERT INTO dbo.t (first_name, last_name) VALUES ('John', 'Doe')",
+    );
+    let r = query(
+        &mut engine,
+        "SELECT CONCAT(first_name, ' ', last_name) AS full_name FROM dbo.t",
+    );
     assert_eq!(r.rows[0][0], Value::NVarChar("John Doe".to_string()));
 }
 
@@ -257,7 +266,10 @@ fn test_format_null() {
 #[test]
 fn test_patindex_found() {
     let mut engine = Engine::new();
-    let r = query(&mut engine, "SELECT PATINDEX('%world%', 'hello world') AS v");
+    let r = query(
+        &mut engine,
+        "SELECT PATINDEX('%world%', 'hello world') AS v",
+    );
     assert_eq!(r.rows[0][0], Value::Int(7));
 }
 
@@ -286,9 +298,18 @@ fn test_patindex_null() {
 fn test_patindex_in_where() {
     let mut engine = Engine::new();
     exec(&mut engine, "CREATE TABLE dbo.t (email VARCHAR(50))");
-    exec(&mut engine, "INSERT INTO dbo.t (email) VALUES ('user@gmail.com')");
-    exec(&mut engine, "INSERT INTO dbo.t (email) VALUES ('admin@company.org')");
-    exec(&mut engine, "INSERT INTO dbo.t (email) VALUES ('no-at-sign')");
+    exec(
+        &mut engine,
+        "INSERT INTO dbo.t (email) VALUES ('user@gmail.com')",
+    );
+    exec(
+        &mut engine,
+        "INSERT INTO dbo.t (email) VALUES ('admin@company.org')",
+    );
+    exec(
+        &mut engine,
+        "INSERT INTO dbo.t (email) VALUES ('no-at-sign')",
+    );
     let r = query(
         &mut engine,
         "SELECT email FROM dbo.t WHERE PATINDEX('%@%', email) > 0 ORDER BY email",
@@ -366,7 +387,10 @@ fn test_soundex_with_difference() {
     let mut engine = Engine::new();
     exec(&mut engine, "CREATE TABLE dbo.names (name VARCHAR(20))");
     exec(&mut engine, "INSERT INTO dbo.names (name) VALUES ('Smith')");
-    exec(&mut engine, "INSERT INTO dbo.names (name) VALUES ('Smythe')");
+    exec(
+        &mut engine,
+        "INSERT INTO dbo.names (name) VALUES ('Smythe')",
+    );
     exec(&mut engine, "INSERT INTO dbo.names (name) VALUES ('Jones')");
     let r = query(
         &mut engine,
@@ -510,22 +534,37 @@ fn test_unicode_equals_ascii_for_ascii_chars() {
 #[test]
 fn test_string_escape_json() {
     let mut engine = Engine::new();
-    let r = query(&mut engine, "SELECT STRING_ESCAPE('hello \"world\"', 'JSON') AS v");
-    assert_eq!(r.rows[0][0], Value::NVarChar("hello \\\"world\\\"".to_string()));
+    let r = query(
+        &mut engine,
+        "SELECT STRING_ESCAPE('hello \"world\"', 'JSON') AS v",
+    );
+    assert_eq!(
+        r.rows[0][0],
+        Value::NVarChar("hello \\\"world\\\"".to_string())
+    );
 }
 
 #[test]
 fn test_string_escape_json_newline() {
     let mut engine = Engine::new();
-    let r = query(&mut engine, "SELECT STRING_ESCAPE('line1' + CHAR(13) + CHAR(10) + 'line2', 'JSON') AS v");
+    let r = query(
+        &mut engine,
+        "SELECT STRING_ESCAPE('line1' + CHAR(13) + CHAR(10) + 'line2', 'JSON') AS v",
+    );
     assert!(r.rows[0][0].to_string_value().contains("\\r\\n"));
 }
 
 #[test]
 fn test_string_escape_html() {
     let mut engine = Engine::new();
-    let r = query(&mut engine, "SELECT STRING_ESCAPE('<b>bold</b>', 'HTML') AS v");
-    assert_eq!(r.rows[0][0], Value::NVarChar("&lt;b&gt;bold&lt;/b&gt;".to_string()));
+    let r = query(
+        &mut engine,
+        "SELECT STRING_ESCAPE('<b>bold</b>', 'HTML') AS v",
+    );
+    assert_eq!(
+        r.rows[0][0],
+        Value::NVarChar("&lt;b&gt;bold&lt;/b&gt;".to_string())
+    );
 }
 
 #[test]
@@ -547,20 +586,14 @@ fn test_string_escape_null() {
 #[test]
 fn test_ascii_char_composition() {
     let mut engine = Engine::new();
-    let r = query(
-        &mut engine,
-        "SELECT CONCAT(CHAR(ASCII('H')), 'ello') AS v",
-    );
+    let r = query(&mut engine, "SELECT CONCAT(CHAR(ASCII('H')), 'ello') AS v");
     assert_eq!(r.rows[0][0], Value::NVarChar("Hello".to_string()));
 }
 
 #[test]
 fn test_nchar_unicode_composition() {
     let mut engine = Engine::new();
-    let r = query(
-        &mut engine,
-        "SELECT CONCAT(NCHAR(9731), ' snow') AS v",
-    );
+    let r = query(&mut engine, "SELECT CONCAT(NCHAR(9731), ' snow') AS v");
     assert_eq!(r.rows[0][0], Value::NVarChar("\u{2603} snow".to_string()));
 }
 
@@ -568,10 +601,16 @@ fn test_nchar_unicode_composition() {
 fn test_string_escape_in_query() {
     let mut engine = Engine::new();
     exec(&mut engine, "CREATE TABLE dbo.t (msg VARCHAR(100))");
-    exec(&mut engine, "INSERT INTO dbo.t (msg) VALUES ('He said \"hello\"')");
+    exec(
+        &mut engine,
+        "INSERT INTO dbo.t (msg) VALUES ('He said \"hello\"')",
+    );
     let r = query(
         &mut engine,
         "SELECT STRING_ESCAPE(msg, 'JSON') AS escaped FROM dbo.t",
     );
-    assert_eq!(r.rows[0][0], Value::NVarChar("He said \\\"hello\\\"".to_string()));
+    assert_eq!(
+        r.rows[0][0],
+        Value::NVarChar("He said \\\"hello\\\"".to_string())
+    );
 }

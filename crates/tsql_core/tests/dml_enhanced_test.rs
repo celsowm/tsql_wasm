@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod dml_enhanced_tests {
-    use tsql_core::parser::parse_sql;
     use tsql_core::ast::*;
+    use tsql_core::parser::parse_sql;
 
     #[test]
     fn test_update_top() {
