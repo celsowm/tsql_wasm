@@ -178,7 +178,34 @@ pub(crate) fn eval_serverproperty(
         "INSTANCENAME" => Value::Null,
         "COLLATION" => Value::NVarChar("SQL_Latin1_General_CP1_CI_AS".to_string()),
         "ISINTEGRATEDSECURITYONLY" => Value::Int(0),
+        "ISSINGLEUSER" => Value::Int(0),
         "ISXTPSUPPORTED" => Value::Int(0),
+        _ => Value::Null,
+    })
+}
+
+pub(crate) fn eval_fulltextserviceproperty(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution(
+            "FULLTEXTSERVICEPROPERTY expects 1 argument".into(),
+        ));
+    }
+
+    let property = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if property.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let name = property.to_string_value().to_uppercase();
+    Ok(match name.as_str() {
+        "ISFULLTEXTINSTALLED" => Value::Int(0),
         _ => Value::Null,
     })
 }
@@ -211,6 +238,106 @@ pub(crate) fn eval_connectionproperty(
         "LOCAL_TCP_PORT" => Value::NVarChar("1433".to_string()),
         _ => Value::Null,
     })
+}
+
+pub(crate) fn eval_is_srvrolemember(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution(
+            "IS_SRVROLEMEMBER expects 1 argument".into(),
+        ));
+    }
+
+    let role = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if role.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let role_name = role.to_string_value().to_ascii_lowercase();
+    let is_member = match role_name.as_str() {
+        // Emulated server: treat login as sysadmin to satisfy SSMS server-node probes.
+        "sysadmin" => 1,
+        "serveradmin" | "setupadmin" | "securityadmin" | "processadmin" | "dbcreator"
+        | "diskadmin" | "bulkadmin" => 0,
+        _ => 0,
+    };
+    Ok(Value::Int(is_member))
+}
+
+pub(crate) fn eval_has_dbaccess(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("HAS_DBACCESS expects 1 argument".into()));
+    }
+    let db = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if db.is_null() {
+        return Ok(Value::Null);
+    }
+    let db_name = db.to_string_value();
+    Ok(Value::Int(if db_name.eq_ignore_ascii_case("master") {
+        1
+    } else {
+        0
+    }))
+}
+
+pub(crate) fn eval_has_perms_by_name(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() < 2 || args.len() > 4 {
+        return Err(DbError::Execution(
+            "HAS_PERMS_BY_NAME expects 2 to 4 arguments".into(),
+        ));
+    }
+
+    let securable = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let class = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+    if class.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let perm = if args.len() >= 3 {
+        eval_expr(&args[2], row, ctx, catalog, storage, clock)?
+            .to_string_value()
+            .to_ascii_uppercase()
+    } else {
+        String::new()
+    };
+    let securable_name = if securable.is_null() {
+        String::new()
+    } else {
+        securable.to_string_value()
+    };
+    let class_name = class.to_string_value().to_ascii_uppercase();
+
+    // Minimal permission model for SSMS object explorer probes.
+    let allowed = if class_name == "SERVER" && perm == "VIEW ANY DATABASE" {
+        true
+    } else if class_name == "SERVER" && perm == "CONNECT SQL" {
+        true
+    } else if class_name == "DATABASE" && securable_name.eq_ignore_ascii_case("master") {
+        true
+    } else {
+        false
+    };
+    Ok(Value::Int(if allowed { 1 } else { 0 }))
 }
 
 pub(crate) fn eval_microsoft_version() -> Value {
@@ -284,8 +411,19 @@ pub(crate) fn eval_db_name(args: &[Expr], ctx: &ExecutionContext) -> Result<Valu
             "DB_NAME expects 0 or 1 arguments".into(),
         ));
     }
-    if !args.is_empty() {
-        // DB_NAME(database_id) - for now always return current db
+    if let Some(arg) = args.first() {
+        let name = match arg {
+            Expr::Integer(1) => "master".to_string(),
+            Expr::String(s) | Expr::UnicodeString(s) => {
+                if s.eq_ignore_ascii_case("master") {
+                    "master".to_string()
+                } else {
+                    return Ok(Value::Null);
+                }
+            }
+            _ => return Ok(Value::Null),
+        };
+        return Ok(Value::NVarChar(name));
     }
     Ok(Value::NVarChar(
         ctx.metadata
@@ -299,7 +437,16 @@ pub(crate) fn eval_db_id(args: &[Expr], _ctx: &ExecutionContext) -> Result<Value
     if args.len() > 1 {
         return Err(DbError::Execution("DB_ID expects 0 or 1 arguments".into()));
     }
-    Ok(Value::Int(1)) // Always db_id=1 for emulator
+    if let Some(arg) = args.first() {
+        return Ok(match arg {
+            Expr::Integer(1) => Value::Int(1),
+            Expr::String(s) | Expr::UnicodeString(s) if s.eq_ignore_ascii_case("master") => {
+                Value::Int(1)
+            }
+            _ => Value::Null,
+        });
+    }
+    Ok(Value::Int(1))
 }
 
 pub(crate) fn eval_suser_sname(args: &[Expr], ctx: &ExecutionContext) -> Result<Value, DbError> {

@@ -554,6 +554,18 @@ fn try_system_dispatch(
         "CONNECTIONPROPERTY" => Some(system::eval_connectionproperty(
             args, row, ctx, catalog, storage, clock,
         )),
+        "FULLTEXTSERVICEPROPERTY" => Some(system::eval_fulltextserviceproperty(
+            args, row, ctx, catalog, storage, clock,
+        )),
+        "IS_SRVROLEMEMBER" => Some(system::eval_is_srvrolemember(
+            args, row, ctx, catalog, storage, clock,
+        )),
+        "HAS_DBACCESS" => Some(system::eval_has_dbaccess(
+            args, row, ctx, catalog, storage, clock,
+        )),
+        "HAS_PERMS_BY_NAME" => Some(system::eval_has_perms_by_name(
+            args, row, ctx, catalog, storage, clock,
+        )),
         _ if name.starts_with("@@") => match system_vars::resolve_system_variable(name, ctx) {
             Ok(Some(val)) => Some(Ok(val)),
             Ok(None) => None,

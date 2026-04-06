@@ -371,11 +371,7 @@ const restoredRows = await restored.query(`SELECT COUNT(*) FROM dbo.Users`);
 ### Quick Start
 
 ```bash
-# Run with playground mode (TLS disabled for easy client testing)
-cargo run --package tsql_server --bin tsql-server -- --playground --no-tls
-
-# Or with TLS enabled
-cargo run --package tsql_server --bin tsql-server -- --playground --tls-gen
+.\scripts\start-playground-sa.ps1
 ```
 
 ### Sample Tables
@@ -408,12 +404,12 @@ Once the playground server is running, you can connect with any SQL Server clien
 #### Using `sqlcmd`
 
 ```bash
-sqlcmd -S localhost,14330 -U sa -P '' -Q "SELECT * FROM dbo.vCustomerOrders"
+sqlcmd -S localhost -U sa -P '' -Q "SELECT * FROM dbo.vCustomerOrders"
 ```
 
 #### Using Azure Data Studio / SSMS
 
-- Server: `localhost,14330`
+- Server: `localhost`
 - Authentication: SQL Server Authentication (or Windows if no auth configured)
 - Username: `sa` (if auth enabled)
 - Password: (any password if no auth configured)
@@ -425,7 +421,7 @@ import { connect } from 'tedious';
 
 const config = {
   server: 'localhost',
-  port: 14330,
+  port: 1433,
   authentication: { type: 'default', options: { userName: 'sa', password: '' } },
   options: { encrypt: false, trustServerCertificate: true }
 };
@@ -433,12 +429,9 @@ const config = {
 const connection = await connect(config);
 ```
 
-### Docker
+### PowerShell
 
-```bash
-# Build and run playground container
-docker-compose --profile playground up tsql-playground
-```
+Use `scripts/start-playground-sa.ps1` to start the playground locally on `localhost:1433` with TLS and SQL auth for SSMS.
 
 ---
 

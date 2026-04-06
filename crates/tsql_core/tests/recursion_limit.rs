@@ -10,8 +10,8 @@ fn make_abs_chain(depth: usize) -> String {
 
 #[test]
 fn test_parser_recursion_limit() {
-    // Parser limit is 4.
-    let sql = format!("SELECT {}", make_abs_chain(20));
+    // Keep this well above the parser limit so we still verify the guard rail.
+    let sql = format!("SELECT {}", make_abs_chain(64));
 
     // In some environments, this might still blow the stack before hitting the limit
     // if the stack is very small. We rely on the limit being hit first.

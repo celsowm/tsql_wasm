@@ -15,7 +15,7 @@ impl VirtualTable for SysHostInfo {
                 ("host_distribution", DataType::VarChar { max_len: 128 }, false),
                 ("host_release", DataType::VarChar { max_len: 128 }, false),
                 ("host_service_pack_level", DataType::VarChar { max_len: 128 }, false),
-                ("host_sku", DataType::VarChar { max_len: 128 }, false),
+                ("host_sku", DataType::Int, false),
                 ("os_language_version", DataType::Int, false),
             ],
         )
@@ -28,7 +28,7 @@ impl VirtualTable for SysHostInfo {
                 Value::VarChar("Windows".to_string()),
                 Value::VarChar("10.0".to_string()),
                 Value::VarChar(String::new()),
-                Value::VarChar("Desktop".to_string()),
+                Value::Int(7),
                 Value::Int(1033),
             ],
             deleted: false,

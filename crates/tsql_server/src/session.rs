@@ -3,6 +3,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
 use tsql_core::{Database, SessionId, StatementExecutor};
+use tsql_core::types::{DataType, Value};
 
 use super::pool::{CheckoutError, SessionPool};
 use super::tds::batch::{build_error_response, parse_sql_batch};
@@ -387,6 +388,7 @@ impl TdsSession {
         }
 
         log::info!("Executing SQL:\n{}", sql);
+        let force_sysdac_probe_int = is_sysdac_instances_probe(sql);
         match self
             .db
             .executor()
@@ -405,7 +407,23 @@ impl TdsSession {
                     };
 
                     match result {
-                        Some(query_result) if !query_result.columns.is_empty() => {
+                        Some(mut query_result) if !query_result.columns.is_empty() => {
+                            if force_sysdac_probe_int
+                                && query_result.columns.len() == 1
+                                && query_result.rows.len() == 1
+                            {
+                                query_result.column_types[0] = DataType::Int;
+                                if let Some(row) = query_result.rows.get_mut(0) {
+                                    if let Some(value) = row.get_mut(0) {
+                                        let int_val = match &*value {
+                                            Value::Null => 0,
+                                            other => other.to_integer_i64().unwrap_or(0) as i32,
+                                        };
+                                        *value = Value::Int(int_val);
+                                    }
+                                }
+                            }
+
                             let mut types = Vec::new();
                             log::debug!(
                                 "Result set: columns={}, types={}",
@@ -414,6 +432,20 @@ impl TdsSession {
                             );
                             for ct in &query_result.column_types {
                                 types.push(crate::tds::type_mapping::runtime_type_to_tds(ct));
+                            }
+                            for (idx, col_name) in query_result.columns.iter().enumerate() {
+                                if let (Some(runtime_ty), Some(tds_ty)) =
+                                    (query_result.column_types.get(idx), types.get(idx))
+                                {
+                                    log::debug!(
+                                        "COLMETADATA[{}]: name='{}' runtime={:?} tds=0x{:02X} len={:02X?}",
+                                        idx,
+                                        col_name,
+                                        runtime_ty,
+                                        tds_ty.tds_type,
+                                        tds_ty.length_prefix
+                                    );
+                                }
                             }
                             tokens::write_colmetadata(&mut b, &query_result.columns, &types);
                             for row in &query_result.rows {
@@ -460,4 +492,13 @@ impl TdsSession {
 
         Ok(true)
     }
+}
+
+fn is_sysdac_instances_probe(sql: &str) -> bool {
+    let normalized = sql
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+    normalized == "select case when object_id('dbo.sysdac_instances') is not null then 1 else 0 end"
 }

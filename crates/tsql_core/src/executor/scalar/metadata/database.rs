@@ -27,13 +27,20 @@ pub(crate) fn eval_databasepropertyex(
     if db_val.is_null() || prop_val.is_null() {
         return Ok(Value::Null);
     }
-    let db_name = db_val.to_string_value();
+    let db_name = match db_val {
+        Value::Int(1) | Value::BigInt(1) | Value::SmallInt(1) | Value::TinyInt(1) => {
+            "master".to_string()
+        }
+        _ => db_val.to_string_value(),
+    };
+    let is_known_db = db_name.eq_ignore_ascii_case("master");
     let active_db = ctx
         .metadata
         .database
         .as_ref()
-        .unwrap_or(&ctx.metadata.original_database);
-    if !active_db.eq_ignore_ascii_case(&db_name) {
+        .unwrap_or(&ctx.metadata.original_database)
+        .to_string();
+    if !is_known_db && !active_db.eq_ignore_ascii_case(&db_name) {
         return Ok(Value::Null);
     }
     let prop = prop_val.to_string_value().to_ascii_uppercase();

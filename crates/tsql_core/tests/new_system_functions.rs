@@ -16,6 +16,17 @@ fn test_db_id() {
     assert_eq!(r.rows[0][0], Value::Int(1));
 }
 
+#[test]
+fn test_db_name_and_id_with_argument() {
+    let mut engine = Engine::new();
+    let r = query(
+        &mut engine,
+        "SELECT DB_NAME(1) AS dbname, DB_ID('master') AS dbid",
+    );
+    assert_eq!(r.rows[0][0], Value::NVarChar("master".to_string()));
+    assert_eq!(r.rows[0][1], Value::Int(1));
+}
+
 // ─── SUSER / USER functions ──────────────────────────────────────────────
 
 #[test]
@@ -72,17 +83,107 @@ fn test_sql_server_handshake_probe_functions() {
     let mut engine = Engine::new();
     let r = query(
         &mut engine,
-        "SELECT SERVERPROPERTY('Edition') AS edition, SERVERPROPERTY('EngineEdition') AS engine_edition, SERVERPROPERTY('ProductVersion') AS product_version, @@MICROSOFTVERSION AS microsoft_version, CONNECTIONPROPERTY('net_transport') AS transport",
+        "SELECT SERVERPROPERTY('Edition') AS edition, SERVERPROPERTY('EngineEdition') AS engine_edition, SERVERPROPERTY('ProductVersion') AS product_version, SERVERPROPERTY('IsSingleUser') AS is_single_user, FULLTEXTSERVICEPROPERTY('IsFullTextInstalled') AS is_fulltext_installed, @@MICROSOFTVERSION AS microsoft_version, CONNECTIONPROPERTY('net_transport') AS transport",
     );
     assert!(matches!(r.rows[0][0], Value::NVarChar(_)));
     assert_eq!(r.rows[0][1], Value::Int(3));
     assert_eq!(r.rows[0][2], Value::NVarChar("16.0.1000.6".to_string()));
-    assert!(matches!(r.rows[0][3], Value::Int(_)));
-    assert_eq!(r.rows[0][4], Value::NVarChar("TCP".to_string()));
+    assert_eq!(r.rows[0][3], Value::Int(0));
+    assert_eq!(r.rows[0][4], Value::Int(0));
+    assert!(matches!(r.rows[0][5], Value::Int(_)));
+    assert_eq!(r.rows[0][6], Value::NVarChar("TCP".to_string()));
 
-    let r = query(&mut engine, "SELECT host_platform FROM sys.dm_os_host_info");
+    let r = query(&mut engine, "SELECT host_platform, host_sku FROM sys.dm_os_host_info");
     assert_eq!(r.rows.len(), 1);
     assert_eq!(r.rows[0][0], Value::VarChar("Windows".to_string()));
+    assert_eq!(r.rows[0][1], Value::Int(7));
+}
+
+#[test]
+fn test_xp_msver_is_available_for_object_explorer_probes() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "EXEC master.dbo.xp_msver");
+    assert_eq!(r.columns, vec!["ID", "Name", "Internal_Value", "Value"]);
+    assert!(r.rows.len() >= 4);
+    assert!(r
+        .rows
+        .iter()
+        .any(|row| matches!(&row[1], Value::NVarChar(name) if name.eq_ignore_ascii_case("ProcessorCount"))));
+    assert!(r
+        .rows
+        .iter()
+        .any(|row| matches!(&row[1], Value::NVarChar(name) if name.eq_ignore_ascii_case("PhysicalMemory"))));
+}
+
+#[test]
+fn test_sys_databases_master_is_visible() {
+    let mut engine = Engine::new();
+    let r = query(
+        &mut engine,
+        "SELECT name, database_id, state_desc FROM sys.databases WHERE name = 'master'",
+    );
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0][0], Value::VarChar("master".to_string()));
+    assert_eq!(r.rows[0][1], Value::Int(1));
+    assert_eq!(r.rows[0][2], Value::VarChar("ONLINE".to_string()));
+}
+
+#[test]
+fn test_sys_configurations_object_explorer_probe() {
+    let mut engine = Engine::new();
+    let r = query(
+        &mut engine,
+        "select value_in_use from sys.configurations where configuration_id = 16384",
+    );
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0][0], Value::Int(0));
+}
+
+#[test]
+fn test_is_srvrolemember_object_explorer_probe() {
+    let mut engine = Engine::new();
+    let r = query(
+        &mut engine,
+        "select is_srvrolemember('sysadmin') * 1 +is_srvrolemember('serveradmin') * 2 +is_srvrolemember('setupadmin') * 4 +is_srvrolemember('securityadmin') * 8 +is_srvrolemember('processadmin') * 16 +is_srvrolemember('dbcreator') * 32 +is_srvrolemember('diskadmin') * 64+ is_srvrolemember('bulkadmin') * 128",
+    );
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0][0].to_integer_i64(), Some(1));
+}
+
+#[test]
+fn test_has_dbaccess_for_master() {
+    let mut engine = Engine::new();
+    let r = query(
+        &mut engine,
+        "SELECT HAS_DBACCESS('master') AS has_master, HAS_DBACCESS('msdb') AS has_msdb",
+    );
+    assert_eq!(r.rows[0][0], Value::Int(1));
+    assert_eq!(r.rows[0][1], Value::Int(0));
+}
+
+#[test]
+fn test_has_perms_by_name_probe() {
+    let mut engine = Engine::new();
+    let r = query(
+        &mut engine,
+        "SELECT HAS_PERMS_BY_NAME(NULL, 'SERVER', 'VIEW ANY DATABASE') AS null_case, HAS_PERMS_BY_NAME('SERVER', 'SERVER', 'VIEW ANY DATABASE') AS server_case, HAS_PERMS_BY_NAME('master', 'DATABASE', 'CONNECT') AS db_case",
+    );
+    assert_eq!(r.rows[0][0], Value::Int(1));
+    assert_eq!(r.rows[0][1], Value::Int(1));
+    assert_eq!(r.rows[0][2], Value::Int(1));
+}
+
+#[test]
+fn test_sys_sysdatabases_compat_view() {
+    let mut engine = Engine::new();
+    let r = query(
+        &mut engine,
+        "SELECT name, dbid, cmptlevel FROM sys.sysdatabases WHERE name = 'master'",
+    );
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0][0], Value::VarChar("master".to_string()));
+    assert_eq!(r.rows[0][1], Value::SmallInt(1));
+    assert_eq!(r.rows[0][2], Value::TinyInt(160));
 }
 
 #[test]

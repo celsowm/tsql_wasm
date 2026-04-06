@@ -8,7 +8,7 @@ pub struct Parser {
     depth: usize,
 }
 
-const MAX_PARSER_DEPTH: usize = 8;
+const MAX_PARSER_DEPTH: usize = 32;
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {

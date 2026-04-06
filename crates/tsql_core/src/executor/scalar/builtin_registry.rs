@@ -189,6 +189,10 @@ const SYSTEM_FUNCTIONS: &[BuiltinScalarFunction] = &[
     }),
     builtin!("SERVERPROPERTY" => system::eval_serverproperty),
     builtin!("CONNECTIONPROPERTY" => system::eval_connectionproperty),
+    builtin!("FULLTEXTSERVICEPROPERTY" => system::eval_fulltextserviceproperty),
+    builtin!("IS_SRVROLEMEMBER" => system::eval_is_srvrolemember),
+    builtin!("HAS_DBACCESS" => system::eval_has_dbaccess),
+    builtin!("HAS_PERMS_BY_NAME" => system::eval_has_perms_by_name),
 ];
 
 const DATETIME_FUNCTIONS: &[BuiltinScalarFunction] = &[

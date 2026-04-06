@@ -252,6 +252,7 @@ impl Value {
                 let divisor = 10i64.pow(4u32);
                 Some(v / divisor)
             }
+            Value::Binary(v) | Value::VarBinary(v) => binary_to_i64(v),
             Value::SqlVariant(v) => v.to_integer_i64(),
             _ => None,
         }
@@ -296,6 +297,27 @@ impl Value {
             _ => (0, 0),
         }
     }
+}
+
+fn binary_to_i64(data: &[u8]) -> Option<i64> {
+    if data.is_empty() {
+        return Some(0);
+    }
+    if data.len() > 8 {
+        return None;
+    }
+
+    let mut n: u64 = 0;
+    for b in data {
+        n = (n << 8) | (*b as u64);
+    }
+
+    let bit_width = (data.len() * 8) as u32;
+    if bit_width < 64 && (n & (1u64 << (bit_width - 1))) != 0 {
+        n |= (!0u64) << bit_width;
+    }
+
+    Some(n as i64)
 }
 
 pub fn format_decimal(raw: i128, scale: u8) -> String {
@@ -355,4 +377,3 @@ pub fn type_precedence_join(a: &DataType, b: &DataType) -> DataType {
         b.clone()
     }
 }
-

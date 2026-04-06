@@ -471,3 +471,10 @@ fn test_binary_declare() {
     exec(&mut engine, "DECLARE @b BINARY(4) = 0x11223344");
     exec(&mut engine, "DECLARE @vb VARBINARY(10) = 0xAABB");
 }
+
+#[test]
+fn test_binary_cast_to_int() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT CAST(0x0001 AS INT) AS v");
+    assert_eq!(r.rows[0][0], Value::Int(1));
+}

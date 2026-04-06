@@ -309,6 +309,7 @@ pub(crate) fn eval_day(
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn format_datetime_string(dt: &str, fmt: &str) -> String {
     match fmt.to_lowercase().as_str() {
         "yyyy" | "yyyy-mm-dd" => {

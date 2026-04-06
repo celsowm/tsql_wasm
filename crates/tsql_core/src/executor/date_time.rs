@@ -1,5 +1,5 @@
 use crate::error::DbError;
-use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
+use chrono::{Datelike, NaiveDateTime};
 
 /// Typed enum for date parts, replacing string-based dispatch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,6 +77,7 @@ pub(crate) fn date_to_days(y: i32, m: i32, d: i32) -> i64 {
     era * 146097 + doe - 719468
 }
 
+#[allow(dead_code)]
 pub(crate) fn days_to_date(days: i64) -> (i32, i32, i32) {
     let z = days + 719468;
     let era = z.div_euclid(146097);

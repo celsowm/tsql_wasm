@@ -10,6 +10,12 @@ use super::VirtualTable;
 pub(crate) fn lookup(name: &str) -> Option<Box<dyn VirtualTable>> {
     if name.eq_ignore_ascii_case("schemas") {
         Some(Box::new(tables::SysSchemas))
+    } else if name.eq_ignore_ascii_case("databases") {
+        Some(Box::new(tables::SysDatabases))
+    } else if name.eq_ignore_ascii_case("sysdatabases") {
+        Some(Box::new(tables::SysSysDatabases))
+    } else if name.eq_ignore_ascii_case("configurations") {
+        Some(Box::new(tables::SysConfigurations))
     } else if name.eq_ignore_ascii_case("tables") {
         Some(Box::new(tables::SysTables))
     } else if name.eq_ignore_ascii_case("columns") {

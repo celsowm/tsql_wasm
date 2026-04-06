@@ -87,6 +87,7 @@ pub use persistence::DatabaseInner;
 
 /// Opaque wrapper around `DatabaseInner` with in-memory storage.
 /// Hides the concrete storage backend from public API consumers.
+#[derive(Clone)]
 pub struct Database(pub(crate) DatabaseInner<CatalogImpl, InMemoryStorage>);
 
 impl std::ops::Deref for Database {

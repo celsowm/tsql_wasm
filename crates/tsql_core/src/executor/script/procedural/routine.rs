@@ -4,6 +4,7 @@ use crate::catalog::{RoutineKind, TableTypeDef};
 use crate::error::{DbError, StmtOutcome};
 use crate::executor::context::{ExecutionContext, ModuleFrame, ModuleKind};
 use crate::executor::evaluator::eval_expr;
+use crate::executor::result::QueryResult;
 use crate::executor::value_ops::coerce_value_to_type;
 use crate::types::Value;
 
@@ -63,6 +64,9 @@ impl<'a> ScriptExecutor<'a> {
     ) -> Result<Option<crate::executor::result::QueryResult>, DbError> {
         let schema = stmt.name.schema_or_dbo().to_string();
         let Some(routine) = self.catalog.find_routine(&schema, &stmt.name.name).cloned() else {
+            if stmt.name.name.eq_ignore_ascii_case("xp_msver") {
+                return Ok(Some(execute_xp_msver()));
+            }
             return Err(DbError::object_not_found(format!("procedure '{}.{}'", schema, stmt.name.name)));
         };
         let crate::catalog::RoutineDef {
@@ -295,5 +299,66 @@ impl<'a> ScriptExecutor<'a> {
             ctx.leave_scope();
         }
         result
+    }
+}
+
+fn execute_xp_msver() -> QueryResult {
+    QueryResult {
+        columns: vec![
+            "ID".to_string(),
+            "Name".to_string(),
+            "Internal_Value".to_string(),
+            "Value".to_string(),
+        ],
+        column_types: vec![
+            crate::types::DataType::Int,
+            crate::types::DataType::NVarChar { max_len: 128 },
+            crate::types::DataType::Int,
+            crate::types::DataType::NVarChar { max_len: 512 },
+        ],
+        rows: vec![
+            vec![
+                Value::Int(1),
+                Value::NVarChar("ProductName".to_string()),
+                Value::Int(0),
+                Value::NVarChar("tsql_wasm".to_string()),
+            ],
+            vec![
+                Value::Int(2),
+                Value::NVarChar("ProductVersion".to_string()),
+                Value::Int(0),
+                Value::NVarChar("16.0.1000.6".to_string()),
+            ],
+            vec![
+                Value::Int(3),
+                Value::NVarChar("Language".to_string()),
+                Value::Int(0),
+                Value::NVarChar("us_english".to_string()),
+            ],
+            vec![
+                Value::Int(4),
+                Value::NVarChar("Platform".to_string()),
+                Value::Int(0),
+                Value::NVarChar("Windows".to_string()),
+            ],
+            vec![
+                Value::Int(5),
+                Value::NVarChar("ProcessorCount".to_string()),
+                Value::Int(1),
+                Value::NVarChar("1".to_string()),
+            ],
+            vec![
+                Value::Int(6),
+                Value::NVarChar("PhysicalMemory".to_string()),
+                Value::Int(0),
+                Value::NVarChar("0".to_string()),
+            ],
+            vec![
+                Value::Int(7),
+                Value::NVarChar("ServerName".to_string()),
+                Value::Int(0),
+                Value::NVarChar("localhost".to_string()),
+            ],
+        ],
     }
 }

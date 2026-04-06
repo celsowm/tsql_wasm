@@ -151,6 +151,7 @@ fn convert_string_to_datetime(s: &str, ty: &DataType, _style: i32) -> Result<Val
     }
 }
 
+#[allow(dead_code)]
 pub fn normalize_datetime_string(s: &str) -> String {
     let date_time: Vec<&str> = s.splitn(2, |c: char| c.is_ascii_whitespace()).collect();
     let date_part = date_time[0];
@@ -168,6 +169,7 @@ pub fn normalize_datetime_string(s: &str) -> String {
     s.to_string()
 }
 
+#[allow(dead_code)]
 fn parse_dt_parts(dt: &str) -> (i32, i32, i32, i32, i32, i32) {
     let parts: Vec<&str> = dt
         .split(|c: char| c == '-' || c == '/' || c == ':')
@@ -209,6 +211,7 @@ fn parse_dt_parts(dt: &str) -> (i32, i32, i32, i32, i32, i32) {
     (y, mo, d, h, mi, s)
 }
 
+#[allow(dead_code)]
 fn month_abbr(m: i32) -> &'static str {
     match m {
         1 => "Jan",
@@ -227,10 +230,12 @@ fn month_abbr(m: i32) -> &'static str {
     }
 }
 
+#[allow(dead_code)]
 fn pad2(n: i32) -> String {
     format!("{:0>2}", n)
 }
 
+#[allow(dead_code)]
 fn to_12hour(h: i32) -> (i32, &'static str) {
     let ampm = if h >= 12 { "PM" } else { "AM" };
     let h12 = match h {
