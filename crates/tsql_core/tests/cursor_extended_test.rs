@@ -86,3 +86,33 @@ fn test_cursor_boundaries() {
     assert_eq!(output[0], "Status OOB: -1");
     assert_eq!(output[1], "Status First: 0");
 }
+
+#[test]
+fn test_cursor_close_on_commit_closes_open_cursor() {
+    let engine = Engine::new();
+    engine
+        .exec("CREATE TABLE dbo.Items (Id INT PRIMARY KEY)")
+        .unwrap();
+    engine
+        .exec("INSERT INTO dbo.Items VALUES (1), (2)")
+        .unwrap();
+
+    let batch = "
+        BEGIN TRANSACTION;
+        SET CURSOR_CLOSE_ON_COMMIT ON;
+        DECLARE @id INT;
+        DECLARE cur CURSOR FOR SELECT Id FROM dbo.Items ORDER BY Id;
+        OPEN cur;
+        FETCH NEXT FROM cur INTO @id;
+        PRINT 'Before: ' + CAST(@@FETCH_STATUS AS NVARCHAR);
+        COMMIT;
+        PRINT 'After: ' + CAST(@@FETCH_STATUS AS NVARCHAR);
+    ";
+    for stmt in tsql_core::parser::parse_batch(batch).unwrap() {
+        engine.execute(stmt).unwrap();
+    }
+
+    let output = engine.print_output();
+    assert_eq!(output[0], "Before: 0");
+    assert_eq!(output[1], "After: -1");
+}

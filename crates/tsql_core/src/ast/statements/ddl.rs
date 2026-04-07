@@ -86,6 +86,7 @@ pub struct ColumnSpec {
     pub name: String,
     pub data_type: DataTypeSpec,
     pub nullable: bool,
+    pub nullable_explicit: bool,
     pub primary_key: bool,
     pub unique: bool,
     pub identity: Option<(i64, i64)>,
@@ -95,6 +96,7 @@ pub struct ColumnSpec {
     pub check_constraint_name: Option<String>,
     pub computed_expr: Option<Expr>,
     pub foreign_key: Option<ForeignKeyRef>,
+    pub ansi_padding_on: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

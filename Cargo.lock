@@ -1446,6 +1446,8 @@ dependencies = [
  "rcgen",
  "rustls 0.23.37",
  "rustls-pemfile 2.2.0",
+ "serde",
+ "serde_json",
  "tiberius 0.11.8",
  "tokio",
  "tokio-rustls 0.26.4",

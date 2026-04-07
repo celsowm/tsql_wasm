@@ -67,6 +67,8 @@ pub struct ColumnDef {
     pub check: Option<Expr>,
     pub check_constraint_name: Option<String>,
     pub computed_expr: Option<Expr>,
+    #[serde(default = "default_ansi_padding_on")]
+    pub ansi_padding_on: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -413,6 +415,10 @@ impl Default for CatalogImpl {
 
 fn default_next_object_id() -> i32 {
     -1
+}
+
+fn default_ansi_padding_on() -> bool {
+    true
 }
 
 impl Catalog for CatalogImpl {

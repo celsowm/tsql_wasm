@@ -17,6 +17,7 @@ use row_locks::RowLockManager;
 pub struct LockTable {
     tables: TableLockManager,
     rows: RowLockManager,
+    deadlock_victims: std::collections::HashSet<SessionId>,
     pub condvar: std::sync::Arc<parking_lot::Condvar>,
     pub wait_for_graph: super::deadlock::WaitForGraph,
 }
@@ -26,6 +27,7 @@ impl Default for LockTable {
         Self {
             tables: TableLockManager::new(),
             rows: RowLockManager::new(),
+            deadlock_victims: std::collections::HashSet::new(),
             condvar: std::sync::Arc::new(parking_lot::Condvar::new()),
             wait_for_graph: super::deadlock::WaitForGraph::new(),
         }
@@ -46,6 +48,7 @@ impl LockTable {
     pub fn clear(&mut self) {
         self.tables.clear();
         self.rows.clear();
+        self.deadlock_victims.clear();
     }
 
     pub fn keys(&self) -> impl Iterator<Item = &String> {
@@ -54,6 +57,33 @@ impl LockTable {
 
     pub fn set_escalation_threshold(&mut self, threshold: usize) {
         self.rows.escalation_threshold = threshold;
+    }
+
+    fn take_deadlock_victim(&mut self, session_id: SessionId) -> bool {
+        self.deadlock_victims.remove(&session_id)
+    }
+
+    fn mark_deadlock_victim(&mut self, session_id: SessionId) {
+        self.deadlock_victims.insert(session_id);
+        self.condvar.notify_all();
+    }
+
+    fn choose_deadlock_victim(
+        cycle: &[SessionId],
+        current_session: SessionId,
+        deadlock_priority: i32,
+        priority_lookup: &dyn Fn(SessionId) -> i32,
+    ) -> SessionId {
+        let mut best = current_session;
+        let mut best_priority = deadlock_priority;
+        for &sid in cycle {
+            let priority = priority_lookup(sid);
+            if priority < best_priority || (priority == best_priority && sid == current_session) {
+                best = sid;
+                best_priority = priority;
+            }
+        }
+        best
     }
 }
 
@@ -67,6 +97,8 @@ impl LockTable {
         workspace_slot: &mut Option<TxWorkspace<C, S>>,
         stmt: &Statement,
         timeout_ms: i64,
+        deadlock_priority: i32,
+        priority_lookup: &dyn Fn(SessionId) -> i32,
     ) -> Result<(), DbError> {
         let read_tables = collect_read_tables(stmt);
         let write_tables = collect_write_tables(stmt);
@@ -108,6 +140,12 @@ impl LockTable {
         let mut guard = state_lock.lock();
 
         loop {
+            if guard.take_deadlock_victim(session_id) {
+                return Err(DbError::Deadlock(
+                    "Transaction was deadlocked on lock resources with another process and has been chosen as the deadlock victim.".into(),
+                ));
+            }
+
             let mut all_acquired = true;
             let mut conflict_info = None;
             let mut holders = std::collections::HashSet::new();
@@ -147,11 +185,20 @@ impl LockTable {
             }
 
             if let Some(cycle) = guard.wait_for_graph.detect_cycle(session_id) {
-                guard.wait_for_graph.remove_waiter(session_id);
-                return Err(DbError::Deadlock(format!(
-                    "Transaction was deadlocked on lock resources with another process and has been chosen as the deadlock victim. Cycle: {:?}",
-                    cycle
-                )));
+                let victim = Self::choose_deadlock_victim(
+                    &cycle,
+                    session_id,
+                    deadlock_priority,
+                    priority_lookup,
+                );
+                if victim == session_id {
+                    guard.wait_for_graph.remove_waiter(session_id);
+                    return Err(DbError::Deadlock(format!(
+                        "Transaction was deadlocked on lock resources with another process and has been chosen as the deadlock victim. Cycle: {:?}",
+                        cycle
+                    )));
+                }
+                guard.mark_deadlock_victim(victim);
             }
 
             let elapsed = start.elapsed();
@@ -261,11 +308,19 @@ impl LockTable {
         row_id: usize,
         mode: LockMode,
         timeout_ms: i64,
+        deadlock_priority: i32,
+        priority_lookup: &dyn Fn(SessionId) -> i32,
     ) -> Result<(), DbError> {
         let start = std::time::Instant::now();
         let mut guard = state_lock.lock();
 
         loop {
+            if guard.take_deadlock_victim(session_id) {
+                return Err(DbError::Deadlock(
+                    "Transaction was deadlocked on lock resources with another process and has been chosen as the deadlock victim.".into(),
+                ));
+            }
+
             if guard.can_acquire_row(session_id, table, row_id, mode) {
                 guard.wait_for_graph.remove_waiter(session_id);
                 guard.do_acquire_row(session_id, table, row_id, mode);
@@ -286,11 +341,20 @@ impl LockTable {
             }
 
             if let Some(cycle) = guard.wait_for_graph.detect_cycle(session_id) {
-                guard.wait_for_graph.remove_waiter(session_id);
-                return Err(DbError::Deadlock(format!(
-                    "Transaction was deadlocked on lock resources with another process and has been chosen as the deadlock victim. Cycle: {:?}",
-                    cycle
-                )));
+                let victim = Self::choose_deadlock_victim(
+                    &cycle,
+                    session_id,
+                    deadlock_priority,
+                    priority_lookup,
+                );
+                if victim == session_id {
+                    guard.wait_for_graph.remove_waiter(session_id);
+                    return Err(DbError::Deadlock(format!(
+                        "Transaction was deadlocked on lock resources with another process and has been chosen as the deadlock victim. Cycle: {:?}",
+                        cycle
+                    )));
+                }
+                guard.mark_deadlock_victim(victim);
             }
 
             let elapsed = start.elapsed();
@@ -377,6 +441,7 @@ impl LockTable {
         self.tables.release_all_for_session(session_id);
         self.rows.release_all_for_session(session_id);
         self.wait_for_graph.remove_waiter(session_id);
+        self.deadlock_victims.remove(&session_id);
         self.condvar.notify_all();
     }
 }

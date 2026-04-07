@@ -3,7 +3,7 @@ use crate::error::DbError;
 use crate::executor::context::ExecutionContext;
 use crate::executor::query::QueryExecutor;
 use crate::executor::result::QueryResult;
-use crate::executor::value_ops::coerce_value_to_type;
+use crate::executor::value_ops::coerce_value_to_type_with_dateformat;
 use crate::catalog::Catalog;
 use crate::storage::Storage;
 use super::super::ScriptExecutor;
@@ -109,7 +109,11 @@ impl<'a> ScriptExecutor<'a> {
                 }
                 for (idx, var_name) in into_vars.iter().enumerate() {
                     if let Some((ty, var)) = ctx.session.variables.get_mut(var_name) {
-                        *var = coerce_value_to_type(row[idx].clone(), ty)?;
+                        *var = coerce_value_to_type_with_dateformat(
+                            row[idx].clone(),
+                            ty,
+                            &ctx.options.dateformat,
+                        )?;
                     } else {
                         return Err(DbError::invalid_identifier(var_name));
                     }

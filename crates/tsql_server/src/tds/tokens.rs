@@ -1,5 +1,8 @@
 use super::packet::PacketBuilder;
-use super::type_mapping::{value_to_wire_bytes, TypeInfo};
+use super::type_mapping::{
+    value_to_wire_bytes, TypeInfo, BIGBINARYTYPE, BIGCHARTYPE, BIGVARBINARYTYPE,
+    BIGVARCHARTYPE, NCHARTYPE, NVARCHARTYPE,
+};
 use tsql_core::types::Value;
 
 pub const COLMETADATA_TOKEN: u8 = 0x81;
@@ -24,6 +27,60 @@ pub const ENVCHANGE_PACKET_SIZE: u8 = 0x04;
 pub const ENVCHANGE_DATABASE: u8 = 0x01;
 pub const ENVCHANGE_LANGUAGE: u8 = 0x02;
 pub const ENVCHANGE_COLLATION: u8 = 0x07;
+
+fn truncate_string_value(s: &str, max_chars: usize) -> String {
+    if max_chars == 0 {
+        String::new()
+    } else {
+        s.chars().take(max_chars).collect()
+    }
+}
+
+fn apply_textsize(value: &Value, ti: &TypeInfo, textsize: usize) -> Value {
+    if value.is_null() {
+        return match value {
+            Value::Char(s) => Value::Char(s.clone()),
+            Value::VarChar(s) => Value::VarChar(s.clone()),
+            Value::NChar(s) => Value::NChar(s.clone()),
+            Value::NVarChar(s) => Value::NVarChar(s.clone()),
+            Value::Binary(v) => Value::Binary(v.clone()),
+            Value::VarBinary(v) => Value::VarBinary(v.clone()),
+            _ => value.clone(),
+        };
+    }
+
+    match value {
+        Value::Char(s) if ti.tds_type == BIGCHARTYPE => {
+            Value::VarChar(truncate_string_value(s, textsize))
+        }
+        Value::VarChar(s) if ti.tds_type == BIGVARCHARTYPE => {
+            Value::VarChar(truncate_string_value(s, textsize))
+        }
+        Value::NChar(s) if ti.tds_type == NCHARTYPE => {
+            let max_chars = textsize / 2;
+            Value::NVarChar(truncate_string_value(s, max_chars))
+        }
+        Value::NVarChar(s) if ti.tds_type == NVARCHARTYPE => {
+            let max_chars = textsize / 2;
+            Value::NVarChar(truncate_string_value(s, max_chars))
+        }
+        Value::Binary(v) if ti.tds_type == BIGBINARYTYPE => {
+            let mut bytes = v.clone();
+            if bytes.len() > textsize {
+                bytes.truncate(textsize);
+            }
+            Value::VarBinary(bytes)
+        }
+        Value::VarBinary(v) if ti.tds_type == BIGVARBINARYTYPE => {
+            let mut bytes = v.clone();
+            if bytes.len() > textsize {
+                bytes.truncate(textsize);
+            }
+            Value::VarBinary(bytes)
+        }
+        _ => value.clone(),
+    }
+}
 
 pub fn write_colmetadata(b: &mut PacketBuilder, columns: &[String], types: &[TypeInfo]) {
     b.put_u8(COLMETADATA_TOKEN);
@@ -74,11 +131,12 @@ pub fn write_colmetadata(b: &mut PacketBuilder, columns: &[String], types: &[Typ
     }
 }
 
-pub fn write_row(b: &mut PacketBuilder, row: &[Value], types: &[TypeInfo]) {
+pub fn write_row(b: &mut PacketBuilder, row: &[Value], types: &[TypeInfo], textsize: usize) {
     b.put_u8(ROW_TOKEN);
     for (i, value) in row.iter().enumerate() {
         let ti = &types[i];
-        b.put_bytes(&value_to_wire_bytes(value, ti));
+        let truncated = apply_textsize(value, ti, textsize);
+        b.put_bytes(&value_to_wire_bytes(&truncated, ti));
     }
 }
 
@@ -209,11 +267,12 @@ pub fn write_result_set(
     types: &[TypeInfo],
     rows: &[Vec<Value>],
     cur_cmd: u16,
+    textsize: usize,
 ) {
     write_colmetadata(b, columns, types);
 
     for row in rows {
-        write_row(b, row, types);
+        write_row(b, row, types, textsize);
     }
 
     let status = if rows.is_empty() {
@@ -222,4 +281,36 @@ pub fn write_result_set(
         DONE_COUNT
     };
     write_done(b, status, cur_cmd, rows.len() as u64);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tds::type_mapping::value_to_type_info;
+
+    #[test]
+    fn write_row_truncates_varchar_payload() {
+        let mut b = PacketBuilder::new();
+        let row = vec![Value::VarChar("hello".to_string())];
+        let types = vec![value_to_type_info(&row[0])];
+
+        write_row(&mut b, &row, &types, 3);
+
+        let bytes = b.as_bytes();
+        assert_eq!(bytes[0], ROW_TOKEN);
+        assert!(bytes.windows(5).any(|w| w == [0x03, 0x00, b'h', b'e', b'l']));
+    }
+
+    #[test]
+    fn write_row_truncates_varbinary_payload() {
+        let mut b = PacketBuilder::new();
+        let row = vec![Value::VarBinary(vec![0x01, 0x02, 0x03, 0x04])];
+        let types = vec![value_to_type_info(&row[0])];
+
+        write_row(&mut b, &row, &types, 2);
+
+        let bytes = b.as_bytes();
+        assert_eq!(bytes[0], ROW_TOKEN);
+        assert!(bytes.windows(4).any(|w| w == [0x02, 0x00, 0x01, 0x02]));
+    }
 }

@@ -41,7 +41,15 @@ fn eval_having_expr(
         Expr::Binary { left, op, right } => {
             let lv = eval_having_expr(left, row, group, ctx, catalog, storage, clock)?;
             let rv = eval_having_expr(right, row, group, ctx, catalog, storage, clock)?;
-            super::operators::eval_binary(op, lv, rv, ctx.metadata.ansi_nulls)
+            super::operators::eval_binary(
+                op,
+                lv,
+                rv,
+                ctx.metadata.ansi_nulls,
+                ctx.options.concat_null_yields_null,
+                ctx.options.arithabort,
+                ctx.options.ansi_warnings,
+            )
         }
         Expr::Unary { op, expr: inner } => {
             let val = eval_having_expr(inner, row, group, ctx, catalog, storage, clock)?;

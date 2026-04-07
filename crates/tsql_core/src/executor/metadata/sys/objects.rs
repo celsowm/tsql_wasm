@@ -14,24 +14,38 @@ impl VirtualTable for SysObjects {
                 ("object_id", DataType::Int, false),
                 ("name", DataType::VarChar { max_len: 128 }, false),
                 ("schema_id", DataType::Int, false),
+                ("principal_id", DataType::Int, true),
                 ("parent_object_id", DataType::Int, false),
                 ("type", DataType::Char { len: 2 }, false),
                 ("type_desc", DataType::VarChar { max_len: 60 }, false),
+                ("create_date", DataType::DateTime, false),
+                ("modify_date", DataType::DateTime, false),
+                ("is_ms_shipped", DataType::Bit, false),
             ],
         )
     }
 
     fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
         let mut rows = Vec::new();
+        let created = Value::DateTime(
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap(),
+        );
         for t in catalog.get_tables() {
             rows.push(StoredRow {
                 values: vec![
                     Value::Int(t.id as i32),
                     Value::VarChar(t.name.clone()),
                     Value::Int(t.schema_id as i32),
+                    Value::Null,
                     Value::Int(0), // user table has no parent
                     Value::Char("U ".to_string()),
                     Value::VarChar("USER_TABLE".to_string()),
+                    created.clone(),
+                    created.clone(),
+                    Value::Bit(false),
                 ],
                 deleted: false,
             });
@@ -45,9 +59,13 @@ impl VirtualTable for SysObjects {
                             Value::Int(pk_uq_id),
                             Value::VarChar(format!("PK_{}", t.name)),
                             Value::Int(t.schema_id as i32),
+                            Value::Null,
                             Value::Int(t.id as i32),
                             Value::Char("PK".to_string()),
                             Value::VarChar("PRIMARY_KEY_CONSTRAINT".to_string()),
+                            created.clone(),
+                            created.clone(),
+                            Value::Bit(false),
                         ],
                         deleted: false,
                     });
@@ -58,9 +76,13 @@ impl VirtualTable for SysObjects {
                             Value::Int(pk_uq_id),
                             Value::VarChar(format!("UQ_{}_{}", t.name, col.name)),
                             Value::Int(t.schema_id as i32),
+                            Value::Null,
                             Value::Int(t.id as i32),
                             Value::Char("UQ".to_string()),
                             Value::VarChar("UNIQUE_CONSTRAINT".to_string()),
+                            created.clone(),
+                            created.clone(),
+                            Value::Bit(false),
                         ],
                         deleted: false,
                     });
@@ -75,9 +97,13 @@ impl VirtualTable for SysObjects {
                             Value::Int(3_000_000 + col.id as i32),
                             Value::VarChar(name),
                             Value::Int(t.schema_id as i32),
+                            Value::Null,
                             Value::Int(t.id as i32),
                             Value::Char("D ".to_string()),
                             Value::VarChar("DEFAULT_CONSTRAINT".to_string()),
+                            created.clone(),
+                            created.clone(),
+                            Value::Bit(false),
                         ],
                         deleted: false,
                     });
@@ -92,9 +118,13 @@ impl VirtualTable for SysObjects {
                         Value::Int(chk_id),
                         Value::VarChar(chk.name.clone()),
                         Value::Int(t.schema_id as i32),
+                        Value::Null,
                         Value::Int(t.id as i32),
                         Value::Char("C ".to_string()),
                         Value::VarChar("CHECK_CONSTRAINT".to_string()),
+                        created.clone(),
+                        created.clone(),
+                        Value::Bit(false),
                     ],
                     deleted: false,
                 });
@@ -109,9 +139,13 @@ impl VirtualTable for SysObjects {
                         Value::Int(fk_id),
                         Value::VarChar(fk.name.clone()),
                         Value::Int(t.schema_id as i32),
+                        Value::Null,
                         Value::Int(t.id as i32),
                         Value::Char("F ".to_string()),
                         Value::VarChar("FOREIGN_KEY_CONSTRAINT".to_string()),
+                        created.clone(),
+                        created.clone(),
+                        Value::Bit(false),
                     ],
                     deleted: false,
                 });
@@ -141,9 +175,13 @@ impl VirtualTable for SysObjects {
                     Value::Int(routine.object_id),
                     Value::VarChar(routine.name.clone()),
                     Value::Int(catalog.get_schema_id(&routine.schema).unwrap_or(1) as i32),
+                    Value::Null,
                     Value::Int(0),
                     Value::Char(ty),
                     Value::VarChar(desc),
+                    created.clone(),
+                    created.clone(),
+                    Value::Bit(false),
                 ],
                 deleted: false,
             });
@@ -154,9 +192,13 @@ impl VirtualTable for SysObjects {
                     Value::Int(view.object_id),
                     Value::VarChar(view.name.clone()),
                     Value::Int(catalog.get_schema_id(&view.schema).unwrap_or(1) as i32),
+                    Value::Null,
                     Value::Int(0),
                     Value::Char("V ".to_string()),
                     Value::VarChar("VIEW".to_string()),
+                    created.clone(),
+                    created.clone(),
+                    Value::Bit(false),
                 ],
                 deleted: false,
             });
@@ -167,9 +209,13 @@ impl VirtualTable for SysObjects {
                     Value::Int(trigger.object_id),
                     Value::VarChar(trigger.name.clone()),
                     Value::Int(catalog.get_schema_id(&trigger.schema).unwrap_or(1) as i32),
+                    Value::Null,
                     Value::Int(catalog.object_id(&trigger.table_schema, &trigger.table_name).unwrap_or(0)),
                     Value::Char("TR".to_string()),
                     Value::VarChar("SQL_TRIGGER".to_string()),
+                    created.clone(),
+                    created.clone(),
+                    Value::Bit(false),
                 ],
                 deleted: false,
             });
@@ -180,9 +226,13 @@ impl VirtualTable for SysObjects {
                     Value::Int(idx.id as i32),
                     Value::VarChar(idx.name.clone()),
                     Value::Int(idx.schema_id as i32),
+                    Value::Null,
                     Value::Int(idx.table_id as i32),
                     Value::Char("IX".to_string()),
                     Value::VarChar("SQL_INDEX".to_string()),
+                    created.clone(),
+                    created.clone(),
+                    Value::Bit(false),
                 ],
                 deleted: false,
             });

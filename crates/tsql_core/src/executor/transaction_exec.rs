@@ -19,7 +19,7 @@ pub(crate) fn execute_transaction_statement<C, S>(
     state: &SharedState<C, S>,
     session_id: SessionId,
     tx_manager: &mut TransactionManager<C, S, super::session::SessionSnapshot>,
-    journal: &mut Box<dyn Journal>,
+    journal: &mut dyn Journal,
     workspace_slot: &mut Option<TxWorkspace<C, S>>,
     ctx: &mut super::context::ExecutionContext,
     session_options: &mut super::tooling::SessionOptions,
@@ -127,6 +127,10 @@ where
                 .lock()
                 .release_workspace_locks(session_id, workspace_slot, 0);
             state.dirty_buffer.lock().clear_session(session_id);
+            if session_options.cursor_close_on_commit {
+                ctx.session.cursors.clear();
+                *ctx.session.fetch_status = -1;
+            }
             tx_manager.active = None;
             tx_manager.commit_ts = storage_guard.commit_ts;
             tx_manager.xact_state = 0;
@@ -159,6 +163,10 @@ where
                         .lock()
                         .release_workspace_locks(session_id, workspace_slot, 0);
                     state.dirty_buffer.lock().clear_session(session_id);
+                    if session_options.cursor_close_on_commit {
+                        ctx.session.cursors.clear();
+                        *ctx.session.fetch_status = -1;
+                    }
                     *workspace_slot = None;
                 } else {
                     // Savepoint rollback: trim write_tables to match write_set
@@ -235,6 +243,10 @@ pub(crate) fn force_xact_abort<C, S>(
         .lock()
         .release_workspace_locks(session_id, workspace_slot, 0);
     state.dirty_buffer.lock().clear_session(session_id);
+    if session_options.cursor_close_on_commit {
+        ctx.session.cursors.clear();
+        *ctx.session.fetch_status = -1;
+    }
     *workspace_slot = None;
     tx_manager.active = None;
     tx_manager.depth = 0;

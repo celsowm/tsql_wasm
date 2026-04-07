@@ -111,7 +111,7 @@ pub enum IsolationLevel {
     Snapshot,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SessionOption {
     AnsiNulls,
     QuotedIdentifier,
@@ -121,12 +121,24 @@ pub enum SessionOption {
     Language,
     DateFormat,
     LockTimeout,
+    RowCount,
+    TextSize,
+    ConcatNullYieldsNull,
+    ArithAbort,
+    QueryGovernorCostLimit,
+    DeadlockPriority,
+    AnsiNullDfltOn,
+    AnsiPadding,
+    AnsiWarnings,
+    CursorCloseOnCommit,
+    ImplicitTransactions,
+    Unsupported(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SessionOptionValue {
     Bool(bool),
-    Int(i32),
+    Int(i64),
     Text(String),
 }
 

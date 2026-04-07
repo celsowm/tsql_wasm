@@ -174,7 +174,7 @@ where
         ctx.session.identity_insert = options.identity_insert.clone();
         if is_transaction_statement(&stmt) {
             match transaction_exec::execute_transaction_statement(
-                state, session_id, tx_manager, journal, workspace, ctx, options, stmt,
+                state, session_id, tx_manager, journal.as_mut(), workspace, ctx, options, stmt,
             ) {
                 Ok(r) => on_result(r),
                 Err(e) => {

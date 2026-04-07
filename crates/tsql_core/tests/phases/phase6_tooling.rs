@@ -111,7 +111,7 @@ fn test_phase6_trace_warns_on_invalid_datefirst() {
 }
 
 #[test]
-fn test_phase6_trace_warns_on_non_english_language() {
+fn test_phase6_trace_accepts_non_english_language() {
     let db = Database::new();
     let session_id = db.session_manager().create_session();
 
@@ -124,14 +124,155 @@ fn test_phase6_trace_warns_on_non_english_language() {
     assert_eq!(trace.events.len(), 1);
     let event = &trace.events[0];
     assert_eq!(event.status, "ok");
-    assert!(event
-        .warnings
-        .iter()
-        .any(|warning| warning.contains("LANGUAGE 'portuguese'")));
-    assert!(event
-        .warnings
-        .iter()
-        .any(|warning| warning.contains("us_english behavior is modeled")));
+    assert!(event.warnings.is_empty());
+}
+
+#[test]
+fn test_phase6_concat_null_yields_null_controls_string_plus() {
+    let mut engine = Engine::new();
+
+    let null_row = query(&mut engine, "SELECT 'abc' + NULL AS v");
+    assert!(null_row.rows[0][0].is_null());
+
+    exec(&mut engine, "SET CONCAT_NULL_YIELDS_NULL OFF");
+    let off_row = query(&mut engine, "SELECT 'abc' + NULL AS v");
+    assert_eq!(off_row.rows[0][0].to_string_value(), "abc");
+}
+
+#[test]
+fn test_phase6_rowcount_limits_select_and_insert() {
+    let mut engine = Engine::new();
+    exec(
+        &mut engine,
+        "CREATE TABLE dbo.rowcount_test (id INT NOT NULL PRIMARY KEY)",
+    );
+    exec(
+        &mut engine,
+        "INSERT INTO dbo.rowcount_test (id) VALUES (1), (2)",
+    );
+
+    exec(&mut engine, "SET ROWCOUNT 1");
+    let select_rows = query(&mut engine, "SELECT id FROM dbo.rowcount_test ORDER BY id");
+    assert_eq!(select_rows.rows.len(), 1);
+    assert_eq!(select_rows.rows[0][0], Value::Int(1));
+
+    exec(
+        &mut engine,
+        "INSERT INTO dbo.rowcount_test (id) VALUES (3), (4)",
+    );
+    let count_rows = query(&mut engine, "SELECT COUNT(*) AS cnt FROM dbo.rowcount_test");
+    assert_eq!(count_rows.rows[0][0], Value::BigInt(3));
+}
+
+#[test]
+fn test_phase6_textsize_system_variable_tracks_session() {
+    let mut engine = Engine::new();
+    exec(&mut engine, "SET TEXTSIZE 12");
+    let rows = query(&mut engine, "SELECT @@TEXTSIZE AS v");
+    assert_eq!(rows.rows[0][0], Value::Int(12));
+}
+
+#[test]
+fn test_phase6_ansi_null_dflt_on_affects_create_and_alter() {
+    let mut engine = Engine::new();
+    exec(&mut engine, "SET ANSI_NULL_DFLT_ON OFF");
+    exec(&mut engine, "CREATE TABLE dbo.null_default_test (id INT)");
+
+    let cols = query(
+        &mut engine,
+        "SELECT is_nullable FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = 'null_default_test' AND column_name = 'id'",
+    );
+    assert_eq!(cols.rows[0][0].to_string_value(), "NO");
+
+    exec(&mut engine, "ALTER TABLE dbo.null_default_test ADD extra INT");
+    let cols2 = query(
+        &mut engine,
+        "SELECT is_nullable FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = 'null_default_test' AND column_name = 'extra'",
+    );
+    assert_eq!(cols2.rows[0][0].to_string_value(), "NO");
+
+    exec(&mut engine, "SET ANSI_NULL_DFLT_ON ON");
+    exec(&mut engine, "CREATE TABLE dbo.null_default_test_on (id INT)");
+    let cols3 = query(
+        &mut engine,
+        "SELECT is_nullable FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = 'null_default_test_on' AND column_name = 'id'",
+    );
+    assert_eq!(cols3.rows[0][0].to_string_value(), "YES");
+}
+
+#[test]
+fn test_phase6_ansi_padding_controls_storage() {
+    let mut engine = Engine::new();
+    exec(&mut engine, "SET ANSI_PADDING OFF");
+    exec(
+        &mut engine,
+        "CREATE TABLE dbo.padding_off (v VARCHAR(10), b VARBINARY(10))",
+    );
+    exec(
+        &mut engine,
+        "INSERT INTO dbo.padding_off (v, b) VALUES ('abc   ', 0x410000)",
+    );
+
+    let off_rows = query(&mut engine, "SELECT v, b FROM dbo.padding_off");
+    assert_eq!(off_rows.rows[0][0].to_string_value(), "abc");
+    assert_eq!(off_rows.rows[0][1], Value::VarBinary(vec![0x41]));
+
+    exec(&mut engine, "SET ANSI_PADDING ON");
+    exec(
+        &mut engine,
+        "CREATE TABLE dbo.padding_on (v VARCHAR(10), b VARBINARY(10))",
+    );
+    exec(
+        &mut engine,
+        "INSERT INTO dbo.padding_on (v, b) VALUES ('abc   ', 0x410000)",
+    );
+
+    let on_rows = query(&mut engine, "SELECT v, b FROM dbo.padding_on");
+    assert_eq!(on_rows.rows[0][0].to_string_value(), "abc   ");
+    assert_eq!(on_rows.rows[0][1], Value::VarBinary(vec![0x41, 0x00, 0x00]));
+}
+
+#[test]
+fn test_phase6_implicit_transactions_auto_begins() {
+    let engine = Engine::new();
+    let db = engine.database();
+    let session_id = db.session_manager().create_session();
+
+    db.execute_session_batch_sql(session_id, "CREATE TABLE dbo.tx_test (id INT)")
+        .unwrap();
+    db.execute_session_batch_sql(session_id, "SET IMPLICIT_TRANSACTIONS ON")
+        .unwrap();
+    db.execute_session_batch_sql(session_id, "INSERT INTO dbo.tx_test (id) VALUES (1)")
+        .unwrap();
+
+    assert!(db.analyzer().transaction_is_active(session_id).unwrap());
+    let trancount = db
+        .execute_session_batch_sql(session_id, "SELECT @@TRANCOUNT AS v")
+        .unwrap()
+        .unwrap();
+    assert_eq!(trancount.rows[0][0], Value::Int(1));
+
+    db.execute_session_batch_sql(session_id, "COMMIT").unwrap();
+    assert!(!db.analyzer().transaction_is_active(session_id).unwrap());
+}
+
+#[test]
+fn test_phase6_language_and_dateformat_affect_date_parsing() {
+    let mut engine = Engine::new();
+    exec(&mut engine, "SET LANGUAGE portuguese");
+
+    let lang = query(&mut engine, "SELECT @@LANGUAGE AS v");
+    assert_eq!(lang.rows[0][0].to_string_value(), "portuguese");
+
+    let datefirst = query(&mut engine, "SELECT @@DATEFIRST AS v");
+    assert_eq!(datefirst.rows[0][0], Value::TinyInt(2));
+
+    let dmy = query(&mut engine, "SELECT CAST('02/03/2024' AS DATE) AS v");
+    assert_eq!(dmy.rows[0][0].to_string_value(), "2024-03-02");
+
+    exec(&mut engine, "SET DATEFORMAT mdy");
+    let mdy = query(&mut engine, "SELECT CAST('02/03/2024' AS DATE) AS v");
+    assert_eq!(mdy.rows[0][0].to_string_value(), "2024-02-03");
 }
 
 #[test]

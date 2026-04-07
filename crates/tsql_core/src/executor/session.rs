@@ -193,6 +193,7 @@ pub struct SharedState<C, S> {
     pub(crate) table_locks: parking_lot::Mutex<LockTable>,
     pub(crate) durability: parking_lot::Mutex<Box<dyn DurabilitySink<C>>>,
     pub(crate) sessions: dashmap::DashMap<SessionId, parking_lot::Mutex<SessionRuntime<C, S>>>,
+    pub(crate) deadlock_priorities: dashmap::DashMap<SessionId, i32>,
     pub(crate) next_session_id: std::sync::atomic::AtomicU64,
     pub(crate) dirty_buffer: std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>,
 }
@@ -213,6 +214,7 @@ where
             table_locks: parking_lot::Mutex::new(LockTable::new()),
             durability: parking_lot::Mutex::new(Box::new(NoopDurability::default())),
             sessions: dashmap::DashMap::new(),
+            deadlock_priorities: dashmap::DashMap::new(),
             next_session_id: std::sync::atomic::AtomicU64::new(1),
             dirty_buffer: std::sync::Arc::new(parking_lot::Mutex::new(super::dirty_buffer::DirtyBuffer::new())),
         }

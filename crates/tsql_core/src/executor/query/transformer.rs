@@ -93,6 +93,7 @@ pub(crate) fn execute_pivot(
             check: None,
             check_constraint_name: None,
             computed_expr: None,
+            ansi_padding_on: true,
         });
     }
 
@@ -146,7 +147,7 @@ pub(crate) fn execute_pivot(
                 })
                 .collect();
             
-            let agg_result = apply_aggregate_to_values(&spec.aggregate_func, agg_values, ctx.metadata.ansi_nulls)?;
+            let agg_result = apply_aggregate_to_values(&spec.aggregate_func, agg_values, ctx)?;
             row_values.push(agg_result);
         }
 
@@ -161,7 +162,11 @@ pub(crate) fn execute_pivot(
     Ok(result_rows)
 }
 
-fn apply_aggregate_to_values(func: &str, values: Vec<Value>, ansi_nulls: bool) -> Result<Value, DbError> {
+fn apply_aggregate_to_values(
+    func: &str,
+    values: Vec<Value>,
+    ctx: &mut ExecutionContext,
+) -> Result<Value, DbError> {
     let upper = normalize_identifier(func);
     match upper.as_str() {
         "SUM" => {
@@ -170,7 +175,15 @@ fn apply_aggregate_to_values(func: &str, values: Vec<Value>, ansi_nulls: bool) -
                 if v.is_null() { continue; }
                 match sum {
                     None => sum = Some(v),
-                    Some(s) => sum = Some(super::super::operators::eval_binary(&BinaryOp::Add, s, v, ansi_nulls)?),
+                    Some(s) => sum = Some(super::super::operators::eval_binary(
+                        &BinaryOp::Add,
+                        s,
+                        v,
+                        ctx.metadata.ansi_nulls,
+                        ctx.options.concat_null_yields_null,
+                        ctx.options.arithabort,
+                        ctx.options.ansi_warnings,
+                    )?),
                 }
             }
             Ok(sum.unwrap_or(Value::Null))
@@ -183,7 +196,15 @@ fn apply_aggregate_to_values(func: &str, values: Vec<Value>, ansi_nulls: bool) -
                 count += 1;
                 match sum {
                     None => sum = Some(v),
-                    Some(s) => sum = Some(super::super::operators::eval_binary(&BinaryOp::Add, s, v, ansi_nulls)?),
+                    Some(s) => sum = Some(super::super::operators::eval_binary(
+                        &BinaryOp::Add,
+                        s,
+                        v,
+                        ctx.metadata.ansi_nulls,
+                        ctx.options.concat_null_yields_null,
+                        ctx.options.arithabort,
+                        ctx.options.ansi_warnings,
+                    )?),
                 }
             }
             if count == 0 { return Ok(Value::Null); }
@@ -191,7 +212,15 @@ fn apply_aggregate_to_values(func: &str, values: Vec<Value>, ansi_nulls: bool) -
                 Some(v) => v,
                 None => return Ok(Value::Null),
             };
-            super::super::operators::eval_binary(&BinaryOp::Divide, sum, Value::BigInt(count), ansi_nulls)
+            super::super::operators::eval_binary(
+                &BinaryOp::Divide,
+                sum,
+                Value::BigInt(count),
+                ctx.metadata.ansi_nulls,
+                ctx.options.concat_null_yields_null,
+                ctx.options.arithabort,
+                ctx.options.ansi_warnings,
+            )
         }
         "COUNT" => Ok(Value::Int(values.iter().filter(|v| !v.is_null()).count() as i32)),
         "MIN" => {
@@ -275,6 +304,7 @@ pub(crate) fn execute_unpivot(
         check: None,
         check_constraint_name: None,
         computed_expr: None,
+        ansi_padding_on: true,
     });
     output_columns.push(ColumnDef {
         id: (output_columns.len() + 1) as u32,
@@ -289,6 +319,7 @@ pub(crate) fn execute_unpivot(
         check: None,
         check_constraint_name: None,
         computed_expr: None,
+        ansi_padding_on: true,
     });
 
     let unpivot_table_def = TableDef {
@@ -386,6 +417,7 @@ pub(crate) fn execute_apply(
                             check: None,
                             check_constraint_name: None,
                             computed_expr: None,
+                            ansi_padding_on: true,
                         })
                         .collect(),
                     check_constraints: vec![], foreign_keys: vec![],
@@ -423,6 +455,7 @@ pub(crate) fn execute_apply(
                         check: None,
                         check_constraint_name: None,
                         computed_expr: None,
+                        ansi_padding_on: true,
                     })
                     .collect(),
                 check_constraints: vec![], foreign_keys: vec![],

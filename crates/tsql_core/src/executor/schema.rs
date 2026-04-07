@@ -11,6 +11,7 @@ use crate::storage::Storage;
 
 use super::type_mapping::data_type_spec_to_runtime;
 use super::tooling::format_view_definition;
+use super::tooling::SessionOptions;
 
 /// S6: Shared constraint application logic extracted from create_table and alter_table.
 /// Eliminates ~65 lines of duplicated constraint handling.
@@ -85,6 +86,7 @@ fn apply_table_constraint(
 pub(crate) struct SchemaExecutor<'a> {
     pub(crate) catalog: &'a mut dyn Catalog,
     pub(crate) storage: &'a mut dyn Storage,
+    pub(crate) session_options: &'a SessionOptions,
 }
 
 impl<'a> SchemaExecutor<'a> {
@@ -209,11 +211,16 @@ impl<'a> SchemaExecutor<'a> {
 
     fn build_column_def(&mut self, spec: crate::ast::ColumnSpec) -> Result<ColumnDef, DbError> {
         let data_type = data_type_spec_to_runtime(&spec.data_type);
+        let nullable = if spec.nullable_explicit {
+            spec.nullable
+        } else {
+            self.session_options.ansi_null_dflt_on
+        };
         Ok(ColumnDef {
             id: self.catalog.alloc_column_id(),
             name: spec.name,
             data_type,
-            nullable: spec.nullable,
+            nullable,
             primary_key: spec.primary_key,
             unique: spec.unique || spec.primary_key,
             identity: spec.identity.map(|(seed, inc)| IdentityDef::new(seed, inc)),
@@ -222,6 +229,7 @@ impl<'a> SchemaExecutor<'a> {
             check: spec.check,
             check_constraint_name: spec.check_constraint_name,
             computed_expr: spec.computed_expr,
+            ansi_padding_on: self.session_options.ansi_padding,
         })
     }
 

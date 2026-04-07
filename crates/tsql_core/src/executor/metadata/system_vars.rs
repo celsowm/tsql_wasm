@@ -15,10 +15,10 @@ static SYSTEM_VARIABLES: &[SystemVariable] = &[
         let code = ctx.frame.last_error.as_ref().map(|e| e.number()).unwrap_or(0);
         Value::Int(code)
     }},
-    SystemVariable { name: "@@LANGUAGE", handler: |_| Value::NVarChar("us_english".into()) },
-    SystemVariable { name: "@@TEXTSIZE", handler: |_| Value::Int(2147483647) },
+    SystemVariable { name: "@@LANGUAGE", handler: |ctx| Value::NVarChar(ctx.options.language.clone().into()) },
+    SystemVariable { name: "@@TEXTSIZE", handler: |ctx| Value::Int(ctx.options.textsize as i32) },
     SystemVariable { name: "@@MAX_PRECISION", handler: |_| Value::TinyInt(38) },
-    SystemVariable { name: "@@DATEFIRST", handler: |ctx| Value::TinyInt(ctx.metadata.datefirst as u8) },
+    SystemVariable { name: "@@DATEFIRST", handler: |ctx| Value::TinyInt(ctx.options.datefirst as u8) },
     SystemVariable { name: "@@TRANCOUNT", handler: |ctx| Value::Int(ctx.frame.trancount as i32) },
     SystemVariable { name: "@@IDENTITY", handler: |ctx| match ctx.current_scope_identity().or(*ctx.session.last_identity) {
         Some(id) => Value::BigInt(id),

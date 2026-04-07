@@ -58,7 +58,7 @@ pub fn build_batch_response(
 
     if is_result_set && !columns.is_empty() {
         let types = infer_column_types(columns, rows);
-        super::tokens::write_result_set(&mut b, columns, &types, rows, 1);
+        super::tokens::write_result_set(&mut b, columns, &types, rows, 1, 4096);
     } else {
         // DDL/DML with no result set
         super::tokens::write_done(&mut b, super::tokens::DONE_COUNT, 1, row_count);

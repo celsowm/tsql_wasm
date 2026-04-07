@@ -159,6 +159,7 @@ impl<'a> ScriptExecutor<'a> {
                             check: None,
                             check_constraint_name: None,
                             computed_expr: None,
+                            ansi_padding_on: true,
                         })
                         .collect(),
                     check_constraints: vec![],
@@ -450,6 +451,7 @@ impl<'a> ScriptExecutor<'a> {
                     check: None,
                     check_constraint_name: None,
                     computed_expr: None,
+                    ansi_padding_on: true,
                 })
                 .collect(),
             check_constraints: vec![],

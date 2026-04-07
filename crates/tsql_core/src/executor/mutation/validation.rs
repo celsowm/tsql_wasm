@@ -42,6 +42,30 @@ pub(crate) fn enforce_string_length(
     Ok(())
 }
 
+pub(crate) fn apply_ansi_padding(
+    value: &mut Value,
+    data_type: &DataType,
+    ansi_padding_on: bool,
+) {
+    if ansi_padding_on {
+        return;
+    }
+
+    match (data_type, value) {
+        (DataType::VarChar { .. }, Value::VarChar(s))
+        | (DataType::NVarChar { .. }, Value::NVarChar(s)) => {
+            let trimmed = s.trim_end_matches(' ').to_string();
+            *s = trimmed;
+        }
+        (DataType::VarBinary { .. }, Value::VarBinary(v)) => {
+            while v.last().copied() == Some(0) {
+                v.pop();
+            }
+        }
+        _ => {}
+    }
+}
+
 pub(crate) fn enforce_foreign_keys_on_delete(
     table: &TableDef,
     catalog: &mut dyn Catalog,
@@ -376,6 +400,8 @@ pub(crate) fn apply_assignments<'a>(
             storage,
             clock,
         )?;
+        let mut value = value;
+        apply_ansi_padding(&mut value, target, table.columns[idx].ansi_padding_on);
         enforce_string_length(target, &value, &table.columns[idx].name)?;
         row.values[idx] = value;
     }
@@ -386,8 +412,16 @@ pub(crate) fn apply_assignments<'a>(
             let joined = single_row_context(table, snapshot);
             let value =
                 super::super::evaluator::eval_expr(computed, &joined, ctx, catalog, storage, clock)?;
+            let mut value = value;
+            apply_ansi_padding(&mut value, &col.data_type, col.ansi_padding_on);
+            enforce_string_length(&col.data_type, &value, &col.name)?;
             row.values[idx] = value;
         }
+    }
+
+    for (col, value) in table.columns.iter().zip(row.values.iter_mut()) {
+        apply_ansi_padding(value, &col.data_type, col.ansi_padding_on);
+        enforce_string_length(&col.data_type, value, &col.name)?;
     }
     Ok(())
 }

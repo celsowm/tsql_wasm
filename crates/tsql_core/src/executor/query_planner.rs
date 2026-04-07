@@ -276,6 +276,7 @@ pub fn bind_table(
                     check: None,
                     check_constraint_name: None,
                     computed_expr: None,
+                    ansi_padding_on: true,
                 });
             }
 

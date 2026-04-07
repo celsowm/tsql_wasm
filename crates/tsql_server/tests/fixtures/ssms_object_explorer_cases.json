@@ -1,0 +1,110 @@
+{
+  "cases": [
+    {
+      "name": "bootstrap_set_lock_timeout",
+      "scope": "bootstrap",
+      "sql": "SET LOCK_TIMEOUT 10000",
+      "must_succeed": true,
+      "result_set_count": 0,
+      "result_sets": []
+    },
+    {
+      "name": "bootstrap_server_properties_and_transport",
+      "scope": "bootstrap",
+      "sql": "DECLARE @edition sysname; SET @edition = cast(SERVERPROPERTY(N'EDITION') as sysname); SELECT case when @edition = N'SQL Azure' then 2 else 1 end as DatabaseEngineType, SERVERPROPERTY('EngineEdition') AS DatabaseEngineEdition, SERVERPROPERTY('ProductVersion') AS ProductVersion, @@MICROSOFTVERSION AS MicrosoftVersion; select host_platform from sys.dm_os_host_info; if @edition = N'SQL Azure' select 'TCP' as ConnectionProtocol else exec ('select CONVERT(nvarchar(40),CONNECTIONPROPERTY(''net_transport'')) as ConnectionProtocol')",
+      "must_succeed": true,
+      "result_set_count": 3,
+      "result_sets": [
+        {
+          "required_columns": [
+            "DatabaseEngineType",
+            "DatabaseEngineEdition",
+            "ProductVersion",
+            "MicrosoftVersion"
+          ],
+          "min_rows": 1
+        },
+        {
+          "required_columns": [
+            "host_platform"
+          ],
+          "min_rows": 1
+        },
+        {
+          "required_columns": [
+            "ConnectionProtocol"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "name": "bootstrap_sys_configurations_probe",
+      "scope": "bootstrap",
+      "sql": "select value_in_use from sys.configurations where configuration_id = 16384",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "value_in_use"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "name": "bootstrap_srv_role_member_mask",
+      "scope": "bootstrap",
+      "sql": "select is_srvrolemember('sysadmin') * 1 +is_srvrolemember('serveradmin') * 2 +is_srvrolemember('setupadmin') * 4 +is_srvrolemember('securityadmin') * 8 +is_srvrolemember('processadmin') * 16 +is_srvrolemember('dbcreator') * 32 +is_srvrolemember('diskadmin') * 64+ is_srvrolemember('bulkadmin') * 128",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "expr"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "name": "tables_list_from_sys_tables",
+      "scope": "tables",
+      "sql": "SELECT s.name AS schema_name, t.name AS table_name, t.object_id, t.type_desc, t.is_ms_shipped FROM sys.tables t INNER JOIN sys.schemas s ON s.schema_id = t.schema_id WHERE t.is_ms_shipped = 0 ORDER BY s.name, t.name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "schema_name",
+            "table_name",
+            "object_id",
+            "type_desc",
+            "is_ms_shipped"
+          ],
+          "min_rows": 6
+        }
+      ]
+    },
+    {
+      "name": "tables_and_views_list_from_sys_objects",
+      "scope": "tables",
+      "sql": "SELECT s.name AS schema_name, o.name, o.type, o.type_desc, o.is_ms_shipped FROM sys.objects o INNER JOIN sys.schemas s ON s.schema_id = o.schema_id WHERE o.type_desc IN ('USER_TABLE', 'VIEW') AND o.is_ms_shipped = 0 ORDER BY s.name, o.name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "schema_name",
+            "name",
+            "type",
+            "type_desc",
+            "is_ms_shipped"
+          ],
+          "min_rows": 11
+        }
+      ]
+    }
+  ]
+}

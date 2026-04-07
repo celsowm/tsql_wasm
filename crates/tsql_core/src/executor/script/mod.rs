@@ -60,7 +60,7 @@ impl<'a> ScriptExecutor<'a> {
                 continue;
             };
 
-            self.schema().drop_table(DropTableStmt {
+            self.schema(ctx).drop_table(DropTableStmt {
                 name: ObjectName {
                     schema: Some(table.schema_name),
                     name: physical,
@@ -85,10 +85,11 @@ impl<'a> ScriptExecutor<'a> {
         }
     }
 
-    fn schema(&mut self) -> SchemaExecutor<'_> {
+    fn schema<'b>(&'b mut self, ctx: &'b ExecutionContext<'_>) -> SchemaExecutor<'b> {
         SchemaExecutor {
             catalog: self.catalog,
             storage: self.storage,
+            session_options: &ctx.options,
         }
     }
 }

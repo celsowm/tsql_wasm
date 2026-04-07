@@ -4,6 +4,12 @@ use std::io;
 use super::decode;
 use super::types::{RpcParam, RpcRequest};
 
+#[derive(Debug, Clone)]
+enum RpcProcSelector {
+    Id(u16),
+    Name(String),
+}
+
 struct RpcFrameParser<'a> {
     reader: PacketReader<'a>,
 }
@@ -23,11 +29,11 @@ impl<'a> RpcFrameParser<'a> {
 
     fn parse(mut self) -> io::Result<Option<RpcRequest>> {
         self.skip_all_headers()?;
-        let proc_id = self.read_proc_id()?;
+        let proc_selector = self.read_proc_selector()?;
         self.skip_rpc_flags()?;
 
         // Only handle sp_executesql=10 and sp_prepexec=13
-        if proc_id != 10 && proc_id != 13 {
+        if !is_supported_rpc_proc(&proc_selector) {
             return Ok(None);
         }
 
@@ -60,23 +66,23 @@ impl<'a> RpcFrameParser<'a> {
         Ok(())
     }
 
-    fn read_proc_id(&mut self) -> io::Result<u16> {
+    fn read_proc_selector(&mut self) -> io::Result<RpcProcSelector> {
         if self.reader.remaining() < 2 {
-            return Ok(0);
+            return Ok(RpcProcSelector::Id(0));
         }
         let name_len = self.reader.read_u16_le()?;
         if name_len == 0xFFFF {
             if self.reader.remaining() < 2 {
-                return Ok(0);
+                return Ok(RpcProcSelector::Id(0));
             }
-            return self.reader.read_u16_le();
+            return Ok(RpcProcSelector::Id(self.reader.read_u16_le()?));
         }
         let byte_len = name_len as usize * 2;
         if self.reader.remaining() < byte_len {
-            return Ok(0);
+            return Ok(RpcProcSelector::Id(0));
         }
-        self.reader.skip(byte_len)?;
-        Ok(0)
+        let bytes = self.reader.read_bytes(byte_len)?;
+        Ok(RpcProcSelector::Name(decode::decode_utf16le(bytes)))
     }
 
     fn skip_rpc_flags(&mut self) -> io::Result<()> {
@@ -202,6 +208,25 @@ impl<'a> RpcFrameParser<'a> {
             _ => Ok(Some(String::new())),
         }
     }
+}
+
+fn is_supported_rpc_proc(proc: &RpcProcSelector) -> bool {
+    match proc {
+        RpcProcSelector::Id(id) => *id == 10 || *id == 13,
+        RpcProcSelector::Name(name) => {
+            let base = normalize_proc_name(name);
+            base == "sp_executesql" || base == "sp_prepexec"
+        }
+    }
+}
+
+fn normalize_proc_name(name: &str) -> String {
+    let mut part = name.trim();
+    if let Some(last) = part.rsplit('.').next() {
+        part = last;
+    }
+    part.trim_matches(|c| c == '[' || c == ']' || c == ' ')
+        .to_ascii_lowercase()
 }
 
 fn parse_param_decl(decl: &str) -> Vec<(String, String)> {

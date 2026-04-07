@@ -31,6 +31,11 @@ impl<'a> QueryExecutor<'a> {
     ) -> Result<super::result::QueryResult, DbError> {
         let into_table = stmt.into_table.clone();
         let result = self.execute_select_internal(stmt, ctx)?;
+        let mut result = result;
+
+        if ctx.options.rowcount > 0 && result.rows.len() > ctx.options.rowcount as usize {
+            result.rows.truncate(ctx.options.rowcount as usize);
+        }
 
         if into_table.is_some() {
             return Err(DbError::Execution("SELECT INTO is handled by ScriptExecutor".into()));
@@ -44,6 +49,8 @@ impl<'a> QueryExecutor<'a> {
         stmt: SelectStmt,
         ctx: &mut ExecutionContext,
     ) -> Result<super::result::QueryResult, DbError> {
+        self.enforce_query_governor_cost_limit(&stmt, ctx)?;
+
         if stmt.from.is_none() {
             let source_rows = vec![vec![]];
             let has_aggregate = stmt
@@ -368,6 +375,52 @@ impl<'a> QueryExecutor<'a> {
         ctx: &mut ExecutionContext,
     ) -> Result<BoundTable, DbError> {
         binder::bind_table(catalog, self.storage, self.clock, tref, ctx, |s, c| self.execute_select(s, c))
+    }
+
+    fn enforce_query_governor_cost_limit(
+        &self,
+        stmt: &SelectStmt,
+        ctx: &ExecutionContext,
+    ) -> Result<(), DbError> {
+        let limit = ctx.options.query_governor_cost_limit;
+        if limit <= 0 {
+            return Ok(());
+        }
+
+        let mut cost = 1i64;
+        cost += stmt.joins.len() as i64;
+        cost += stmt.applies.len() as i64;
+        cost += stmt.group_by.len() as i64;
+        if stmt.selection.is_some() {
+            cost += 1;
+        }
+        if stmt.having.is_some() {
+            cost += 1;
+        }
+        if stmt.distinct {
+            cost += 1;
+        }
+        if !stmt.order_by.is_empty() {
+            cost += 1;
+        }
+        if stmt.top.is_some() {
+            cost += 1;
+        }
+        if stmt.offset.is_some() {
+            cost += 1;
+        }
+        if stmt.fetch.is_some() {
+            cost += 1;
+        }
+
+        if cost > limit {
+            return Err(DbError::Execution(format!(
+                "Query governor cost limit {} exceeded by estimated cost {}",
+                limit, cost
+            )));
+        }
+
+        Ok(())
     }
 }
 

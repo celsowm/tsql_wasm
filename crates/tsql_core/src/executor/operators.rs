@@ -7,7 +7,15 @@ use crate::types::Value;
 use super::value_helpers::{is_string_type, rescale_raw, to_decimal_parts, to_i64, value_to_f64};
 use super::value_ops::{compare_values, truthy};
 
-pub(crate) fn eval_binary(op: &BinaryOp, lv: Value, rv: Value, ansi_nulls: bool) -> Result<Value, DbError> {
+pub(crate) fn eval_binary(
+    op: &BinaryOp,
+    lv: Value,
+    rv: Value,
+    ansi_nulls: bool,
+    concat_null_yields_null: bool,
+    arithabort: bool,
+    ansi_warnings: bool,
+) -> Result<Value, DbError> {
     match op {
         BinaryOp::Eq => Ok(compare_bool(lv, rv, |o| o == Ordering::Equal, ansi_nulls)),
         BinaryOp::NotEq => Ok(compare_bool(lv, rv, |o| o != Ordering::Equal, ansi_nulls)),
@@ -21,11 +29,11 @@ pub(crate) fn eval_binary(op: &BinaryOp, lv: Value, rv: Value, ansi_nulls: bool)
         }, ansi_nulls)),
         BinaryOp::And => eval_and(lv, rv),
         BinaryOp::Or => eval_or(lv, rv),
-        BinaryOp::Add => eval_add(lv, rv),
-        BinaryOp::Subtract => eval_subtract(lv, rv),
-        BinaryOp::Multiply => eval_multiply(lv, rv),
-        BinaryOp::Divide => eval_divide(lv, rv),
-        BinaryOp::Modulo => eval_modulo(lv, rv),
+        BinaryOp::Add => eval_add(lv, rv, concat_null_yields_null, arithabort, ansi_warnings),
+        BinaryOp::Subtract => eval_subtract(lv, rv, arithabort, ansi_warnings),
+        BinaryOp::Multiply => eval_multiply(lv, rv, arithabort, ansi_warnings),
+        BinaryOp::Divide => eval_divide(lv, rv, arithabort, ansi_warnings),
+        BinaryOp::Modulo => eval_modulo(lv, rv, arithabort, ansi_warnings),
         BinaryOp::BitwiseAnd => eval_bitwise_and(lv, rv),
         BinaryOp::BitwiseOr => eval_bitwise_or(lv, rv),
         BinaryOp::BitwiseXor => eval_bitwise_xor(lv, rv),
@@ -56,14 +64,23 @@ pub(crate) fn eval_unary(op: &UnaryOp, val: Value) -> Result<Value, DbError> {
     }
 }
 
-fn eval_add(lv: Value, rv: Value) -> Result<Value, DbError> {
+fn eval_add(
+    lv: Value,
+    rv: Value,
+    concat_null_yields_null: bool,
+    arithabort: bool,
+    ansi_warnings: bool,
+) -> Result<Value, DbError> {
+    if is_string_type(&lv) || is_string_type(&rv) {
+        if (lv.is_null() || rv.is_null()) && concat_null_yields_null {
+            return Ok(Value::Null);
+        }
+        let ls = if lv.is_null() { String::new() } else { lv.to_string_value() };
+        let rs = if rv.is_null() { String::new() } else { rv.to_string_value() };
+        return Ok(Value::VarChar(format!("{}{}", ls, rs)));
+    }
     if lv.is_null() || rv.is_null() {
         return Ok(Value::Null);
-    }
-    if is_string_type(&lv) || is_string_type(&rv) {
-        let ls = lv.to_string_value();
-        let rs = rv.to_string_value();
-        return Ok(Value::VarChar(format!("{}{}", ls, rs)));
     }
     if is_float_type(&lv) || is_float_type(&rv) {
         let a = value_to_f64(&lv)?;
@@ -87,12 +104,20 @@ fn eval_add(lv: Value, rv: Value) -> Result<Value, DbError> {
         _ => {
             let a = to_i64(&lv)?;
             let b = to_i64(&rv)?;
-            Ok(Value::BigInt(a + b))
+            match a.checked_add(b) {
+                Some(v) => Ok(Value::BigInt(v)),
+                None => arithmetic_overflow("addition", arithabort, ansi_warnings),
+            }
         }
     }
 }
 
-fn eval_subtract(lv: Value, rv: Value) -> Result<Value, DbError> {
+fn eval_subtract(
+    lv: Value,
+    rv: Value,
+    arithabort: bool,
+    ansi_warnings: bool,
+) -> Result<Value, DbError> {
     if lv.is_null() || rv.is_null() {
         return Ok(Value::Null);
     }
@@ -118,12 +143,20 @@ fn eval_subtract(lv: Value, rv: Value) -> Result<Value, DbError> {
         _ => {
             let a = to_i64(&lv)?;
             let b = to_i64(&rv)?;
-            Ok(Value::BigInt(a - b))
+            match a.checked_sub(b) {
+                Some(v) => Ok(Value::BigInt(v)),
+                None => arithmetic_overflow("subtraction", arithabort, ansi_warnings),
+            }
         }
     }
 }
 
-fn eval_multiply(lv: Value, rv: Value) -> Result<Value, DbError> {
+fn eval_multiply(
+    lv: Value,
+    rv: Value,
+    arithabort: bool,
+    ansi_warnings: bool,
+) -> Result<Value, DbError> {
     if lv.is_null() || rv.is_null() {
         return Ok(Value::Null);
     }
@@ -147,12 +180,20 @@ fn eval_multiply(lv: Value, rv: Value) -> Result<Value, DbError> {
         _ => {
             let a = to_i64(&lv)?;
             let b = to_i64(&rv)?;
-            Ok(Value::BigInt(a * b))
+            match a.checked_mul(b) {
+                Some(v) => Ok(Value::BigInt(v)),
+                None => arithmetic_overflow("multiplication", arithabort, ansi_warnings),
+            }
         }
     }
 }
 
-fn eval_divide(lv: Value, rv: Value) -> Result<Value, DbError> {
+fn eval_divide(
+    lv: Value,
+    rv: Value,
+    arithabort: bool,
+    ansi_warnings: bool,
+) -> Result<Value, DbError> {
     if lv.is_null() || rv.is_null() {
         return Ok(Value::Null);
     }
@@ -160,7 +201,7 @@ fn eval_divide(lv: Value, rv: Value) -> Result<Value, DbError> {
         let a = value_to_f64(&lv)?;
         let b = value_to_f64(&rv)?;
         if b == 0.0 {
-            return Ok(Value::Null);
+            return divide_by_zero(arithabort, ansi_warnings);
         }
         return Ok(Value::Float((a / b).to_bits()));
     }
@@ -168,7 +209,7 @@ fn eval_divide(lv: Value, rv: Value) -> Result<Value, DbError> {
         let a = extract_money_as_i128(&lv);
         let b = extract_money_as_i128(&rv);
         if b == 0 {
-            return Ok(Value::Null);
+            return divide_by_zero(arithabort, ansi_warnings);
         }
         return Ok(Value::Money(a * 10000 / b));
     }
@@ -177,7 +218,7 @@ fn eval_divide(lv: Value, rv: Value) -> Result<Value, DbError> {
             let (ar, as_) = to_decimal_parts(&lv);
             let (br, bs) = to_decimal_parts(&rv);
             if br == 0 {
-                return Ok(Value::Null);
+                return divide_by_zero(arithabort, ansi_warnings);
             }
             let scale = 6u8.max(as_);
             let numerator = rescale_raw(ar, as_, scale + bs);
@@ -187,21 +228,26 @@ fn eval_divide(lv: Value, rv: Value) -> Result<Value, DbError> {
             let a = to_i64(&lv)?;
             let b = to_i64(&rv)?;
             if b == 0 {
-                return Ok(Value::Null);
+                return divide_by_zero(arithabort, ansi_warnings);
             }
             Ok(Value::BigInt(a / b))
         }
     }
 }
 
-fn eval_modulo(lv: Value, rv: Value) -> Result<Value, DbError> {
+fn eval_modulo(
+    lv: Value,
+    rv: Value,
+    arithabort: bool,
+    ansi_warnings: bool,
+) -> Result<Value, DbError> {
     if lv.is_null() || rv.is_null() {
         return Ok(Value::Null);
     }
     let a = to_i64(&lv)?;
     let b = to_i64(&rv)?;
     if b == 0 {
-        return Ok(Value::Null);
+        return divide_by_zero(arithabort, ansi_warnings);
     }
     Ok(Value::BigInt(a % b))
 }
@@ -295,6 +341,29 @@ fn eval_bitwise_xor(lv: Value, rv: Value) -> Result<Value, DbError> {
     let a = to_i64(&lv)?;
     let b = to_i64(&rv)?;
     Ok(Value::BigInt(a ^ b))
+}
+
+fn arithmetic_overflow(
+    what: &str,
+    arithabort: bool,
+    ansi_warnings: bool,
+) -> Result<Value, DbError> {
+    if arithabort || ansi_warnings {
+        Err(DbError::Execution(format!(
+            "Arithmetic overflow error during {}",
+            what
+        )))
+    } else {
+        Ok(Value::Null)
+    }
+}
+
+fn divide_by_zero(arithabort: bool, ansi_warnings: bool) -> Result<Value, DbError> {
+    if arithabort || ansi_warnings {
+        Err(DbError::Execution("Divide by zero error encountered.".into()))
+    } else {
+        Ok(Value::Null)
+    }
 }
 
 fn eval_bitwise_not(val: Value) -> Result<Value, DbError> {

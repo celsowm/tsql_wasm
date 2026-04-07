@@ -110,6 +110,7 @@ impl<'a> ScriptExecutor<'a> {
                     check: None,
                     check_constraint_name: None,
                     computed_expr: None,
+                    ansi_padding_on: true,
                 });
             }
 

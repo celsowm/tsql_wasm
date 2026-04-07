@@ -170,8 +170,19 @@ impl<'a> MutationExecutor<'a> {
             let mut inserted_rows = Vec::new();
             let mut deleted_rows = Vec::new();
             let mut updated_indices = HashSet::new();
+            let rowcount_limit = if ctx.options.rowcount == 0 {
+                None
+            } else {
+                Some(ctx.options.rowcount as usize)
+            };
+            let mut updated_count = 0usize;
 
             for joined_row in joined_rows {
+                if let Some(limit) = rowcount_limit {
+                    if updated_count >= limit {
+                        break;
+                    }
+                }
                 let target_ctx = joined_row
                     .iter()
                     .find(|ct| {
@@ -198,6 +209,7 @@ impl<'a> MutationExecutor<'a> {
                         inserted_rows.push(new_row);
                         deleted_rows.push(stored_row.clone());
                         updated_indices.insert(idx);
+                        updated_count += 1;
                     }
                 }
             }
@@ -238,8 +250,19 @@ impl<'a> MutationExecutor<'a> {
         let mut updated_indices = HashSet::new();
         let mut inserted_rows_for_output = Vec::new();
         let mut deleted_rows_for_output = Vec::new();
+        let rowcount_limit = if ctx.options.rowcount == 0 {
+            None
+        } else {
+            Some(ctx.options.rowcount as usize)
+        };
+        let mut updated_count = 0usize;
 
         for joined_row in joined_rows {
+            if let Some(limit) = rowcount_limit {
+                if updated_count >= limit {
+                    break;
+                }
+            }
             let target_ctx = joined_row
                 .iter()
                 .find(|ct| {
@@ -280,6 +303,7 @@ impl<'a> MutationExecutor<'a> {
                     self.storage.update_row(table_id, idx, new_row.clone())?;
                     self.push_dirty_update(ctx, &table.name, idx, &new_row);
                     updated_indices.insert(idx);
+                    updated_count += 1;
 
                     if collect_rows {
                         inserted_rows_for_output.push(new_row);

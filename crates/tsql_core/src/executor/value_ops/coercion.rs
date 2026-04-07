@@ -6,6 +6,14 @@ use uuid::Uuid;
 use super::super::value_helpers::{pad_binary_right, pad_right, rescale_raw};
 
 pub fn coerce_value_to_type(value: Value, ty: &DataType) -> Result<Value, DbError> {
+    coerce_value_to_type_with_dateformat(value, ty, "mdy")
+}
+
+pub fn coerce_value_to_type_with_dateformat(
+    value: Value,
+    ty: &DataType,
+    dateformat: &str,
+) -> Result<Value, DbError> {
     if matches!(ty, DataType::SqlVariant) {
         return Ok(match value {
             Value::Null => Value::Null,
@@ -31,7 +39,7 @@ pub fn coerce_value_to_type(value: Value, ty: &DataType) -> Result<Value, DbErro
         Value::Money(v) => coerce_money(v, ty),
         Value::SmallMoney(v) => coerce_money(v as i128, ty),
         Value::Char(v) | Value::VarChar(v) | Value::NChar(v) | Value::NVarChar(v) => {
-            coerce_string(&v, ty)
+            coerce_string(&v, ty, dateformat)
         }
         Value::Binary(v) | Value::VarBinary(v) => coerce_binary(&v, ty),
         Value::Date(v) => coerce_date_value(v, ty),
@@ -39,7 +47,7 @@ pub fn coerce_value_to_type(value: Value, ty: &DataType) -> Result<Value, DbErro
         Value::DateTime(v) => coerce_datetime_value(v, ty),
         Value::DateTime2(v) => coerce_datetime_value(v, ty),
         Value::UniqueIdentifier(v) => coerce_uuid_value(v, ty),
-        Value::SqlVariant(inner) => coerce_value_to_type(*inner, ty),
+        Value::SqlVariant(inner) => coerce_value_to_type_with_dateformat(*inner, ty, dateformat),
     }
 }
 
@@ -346,7 +354,7 @@ fn coerce_money(raw: i128, ty: &DataType) -> Result<Value, DbError> {
     }
 }
 
-fn coerce_string(v: &str, ty: &DataType) -> Result<Value, DbError> {
+fn coerce_string(v: &str, ty: &DataType, dateformat: &str) -> Result<Value, DbError> {
     match ty {
         DataType::Bit => Ok(Value::Bit(v != "0" && !v.is_empty())),
         DataType::TinyInt => v
@@ -414,16 +422,7 @@ fn coerce_string(v: &str, ty: &DataType) -> Result<Value, DbError> {
             Ok(Value::VarBinary(bytes))
         }
         DataType::Date => {
-            let parsed = chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d")
-                .or_else(|_| chrono::NaiveDate::parse_from_str(v, "%m/%d/%Y"))
-                .or_else(|_| {
-                    chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%d %H:%M:%S")
-                        .map(|dt| dt.date())
-                })
-                .or_else(|_| {
-                    chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%dT%H:%M:%S")
-                        .map(|dt| dt.date())
-                });
+            let parsed = parse_date_string(v, dateformat);
             match parsed {
                 Ok(d) => Ok(Value::Date(d)),
                 Err(_) => Err(DbError::Execution(format!("invalid date: {}", v))),
@@ -438,8 +437,7 @@ fn coerce_string(v: &str, ty: &DataType) -> Result<Value, DbError> {
             }
         }
         DataType::DateTime | DataType::DateTime2 => {
-            let parsed = chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%d %H:%M:%S")
-                .or_else(|_| chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%dT%H:%M:%S"));
+            let parsed = parse_datetime_string(v, dateformat);
             match parsed {
                 Ok(dt) => Ok(Value::DateTime(dt)),
                 Err(_) => Err(DbError::Execution(format!("invalid datetime: {}", v))),
@@ -506,6 +504,46 @@ fn coerce_datetime_value(v: chrono::NaiveDateTime, ty: &DataType) -> Result<Valu
             ty
         ))),
     }
+}
+
+fn parse_date_string(v: &str, dateformat: &str) -> Result<chrono::NaiveDate, ()> {
+    if let Ok(date) = chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d") {
+        return Ok(date);
+    }
+    if let Ok(date) = chrono::NaiveDate::parse_from_str(v, "%Y/%m/%d") {
+        return Ok(date);
+    }
+    if let Ok(date) = chrono::NaiveDate::parse_from_str(v, "%Y.%m.%d") {
+        return Ok(date);
+    }
+
+    let fmt = match dateformat.to_ascii_lowercase().as_str() {
+        "dmy" => ["%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y"],
+        "ymd" => ["%Y/%m/%d", "%Y-%m-%d", "%Y.%m.%d"],
+        "ydm" => ["%Y/%d/%m", "%Y-%d-%m", "%Y.%d.%m"],
+        "myd" => ["%m/%Y/%d", "%m-%Y-%d", "%m.%Y.%d"],
+        "dym" => ["%d/%Y/%m", "%d-%Y-%m", "%d.%Y.%m"],
+        _ => ["%m/%d/%Y", "%m-%d-%Y", "%m.%d.%Y"],
+    };
+
+    for candidate in fmt {
+        if let Ok(date) = chrono::NaiveDate::parse_from_str(v, candidate) {
+            return Ok(date);
+        }
+    }
+
+    chrono::NaiveDate::parse_from_str(v, "%d/%m/%Y").map_err(|_| ())
+}
+
+fn parse_datetime_string(v: &str, dateformat: &str) -> Result<chrono::NaiveDateTime, ()> {
+    chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%d %H:%M:%S")
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%dT%H:%M:%S"))
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(v, "%m/%d/%Y %H:%M:%S"))
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(v, "%d/%m/%Y %H:%M:%S"))
+        .or_else(|_| {
+            parse_date_string(v, dateformat).map(|d| d.and_hms_opt(0, 0, 0).unwrap())
+        })
+        .map_err(|_| ())
 }
 
 #[allow(dead_code)]

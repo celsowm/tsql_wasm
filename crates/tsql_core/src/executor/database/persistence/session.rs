@@ -25,6 +25,7 @@ where
         self.state
             .sessions
             .insert(id, Mutex::new(SessionRuntime::new()));
+        self.state.deadlock_priorities.insert(id, 0);
         id
     }
 
@@ -43,6 +44,9 @@ where
             physical_tables.insert(table.clone());
         }
         session.reset();
+        self.state
+            .deadlock_priorities
+            .insert(session_id, session.options.deadlock_priority);
         drop(session);
 
         self.state
@@ -81,6 +85,7 @@ where
             .table_locks
             .lock()
             .release_all_for_session(session_id);
+        self.state.deadlock_priorities.remove(&session_id);
         let removed = self.state.sessions.remove(&session_id);
         if removed.is_none() {
             return Err(DbError::Execution(format!(

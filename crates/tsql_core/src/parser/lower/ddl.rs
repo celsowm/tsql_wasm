@@ -105,10 +105,12 @@ pub fn lower_create(s: ast::CreateStmt) -> Result<executor_ast::Statement, DbErr
 }
 
 pub fn lower_column_def(c: ast::ColumnDef) -> Result<executor_ast::statements::ddl::ColumnSpec, DbError> {
+    let nullable_explicit = c.is_nullable.is_some();
     Ok(executor_ast::statements::ddl::ColumnSpec {
         name: c.name,
         data_type: lower_data_type(c.data_type)?,
         nullable: c.is_nullable.unwrap_or(true),
+        nullable_explicit,
         identity: c.identity_spec,
         primary_key: c.is_primary_key,
         unique: c.is_unique,
@@ -123,6 +125,7 @@ pub fn lower_column_def(c: ast::ColumnDef) -> Result<executor_ast::statements::d
             on_delete: fk.on_delete.map(lower_referential_action),
             on_update: fk.on_update.map(lower_referential_action),
         }),
+        ansi_padding_on: true,
     })
 }
 

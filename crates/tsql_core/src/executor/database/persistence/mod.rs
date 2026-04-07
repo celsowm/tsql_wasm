@@ -109,7 +109,10 @@ where
         storage.table_versions.clear();
         self.inner.table_locks.lock().clear();
         for mut session_lock in self.inner.sessions.iter_mut() {
-            session_lock.value_mut().get_mut().reset();
+            let session_id = *session_lock.key();
+            let session = session_lock.value_mut().get_mut();
+            session.reset();
+            self.inner.deadlock_priorities.insert(session_id, 0);
         }
     }
 
@@ -410,6 +413,7 @@ where
             table_locks: parking_lot::Mutex::new(super::super::locks::LockTable::new()),
             durability: parking_lot::Mutex::new(durability),
             sessions: dashmap::DashMap::new(),
+            deadlock_priorities: dashmap::DashMap::new(),
             next_session_id: std::sync::atomic::AtomicU64::new(1),
             dirty_buffer: std::sync::Arc::new(parking_lot::Mutex::new(
                 super::super::dirty_buffer::DirtyBuffer::new(),
@@ -432,6 +436,7 @@ where
                 super::super::durability::NoopDurability::default(),
             )),
             sessions: dashmap::DashMap::new(),
+            deadlock_priorities: dashmap::DashMap::new(),
             next_session_id: std::sync::atomic::AtomicU64::new(1),
             dirty_buffer: std::sync::Arc::new(parking_lot::Mutex::new(
                 super::super::dirty_buffer::DirtyBuffer::new(),

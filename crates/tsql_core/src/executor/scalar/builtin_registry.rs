@@ -121,17 +121,17 @@ const SYSTEM_FUNCTIONS: &[BuiltinScalarFunction] = &[
     builtin!("@@FETCH_STATUS" => |_args, _row, ctx, _catalog, _storage, _clock| {
         Ok(Value::Int(*ctx.session.fetch_status))
     }),
-    builtin!("@@LANGUAGE" => |_args, _row, _ctx, _catalog, _storage, _clock| {
-        Ok(Value::NVarChar("us_english".into()))
+    builtin!("@@LANGUAGE" => |_args, _row, ctx, _catalog, _storage, _clock| {
+        Ok(Value::NVarChar(ctx.options.language.clone()))
     }),
-    builtin!("@@TEXTSIZE" => |_args, _row, _ctx, _catalog, _storage, _clock| {
-        Ok(Value::Int(2147483647))
+    builtin!("@@TEXTSIZE" => |_args, _row, ctx, _catalog, _storage, _clock| {
+        Ok(Value::Int(ctx.options.textsize))
     }),
     builtin!("@@MAX_PRECISION" => |_args, _row, _ctx, _catalog, _storage, _clock| {
         Ok(Value::TinyInt(38))
     }),
     builtin!("@@DATEFIRST" => |_args, _row, ctx, _catalog, _storage, _clock| {
-        Ok(Value::TinyInt(ctx.metadata.datefirst as u8))
+        Ok(Value::TinyInt(ctx.options.datefirst as u8))
     }),
     builtin!("@@MICROSOFTVERSION" => |_args, _row, _ctx, _catalog, _storage, _clock| {
         Ok(system::eval_microsoft_version())

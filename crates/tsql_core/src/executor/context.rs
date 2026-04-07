@@ -93,6 +93,7 @@ pub struct RowContext {
 pub struct ExecutionContext<'a> {
     pub(crate) session: SessionStateRefs<'a>,
     pub(crate) metadata: SessionMetadata,
+    pub(crate) options: super::tooling::SessionOptions,
     pub(crate) frame: FrameState,
     pub(crate) row: RowContext,
 }
@@ -393,6 +394,7 @@ impl<'a> ExecutionContext<'a> {
                 ansi_nulls: session.options.ansi_nulls,
                 datefirst: session.options.datefirst,
             },
+            options: session.options.clone(),
             frame: FrameState {
                 depth: 0,
                 loop_depth: 0,
@@ -463,6 +465,7 @@ impl<'a> ExecutionContext<'a> {
                 ansi_nulls,
                 datefirst,
             },
+            options: super::tooling::SessionOptions::default(),
             frame: FrameState {
                 depth: 0,
                 loop_depth: 0,
@@ -601,6 +604,7 @@ impl<'a> ExecutionContext<'a> {
                 identity_insert: self.session.identity_insert.clone(),
             },
             metadata: self.metadata.clone(),
+            options: self.options.clone(),
             frame: self.frame.fork(),
             row: self.row.fork(),
         }
@@ -700,5 +704,6 @@ impl<'a> ExecutionContext<'a> {
         self.session.restore_snapshot(snapshot, options);
         self.metadata.ansi_nulls = options.ansi_nulls;
         self.metadata.datefirst = options.datefirst;
+        self.options = options.clone();
     }
 }

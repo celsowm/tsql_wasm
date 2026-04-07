@@ -266,6 +266,9 @@ define_keywords! {
 
     // Lock timeout
     LockTimeout => "LOCK_TIMEOUT",
+    Low => "LOW",
+    Normal => "NORMAL",
+    High => "HIGH",
 
     // SET options
     NoCount => "NOCOUNT",

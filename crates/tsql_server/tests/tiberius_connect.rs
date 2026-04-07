@@ -75,7 +75,7 @@ async fn connect(port: u16) -> Client<tokio_util::compat::Compat<TcpStream>> {
     config.host("127.0.0.1");
     config.port(port);
     config.trust_cert();
-    config.encryption(tiberius::EncryptionLevel::Off);
+    config.encryption(tiberius::EncryptionLevel::NotSupported);
 
     // Retry connection a few times to handle server startup timing
     let mut attempts = 0;
@@ -604,7 +604,7 @@ async fn test_auth_reject() {
     tds_config.host("127.0.0.1");
     tds_config.port(port);
     tds_config.trust_cert();
-    tds_config.encryption(tiberius::EncryptionLevel::Off);
+    tds_config.encryption(tiberius::EncryptionLevel::NotSupported);
     tds_config.authentication(tiberius::AuthMethod::sql_server("wrong", "creds"));
 
     let tcp = TcpStream::connect(tds_config.get_addr())
@@ -650,7 +650,7 @@ async fn test_auth_accept() {
     tds_config.host("127.0.0.1");
     tds_config.port(port);
     tds_config.trust_cert();
-    tds_config.encryption(tiberius::EncryptionLevel::Off);
+    tds_config.encryption(tiberius::EncryptionLevel::NotSupported);
     tds_config.authentication(tiberius::AuthMethod::sql_server("admin", "secret"));
 
     let tcp = TcpStream::connect(tds_config.get_addr())
@@ -844,7 +844,7 @@ async fn test_session_pool_max_size_enforced() {
     tds_config.host("127.0.0.1");
     tds_config.port(port);
     tds_config.trust_cert();
-    tds_config.encryption(tiberius::EncryptionLevel::Off);
+    tds_config.encryption(tiberius::EncryptionLevel::NotSupported);
 
     let result = tokio::time::timeout(std::time::Duration::from_secs(2), async {
         let tcp = TcpStream::connect(tds_config.get_addr()).await.unwrap();

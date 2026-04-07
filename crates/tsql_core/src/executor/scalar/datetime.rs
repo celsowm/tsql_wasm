@@ -50,7 +50,7 @@ pub(crate) fn eval_dateadd(
     };
     let date_str = date_val.to_string_value();
 
-    let result = apply_dateadd(&part, num, &date_str)?;
+    let result = apply_dateadd(&part, num, &date_str, &ctx.options.dateformat)?;
 
     match date_val {
         Value::Date(_) => Ok(Value::Date(result.date())),
@@ -79,8 +79,8 @@ pub(crate) fn eval_datediff(
     let start_str = start_val.to_string_value();
     let end_str = end_val.to_string_value();
 
-    let (sy, sm, sd, sh, smi, ss) = parse_datetime_parts(&start_str)?;
-    let (ey, em, ed, ehi, emi, es) = parse_datetime_parts(&end_str)?;
+    let (sy, sm, sd, sh, smi, ss) = parse_datetime_parts(&start_str, &ctx.options.dateformat)?;
+    let (ey, em, ed, ehi, emi, es) = parse_datetime_parts(&end_str, &ctx.options.dateformat)?;
 
     let result = match part.as_str() {
         "year" | "yy" | "yyyy" => ey - sy,
@@ -122,7 +122,7 @@ pub(crate) fn eval_datepart(
     let part = extract_datepart(&args[0])?;
     let date_val = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
     let date_str = date_val.to_string_value();
-    let (y, m, d, h, mi, s) = parse_datetime_parts(&date_str)?;
+    let (y, m, d, h, mi, s) = parse_datetime_parts(&date_str, &ctx.options.dateformat)?;
 
     let result = match part.as_str() {
         "year" | "yy" | "yyyy" => y as i32,
@@ -170,7 +170,7 @@ pub(crate) fn eval_datename(
     let part = extract_datepart(&args[0])?;
     let date_val = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
     let date_str = date_val.to_string_value();
-    let (y, m, d, _, _, _) = parse_datetime_parts(&date_str)?;
+    let (y, m, d, _, _, _) = parse_datetime_parts(&date_str, &ctx.options.dateformat)?;
 
     let result = match part.as_str() {
         "year" | "yy" | "yyyy" => format!("{}", y),
@@ -259,7 +259,7 @@ pub(crate) fn eval_year(
         return Ok(Value::Null);
     }
     let date_str = val.to_string_value();
-    match parse_datetime_parts(&date_str) {
+    match parse_datetime_parts(&date_str, &ctx.options.dateformat) {
         Ok((y, _, _, _, _, _)) => Ok(Value::Int(y)),
         Err(_) => Ok(Value::Null),
     }
@@ -281,7 +281,7 @@ pub(crate) fn eval_month(
         return Ok(Value::Null);
     }
     let date_str = val.to_string_value();
-    match parse_datetime_parts(&date_str) {
+    match parse_datetime_parts(&date_str, &ctx.options.dateformat) {
         Ok((_, m, _, _, _, _)) => Ok(Value::Int(m)),
         Err(_) => Ok(Value::Null),
     }
@@ -303,7 +303,7 @@ pub(crate) fn eval_day(
         return Ok(Value::Null);
     }
     let date_str = val.to_string_value();
-    match parse_datetime_parts(&date_str) {
+    match parse_datetime_parts(&date_str, &ctx.options.dateformat) {
         Ok((_, _, d, _, _, _)) => Ok(Value::Int(d)),
         Err(_) => Ok(Value::Null),
     }
@@ -320,21 +320,21 @@ pub(crate) fn format_datetime_string(dt: &str, fmt: &str) -> String {
             }
         }
         "mm/dd/yyyy" => {
-            if let Ok((y, m, d, _, _, _)) = parse_datetime_parts(dt) {
+            if let Ok((y, m, d, _, _, _)) = parse_datetime_parts(dt, "mdy") {
                 format!("{:02}/{:02}/{}", m, d, y)
             } else {
                 dt.to_string()
             }
         }
         "dd/mm/yyyy" => {
-            if let Ok((y, m, d, _, _, _)) = parse_datetime_parts(dt) {
+            if let Ok((y, m, d, _, _, _)) = parse_datetime_parts(dt, "mdy") {
                 format!("{:02}/{:02}/{}", d, m, y)
             } else {
                 dt.to_string()
             }
         }
         "dd MMM yyyy" | "dd MMM yyyy hh:mi:ss" => {
-            if let Ok((y, m, d, h, mi, s)) = parse_datetime_parts(dt) {
+            if let Ok((y, m, d, h, mi, s)) = parse_datetime_parts(dt, "mdy") {
                 let months = [
                     "", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct",
                     "Nov", "Dec",
@@ -354,7 +354,7 @@ pub(crate) fn format_datetime_string(dt: &str, fmt: &str) -> String {
             }
         }
         "hh:mi:ss" => {
-            if let Ok((_, _, _, h, mi, s)) = parse_datetime_parts(dt) {
+            if let Ok((_, _, _, h, mi, s)) = parse_datetime_parts(dt, "mdy") {
                 format!("{:02}:{:02}:{:02}", h, mi, s)
             } else {
                 dt.to_string()

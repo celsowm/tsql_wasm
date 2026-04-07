@@ -49,7 +49,7 @@ impl<'a> ScriptExecutor<'a> {
             columns: stmt.columns,
             table_constraints: stmt.table_constraints,
         };
-        self.schema().create_table(create)?;
+        self.schema(ctx).create_table(create)?;
         ctx.register_table_var(&stmt.name, &physical);
         Ok(None)
     }
@@ -68,7 +68,11 @@ impl<'a> ScriptExecutor<'a> {
             self.clock,
         )?;
         if let Some((ty, var)) = ctx.session.variables.get_mut(&stmt.name) {
-            let coerced = crate::executor::value_ops::coerce_value_to_type(val, ty)?;
+            let coerced = crate::executor::value_ops::coerce_value_to_type_with_dateformat(
+                val,
+                ty,
+                &ctx.options.dateformat,
+            )?;
             *var = coerced;
         } else {
             return Err(DbError::invalid_identifier(&stmt.name));

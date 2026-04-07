@@ -50,6 +50,7 @@ pub(crate) fn bind_table(
                     check: None,
                     check_constraint_name: None,
                     computed_expr: None,
+                    ansi_padding_on: true,
                 })
                 .collect(),
             check_constraints: vec![],
@@ -176,6 +177,7 @@ fn bind_builtin_tvf(
         check: None,
         check_constraint_name: None,
         computed_expr: None,
+        ansi_padding_on: true,
     }];
 
     if enable_ordinal {
@@ -192,6 +194,7 @@ fn bind_builtin_tvf(
             check: None,
             check_constraint_name: None,
             computed_expr: None,
+            ansi_padding_on: true,
         });
     }
 
@@ -275,6 +278,7 @@ fn bind_view(
                 check: None,
                 check_constraint_name: None,
                 computed_expr: None,
+                ansi_padding_on: true,
             })
             .collect(),
         check_constraints: vec![],
@@ -364,7 +368,11 @@ fn bind_inline_tvf(
             let expr = parse_expr_subquery_aware(arg_raw)?;
             let val = eval_expr(&expr, &[], ctx, catalog, storage, clock)?;
             let ty = super::super::type_mapping::data_type_spec_to_runtime(dt);
-            let coerced = super::super::value_ops::coerce_value_to_type(val, &ty)?;
+            let coerced = super::super::value_ops::coerce_value_to_type_with_dateformat(
+                val,
+                &ty,
+                &ctx.options.dateformat,
+            )?;
             ctx.session.variables.insert(param.name.clone(), (ty, coerced));
             ctx.register_declared_var(&param.name);
         }
@@ -401,6 +409,7 @@ fn bind_inline_tvf(
                 check: None,
                 check_constraint_name: None,
                 computed_expr: None,
+                ansi_padding_on: true,
             })
             .collect(),
         check_constraints: vec![],

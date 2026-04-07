@@ -461,6 +461,10 @@ Core and integration tests covering:
 - Type coercion and NULL semantics
 - Arithmetic, CASE, IN, BETWEEN, LIKE expressions
 
+Compatibility is validated in two layers:
+- `scripts/test-compat.ps1`: semantic/result parity checks between Azure SQL Edge and `compat-query` (engine-focused).
+- `cargo test -p tsql_server ssms_object_explorer_`: SSMS Object Explorer contract replay (metadata/bootstrap/table-enumeration focused).
+
 ---
 
 ## Current Limitations

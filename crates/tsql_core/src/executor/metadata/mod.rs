@@ -55,6 +55,7 @@ pub(super) fn virtual_table_def(name: &str, cols: Vec<(&str, DataType, bool)>) -
                 check: None,
                 check_constraint_name: None,
                 computed_expr: None,
+                ansi_padding_on: true,
             })
             .collect(),
         check_constraints: vec![],

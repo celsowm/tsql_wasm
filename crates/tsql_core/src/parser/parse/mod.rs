@@ -298,6 +298,91 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
         }))
     }
 
+    fn parse_signed_int(parser: &mut Parser) -> ParseResult<i64> {
+        let sign = if matches!(parser.peek(), Some(Token::Operator(op)) if *op == "-") {
+            let _ = parser.next();
+            -1i64
+        } else if matches!(parser.peek(), Some(Token::Operator(op)) if *op == "+") {
+            let _ = parser.next();
+            1i64
+        } else {
+            1i64
+        };
+
+        if let Some(Token::Number { value: n, .. }) = parser.next() {
+            Ok(sign * (*n as i64))
+        } else {
+            parser.backtrack(Expected::Description("number"))
+        }
+    }
+
+    fn is_set_boundary(tok: Option<&Token>) -> bool {
+        matches!(tok, None | Some(Token::Semicolon) | Some(Token::Go))
+            || matches!(tok, Some(Token::Keyword(Keyword::Set)))
+    }
+
+    fn parse_generic_set_option(
+        parser: &mut Parser,
+        option_name: String,
+    ) -> ParseResult<Statement> {
+        let value = match parser.peek() {
+            Some(Token::Keyword(k)) if *k == Keyword::On => {
+                let _ = parser.next();
+                crate::parser::ast::SessionOptionValue::Bool(true)
+            }
+            Some(Token::Keyword(k)) if *k == Keyword::Off => {
+                let _ = parser.next();
+                crate::parser::ast::SessionOptionValue::Bool(false)
+            }
+            Some(Token::Identifier(id)) if id.eq_ignore_ascii_case("ON") => {
+                let _ = parser.next();
+                crate::parser::ast::SessionOptionValue::Bool(true)
+            }
+            Some(Token::Identifier(id)) if id.eq_ignore_ascii_case("OFF") => {
+                let _ = parser.next();
+                crate::parser::ast::SessionOptionValue::Bool(false)
+            }
+            Some(Token::Number { .. }) => {
+                crate::parser::ast::SessionOptionValue::Int(parse_signed_int(parser)?)
+            }
+            Some(Token::Operator(op)) if *op == "-" || *op == "+" => {
+                crate::parser::ast::SessionOptionValue::Int(parse_signed_int(parser)?)
+            }
+            Some(_) => {
+                let mut parts = Vec::new();
+                while !is_set_boundary(parser.peek()) {
+                    let Some(tok) = parser.next() else { break };
+                    match tok {
+                        Token::Identifier(v) | Token::String(v) | Token::Variable(v) => {
+                            parts.push(v.clone())
+                        }
+                        Token::Keyword(k) => parts.push(k.as_ref().to_string()),
+                        Token::Number { raw, .. } => parts.push(raw.clone()),
+                        Token::Operator(op) => parts.push(op.clone()),
+                        Token::Comma => parts.push(",".to_string()),
+                        Token::Dot => parts.push(".".to_string()),
+                        Token::LParen => parts.push("(".to_string()),
+                        Token::RParen => parts.push(")".to_string()),
+                        Token::Star => parts.push("*".to_string()),
+                        Token::Tilde => parts.push("~".to_string()),
+                        Token::BinaryLiteral(v) => parts.push(v.clone()),
+                        Token::Semicolon | Token::Go => break,
+                    }
+                }
+                if parts.is_empty() {
+                    return parser.backtrack(Expected::Description("SET option value"));
+                }
+                crate::parser::ast::SessionOptionValue::Text(parts.join(" "))
+            }
+            None => return parser.backtrack(Expected::Description("SET option value")),
+        };
+
+        Ok(Statement::Session(SessionStatement::SetOption {
+            option: crate::parser::ast::SessionOption::Unsupported(option_name),
+            value,
+        }))
+    }
+
     if matches_set_name(parser.peek(), "ANSI_NULLS") {
         return parse_bool_setting(parser, crate::parser::ast::SessionOption::AnsiNulls);
     }
@@ -310,16 +395,33 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
     if matches_set_name(parser.peek(), "XACT_ABORT") {
         return parse_bool_setting(parser, crate::parser::ast::SessionOption::XactAbort);
     }
+    if matches_set_name(parser.peek(), "ANSI_NULL_DFLT_ON") {
+        return parse_bool_setting(parser, crate::parser::ast::SessionOption::AnsiNullDfltOn);
+    }
+    if matches_set_name(parser.peek(), "ANSI_PADDING") {
+        return parse_bool_setting(parser, crate::parser::ast::SessionOption::AnsiPadding);
+    }
+    if matches_set_name(parser.peek(), "ANSI_WARNINGS") {
+        return parse_bool_setting(parser, crate::parser::ast::SessionOption::AnsiWarnings);
+    }
+    if matches_set_name(parser.peek(), "ARITHABORT") {
+        return parse_bool_setting(parser, crate::parser::ast::SessionOption::ArithAbort);
+    }
+    if matches_set_name(parser.peek(), "CONCAT_NULL_YIELDS_NULL") {
+        return parse_bool_setting(parser, crate::parser::ast::SessionOption::ConcatNullYieldsNull);
+    }
+    if matches_set_name(parser.peek(), "CURSOR_CLOSE_ON_COMMIT") {
+        return parse_bool_setting(parser, crate::parser::ast::SessionOption::CursorCloseOnCommit);
+    }
+    if matches_set_name(parser.peek(), "IMPLICIT_TRANSACTIONS") {
+        return parse_bool_setting(parser, crate::parser::ast::SessionOption::ImplicitTransactions);
+    }
     if matches_set_name(parser.peek(), "DATEFIRST") {
-        let _ = parser.next();
-        let val = if let Some(Token::Number { value: n, .. }) = parser.next() {
-            *n as i32
-        } else {
-            return parser.backtrack(Expected::Description("number"));
-        };
-        return Ok(Statement::Session(SessionStatement::SetOption {
-            option: crate::parser::ast::SessionOption::DateFirst,
-            value: crate::parser::ast::SessionOptionValue::Int(val),
+            let _ = parser.next();
+            let val = parse_signed_int(parser)?;
+            return Ok(Statement::Session(SessionStatement::SetOption {
+                option: crate::parser::ast::SessionOption::DateFirst,
+                value: crate::parser::ast::SessionOptionValue::Int(val),
         }));
     }
     if matches_set_name(parser.peek(), "LANGUAGE") {
@@ -329,16 +431,81 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
         return parse_text_setting(parser, crate::parser::ast::SessionOption::DateFormat);
     }
     if matches_set_name(parser.peek(), "LOCK_TIMEOUT") {
+            let _ = parser.next();
+            let val = parse_signed_int(parser)?;
+            return Ok(Statement::Session(SessionStatement::SetOption {
+                option: crate::parser::ast::SessionOption::LockTimeout,
+                value: crate::parser::ast::SessionOptionValue::Int(val)
+        }));
+    }
+    if matches_set_name(parser.peek(), "ROWCOUNT") {
+            let _ = parser.next();
+            let val = parse_signed_int(parser)?;
+            return Ok(Statement::Session(SessionStatement::SetOption {
+                option: crate::parser::ast::SessionOption::RowCount,
+                value: crate::parser::ast::SessionOptionValue::Int(val),
+        }));
+    }
+    if matches_set_name(parser.peek(), "TEXTSIZE") {
+            let _ = parser.next();
+            let val = parse_signed_int(parser)?;
+            return Ok(Statement::Session(SessionStatement::SetOption {
+                option: crate::parser::ast::SessionOption::TextSize,
+                value: crate::parser::ast::SessionOptionValue::Int(val),
+        }));
+    }
+    if matches_set_name(parser.peek(), "QUERY_GOVERNOR_COST_LIMIT") {
+            let _ = parser.next();
+            let val = parse_signed_int(parser)?;
+            return Ok(Statement::Session(SessionStatement::SetOption {
+                option: crate::parser::ast::SessionOption::QueryGovernorCostLimit,
+                value: crate::parser::ast::SessionOptionValue::Int(val),
+        }));
+    }
+    if matches_set_name(parser.peek(), "DEADLOCK_PRIORITY") {
         let _ = parser.next();
-        let val = if let Some(Token::Number { value: n, .. }) = parser.next() {
-            *n as i32
-        } else {
-            return parser.backtrack(Expected::Description("number"));
+        let value = match parser.peek() {
+            Some(Token::Keyword(Keyword::Low)) => {
+                let _ = parser.next();
+                crate::parser::ast::SessionOptionValue::Text("LOW".to_string())
+            }
+            Some(Token::Keyword(Keyword::Normal)) => {
+                let _ = parser.next();
+                crate::parser::ast::SessionOptionValue::Text("NORMAL".to_string())
+            }
+            Some(Token::Keyword(Keyword::High)) => {
+                let _ = parser.next();
+                crate::parser::ast::SessionOptionValue::Text("HIGH".to_string())
+            }
+            Some(Token::Number { .. }) | Some(Token::Operator(_)) => {
+                crate::parser::ast::SessionOptionValue::Int(parse_signed_int(parser)?)
+            }
+            Some(Token::Identifier(id)) if id.eq_ignore_ascii_case("LOW")
+                || id.eq_ignore_ascii_case("NORMAL")
+                || id.eq_ignore_ascii_case("HIGH") =>
+            {
+                let value = id.clone();
+                let _ = parser.next();
+                crate::parser::ast::SessionOptionValue::Text(value)
+            }
+            _ => return parser.backtrack(Expected::Description("deadlock priority")),
         };
         return Ok(Statement::Session(SessionStatement::SetOption {
-            option: crate::parser::ast::SessionOption::LockTimeout,
-            value: crate::parser::ast::SessionOptionValue::Int(val)
+            option: crate::parser::ast::SessionOption::DeadlockPriority,
+            value,
         }));
+    }
+
+    if let Some(tok) = parser.peek() {
+        let option_name = match tok {
+            Token::Identifier(id) => Some(id.clone()),
+            Token::Keyword(k) => Some(k.as_ref().to_string()),
+            _ => None,
+        };
+        if let Some(option_name) = option_name {
+            let _ = parser.next();
+            return parse_generic_set_option(parser, option_name);
+        }
     }
     parse_set(parser)
 }

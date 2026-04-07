@@ -5,7 +5,7 @@ use crate::error::{DbError, StmtOutcome};
 use crate::executor::context::{ExecutionContext, ModuleFrame, ModuleKind};
 use crate::executor::evaluator::eval_expr;
 use crate::executor::result::QueryResult;
-use crate::executor::value_ops::coerce_value_to_type;
+use crate::executor::value_ops::coerce_value_to_type_with_dateformat;
 use crate::types::Value;
 
 fn find_param_def<'a>(
@@ -102,7 +102,11 @@ impl<'a> ScriptExecutor<'a> {
                         };
                         let val = eval_expr(def, &[], ctx, self.catalog, self.storage, self.clock)?;
                         let ty = crate::executor::type_mapping::data_type_spec_to_runtime(dt);
-                        let coerced = coerce_value_to_type(val, &ty)?;
+                        let coerced = coerce_value_to_type_with_dateformat(
+                            val,
+                            &ty,
+                            &ctx.options.dateformat,
+                        )?;
                         ctx.session.variables.insert(param.name.clone(), (ty, coerced));
                         ctx.register_declared_var(&param.name);
                         continue;
@@ -116,7 +120,11 @@ impl<'a> ScriptExecutor<'a> {
                     RoutineParamType::Scalar(dt) => {
                         let val = eval_expr(&arg.expr, &[], ctx, self.catalog, self.storage, self.clock)?;
                         let ty = crate::executor::type_mapping::data_type_spec_to_runtime(dt);
-                        let coerced = coerce_value_to_type(val, &ty)?;
+                        let coerced = coerce_value_to_type_with_dateformat(
+                            val,
+                            &ty,
+                            &ctx.options.dateformat,
+                        )?;
                         ctx.session.variables.insert(param.name.clone(), (ty, coerced));
                         ctx.register_declared_var(&param.name);
                         if param.is_output && arg.is_output {
@@ -165,7 +173,11 @@ impl<'a> ScriptExecutor<'a> {
             self.leave_scope_and_cleanup(ctx)?;
             for (caller_var, val) in out_values {
                 if let Some((ty, out_var)) = ctx.session.variables.get_mut(&caller_var) {
-                    *out_var = coerce_value_to_type(val, ty)?;
+                    *out_var = coerce_value_to_type_with_dateformat(
+                        val,
+                        ty,
+                        &ctx.options.dateformat,
+                    )?;
                 }
             }
 
@@ -224,7 +236,11 @@ impl<'a> ScriptExecutor<'a> {
                             let val =
                                 eval_expr(&arg.expr, &[], ctx, self.catalog, self.storage, self.clock)?;
                             let ty = crate::executor::type_mapping::data_type_spec_to_runtime(dt);
-                            let coerced = coerce_value_to_type(val, &ty)?;
+                            let coerced = coerce_value_to_type_with_dateformat(
+                                val,
+                                &ty,
+                                &ctx.options.dateformat,
+                            )?;
                             ctx.session.variables.insert(key.clone(), (ty, coerced));
                             ctx.register_declared_var(&key);
                             if arg.is_output {
@@ -285,7 +301,11 @@ impl<'a> ScriptExecutor<'a> {
             self.leave_scope_and_cleanup(ctx)?;
             for (outer, val) in outs {
                 if let Some((ty, out)) = ctx.session.variables.get_mut(&outer) {
-                    *out = coerce_value_to_type(val, ty)?;
+                    *out = coerce_value_to_type_with_dateformat(
+                        val,
+                        ty,
+                        &ctx.options.dateformat,
+                    )?;
                 }
             }
             // Swallow control flow signals at procedure boundary

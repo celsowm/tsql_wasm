@@ -18,7 +18,7 @@ use super::predicates::{
 use super::scalar::eval_function;
 use super::script::ScriptExecutor;
 use super::type_mapping::data_type_spec_to_runtime;
-use super::value_ops::{coerce_value_to_type, truthy};
+use super::value_ops::{coerce_value_to_type_with_dateformat, truthy};
 
 pub(crate) fn eval_expr_to_type_constant(
     expr: &Expr,
@@ -29,7 +29,7 @@ pub(crate) fn eval_expr_to_type_constant(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     let value = eval_constant_expr(expr, ctx, catalog, storage, clock)?;
-    coerce_value_to_type(value, ty)
+    coerce_value_to_type_with_dateformat(value, ty, &ctx.options.dateformat)
 }
 
 pub(crate) fn eval_expr_to_type_in_context(
@@ -43,7 +43,7 @@ pub(crate) fn eval_expr_to_type_in_context(
 ) -> Result<Value, DbError> {
     let mut sub_ctx = ctx.with_outer_row(row.to_vec());
     let value = eval_expr(expr, row, &mut sub_ctx, catalog, storage, clock)?;
-    coerce_value_to_type(value, ty)
+    coerce_value_to_type_with_dateformat(value, ty, &ctx.options.dateformat)
 }
 
 pub(crate) fn eval_constant_expr(
@@ -229,7 +229,15 @@ fn eval_expr_inner(
         Expr::Binary { left, op, right } => {
             let lv = eval_expr(left, row, ctx, catalog, storage, clock)?;
             let rv = eval_expr(right, row, ctx, catalog, storage, clock)?;
-            eval_binary(op, lv, rv, ctx.metadata.ansi_nulls)
+            eval_binary(
+                op,
+                lv,
+                rv,
+                ctx.metadata.ansi_nulls,
+                ctx.options.concat_null_yields_null,
+                ctx.options.arithabort,
+                ctx.options.ansi_warnings,
+            )
         }
         Expr::Unary { op, expr: inner } => {
             let val = eval_expr(inner, row, ctx, catalog, storage, clock)?;
@@ -243,11 +251,19 @@ fn eval_expr_inner(
         )),
         Expr::Cast { expr, target } => {
             let value = eval_expr(expr, row, ctx, catalog, storage, clock)?;
-            coerce_value_to_type(value, &data_type_spec_to_runtime(target))
+            coerce_value_to_type_with_dateformat(
+                value,
+                &data_type_spec_to_runtime(target),
+                &ctx.options.dateformat,
+            )
         }
         Expr::TryCast { expr, target } => {
             let value = eval_expr(expr, row, ctx, catalog, storage, clock)?;
-            match coerce_value_to_type(value, &data_type_spec_to_runtime(target)) {
+            match coerce_value_to_type_with_dateformat(
+                value,
+                &data_type_spec_to_runtime(target),
+                &ctx.options.dateformat,
+            ) {
                 Ok(v) => Ok(v),
                 Err(_) => Ok(Value::Null),
             }
@@ -263,9 +279,14 @@ fn eval_expr_inner(
                     value,
                     &data_type_spec_to_runtime(target),
                     *style_code,
+                    &ctx.options.dateformat,
                 )
             } else {
-                coerce_value_to_type(value, &data_type_spec_to_runtime(target))
+                coerce_value_to_type_with_dateformat(
+                    value,
+                    &data_type_spec_to_runtime(target),
+                    &ctx.options.dateformat,
+                )
             }
         }
         Expr::TryConvert {
@@ -279,9 +300,14 @@ fn eval_expr_inner(
                     value,
                     &data_type_spec_to_runtime(target),
                     *style_code,
+                    &ctx.options.dateformat,
                 )
             } else {
-                coerce_value_to_type(value, &data_type_spec_to_runtime(target))
+                coerce_value_to_type_with_dateformat(
+                    value,
+                    &data_type_spec_to_runtime(target),
+                    &ctx.options.dateformat,
+                )
             };
             match result {
                 Ok(v) => Ok(v),

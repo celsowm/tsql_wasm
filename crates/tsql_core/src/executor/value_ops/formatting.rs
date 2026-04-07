@@ -4,7 +4,12 @@ use crate::error::DbError;
 use crate::types::{DataType, Value};
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 
-pub fn convert_with_style(value: Value, ty: &DataType, style: i32) -> Result<Value, DbError> {
+pub fn convert_with_style(
+    value: Value,
+    ty: &DataType,
+    style: i32,
+    dateformat: &str,
+) -> Result<Value, DbError> {
     match value {
         Value::Null => Ok(Value::Null),
         Value::Date(v) => convert_date_to_string(v, ty, style),
@@ -13,7 +18,7 @@ pub fn convert_with_style(value: Value, ty: &DataType, style: i32) -> Result<Val
         Value::VarChar(ref s)
         | Value::NVarChar(ref s)
         | Value::Char(ref s)
-        | Value::NChar(ref s) => convert_string_to_datetime(s, ty, style),
+        | Value::NChar(ref s) => convert_string_to_datetime(s, ty, style, dateformat),
         _ => coerce_value_to_type(value, ty),
     }
 }
@@ -118,12 +123,15 @@ pub fn format_datetime(dt: &NaiveDateTime, style: i32) -> String {
     }
 }
 
-fn convert_string_to_datetime(s: &str, ty: &DataType, _style: i32) -> Result<Value, DbError> {
+fn convert_string_to_datetime(
+    s: &str,
+    ty: &DataType,
+    _style: i32,
+    dateformat: &str,
+) -> Result<Value, DbError> {
     match ty {
         DataType::Date => {
-            let parsed = NaiveDate::parse_from_str(s, "%Y-%m-%d")
-                .or_else(|_| NaiveDate::parse_from_str(s, "%m/%d/%Y"))
-                .or_else(|_| NaiveDate::parse_from_str(s, "%d/%m/%Y"));
+            let parsed = parse_date_string(s, dateformat);
             match parsed {
                 Ok(d) => Ok(Value::Date(d)),
                 Err(_) => Err(DbError::Execution(format!("invalid date: {}", s))),
@@ -138,9 +146,7 @@ fn convert_string_to_datetime(s: &str, ty: &DataType, _style: i32) -> Result<Val
             }
         }
         DataType::DateTime | DataType::DateTime2 => {
-            let parsed = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
-                .or_else(|_| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S"))
-                .or_else(|_| NaiveDateTime::parse_from_str(s, "%m/%d/%Y %H:%M:%S"));
+            let parsed = parse_datetime_string(s, dateformat);
             match parsed {
                 Ok(dt) => Ok(Value::DateTime(dt)),
                 Err(_) => Err(DbError::Execution(format!("invalid datetime: {}", s))),
@@ -149,6 +155,38 @@ fn convert_string_to_datetime(s: &str, ty: &DataType, _style: i32) -> Result<Val
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::VarChar(s.to_string())))),
         _ => coerce_value_to_type(Value::VarChar(s.to_string()), ty),
     }
+}
+
+fn parse_date_string(v: &str, dateformat: &str) -> Result<NaiveDate, ()> {
+    NaiveDate::parse_from_str(v, "%Y-%m-%d")
+        .or_else(|_| NaiveDate::parse_from_str(v, "%m/%d/%Y"))
+        .or_else(|_| NaiveDate::parse_from_str(v, "%d/%m/%Y"))
+        .or_else(|_| NaiveDate::parse_from_str(v, "%m-%d-%Y"))
+        .or_else(|_| NaiveDate::parse_from_str(v, "%d-%m-%Y"))
+        .or_else(|_| NaiveDate::parse_from_str(v, "%Y/%m/%d"))
+        .or_else(|_| {
+            let fmt = match dateformat.to_ascii_lowercase().as_str() {
+                "dmy" => "%d/%m/%Y",
+                "ymd" => "%Y/%m/%d",
+                "ydm" => "%Y/%d/%m",
+                "myd" => "%m/%Y/%d",
+                "dym" => "%d/%Y/%m",
+                _ => "%m/%d/%Y",
+            };
+            NaiveDate::parse_from_str(v, fmt)
+        })
+        .map_err(|_| ())
+}
+
+fn parse_datetime_string(v: &str, dateformat: &str) -> Result<NaiveDateTime, ()> {
+    NaiveDateTime::parse_from_str(v, "%Y-%m-%d %H:%M:%S")
+        .or_else(|_| NaiveDateTime::parse_from_str(v, "%Y-%m-%dT%H:%M:%S"))
+        .or_else(|_| NaiveDateTime::parse_from_str(v, "%m/%d/%Y %H:%M:%S"))
+        .or_else(|_| NaiveDateTime::parse_from_str(v, "%d/%m/%Y %H:%M:%S"))
+        .or_else(|_| {
+            parse_date_string(v, dateformat).map(|d| d.and_hms_opt(0, 0, 0).unwrap())
+        })
+        .map_err(|_| ())
 }
 
 #[allow(dead_code)]

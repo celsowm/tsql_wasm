@@ -124,7 +124,7 @@ impl<'a> ScriptExecutor<'a> {
                 Ok(StmtOutcome::Ok(None))
             }
             ProceduralStatement::CreateView(stmt) => {
-                self.schema().create_view(stmt)?;
+                self.schema(ctx).create_view(stmt)?;
                 Ok(StmtOutcome::Ok(None))
             }
             ProceduralStatement::CreateTrigger(stmt) => {

@@ -21,7 +21,15 @@ pub fn eval_bound_expr_inner(
         BoundExpr::Binary { left, op, right } => {
             let l = eval_bound_expr_inner(left, row, ctx, catalog, storage, clock)?;
             let r = eval_bound_expr_inner(right, row, ctx, catalog, storage, clock)?;
-            super::super::operators::eval_binary(op, l, r, ctx.metadata.ansi_nulls)
+            super::super::operators::eval_binary(
+                op,
+                l,
+                r,
+                ctx.metadata.ansi_nulls,
+                ctx.options.concat_null_yields_null,
+                ctx.options.arithabort,
+                ctx.options.ansi_warnings,
+            )
         }
         BoundExpr::Unary { op, expr } => {
             let v = eval_bound_expr_inner(expr, row, ctx, catalog, storage, clock)?;
@@ -38,12 +46,20 @@ pub fn eval_bound_expr_inner(
         BoundExpr::Cast { expr, target } => {
             let v = eval_bound_expr_inner(expr, row, ctx, catalog, storage, clock)?;
             let rt = super::super::type_mapping::data_type_spec_to_runtime(target);
-            super::super::value_ops::coerce_value_to_type(v, &rt)
+            super::super::value_ops::coerce_value_to_type_with_dateformat(
+                v,
+                &rt,
+                &ctx.options.dateformat,
+            )
         }
         BoundExpr::TryCast { expr, target } => {
             let v = eval_bound_expr_inner(expr, row, ctx, catalog, storage, clock)?;
             let rt = super::super::type_mapping::data_type_spec_to_runtime(target);
-            match super::super::value_ops::coerce_value_to_type(v, &rt) {
+            match super::super::value_ops::coerce_value_to_type_with_dateformat(
+                v,
+                &rt,
+                &ctx.options.dateformat,
+            ) {
                 Ok(val) => Ok(val),
                 Err(_) => Ok(Value::Null),
             }
@@ -55,7 +71,11 @@ pub fn eval_bound_expr_inner(
         } => {
             let v = eval_bound_expr_inner(expr, row, ctx, catalog, storage, clock)?;
             let rt = super::super::type_mapping::data_type_spec_to_runtime(target);
-            super::super::value_ops::coerce_value_to_type(v, &rt)
+            super::super::value_ops::coerce_value_to_type_with_dateformat(
+                v,
+                &rt,
+                &ctx.options.dateformat,
+            )
         }
         BoundExpr::TryConvert {
             target,
@@ -64,7 +84,11 @@ pub fn eval_bound_expr_inner(
         } => {
             let v = eval_bound_expr_inner(expr, row, ctx, catalog, storage, clock)?;
             let rt = super::super::type_mapping::data_type_spec_to_runtime(target);
-            match super::super::value_ops::coerce_value_to_type(v, &rt) {
+            match super::super::value_ops::coerce_value_to_type_with_dateformat(
+                v,
+                &rt,
+                &ctx.options.dateformat,
+            ) {
                 Ok(val) => Ok(val),
                 Err(_) => Ok(Value::Null),
             }
@@ -96,6 +120,9 @@ pub fn eval_bound_expr_inner(
                         op.clone(),
                         cond_val,
                         ctx.metadata.ansi_nulls,
+                        ctx.options.concat_null_yields_null,
+                        ctx.options.arithabort,
+                        ctx.options.ansi_warnings,
                     )?)
                 } else {
                     super::super::value_ops::truthy(&cond_val)

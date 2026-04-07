@@ -27,48 +27,15 @@ impl DatePart {
     }
 }
 
-pub(crate) fn parse_datetime_parts(s: &str) -> Result<(i32, i32, i32, i32, i32, i32), DbError> {
+pub(crate) fn parse_datetime_parts(
+    s: &str,
+    dateformat: &str,
+) -> Result<(i32, i32, i32, i32, i32, i32), DbError> {
     let s = s.trim();
-    let t_parts: Vec<&str> = s.splitn(2, |c: char| c == 'T' || c == ' ').collect();
-    let date_part = t_parts[0];
-    let time_part = t_parts.get(1).copied().unwrap_or("00:00:00");
-
-    let date_segments: Vec<&str> = date_part.split('-').collect();
-    if date_segments.len() < 3 {
-        return Err(DbError::Execution(format!(
-            "invalid datetime format: '{}'",
-            s
-        )));
-    }
-    let y: i32 = date_segments[0]
-        .parse()
-        .map_err(|_| DbError::Execution(format!("invalid year in '{}'", s)))?;
-    let m: i32 = date_segments[1]
-        .parse()
-        .map_err(|_| DbError::Execution(format!("invalid month in '{}'", s)))?;
-    let d: i32 = date_segments[2]
-        .split(|c: char| c == ' ' || c == 'T')
-        .next()
-        .unwrap_or(date_segments[2])
-        .parse()
-        .map_err(|_| DbError::Execution(format!("invalid day in '{}'", s)))?;
-
-    let time_segments: Vec<&str> = time_part.split(':').collect();
-    let h: i32 = time_segments
-        .first()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0);
-    let mi: i32 = time_segments
-        .get(1)
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0);
-    let s_secs: f64 = time_segments
-        .get(2)
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0.0);
-    let s: i32 = s_secs as i32;
-
-    Ok((y, m, d, h, mi, s))
+    let (date_part, time_part) = split_date_time(s);
+    let (y, m, d) = parse_date_part(date_part, dateformat)?;
+    let (h, mi, sec) = parse_time_part(time_part)?;
+    Ok((y, m, d, h, mi, sec))
 }
 
 pub(crate) fn date_to_days(y: i32, m: i32, d: i32) -> i64 {
@@ -104,15 +71,15 @@ pub(crate) fn apply_dateadd(
     part: &str,
     num: i64,
     date_str: &str,
+    dateformat: &str,
 ) -> Result<NaiveDateTime, DbError> {
     let date_part = DatePart::from_str(part)?;
-    let dt = NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S")
-        .or_else(|_| NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S"))
-        .or_else(|_| {
-            NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
-                .map(|d| d.and_hms_opt(0, 0, 0).expect("midnight is valid"))
-        })
-        .map_err(|_| DbError::Execution(format!("invalid datetime format: '{}'", date_str)))?;
+    let (y, m, d, h, mi, s) = parse_datetime_parts(date_str, dateformat)?;
+    let date = NaiveDate::from_ymd_opt(y, m as u32, d as u32)
+        .ok_or_else(|| DbError::Execution(format!("invalid datetime format: '{}'", date_str)))?;
+    let dt = date
+        .and_hms_opt(h as u32, mi as u32, s as u32)
+        .ok_or_else(|| DbError::Execution(format!("invalid datetime format: '{}'", date_str)))?;
 
     let result = match date_part {
         DatePart::Year => {
@@ -135,4 +102,88 @@ pub(crate) fn apply_dateadd(
     };
 
     Ok(result)
+}
+
+fn split_date_time(s: &str) -> (&str, &str) {
+    if let Some(pos) = s.find('T') {
+        (&s[..pos], s[pos + 1..].trim())
+    } else if let Some(pos) = s.find(' ') {
+        (&s[..pos], s[pos + 1..].trim())
+    } else {
+        (s, "")
+    }
+}
+
+fn parse_date_part(date_part: &str, dateformat: &str) -> Result<(i32, i32, i32), DbError> {
+    let cleaned = date_part.trim();
+    let segments: Vec<&str> = cleaned
+        .split(|c: char| c == '-' || c == '/' || c == '.')
+        .filter(|s| !s.is_empty())
+        .collect();
+    if segments.len() < 3 {
+        return Err(DbError::Execution(format!("invalid datetime format: '{}'", date_part)));
+    }
+
+    if segments[0].len() == 4 {
+        let y = parse_i32(segments[0], "year", date_part)?;
+        let m = parse_i32(segments[1], "month", date_part)?;
+        let d = parse_i32(segments[2], "day", date_part)?;
+        return Ok((y, m, d));
+    }
+
+    let fmt = dateformat.to_ascii_lowercase();
+    let (y, m, d) = match fmt.as_str() {
+        "dmy" => (
+            parse_i32(segments[2], "year", date_part)?,
+            parse_i32(segments[1], "month", date_part)?,
+            parse_i32(segments[0], "day", date_part)?,
+        ),
+        "ydm" => (
+            parse_i32(segments[0], "year", date_part)?,
+            parse_i32(segments[2], "month", date_part)?,
+            parse_i32(segments[1], "day", date_part)?,
+        ),
+        "myd" => (
+            parse_i32(segments[2], "year", date_part)?,
+            parse_i32(segments[0], "month", date_part)?,
+            parse_i32(segments[1], "day", date_part)?,
+        ),
+        "dym" => (
+            parse_i32(segments[1], "year", date_part)?,
+            parse_i32(segments[2], "month", date_part)?,
+            parse_i32(segments[0], "day", date_part)?,
+        ),
+        _ => (
+            parse_i32(segments[2], "year", date_part)?,
+            parse_i32(segments[0], "month", date_part)?,
+            parse_i32(segments[1], "day", date_part)?,
+        ),
+    };
+    Ok((y, m, d))
+}
+
+fn parse_time_part(time_part: &str) -> Result<(i32, i32, i32), DbError> {
+    if time_part.is_empty() {
+        return Ok((0, 0, 0));
+    }
+    let time_segments: Vec<&str> = time_part.split(':').collect();
+    let h = time_segments
+        .first()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let mi = time_segments
+        .get(1)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let sec = time_segments
+        .get(2)
+        .and_then(|v| v.parse::<f64>().ok())
+        .unwrap_or(0.0) as i32;
+    Ok((h, mi, sec))
+}
+
+fn parse_i32(segment: &str, label: &str, source: &str) -> Result<i32, DbError> {
+    segment.parse::<i32>().map_err(|_| {
+        DbError::Execution(format!("invalid {} in '{}'", label, source))
+    })
 }

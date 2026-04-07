@@ -17,27 +17,27 @@ impl<'a> ScriptExecutor<'a> {
             DdlStatement::CreateTable(stmt) => self.execute_create_table(stmt, ctx),
             DdlStatement::DropTable(stmt) => self.execute_drop_table(stmt, ctx),
             DdlStatement::CreateType(stmt) => {
-                self.schema().create_type(stmt)?;
+                self.schema(ctx).create_type(stmt)?;
                 Ok(None)
             }
             DdlStatement::DropType(stmt) => {
-                self.schema().drop_type(stmt)?;
+                self.schema(ctx).drop_type(stmt)?;
                 Ok(None)
             }
             DdlStatement::CreateIndex(stmt) => {
-                self.schema().create_index(stmt)?;
+                self.schema(ctx).create_index(stmt)?;
                 Ok(None)
             }
             DdlStatement::DropIndex(stmt) => {
-                self.schema().drop_index(stmt)?;
+                self.schema(ctx).drop_index(stmt)?;
                 Ok(None)
             }
             DdlStatement::CreateSchema(stmt) => {
-                self.schema().create_schema(stmt)?;
+                self.schema(ctx).create_schema(stmt)?;
                 Ok(None)
             }
             DdlStatement::DropSchema(stmt) => {
-                self.schema().drop_schema(stmt)?;
+                self.schema(ctx).drop_schema(stmt)?;
                 Ok(None)
             }
             DdlStatement::DropProcedure(stmt) => {
@@ -64,9 +64,9 @@ impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_drop_view(
         &mut self,
         stmt: crate::ast::DropViewStmt,
-        _ctx: &mut ExecutionContext<'_>,
+        ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
-        self.schema().drop_view(stmt)?;
+        self.schema(ctx).drop_view(stmt)?;
         Ok(None)
     }
 
@@ -83,7 +83,7 @@ impl<'a> ScriptExecutor<'a> {
             stmt.name.schema = Some("dbo".to_string());
             stmt.name.name = physical;
         }
-        self.schema().create_table(stmt)?;
+        self.schema(ctx).create_table(stmt)?;
         Ok(None)
     }
 
@@ -104,7 +104,7 @@ impl<'a> ScriptExecutor<'a> {
                 stmt.name.name = mapped;
             }
         }
-        self.schema().drop_table(stmt)?;
+        self.schema(ctx).drop_table(stmt)?;
         Ok(None)
     }
 
@@ -156,7 +156,7 @@ impl<'a> ScriptExecutor<'a> {
             .ok_or_else(|| DbError::table_not_found(schema, table_name))?
             .clone();
 
-        self.schema().alter_table(stmt)?;
+        self.schema(ctx).alter_table(stmt)?;
 
         let rows = {
             let rows = match self.storage.scan_rows(table.id) {

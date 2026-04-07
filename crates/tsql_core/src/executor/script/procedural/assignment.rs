@@ -4,7 +4,7 @@ use crate::executor::context::ExecutionContext;
 use crate::executor::evaluator::eval_expr;
 use crate::executor::query::QueryExecutor;
 use crate::executor::result::QueryResult;
-use crate::executor::value_ops::coerce_value_to_type;
+use crate::executor::value_ops::coerce_value_to_type_with_dateformat;
 use crate::catalog::Catalog;
 use crate::storage::Storage;
 use crate::ast::SelectStmt;
@@ -30,7 +30,7 @@ impl<'a> ScriptExecutor<'a> {
                     self.clock,
                 )?;
                 if let Some((ty, var)) = ctx.session.variables.get_mut(&t.variable) {
-                    *var = coerce_value_to_type(val, ty)?;
+                    *var = coerce_value_to_type_with_dateformat(val, ty, &ctx.options.dateformat)?;
                 } else {
                     return Err(DbError::invalid_identifier(&t.variable));
                 }
@@ -69,7 +69,11 @@ impl<'a> ScriptExecutor<'a> {
         if let Some(last) = result.rows.last() {
             for (idx, t) in stmt.targets.iter().enumerate() {
                 if let Some((ty, var)) = ctx.session.variables.get_mut(&t.variable) {
-                    *var = coerce_value_to_type(last[idx].clone(), ty)?;
+                    *var = coerce_value_to_type_with_dateformat(
+                        last[idx].clone(),
+                        ty,
+                        &ctx.options.dateformat,
+                    )?;
                 } else {
                     return Err(DbError::invalid_identifier(&t.variable));
                 }

@@ -152,8 +152,19 @@ impl<'a> MutationExecutor<'a> {
         if !instead_of_triggers.is_empty() {
             let mut deleted_rows = Vec::new();
             let mut deleted_indices = HashSet::new();
+            let rowcount_limit = if ctx.options.rowcount == 0 {
+                None
+            } else {
+                Some(ctx.options.rowcount as usize)
+            };
+            let mut deleted_count = 0usize;
 
             for joined_row in joined_rows {
+                if let Some(limit) = rowcount_limit {
+                    if deleted_count >= limit {
+                        break;
+                    }
+                }
                 let target_ctx = joined_row
                     .iter()
                     .find(|ct| {
@@ -168,6 +179,7 @@ impl<'a> MutationExecutor<'a> {
                     if !deleted_indices.contains(&idx) {
                         deleted_rows.push(stored_row.clone());
                         deleted_indices.insert(idx);
+                        deleted_count += 1;
                     }
                 }
             }
@@ -206,8 +218,19 @@ impl<'a> MutationExecutor<'a> {
         let collect_rows = stmt.output.is_some() || has_after_triggers;
         let mut deleted_indices = HashSet::new();
         let mut deleted_rows_for_output = Vec::new();
+        let rowcount_limit = if ctx.options.rowcount == 0 {
+            None
+        } else {
+            Some(ctx.options.rowcount as usize)
+        };
+        let mut deleted_count = 0usize;
 
         for joined_row in joined_rows {
+            if let Some(limit) = rowcount_limit {
+                if deleted_count >= limit {
+                    break;
+                }
+            }
             let target_ctx = joined_row
                 .iter()
                 .find(|ct| {
@@ -222,6 +245,7 @@ impl<'a> MutationExecutor<'a> {
                 if !deleted_indices.contains(&idx) {
                     enforce_foreign_keys_on_delete(&table, self.catalog, self.storage, stored_row)?;
                     deleted_indices.insert(idx);
+                    deleted_count += 1;
                     if collect_rows {
                         deleted_rows_for_output.push(stored_row.clone());
                     }

@@ -15,7 +15,7 @@ use super::super::result::QueryResult;
 use super::super::script::ScriptExecutor;
 use super::super::session::{SessionSnapshot, SharedState};
 use super::super::string_norm::normalize_identifier;
-use super::super::table_util::{collect_read_tables, collect_write_tables};
+use super::super::table_util::{collect_read_tables, collect_write_tables, is_transaction_statement};
 use super::super::tooling::{apply_set_option, SessionOptions};
 use super::super::transaction::TransactionManager;
 use super::super::transaction_exec;
@@ -34,8 +34,43 @@ fn create_script_executor<'a>(
     }
 }
 
+fn should_start_implicit_transaction(stmt: &Statement) -> bool {
+    matches!(
+        stmt,
+        Statement::Dml(DmlStatement::Insert(_))
+            | Statement::Dml(DmlStatement::Update(_))
+            | Statement::Dml(DmlStatement::Delete(_))
+            | Statement::Dml(DmlStatement::Merge(_))
+            | Statement::Dml(DmlStatement::SelectAssign(_))
+            | Statement::Ddl(_)
+    )
+}
+
+fn lookup_session_deadlock_priority<C, S>(
+    state: &SharedState<C, S>,
+    session_id: SessionId,
+) -> i32
+where
+    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
+    S: Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default,
+{
+    state
+        .deadlock_priorities
+        .get(&session_id)
+        .map(|priority| *priority)
+        .unwrap_or(0)
+}
+
 /// S3: Extract session option handling from the main dispatch function.
-fn handle_session_statement(
+fn handle_session_statement<C, S>(
+    state: &SharedState<C, S>,
+    session_id: SessionId,
     stmt: &Statement,
     session_options: &mut SessionOptions,
     ctx: &mut ExecutionContext,
@@ -44,8 +79,12 @@ fn handle_session_statement(
     if let Statement::Session(SessionStatement::SetOption(opt)) = stmt {
         match apply_set_option(opt, session_options) {
             Ok(apply) => {
+                ctx.options = session_options.clone();
                 ctx.metadata.ansi_nulls = session_options.ansi_nulls;
                 ctx.metadata.datefirst = session_options.datefirst;
+                state
+                    .deadlock_priorities
+                    .insert(session_id, session_options.deadlock_priority);
                 for warn in apply.warnings {
                     journal.record(JournalEvent::Info { message: warn });
                 }
@@ -60,6 +99,7 @@ fn handle_session_statement(
         } else {
             session_options.identity_insert.remove(&table_name);
         }
+        ctx.options.identity_insert = session_options.identity_insert.clone();
         Some(Ok(StmtOutcome::Ok(None)))
     } else {
         None
@@ -192,7 +232,13 @@ where
         workspace_slot,
         &stmt,
         session_options.lock_timeout_ms,
+        session_options.deadlock_priority,
+        &|sid| lookup_session_deadlock_priority(state, sid),
     )?;
+
+    ctx.options = session_options.clone();
+    ctx.metadata.ansi_nulls = session_options.ansi_nulls;
+    ctx.metadata.datefirst = session_options.datefirst;
 
     let isolation_level = tx_manager
         .active
@@ -202,6 +248,23 @@ where
     let is_select = matches!(stmt, Statement::Dml(DmlStatement::Select(_)));
     let read_uncommitted_dirty = isolation_level == IsolationLevel::ReadUncommitted && is_select;
     let read_committed_select = isolation_level == IsolationLevel::ReadCommitted && is_select;
+
+    if tx_manager.active.is_none()
+        && session_options.implicit_transactions
+        && should_start_implicit_transaction(&stmt)
+        && !is_transaction_statement(&stmt)
+    {
+        transaction_exec::execute_transaction_statement(
+            state,
+            session_id,
+            tx_manager,
+            journal,
+            workspace_slot,
+            ctx,
+            session_options,
+            Statement::Transaction(crate::ast::TransactionStatement::Begin(None)),
+        )?;
+    }
 
     let out = if read_uncommitted_dirty {
         let (mut dirty_catalog, mut dirty_storage) =
@@ -268,6 +331,8 @@ where
         workspace_slot,
         &stmt,
         session_options.lock_timeout_ms,
+        session_options.deadlock_priority,
+        &|sid| lookup_session_deadlock_priority(state, sid),
     )?;
 
     let mut storage_guard = state.storage.write();
@@ -331,6 +396,8 @@ where
         workspace_slot,
         &stmt,
         session_options.lock_timeout_ms,
+        session_options.deadlock_priority,
+        &|sid| lookup_session_deadlock_priority(state, sid),
     )?;
 
     // P1 #20: Use read lock for plain SELECT statements
@@ -405,8 +472,25 @@ where
         + Default,
 {
     // Handle session-level statements early (SetOption, SetIdentityInsert)
-    if let Some(result) = handle_session_statement(&stmt, session_options, ctx, journal) {
+    if let Some(result) = handle_session_statement(state, session_id, &stmt, session_options, ctx, journal) {
         return result;
+    }
+
+    if tx_manager.active.is_none()
+        && session_options.implicit_transactions
+        && should_start_implicit_transaction(&stmt)
+        && !is_transaction_statement(&stmt)
+    {
+        transaction_exec::execute_transaction_statement(
+            state,
+            session_id,
+            tx_manager,
+            journal,
+            workspace_slot,
+            ctx,
+            session_options,
+            Statement::Transaction(crate::ast::TransactionStatement::Begin(None)),
+        )?;
     }
 
     let isolation_level = tx_manager

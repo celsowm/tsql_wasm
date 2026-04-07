@@ -13,8 +13,8 @@ use super::super::string_norm::normalize_identifier;
 use super::MutationExecutor;
 use super::output::build_output_result;
 use super::validation::{
-    enforce_checks_on_row, enforce_foreign_keys_on_insert, enforce_string_length,
-    enforce_unique_on_insert,
+    apply_ansi_padding, enforce_checks_on_row, enforce_foreign_keys_on_insert,
+    enforce_string_length, enforce_unique_on_insert,
 };
 
 impl<'a> MutationExecutor<'a> {
@@ -51,6 +51,12 @@ impl<'a> MutationExecutor<'a> {
         };
 
         if !instead_of_triggers.is_empty() {
+            let rowcount_limit = if ctx.options.rowcount == 0 {
+                None
+            } else {
+                Some(ctx.options.rowcount as usize)
+            };
+            let mut inserted_count = 0usize;
             let inserted_rows = match &stmt.source {
                 InsertSource::DefaultValues => {
                     let row = self.build_insert_row(&table, &[], vec![], ctx)?;
@@ -67,8 +73,14 @@ impl<'a> MutationExecutor<'a> {
                     let insert_columns = self.get_insert_columns(&table, &stmt.columns);
                     let mut rows = Vec::new();
                     for row_values in query_result.rows {
+                        if let Some(limit) = rowcount_limit {
+                            if inserted_count >= limit {
+                                break;
+                            }
+                        }
                         let row = self.build_row_from_values(&table, &insert_columns, row_values, ctx)?;
                         rows.push(row);
+                        inserted_count += 1;
                     }
                     rows
                 }
@@ -76,8 +88,14 @@ impl<'a> MutationExecutor<'a> {
                     let insert_columns = self.get_insert_columns(&table, &stmt.columns);
                     let mut rows = Vec::new();
                     for value_row in values {
+                        if let Some(limit) = rowcount_limit {
+                            if inserted_count >= limit {
+                                break;
+                            }
+                        }
                         let row = self.build_insert_row(&table, &insert_columns, value_row.clone(), ctx)?;
                         rows.push(row);
+                        inserted_count += 1;
                     }
                     rows
                 }
@@ -99,8 +117,14 @@ impl<'a> MutationExecutor<'a> {
                     let insert_columns = self.get_insert_columns(&table, &stmt.columns);
                     let mut rows = Vec::new();
                     for row_values in query_result.rows {
+                        if let Some(limit) = rowcount_limit {
+                            if inserted_count >= limit {
+                                break;
+                            }
+                        }
                         let row = self.build_row_from_values(&table, &insert_columns, row_values, ctx)?;
                         rows.push(row);
+                        inserted_count += 1;
                     }
                     rows
                 }
@@ -132,6 +156,12 @@ impl<'a> MutationExecutor<'a> {
 
         let collect_rows = stmt.output.is_some() || has_after_triggers;
         let mut inserted_rows_for_output = Vec::new();
+        let rowcount_limit = if ctx.options.rowcount == 0 {
+            None
+        } else {
+            Some(ctx.options.rowcount as usize)
+        };
+        let mut inserted_count = 0usize;
 
         match stmt.source {
             InsertSource::DefaultValues => {
@@ -161,12 +191,18 @@ impl<'a> MutationExecutor<'a> {
                 }
 
                 for row_values in query_result.rows {
+                    if let Some(limit) = rowcount_limit {
+                        if inserted_count >= limit {
+                            break;
+                        }
+                    }
                     let temp_row = self.build_row_from_values(&table, &insert_columns, row_values, ctx)?;
                     enforce_unique_on_insert(&table, self.storage, table_id, &temp_row)?;
                     enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &temp_row)?;
                     enforce_checks_on_row(&table, &temp_row, ctx, self.catalog, self.storage, self.clock)?;
                     self.storage.insert_row(table_id, temp_row.clone())?;
                     self.push_dirty_insert(ctx, &table.name, &temp_row);
+                    inserted_count += 1;
                     if collect_rows {
                         inserted_rows_for_output.push(temp_row);
                     }
@@ -176,12 +212,18 @@ impl<'a> MutationExecutor<'a> {
                 let insert_columns = self.get_insert_columns(&table, &stmt.columns);
 
                 for value_row in values {
+                    if let Some(limit) = rowcount_limit {
+                        if inserted_count >= limit {
+                            break;
+                        }
+                    }
                     let row = self.build_insert_row(&table, &insert_columns, value_row, ctx)?;
                     enforce_unique_on_insert(&table, self.storage, table_id, &row)?;
                     enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &row)?;
                     enforce_checks_on_row(&table, &row, ctx, self.catalog, self.storage, self.clock)?;
                     self.storage.insert_row(table_id, row.clone())?;
                     self.push_dirty_insert(ctx, &table.name, &row);
+                    inserted_count += 1;
                     if collect_rows {
                         inserted_rows_for_output.push(row);
                     }
@@ -212,12 +254,18 @@ impl<'a> MutationExecutor<'a> {
                 }
 
                 for row_values in query_result.rows {
+                    if let Some(limit) = rowcount_limit {
+                        if inserted_count >= limit {
+                            break;
+                        }
+                    }
                     let temp_row = self.build_row_from_values(&table, &insert_columns, row_values, ctx)?;
                     enforce_unique_on_insert(&table, self.storage, table_id, &temp_row)?;
                     enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &temp_row)?;
                     enforce_checks_on_row(&table, &temp_row, ctx, self.catalog, self.storage, self.clock)?;
                     self.storage.insert_row(table_id, temp_row.clone())?;
                     self.push_dirty_insert(ctx, &table.name, &temp_row);
+                    inserted_count += 1;
                     if collect_rows {
                         inserted_rows_for_output.push(temp_row);
                     }
@@ -279,14 +327,20 @@ impl<'a> MutationExecutor<'a> {
                     col.name
                 )));
             }
-            enforce_string_length(&col.data_type, val, &col.name)?;
-            final_values[col_idx] = val.clone();
+            let mut value = val.clone();
+            apply_ansi_padding(&mut value, &col.data_type, col.ansi_padding_on);
+            enforce_string_length(&col.data_type, &value, &col.name)?;
+            final_values[col_idx] = value;
         }
         let mut temp_row = crate::storage::StoredRow {
             values: final_values,
             deleted: false,
         };
         self.apply_missing_values(table, &mut temp_row.values, ctx)?;
+        for (col, value) in table.columns.iter().zip(temp_row.values.iter_mut()) {
+            apply_ansi_padding(value, &col.data_type, col.ansi_padding_on);
+            enforce_string_length(&col.data_type, value, &col.name)?;
+        }
         Ok(temp_row)
     }
 
@@ -327,11 +381,17 @@ impl<'a> MutationExecutor<'a> {
                 self.storage,
                 self.clock,
             )?;
+            let mut value = value;
+            apply_ansi_padding(&mut value, &col.data_type, col.ansi_padding_on);
             enforce_string_length(&col.data_type, &value, &col.name)?;
             final_values[col_idx] = value;
         }
 
         self.apply_missing_values(table, &mut final_values, ctx)?;
+        for (col, value) in table.columns.iter().zip(final_values.iter_mut()) {
+            apply_ansi_padding(value, &col.data_type, col.ansi_padding_on);
+            enforce_string_length(&col.data_type, value, &col.name)?;
+        }
 
         Ok(StoredRow {
             values: final_values,
@@ -414,6 +474,10 @@ impl<'a> MutationExecutor<'a> {
                 )?;
                 final_values[idx] = value;
             }
+        }
+
+        for (col, value) in table.columns.iter().zip(final_values.iter_mut()) {
+            apply_ansi_padding(value, &col.data_type, col.ansi_padding_on);
         }
         Ok(())
     }

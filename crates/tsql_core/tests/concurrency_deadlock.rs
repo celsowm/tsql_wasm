@@ -146,3 +146,44 @@ fn test_deadlock_3_sessions() {
         "At least one session should have deadlocked"
     );
 }
+
+#[test]
+fn test_deadlock_priority_prefers_lower_priority_victim() {
+    let engine = Arc::new(Engine::new());
+
+    engine.exec("CREATE TABLE A (id INT)").unwrap();
+    engine.exec("CREATE TABLE B (id INT)").unwrap();
+
+    let s1 = engine.create_session();
+    let s2 = engine.create_session();
+
+    engine
+        .execute_session_batch_sql(s1, "SET LOCK_TIMEOUT 5000; SET DEADLOCK_PRIORITY LOW;")
+        .unwrap();
+    engine
+        .execute_session_batch_sql(s2, "SET LOCK_TIMEOUT 5000; SET DEADLOCK_PRIORITY HIGH;")
+        .unwrap();
+
+    engine
+        .execute_session_batch_sql(s1, "BEGIN TRANSACTION; INSERT INTO A VALUES (1);")
+        .unwrap();
+    engine
+        .execute_session_batch_sql(s2, "BEGIN TRANSACTION; INSERT INTO B VALUES (1);")
+        .unwrap();
+
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    let engine_s1 = engine.clone();
+    thread::spawn(move || {
+        let res = engine_s1.execute_session_batch_sql(s1, "INSERT INTO B VALUES (2);");
+        tx.send(res).unwrap();
+    });
+
+    thread::sleep(Duration::from_millis(100));
+
+    let res_s2 = engine.execute_session_batch_sql(s2, "INSERT INTO A VALUES (2);");
+    let res_s1 = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+
+    assert!(matches!(res_s1, Err(DbError::Deadlock(_))));
+    assert!(res_s2.is_ok());
+}

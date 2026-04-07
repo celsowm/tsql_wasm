@@ -72,11 +72,15 @@ impl TdsSession {
                 );
 
                 // When TLS is disabled, respond based on client's request:
+                // - If client requested ENCRYPT_NOT_SUP, echo ENCRYPT_NOT_SUP
                 // - If client requested ENCRYPT_ON/REQUIRED, respond with ENCRYPT_NOT_SUP
                 // - If client requested ENCRYPT_OFF, respond with ENCRYPT_OFF
-                // This maintains compatibility with various TDS clients
+                // This maintains compatibility with clients that use strict
+                // prelogin encryption negotiation.
                 let server_encrypt = if self.config.tls_enabled {
                     ENCRYPT_ON
+                } else if prelogin.encryption == ENCRYPT_NOT_SUP {
+                    ENCRYPT_NOT_SUP
                 } else if prelogin.encryption == ENCRYPT_ON
                     || prelogin.encryption == ENCRYPT_REQUIRED
                 {
@@ -409,6 +413,11 @@ impl TdsSession {
             Ok(results) => {
                 let count = results.len();
                 let mut b = PacketBuilder::with_capacity(4096);
+                let textsize = self
+                    .db
+                    .session_options(session_id)
+                    .map(|opts| opts.textsize.max(0) as usize)
+                    .unwrap_or(4096);
 
                 for (i, result) in results.into_iter().enumerate() {
                     let is_last = i == count - 1;
@@ -461,7 +470,7 @@ impl TdsSession {
                             }
                             tokens::write_colmetadata(&mut b, &query_result.columns, &types);
                             for row in &query_result.rows {
-                                tokens::write_row(&mut b, row, &types);
+                                tokens::write_row(&mut b, row, &types, textsize);
                             }
                             tokens::write_done(
                                 &mut b,

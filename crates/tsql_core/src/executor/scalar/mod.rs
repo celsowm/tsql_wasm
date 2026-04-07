@@ -518,10 +518,10 @@ fn try_system_dispatch(
         }
         "@@ERROR" => Some(Ok(Value::Int(0))),
         "@@FETCH_STATUS" => Some(Ok(Value::Int(*ctx.session.fetch_status))),
-        "@@LANGUAGE" => Some(Ok(Value::NVarChar("us_english".into()))),
-        "@@TEXTSIZE" => Some(Ok(Value::Int(2147483647))),
+        "@@LANGUAGE" => Some(Ok(Value::NVarChar(ctx.options.language.clone()))),
+        "@@TEXTSIZE" => Some(Ok(Value::Int(ctx.options.textsize))),
         "@@MAX_PRECISION" => Some(Ok(Value::TinyInt(38))),
-        "@@DATEFIRST" => Some(Ok(Value::TinyInt(ctx.metadata.datefirst as u8))),
+        "@@DATEFIRST" => Some(Ok(Value::TinyInt(ctx.options.datefirst as u8))),
         "@@MICROSOFTVERSION" => Some(Ok(system::eval_microsoft_version())),
         "ERROR_MESSAGE" => Some(system::eval_error_message(ctx)),
         "ERROR_NUMBER" => Some(system::eval_error_number(ctx)),
@@ -690,7 +690,11 @@ fn eval_user_scalar_function<'a>(
             };
             let val = eval_expr(arg_expr, row, ctx, catalog, storage, clock)?;
             let ty = super::type_mapping::data_type_spec_to_runtime(dt);
-            let coerced = super::value_ops::coerce_value_to_type(val, &ty)?;
+            let coerced = super::value_ops::coerce_value_to_type_with_dateformat(
+                val,
+                &ty,
+                &ctx.options.dateformat,
+            )?;
             ctx.session
                 .variables
                 .insert(param.name.clone(), (ty, coerced));
