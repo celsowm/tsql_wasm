@@ -17,10 +17,14 @@ env_logger = "0.11"
 parking_lot = "0.12"
 
 [dev-dependencies]
-tiberius = { version = "0.12.3", default-features = false, features = ["tokio", "tds73", "chrono"] }
+tiberius = { version = "0.11", default-features = false, features = ["tokio", "tds73", "chrono", "rustls"] }
 tokio-util = { version = "0.7", features = ["compat"] }
 chrono = "0.4"
 
 [[bin]]
 name = "tsql-server"
 path = "bin/main.rs"
+
+[[bin]]
+name = "compat-query"
+path = "bin/compat-query.rs"

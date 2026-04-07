@@ -3,6 +3,7 @@ pub mod pool;
 pub mod server;
 pub mod session;
 pub mod tds;
+pub mod tds_tls_io;
 pub mod tls;
 
 pub use server::TdsServer;

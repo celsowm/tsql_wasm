@@ -31,6 +31,12 @@ pub fn parse_prelogin(data: &[u8]) -> io::Result<PreloginData> {
     let mut thread_id = None;
     let mut mars = None;
 
+    // The PRELOGIN data is structured in two parts:
+    // 1. A token table of entries: [TokenId (1), Offset (2), Length (2)]
+    // 2. The data section itself.
+
+    // First pass: locate the token table and its entries.
+    let mut tokens = Vec::new();
     loop {
         if reader.remaining() == 0 {
             break;
@@ -39,20 +45,34 @@ pub fn parse_prelogin(data: &[u8]) -> io::Result<PreloginData> {
         if token == PRELOGIN_TERMINATOR {
             break;
         }
+        if reader.remaining() < 4 {
+            log::warn!(
+                "PRELOGIN: token 0x{:02X} at pos {} has only {} bytes remaining (need 4). Total data len={}. Hex dump: {:02X?}",
+                token,
+                reader.pos() - 1,
+                reader.remaining(),
+                data.len(),
+                data
+            );
+            // Tolerate incomplete trailing entries — some drivers append
+            // extra bytes after the token table (e.g., FedAuth extension).
+            break;
+        }
         let offset = reader.read_u16_be()?;
         let length = reader.read_u16_be()?;
+        tokens.push((token, offset as usize, length as usize));
+    }
 
-        let saved_pos = reader.pos();
-
-        let payload_offset = offset as usize;
-        if payload_offset + (length as usize) > data.len() {
+    // Second pass: extract data for each token.
+    for (token, offset, length) in tokens {
+        if offset + length > data.len() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "prelogin token data out of bounds",
             ));
         }
 
-        let token_data = &data[payload_offset..payload_offset + (length as usize)];
+        let token_data = &data[offset..offset + length];
 
         match token {
             PRELOGIN_VERSION => {
@@ -89,13 +109,8 @@ pub fn parse_prelogin(data: &[u8]) -> io::Result<PreloginData> {
                     mars = Some(token_data[0]);
                 }
             }
-            _ => {
-                // Unknown token, skip
-            }
+            _ => {}
         }
-
-        reader = PacketReader::new(data);
-        reader.skip(saved_pos)?;
     }
 
     Ok(PreloginData {

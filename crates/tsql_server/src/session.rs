@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
@@ -17,6 +18,7 @@ use super::tds::prelogin::{
 };
 use super::tds::rpc::{build_param_preamble, parse_rpc};
 use super::tds::tokens;
+use super::tds_tls_io::TdsTlsIo;
 use super::tls;
 use super::ServerConfig;
 
@@ -61,6 +63,7 @@ impl TdsSession {
             );
 
             if header.packet_type == TDS7_PRELOGIN {
+                log::debug!("PRELOGIN data hex: {:02X?}", data);
                 let prelogin = parse_prelogin(&data).map_err(|e| e.to_string())?;
                 log::debug!(
                     "PRELOGIN: version={:?}, encryption={}",
@@ -120,9 +123,11 @@ impl TdsSession {
         login_packet: Option<(packet::PacketHeader, Vec<u8>)>,
         needs_tls_upgrade: bool,
     ) -> Result<(), String> {
-        // Perform TLS upgrade if needed
+        // Perform TLS upgrade if needed.
+        // In TDS 7.4, the TLS handshake is tunneled inside TDS PRELOGIN (0x12)
+        // packets. After handshake completion, traffic switches to raw TLS over TCP.
         let stream: Box<dyn AsyncReadWrite> = if needs_tls_upgrade {
-            log::info!("Client requested TLS, upgrading connection");
+            log::info!("Client requested TLS, upgrading connection via TDS-wrapped handshake");
 
             let tls_config = if let (Some(cert_path), Some(key_path)) =
                 (&self.config.tls_cert_path, &self.config.tls_key_path)
@@ -135,12 +140,19 @@ impl TdsSession {
 
             let acceptor = tokio_rustls::TlsAcceptor::from(std::sync::Arc::new(tls_config));
 
+            // Use TdsTlsIo to strip/wrap TDS framing during handshake
+            let raw_mode = Arc::new(AtomicBool::new(false));
+            let tds_io = TdsTlsIo::new(stream, raw_mode.clone());
+
             let tls_stream = acceptor
-                .accept(stream)
+                .accept(tds_io)
                 .await
                 .map_err(|e| format!("TLS handshake failed: {}", e))?;
 
-            log::info!("TLS handshake completed");
+            // Switch to raw mode — post-handshake traffic is raw TLS over TCP
+            raw_mode.store(true, Ordering::Release);
+
+            log::info!("TLS handshake completed, switched to raw mode");
             Box::new(tls_stream)
         } else {
             Box::new(stream)

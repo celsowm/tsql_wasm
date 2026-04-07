@@ -15,6 +15,7 @@ use crate::storage::Storage;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AggregateFn {
     Count,
+    CountDistinct,
     Sum,
     Avg,
     Min,
@@ -27,6 +28,7 @@ impl AggregateFn {
     pub fn from_name(name: &str) -> Option<Self> {
         match normalize_identifier(name).as_str() {
             "COUNT" => Some(AggregateFn::Count),
+            "COUNT_DISTINCT" => Some(AggregateFn::CountDistinct),
             "SUM" => Some(AggregateFn::Sum),
             "AVG" => Some(AggregateFn::Avg),
             "MIN" => Some(AggregateFn::Min),
@@ -55,6 +57,9 @@ pub fn dispatch_aggregate(
     let agg = AggregateFn::from_name(name)?;
     match agg {
         AggregateFn::Count => Some(Ok(eval_aggregate_count(
+            args, group, ctx, catalog, storage, clock,
+        ))),
+        AggregateFn::CountDistinct => Some(Ok(eval_aggregate_count_distinct(
             args, group, ctx, catalog, storage, clock,
         ))),
         AggregateFn::Sum => Some(eval_aggregate_sum(
@@ -107,6 +112,27 @@ pub fn eval_aggregate_count(
         group.rows.len() as i64
     };
     Value::BigInt(count)
+}
+
+pub fn eval_aggregate_count_distinct(
+    args: &[Expr],
+    group: &Group,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Value {
+    if let Some(expr) = args.first() {
+        let values = collect_group_values(expr, group, ctx, catalog, storage, clock);
+        let mut seen = std::collections::HashSet::new();
+        let count = values
+            .into_iter()
+            .filter(|v| seen.insert(format!("{:?}", v)))
+            .count() as i64;
+        Value::BigInt(count)
+    } else {
+        Value::BigInt(group.rows.len() as i64)
+    }
 }
 
 pub fn eval_aggregate_sum(

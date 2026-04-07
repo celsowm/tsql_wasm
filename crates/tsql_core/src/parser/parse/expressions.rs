@@ -418,6 +418,11 @@ fn parse_identifier_or_function(parser: &mut Parser, name: String) -> ParseResul
 
     if matches!(parser.peek(), Some(Token::LParen)) {
         let _ = parser.next();
+        let mut has_distinct = false;
+        if parser.at_keyword(Keyword::Distinct) {
+            let _ = parser.next();
+            has_distinct = true;
+        }
         let args = if matches!(parser.peek(), Some(Token::Star)) {
             let _ = parser.next();
             vec![Expr::Wildcard]
@@ -427,11 +432,14 @@ fn parse_identifier_or_function(parser: &mut Parser, name: String) -> ParseResul
             parse_comma_list(parser, parse_expr)?
         };
         parser.expect_rparen()?;
-        let function_name = if parts.len() == 1 {
+        let mut function_name = if parts.len() == 1 {
             parts.remove(0)
         } else {
             parts.iter().map(|p| p.as_ref()).collect::<Vec<_>>().join(".")
         };
+        if has_distinct {
+            function_name = format!("{}_DISTINCT", function_name.to_uppercase());
+        }
         if parser.at_keyword(Keyword::Over) {
             return parse_window_over(parser, function_name, args);
         }

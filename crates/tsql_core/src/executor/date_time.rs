@@ -29,7 +29,7 @@ impl DatePart {
 
 pub(crate) fn parse_datetime_parts(s: &str) -> Result<(i32, i32, i32, i32, i32, i32), DbError> {
     let s = s.trim();
-    let t_parts: Vec<&str> = s.splitn(2, 'T').collect();
+    let t_parts: Vec<&str> = s.splitn(2, |c: char| c == 'T' || c == ' ').collect();
     let date_part = t_parts[0];
     let time_part = t_parts.get(1).copied().unwrap_or("00:00:00");
 
@@ -47,6 +47,9 @@ pub(crate) fn parse_datetime_parts(s: &str) -> Result<(i32, i32, i32, i32, i32, 
         .parse()
         .map_err(|_| DbError::Execution(format!("invalid month in '{}'", s)))?;
     let d: i32 = date_segments[2]
+        .split(|c: char| c == ' ' || c == 'T')
+        .next()
+        .unwrap_or(date_segments[2])
         .parse()
         .map_err(|_| DbError::Execution(format!("invalid day in '{}'", s)))?;
 

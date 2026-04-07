@@ -3,9 +3,9 @@
 //! Provides a seeded database with sample tables, views, and data
 //! for testing SQL Server clients without requiring complex setup.
 
-mod data;
-mod schema;
-mod views;
+pub mod data;
+pub mod schema;
+pub mod views;
 
 use tsql_core::{Database, StatementExecutor};
 
