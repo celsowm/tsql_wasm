@@ -415,7 +415,15 @@ fn coerce_string(v: &str, ty: &DataType) -> Result<Value, DbError> {
         }
         DataType::Date => {
             let parsed = chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d")
-                .or_else(|_| chrono::NaiveDate::parse_from_str(v, "%m/%d/%Y"));
+                .or_else(|_| chrono::NaiveDate::parse_from_str(v, "%m/%d/%Y"))
+                .or_else(|_| {
+                    chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%d %H:%M:%S")
+                        .map(|dt| dt.date())
+                })
+                .or_else(|_| {
+                    chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%dT%H:%M:%S")
+                        .map(|dt| dt.date())
+                });
             match parsed {
                 Ok(d) => Ok(Value::Date(d)),
                 Err(_) => Err(DbError::Execution(format!("invalid date: {}", v))),
@@ -664,6 +672,30 @@ pub fn parse_decimal_string(s: &str, scale: u8) -> Result<Value, DbError> {
     let raw = whole * 10i128.pow(scale as u32) + frac;
     let raw = if negative { -raw } else { raw };
     Ok(Value::Decimal(raw, scale))
+}
+
+pub fn parse_numeric_literal(s: &str) -> Result<Value, DbError> {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return Err(DbError::Execution("invalid numeric literal ''".into()));
+    }
+
+    if trimmed.contains('e') || trimmed.contains('E') {
+        let f = trimmed
+            .parse::<f64>()
+            .map_err(|_| DbError::Execution(format!("invalid float literal '{}'", s)))?;
+        return Ok(Value::Float(f.to_bits()));
+    }
+
+    if let Some(dot_idx) = trimmed.find('.') {
+        let scale = (trimmed.len() - dot_idx - 1) as u8;
+        return parse_decimal_string(trimmed, scale);
+    }
+
+    let f = trimmed
+        .parse::<f64>()
+        .map_err(|_| DbError::Execution(format!("invalid float literal '{}'", s)))?;
+    Ok(Value::Float(f.to_bits()))
 }
 
 pub fn parse_money_string(s: &str) -> Result<Value, DbError> {

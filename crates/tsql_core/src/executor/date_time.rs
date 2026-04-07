@@ -1,5 +1,5 @@
 use crate::error::DbError;
-use chrono::{Datelike, NaiveDateTime};
+use chrono::{Datelike, NaiveDate, NaiveDateTime};
 
 /// Typed enum for date parts, replacing string-based dispatch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,6 +108,10 @@ pub(crate) fn apply_dateadd(
     let date_part = DatePart::from_str(part)?;
     let dt = NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S")
         .or_else(|_| NaiveDateTime::parse_from_str(date_str, "%Y-%m-%d %H:%M:%S"))
+        .or_else(|_| {
+            NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
+                .map(|d| d.and_hms_opt(0, 0, 0).expect("midnight is valid"))
+        })
         .map_err(|_| DbError::Execution(format!("invalid datetime format: '{}'", date_str)))?;
 
     let result = match date_part {

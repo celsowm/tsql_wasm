@@ -125,6 +125,18 @@ fn test_dateadd_day() {
 }
 
 #[test]
+fn test_dateadd_day_from_date_literal() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT DATEADD(day, 5, '2025-01-01') AS v");
+    assert_eq!(
+        r.rows[0][0],
+        Value::DateTime(
+            NaiveDateTime::parse_from_str("2025-01-06T00:00:00", "%Y-%m-%dT%H:%M:%S").unwrap()
+        )
+    );
+}
+
+#[test]
 fn test_dateadd_year() {
     let mut engine = Engine::new();
     let r = query(
@@ -199,6 +211,40 @@ fn test_avg_aggregate() {
     exec(&mut engine, "INSERT INTO dbo.t (val) VALUES (30)");
     let r = query(&mut engine, "SELECT AVG(val) AS avg_val FROM dbo.t");
     assert_eq!(r.rows[0][0], Value::Int(20));
+}
+
+#[test]
+fn test_avg_decimal_returns_scale_six() {
+    let mut engine = Engine::new();
+    exec(&mut engine, "CREATE TABLE dbo.t (val DECIMAL(12,2) NOT NULL)");
+    exec(&mut engine, "INSERT INTO dbo.t (val) VALUES (85000.00)");
+    exec(&mut engine, "INSERT INTO dbo.t (val) VALUES (88750.00)");
+    let r = query(&mut engine, "SELECT AVG(val) AS avg_val FROM dbo.t");
+    assert_eq!(r.rows[0][0], Value::Decimal(86875000000, 6));
+}
+
+#[test]
+fn test_decimal_literal_division_preserves_sql_scale() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT 5.0 / 2.0 AS v");
+    assert_eq!(r.rows[0][0], Value::Decimal(2500000, 6));
+}
+
+#[test]
+fn test_round_decimal_literal_preserves_input_scale() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT ROUND(123.456, 2) AS v");
+    assert_eq!(r.rows[0][0], Value::Decimal(123460, 3));
+}
+
+#[test]
+fn test_cast_datetime_string_to_date() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT CAST('2025-01-06 00:00:00' AS DATE) AS v");
+    assert_eq!(
+        r.rows[0][0],
+        Value::Date(chrono::NaiveDate::from_ymd_opt(2025, 1, 6).unwrap())
+    );
 }
 
 #[test]

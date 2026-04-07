@@ -6,7 +6,7 @@ pub enum Token {
     Keyword(Keyword),
     Identifier(String),
     Variable(String),
-    Number { value: f64, is_float: bool },
+    Number { value: f64, is_float: bool, raw: String },
     String(String),
     Operator(String),
     LParen,

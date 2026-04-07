@@ -11,7 +11,7 @@ pub fn lower_expr(parser_expr: ast::Expr) -> Result<executor_ast::expressions::E
         ast::Expr::Wildcard => Ok(executor_ast::expressions::Expr::Wildcard),
         ast::Expr::QualifiedWildcard(parts) => Ok(executor_ast::expressions::Expr::QualifiedWildcard(parts)),
         ast::Expr::Integer(i) => Ok(executor_ast::expressions::Expr::Integer(i)),
-        ast::Expr::Float(f) => Ok(executor_ast::expressions::Expr::FloatLiteral(f64::from_bits(f).to_string())),
+        ast::Expr::Float(f) => Ok(executor_ast::expressions::Expr::FloatLiteral(f)),
         ast::Expr::String(s) => Ok(executor_ast::expressions::Expr::String(s)),
         ast::Expr::UnicodeString(s) => Ok(executor_ast::expressions::Expr::UnicodeString(s)),
         ast::Expr::BinaryLiteral(b) => Ok(executor_ast::expressions::Expr::BinaryLiteral(b)),

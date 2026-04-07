@@ -7,6 +7,7 @@ use super::context::ExecutionContext;
 use super::evaluator::eval_expr;
 pub use super::model::Group;
 use super::string_norm::normalize_identifier;
+use super::value_helpers::rescale_raw;
 use super::value_ops::compare_values;
 use crate::catalog::Catalog;
 use crate::storage::Storage;
@@ -269,7 +270,11 @@ pub fn eval_aggregate_avg(
                 _ => Ok(Value::BigInt(res)),
             }
         }
-        Value::Decimal(v, s) => Ok(Value::Decimal(v / n, s)),
+        Value::Decimal(v, s) => {
+            let result_scale = s.max(6);
+            let dividend = rescale_raw(v, s, result_scale);
+            Ok(Value::Decimal(dividend / n, result_scale))
+        }
         Value::Float(v) => Ok(Value::Float((f64::from_bits(v) / n as f64).to_bits())),
         Value::Money(v) => Ok(Value::Money(v / n)),
         Value::SmallMoney(v) => Ok(Value::SmallMoney((v as i128 / n) as i64)),

@@ -188,15 +188,15 @@ fn postfix_binding_power(_op: &Keyword) -> (u8, ()) {
 
 pub fn parse_primary(parser: &mut Parser) -> ParseResult<Expr> {
     match parser.peek() {
-        Some(Token::Number { value: n, is_float }) => {
+        Some(Token::Number { value: n, is_float, raw }) => {
              let n = *n;
              let is_float = *is_float;
+             let raw = raw.clone();
              let _ = parser.next();
              if !is_float && n.fract() == 0.0 {
                  Ok(Expr::Integer(n as i64))
              } else {
-                 let val: f64 = n;
-                 Ok(Expr::Float(val.to_bits()))
+                 Ok(Expr::Float(raw))
              }
         }
         Some(Token::String(s)) => {

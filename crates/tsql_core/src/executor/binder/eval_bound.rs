@@ -202,6 +202,9 @@ fn bound_to_literal_expr(bound: &BoundExpr) -> Result<crate::ast::Expr, DbError>
             let f = f64::from_bits(*bits);
             Ok(crate::ast::Expr::FloatLiteral(f.to_string()))
         }
+        BoundExpr::Literal(Value::Decimal(raw, scale)) => Ok(crate::ast::Expr::FloatLiteral(
+            crate::types::format_decimal(*raw, *scale),
+        )),
         BoundExpr::Literal(Value::VarChar(s)) => Ok(crate::ast::Expr::String(s.clone())),
         BoundExpr::Literal(Value::NVarChar(s)) => Ok(crate::ast::Expr::UnicodeString(s.clone())),
         BoundExpr::Literal(Value::Bit(b)) => {

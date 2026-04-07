@@ -90,10 +90,9 @@ pub fn bind_expr(
             },
         )),
         Expr::FloatLiteral(s) => {
-            let f: f64 = s
-                .parse()
-                .map_err(|_| DbError::Execution(format!("invalid float literal '{}'", s)))?;
-            Ok(BoundExpr::Literal(Value::Float(f.to_bits())))
+            Ok(BoundExpr::Literal(
+                crate::executor::value_ops::parse_numeric_literal(s)?,
+            ))
         }
         Expr::BinaryLiteral(b) => Ok(BoundExpr::Literal(Value::VarBinary(b.clone()))),
         Expr::String(s) => Ok(BoundExpr::Literal(Value::VarChar(s.clone()))),

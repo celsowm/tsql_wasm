@@ -38,7 +38,7 @@ pub enum Expr {
     Wildcard,
     QualifiedWildcard(Vec<String>),
     Integer(i64),
-    Float(u64),
+    Float(String),
     String(String),
     UnicodeString(String),
     BinaryLiteral(Vec<u8>),

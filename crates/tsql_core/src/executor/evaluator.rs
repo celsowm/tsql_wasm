@@ -217,10 +217,7 @@ fn eval_expr_inner(
             Value::BigInt(*v)
         }),
         Expr::FloatLiteral(s) => {
-            let f: f64 = s
-                .parse()
-                .map_err(|_| DbError::Execution(format!("invalid float literal '{}'", s)))?;
-            Ok(Value::Float(f.to_bits()))
+            super::value_ops::parse_numeric_literal(s)
         }
         Expr::BinaryLiteral(bytes) => Ok(Value::Binary(bytes.clone())),
         Expr::String(v) => Ok(Value::VarChar(v.clone())),

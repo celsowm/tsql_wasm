@@ -15,7 +15,7 @@ pub fn lex<'a>(input: &mut &'a str, quoted_identifier: bool) -> ModalResult<Vec<
             parse_number(input).map(|n| {
                 let consumed = &start[..start.len() - input.len()];
                 let is_float = consumed.contains('.') || consumed.contains('e') || consumed.contains('E');
-                Some(Token::Number { value: n, is_float })
+                Some(Token::Number { value: n, is_float, raw: consumed.to_string() })
             })
         },
         parse_string.map(|s| Some(Token::String(unescape_string(s)))),
