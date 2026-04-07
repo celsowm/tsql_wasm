@@ -326,6 +326,28 @@ async fn test_object_explorer_database_list_probe() {
 }
 
 #[tokio::test]
+async fn test_object_explorer_system_databases_list_probe() {
+    let port = start_server().await;
+    let mut client = connect(port).await;
+
+    let stream = client
+        .query("SELECT name, database_id FROM sys.databases ORDER BY database_id", &[])
+        .await
+        .expect("Query failed");
+    let rows: Vec<Row> = stream.into_first_result().await.expect("Failed to read result");
+    let names: Vec<String> = rows
+        .iter()
+        .map(|row| {
+            row.try_get::<&str, _>(0)
+                .expect("name conversion failed")
+                .expect("name missing")
+                .to_string()
+        })
+        .collect();
+    assert_eq!(names, vec!["master", "tempdb", "model", "msdb"]);
+}
+
+#[tokio::test]
 async fn test_object_explorer_tables_list_probe() {
     let port = start_server().await;
     let mut client = connect(port).await;
@@ -411,11 +433,25 @@ async fn test_object_explorer_database_access_probe() {
         .await
         .expect("Query failed");
     let rows: Vec<Row> = stream.into_first_result().await.expect("Failed to read result");
-    assert_eq!(rows.len(), 1);
-    let name: &str = rows[0].try_get(0).expect("name conversion failed").expect("name missing");
-    let dbid: i32 = rows[0].try_get(1).expect("id conversion failed").expect("id missing");
-    assert_eq!(name, "master");
-    assert_eq!(dbid, 1);
+    assert_eq!(rows.len(), 4);
+    let values: Vec<(&str, i32)> = rows
+        .iter()
+        .map(|row| {
+            let name: &str = row
+                .try_get(0)
+                .expect("name conversion failed")
+                .expect("name missing");
+            let dbid: i32 = row
+                .try_get(1)
+                .expect("id conversion failed")
+                .expect("id missing");
+            (name, dbid)
+        })
+        .collect();
+    assert_eq!(
+        values,
+        vec![("master", 1), ("model", 3), ("msdb", 4), ("tempdb", 2)]
+    );
 }
 
 #[tokio::test]
@@ -437,6 +473,89 @@ async fn test_object_explorer_server_permissions_probe() {
         .expect("can_view conversion failed")
         .expect("can_view missing");
     assert_eq!(can_view, 1);
+}
+
+#[tokio::test]
+async fn test_object_explorer_server_permissions_null_probe() {
+    let port = start_server().await;
+    let mut client = connect(port).await;
+
+    let stream = client
+        .query(
+            "SELECT HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW ANY DATABASE') AS can_view",
+            &[],
+        )
+        .await
+        .expect("Query failed");
+    let rows: Vec<Row> = stream.into_first_result().await.expect("Failed to read result");
+    assert_eq!(rows.len(), 1);
+    let can_view: i32 = rows[0]
+        .try_get(0)
+        .expect("can_view conversion failed")
+        .expect("can_view missing");
+    assert_eq!(can_view, 1);
+}
+
+#[tokio::test]
+async fn test_object_explorer_alwayson_probe_fallback() {
+    let port = start_server().await;
+    let mut client = connect(port).await;
+
+    let stream = client
+        .query(
+            "DECLARE @alwayson INT EXECUTE @alwayson = master.dbo.xp_qv N'3641190370', @@SERVICENAME; SELECT ISNULL(@alwayson, -1) AS [AlwaysOn]",
+            &[],
+        )
+        .await
+        .expect("Query failed");
+    let rows: Vec<Row> = stream.into_first_result().await.expect("Failed to read result");
+    assert_eq!(rows.len(), 1);
+    let alwayson: i32 = rows[0]
+        .try_get(0)
+        .expect("AlwaysOn conversion failed")
+        .expect("AlwaysOn missing");
+    assert_eq!(alwayson, -1);
+}
+
+#[tokio::test]
+async fn test_object_explorer_is_hadr_enabled_probe() {
+    let port = start_server().await;
+    let mut client = connect(port).await;
+
+    let stream = client
+        .query(
+            "SELECT CAST(SERVERPROPERTY(N'IsHadrEnabled') AS bit) AS [IsHadrEnabled]",
+            &[],
+        )
+        .await
+        .expect("Query failed");
+    let rows: Vec<Row> = stream.into_first_result().await.expect("Failed to read result");
+    assert_eq!(rows.len(), 1);
+    let is_hadr_enabled: Option<bool> = rows[0]
+        .try_get(0)
+        .expect("IsHadrEnabled conversion failed");
+    assert_eq!(is_hadr_enabled, Some(false));
+}
+
+#[tokio::test]
+async fn test_object_explorer_contained_ag_session_probe() {
+    let port = start_server().await;
+    let mut client = connect(port).await;
+
+    let stream = client
+        .query(
+            "IF OBJECT_ID(N'sys.sp_MSIsContainedAGSession', N'P') IS NOT NULL BEGIN DECLARE @x int; EXECUTE @x = sys.sp_MSIsContainedAGSession; SELECT @x END ELSE SELECT 0",
+            &[],
+        )
+        .await
+        .expect("Query failed");
+    let rows: Vec<Row> = stream.into_first_result().await.expect("Failed to read result");
+    assert_eq!(rows.len(), 1);
+    let probe_value: i32 = rows[0]
+        .try_get(0)
+        .expect("probe conversion failed")
+        .expect("probe value missing");
+    assert_eq!(probe_value, 0);
 }
 
 #[tokio::test]

@@ -33,6 +33,7 @@ pub struct ExecArgument {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecProcedureStmt {
+    pub return_variable: Option<String>,
     pub name: ObjectName,
     pub args: Vec<ExecArgument>,
 }

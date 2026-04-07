@@ -34,6 +34,7 @@ impl<'a> RpcFrameParser<'a> {
 
         // Only handle sp_executesql=10 and sp_prepexec=13
         if !is_supported_rpc_proc(&proc_selector) {
+            log::warn!("Unsupported RPC procedure selector: {:?}", proc_selector);
             return Ok(None);
         }
 

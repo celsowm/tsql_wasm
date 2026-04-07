@@ -243,6 +243,7 @@ pub fn lower_insert(s: ast::InsertStmt) -> Result<executor_ast::statements::dml:
             ),
             ast::InsertSource::Select(sel) => executor_ast::statements::dml::InsertSource::Select(Box::new(lower_select(*sel)?)),
             ast::InsertSource::Exec { procedure, args } => executor_ast::statements::dml::InsertSource::Exec(Box::new(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::ExecProcedure(executor_ast::statements::procedural::ExecProcedureStmt {
+                return_variable: None,
                 name: lower_object_name(procedure),
                 args: args.into_iter().map(|e| Ok(executor_ast::statements::procedural::ExecArgument {
                     name: None, 

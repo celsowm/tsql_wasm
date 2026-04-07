@@ -62,11 +62,22 @@ impl<'a> ScriptExecutor<'a> {
         stmt: ExecProcedureStmt,
         ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<crate::executor::result::QueryResult>, DbError> {
+        if stmt.name.name.eq_ignore_ascii_case("xp_msver") {
+            self.assign_exec_return_value(&stmt.return_variable, Value::Int(0), ctx)?;
+            return Ok(Some(execute_xp_msver()));
+        }
+        if stmt.name.name.eq_ignore_ascii_case("xp_qv") {
+            let (result, return_code) = self.execute_xp_qv(&stmt.args, ctx)?;
+            self.assign_exec_return_value(&stmt.return_variable, Value::Int(return_code), ctx)?;
+            return Ok(result);
+        }
+        if stmt.name.name.eq_ignore_ascii_case("sp_MSIsContainedAGSession") {
+            self.assign_exec_return_value(&stmt.return_variable, Value::Int(0), ctx)?;
+            return Ok(None);
+        }
+
         let schema = stmt.name.schema_or_dbo().to_string();
         let Some(routine) = self.catalog.find_routine(&schema, &stmt.name.name).cloned() else {
-            if stmt.name.name.eq_ignore_ascii_case("xp_msver") {
-                return Ok(Some(execute_xp_msver()));
-            }
             return Err(DbError::object_not_found(format!("procedure '{}.{}'", schema, stmt.name.name)));
         };
         let crate::catalog::RoutineDef {
@@ -181,17 +192,64 @@ impl<'a> ScriptExecutor<'a> {
                 }
             }
 
-            match proc_result {
-                Ok(StmtOutcome::Return(_)) | Ok(StmtOutcome::Break) | Ok(StmtOutcome::Continue) => Ok(None),
-                Ok(StmtOutcome::Ok(r)) => Ok(r),
-                Err(e) => Err(e),
-            }
+            let (result, return_value) = match proc_result {
+                Ok(StmtOutcome::Return(v)) => (None, procedure_return_value(v)),
+                Ok(StmtOutcome::Break) | Ok(StmtOutcome::Continue) => (None, Value::Int(0)),
+                Ok(StmtOutcome::Ok(r)) => (r, Value::Int(0)),
+                Err(e) => return Err(e),
+            };
+            self.assign_exec_return_value(&stmt.return_variable, return_value, ctx)?;
+            Ok(result)
         })();
         while ctx.frame.scope_vars.len() > scope_depth {
             ctx.leave_scope();
         }
         ctx.pop_module();
         result
+    }
+
+    fn assign_exec_return_value(
+        &mut self,
+        return_variable: &Option<String>,
+        value: Value,
+        ctx: &mut ExecutionContext<'_>,
+    ) -> Result<(), DbError> {
+        let Some(return_variable) = return_variable else {
+            return Ok(());
+        };
+        if let Some((ty, out_var)) = ctx.session.variables.get_mut(return_variable) {
+            *out_var = coerce_value_to_type_with_dateformat(
+                value,
+                ty,
+                &ctx.options.dateformat,
+            )?;
+            return Ok(());
+        }
+        Err(DbError::invalid_identifier(return_variable))
+    }
+
+    fn execute_xp_qv(
+        &mut self,
+        args: &[crate::ast::ExecArgument],
+        ctx: &mut ExecutionContext<'_>,
+    ) -> Result<(Option<QueryResult>, i32), DbError> {
+        let query_id = match args.first() {
+            Some(arg) => eval_expr(&arg.expr, &[], ctx, self.catalog, self.storage, self.clock)?
+                .to_string_value(),
+            None => {
+                return Err(DbError::Execution(
+                    "xp_qv requires at least one query identifier argument".into(),
+                ))
+            }
+        };
+
+        match query_id.as_str() {
+            // SSMS Object Explorer AlwaysOn probe:
+            // DECLARE @alwayson INT; EXEC @alwayson = master.dbo.xp_qv N'3641190370', @@SERVICENAME;
+            // SELECT ISNULL(@alwayson, -1) AS [AlwaysOn]
+            "3641190370" => Ok((None, -1)),
+            _ => Ok((None, -1)),
+        }
     }
 
     pub(crate) fn execute_sp_executesql(
@@ -380,5 +438,16 @@ fn execute_xp_msver() -> QueryResult {
                 Value::NVarChar("localhost".to_string()),
             ],
         ],
+    }
+}
+
+fn procedure_return_value(value: Option<Value>) -> Value {
+    match value {
+        Some(v) => match v {
+            Value::Null => Value::Int(0),
+            Value::Int(_) => v,
+            other => Value::Int(other.to_integer_i64().unwrap_or(0) as i32),
+        },
+        None => Value::Int(0),
     }
 }

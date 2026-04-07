@@ -2,7 +2,7 @@ use tsql_server::{playground, Credentials, ServerConfig, TdsServer};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    init_logger();
 
     let mut args: Vec<String> = std::env::args().collect();
     args.remove(0); // remove program name
@@ -179,6 +179,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     server.run().await?;
 
     Ok(())
+}
+
+fn init_logger() {
+    use std::io::Write;
+
+    let mut builder =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
+    builder.format(|buf, record| {
+        let ts = buf.timestamp_millis();
+        writeln!(
+            buf,
+            "[{} {:<5} {}] {}",
+            ts,
+            record.level(),
+            record.target(),
+            record.args()
+        )?;
+        writeln!(buf)
+    });
+    builder.init();
 }
 
 fn print_help() {

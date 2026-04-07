@@ -12,6 +12,41 @@ pub(crate) struct SysTables;
 pub(crate) struct SysColumns;
 pub(crate) struct SysTypes;
 
+#[derive(Clone, Copy)]
+struct SystemDatabaseRow {
+    id: i32,
+    name: &'static str,
+    compatibility_level: u8,
+    recovery_model: &'static str,
+}
+
+const SYSTEM_DATABASES: &[SystemDatabaseRow] = &[
+    SystemDatabaseRow {
+        id: 1,
+        name: "master",
+        compatibility_level: 160,
+        recovery_model: "FULL",
+    },
+    SystemDatabaseRow {
+        id: 2,
+        name: "tempdb",
+        compatibility_level: 160,
+        recovery_model: "SIMPLE",
+    },
+    SystemDatabaseRow {
+        id: 3,
+        name: "model",
+        compatibility_level: 160,
+        recovery_model: "FULL",
+    },
+    SystemDatabaseRow {
+        id: 4,
+        name: "msdb",
+        compatibility_level: 160,
+        recovery_model: "FULL",
+    },
+];
+
 impl VirtualTable for SysSchemas {
     fn definition(&self) -> crate::catalog::TableDef {
         virtual_table_def(
@@ -63,34 +98,42 @@ impl VirtualTable for SysDatabases {
     }
 
     fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
-        vec![StoredRow {
-            values: vec![
-                Value::Int(1),
-                Value::VarChar("master".to_string()),
-                Value::Null,
-                Value::VarBinary(vec![0x01]),
-                Value::DateTime(
-                    chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
-                        .unwrap()
-                        .and_hms_opt(0, 0, 0)
-                        .unwrap(),
-                ),
-                Value::TinyInt(160),
-                Value::VarChar("SQL_Latin1_General_CP1_CI_AS".to_string()),
-                Value::TinyInt(0),
-                Value::VarChar("ONLINE".to_string()),
-                Value::TinyInt(0),
-                Value::VarChar("MULTI_USER".to_string()),
-                Value::Bit(false),
-                Value::TinyInt(1),
-                Value::VarChar("FULL".to_string()),
-                Value::Bit(false),
-                Value::Bit(false),
-                Value::Bit(false),
-                Value::Bit(true),
-            ],
-            deleted: false,
-        }]
+        let created = Value::DateTime(
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap(),
+        );
+        SYSTEM_DATABASES
+            .iter()
+            .map(|db| StoredRow {
+                values: vec![
+                    Value::Int(db.id),
+                    Value::VarChar(db.name.to_string()),
+                    Value::Null,
+                    Value::VarBinary(vec![0x01]),
+                    created.clone(),
+                    Value::TinyInt(db.compatibility_level),
+                    Value::VarChar("SQL_Latin1_General_CP1_CI_AS".to_string()),
+                    Value::TinyInt(0),
+                    Value::VarChar("ONLINE".to_string()),
+                    Value::TinyInt(0),
+                    Value::VarChar("MULTI_USER".to_string()),
+                    Value::Bit(false),
+                    Value::TinyInt(match db.recovery_model {
+                        "SIMPLE" => 3,
+                        "BULK_LOGGED" => 2,
+                        _ => 1,
+                    }),
+                    Value::VarChar(db.recovery_model.to_string()),
+                    Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Bit(db.name.eq_ignore_ascii_case("master")),
+                ],
+                deleted: false,
+            })
+            .collect()
     }
 }
 
@@ -149,26 +192,30 @@ impl VirtualTable for SysSysDatabases {
     }
 
     fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
-        vec![StoredRow {
-            values: vec![
-                Value::VarChar("master".to_string()),
-                Value::SmallInt(1),
-                Value::VarBinary(vec![0x01]),
-                Value::SmallInt(0),
-                Value::Int(0),
-                Value::Int(0),
-                Value::DateTime(
-                    chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
-                        .unwrap()
-                        .and_hms_opt(0, 0, 0)
-                        .unwrap(),
-                ),
-                Value::TinyInt(160),
-                Value::Null,
-                Value::Int(0),
-            ],
-            deleted: false,
-        }]
+        let created = Value::DateTime(
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap(),
+        );
+        SYSTEM_DATABASES
+            .iter()
+            .map(|db| StoredRow {
+                values: vec![
+                    Value::VarChar(db.name.to_string()),
+                    Value::SmallInt(db.id as i16),
+                    Value::VarBinary(vec![0x01]),
+                    Value::SmallInt(0),
+                    Value::Int(0),
+                    Value::Int(0),
+                    created.clone(),
+                    Value::TinyInt(db.compatibility_level),
+                    Value::Null,
+                    Value::Int(0),
+                ],
+                deleted: false,
+            })
+            .collect()
     }
 }
 

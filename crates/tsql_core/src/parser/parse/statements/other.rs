@@ -99,6 +99,15 @@ pub fn parse_exec_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
              Ok(Statement::Procedural(ProceduralStatement::ExecDynamic { sql_expr }))
         }
         Some(Token::Identifier(_)) | Some(Token::Keyword(_)) | Some(Token::Variable(_)) => {
+            let mut return_variable = None;
+            if let Some(Token::Variable(v)) = parser.peek() {
+                if matches!(parser.peek_at(1), Some(Token::Operator(op)) if *op == "=") {
+                    return_variable = Some(v.clone());
+                    let _ = parser.next();
+                    let _ = parser.next();
+                }
+            }
+
             let id_str = match parser.peek() {
                 Some(Token::Identifier(id)) => id.clone(),
                 Some(Token::Keyword(kw)) => kw.as_ref().to_string(),
@@ -130,7 +139,7 @@ pub fn parse_exec_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
               {
                   args = crate::parser::parse::expressions::parse_comma_list(parser, parse_exec_arg)?;
               }
-              Ok(Statement::Procedural(ProceduralStatement::ExecProcedure { name, args }))
+              Ok(Statement::Procedural(ProceduralStatement::ExecProcedure { return_variable, name, args }))
         }
         _ => parser.backtrack(Expected::Description("procedure name or expression")),
     }
@@ -156,4 +165,3 @@ fn parse_exec_arg(parser: &mut Parser) -> ParseResult<ExecArg> {
     }
     Ok(ExecArg { name, expr, is_output })
 }
-

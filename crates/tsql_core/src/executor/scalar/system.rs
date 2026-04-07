@@ -17,8 +17,8 @@ pub(crate) fn eval_object_id(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    if args.len() != 1 {
-        return Err(DbError::Execution("OBJECT_ID expects 1 argument".into()));
+    if args.is_empty() || args.len() > 2 {
+        return Err(DbError::Execution("OBJECT_ID expects 1 or 2 arguments".into()));
     }
 
     let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
@@ -33,6 +33,24 @@ pub(crate) fn eval_object_id(
     } else {
         ("dbo", cleaned.trim())
     };
+
+    let object_type = if let Some(arg) = args.get(1) {
+        let ty = eval_expr(arg, row, ctx, catalog, storage, clock)?;
+        if ty.is_null() {
+            None
+        } else {
+            Some(ty.to_string_value().to_ascii_uppercase())
+        }
+    } else {
+        None
+    };
+
+    if schema.eq_ignore_ascii_case("sys")
+        && name.eq_ignore_ascii_case("sp_MSIsContainedAGSession")
+        && object_type.as_deref().unwrap_or("P") == "P"
+    {
+        return Ok(Value::Int(2147483001));
+    }
 
     Ok(match catalog.object_id(schema, name) {
         Some(id) => Value::Int(id),
@@ -180,6 +198,8 @@ pub(crate) fn eval_serverproperty(
         "ISINTEGRATEDSECURITYONLY" => Value::Int(0),
         "ISSINGLEUSER" => Value::Int(0),
         "ISXTPSUPPORTED" => Value::Int(0),
+        "ISPOLYBASEINSTALLED" => Value::Int(0),
+        "ISHADRENABLED" => Value::Int(0),
         _ => Value::Null,
     })
 }
@@ -286,7 +306,11 @@ pub(crate) fn eval_has_dbaccess(
         return Ok(Value::Null);
     }
     let db_name = db.to_string_value();
-    Ok(Value::Int(if db_name.eq_ignore_ascii_case("master") {
+    Ok(Value::Int(if db_name.eq_ignore_ascii_case("master")
+        || db_name.eq_ignore_ascii_case("tempdb")
+        || db_name.eq_ignore_ascii_case("model")
+        || db_name.eq_ignore_ascii_case("msdb")
+    {
         1
     } else {
         0
@@ -309,9 +333,6 @@ pub(crate) fn eval_has_perms_by_name(
 
     let securable = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
     let class = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
-    if class.is_null() {
-        return Ok(Value::Null);
-    }
 
     let perm = if args.len() >= 3 {
         eval_expr(&args[2], row, ctx, catalog, storage, clock)?
@@ -325,15 +346,30 @@ pub(crate) fn eval_has_perms_by_name(
     } else {
         securable.to_string_value()
     };
-    let class_name = class.to_string_value().to_ascii_uppercase();
+    let class_name = if class.is_null() {
+        String::new()
+    } else {
+        class.to_string_value().to_ascii_uppercase()
+    };
 
     // Minimal permission model for SSMS object explorer probes.
-    let allowed = if class_name == "SERVER" && perm == "VIEW ANY DATABASE" {
-        true
-    } else if class_name == "SERVER" && perm == "CONNECT SQL" {
-        true
-    } else if class_name == "DATABASE" && securable_name.eq_ignore_ascii_case("master") {
-        true
+    let is_server_context = class_name.is_empty()
+        || class_name == "SERVER"
+        || securable_name.eq_ignore_ascii_case("server");
+    let is_database_context = class_name == "DATABASE" || securable_name.eq_ignore_ascii_case("master");
+
+    let allowed = if is_server_context {
+        match perm.as_str() {
+            "VIEW ANY DATABASE" | "CONNECT SQL" | "VIEW SERVER STATE" | "VIEW ANY DEFINITION" => {
+                true
+            }
+            _ => false,
+        }
+    } else if is_database_context {
+        match perm.as_str() {
+            "CONNECT" | "ANY" => true,
+            _ => securable_name.eq_ignore_ascii_case("master"),
+        }
     } else {
         false
     };
@@ -414,9 +450,16 @@ pub(crate) fn eval_db_name(args: &[Expr], ctx: &ExecutionContext) -> Result<Valu
     if let Some(arg) = args.first() {
         let name = match arg {
             Expr::Integer(1) => "master".to_string(),
+            Expr::Integer(2) => "tempdb".to_string(),
+            Expr::Integer(3) => "model".to_string(),
+            Expr::Integer(4) => "msdb".to_string(),
             Expr::String(s) | Expr::UnicodeString(s) => {
-                if s.eq_ignore_ascii_case("master") {
-                    "master".to_string()
+                if s.eq_ignore_ascii_case("master")
+                    || s.eq_ignore_ascii_case("tempdb")
+                    || s.eq_ignore_ascii_case("model")
+                    || s.eq_ignore_ascii_case("msdb")
+                {
+                    s.clone()
                 } else {
                     return Ok(Value::Null);
                 }
@@ -440,8 +483,20 @@ pub(crate) fn eval_db_id(args: &[Expr], _ctx: &ExecutionContext) -> Result<Value
     if let Some(arg) = args.first() {
         return Ok(match arg {
             Expr::Integer(1) => Value::Int(1),
+            Expr::Integer(2) => Value::Int(2),
+            Expr::Integer(3) => Value::Int(3),
+            Expr::Integer(4) => Value::Int(4),
             Expr::String(s) | Expr::UnicodeString(s) if s.eq_ignore_ascii_case("master") => {
                 Value::Int(1)
+            }
+            Expr::String(s) | Expr::UnicodeString(s) if s.eq_ignore_ascii_case("tempdb") => {
+                Value::Int(2)
+            }
+            Expr::String(s) | Expr::UnicodeString(s) if s.eq_ignore_ascii_case("model") => {
+                Value::Int(3)
+            }
+            Expr::String(s) | Expr::UnicodeString(s) if s.eq_ignore_ascii_case("msdb") => {
+                Value::Int(4)
             }
             _ => Value::Null,
         });

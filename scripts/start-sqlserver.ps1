@@ -1,27 +1,95 @@
-# Garante que a machine do Podman ta rodando
-$machineStatus = podman machine list 2>&1 | Select-String "Currently running"
-if (-not $machineStatus) {
-    Write-Host "Iniciando Podman machine..." -ForegroundColor Yellow
-    podman machine start
-    Start-Sleep -Seconds 3
+$ErrorActionPreference = "Stop"
+
+function Write-LogLine {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Message,
+        [ValidateSet("Gray", "Green", "Yellow", "Red", "Cyan", "White")]
+        [string] $Color = "White"
+    )
+
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
+    $line = "[$timestamp] $Message"
+    Add-Content -LiteralPath $script:LogFile -Value $line -Encoding utf8
+    Write-Host $Message -ForegroundColor $Color
 }
 
-# Verifica se o container ja existe
-$existing = podman ps -a --filter "name=tsql_test_sqlserver" --format "{{.Names}}" 2>$null
-if (-not $existing) {
-    Write-Host "Criando container SQL Server..." -ForegroundColor Yellow
-    podman run -d --name tsql_test_sqlserver -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=Test@12345 -p 11433:1433 --memory=512m mcr.microsoft.com/azure-sql-edge:latest
-} else {
-    $running = podman ps --filter "name=tsql_test_sqlserver" --format "{{.Names}}" 2>$null
-    if (-not $running) {
-        Write-Host "Iniciando container existente..." -ForegroundColor Yellow
-        podman start tsql_test_sqlserver
-    } else {
-        Write-Host "Container ja esta rodando." -ForegroundColor Green
+function Write-LogBlankLine {
+    Add-Content -LiteralPath $script:LogFile -Value "" -Encoding utf8
+    Write-Host ""
+}
+
+function Rotate-LogFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Path,
+        [int] $MaxBytes = 5MB,
+        [int] $MaxBackups = 5
+    )
+
+    if (-not (Test-Path $Path)) {
+        return
+    }
+
+    $length = (Get-Item -LiteralPath $Path).Length
+    if ($length -lt $MaxBytes) {
+        return
+    }
+
+    for ($i = $MaxBackups; $i -ge 1; $i--) {
+        $source = if ($i -eq 1) { $Path } else { "$Path.$($i - 1)" }
+        $target = "$Path.$i"
+        if (Test-Path $source) {
+            if (Test-Path $target) {
+                Remove-Item -LiteralPath $target -Force
+            }
+            Move-Item -LiteralPath $source -Destination $target -Force
+        }
     }
 }
 
-Write-Host "Aguardando SQL Server iniciar..." -ForegroundColor Yellow
+$repoRoot = Split-Path -Parent $PSScriptRoot
+Set-Location $repoRoot
+
+$logDir = Join-Path $repoRoot "logs"
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$script:LogFile = Join-Path $logDir "sqlserver-container.log"
+Rotate-LogFile -Path $script:LogFile
+
+Write-LogLine "Ensuring Podman machine is running..." Yellow
+$machineStatus = podman machine list 2>&1 | Select-String "Currently running"
+if (-not $machineStatus) {
+    Write-LogLine "Starting Podman machine..." Yellow
+    podman machine start 2>&1 | ForEach-Object {
+        Add-Content -LiteralPath $script:LogFile -Value $_.ToString() -Encoding utf8
+        Write-Host $_
+    }
+    Start-Sleep -Seconds 3
+}
+
+Write-LogLine "Checking tsql_test_sqlserver container..." Yellow
+$existing = podman ps -a --filter "name=tsql_test_sqlserver" --format "{{.Names}}" 2>$null
+if (-not $existing) {
+    Write-LogLine "Creating container SQL Server..." Yellow
+    podman run -d --name tsql_test_sqlserver -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=Test@12345 -p 11433:1433 --memory=512m mcr.microsoft.com/azure-sql-edge:latest 2>&1 | ForEach-Object {
+        Add-Content -LiteralPath $script:LogFile -Value $_.ToString() -Encoding utf8
+        Write-Host $_
+    }
+} else {
+    $running = podman ps --filter "name=tsql_test_sqlserver" --format "{{.Names}}" 2>$null
+    if (-not $running) {
+        Write-LogLine "Starting existing container..." Yellow
+        podman start tsql_test_sqlserver 2>&1 | ForEach-Object {
+            Add-Content -LiteralPath $script:LogFile -Value $_.ToString() -Encoding utf8
+            Write-Host $_
+        }
+    } else {
+        Write-LogLine "Container already running." Green
+    }
+}
+
+Write-LogLine "Waiting for SQL Server to become ready..." Yellow
+Write-LogBlankLine
 
 $maxRetries = 30
 $retry = 0
@@ -31,11 +99,11 @@ do {
     $retry++
     $result = podman exec tsql_test_sqlserver /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "Test@12345" -Q "SELECT 1" 2>$null
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "SQL Server pronto em localhost:11433" -ForegroundColor Green
+        Write-LogLine "SQL Server ready on localhost:11433" Green
         exit 0
     }
-    Write-Host "Tentativa $retry/$maxRetries..." -ForegroundColor DarkGray
+    Write-LogLine "Retry $retry/$maxRetries..." Gray
 } while ($retry -lt $maxRetries)
 
-Write-Host "Timeout aguardando SQL Server" -ForegroundColor Red
+Write-LogLine "Timeout waiting for SQL Server" Red
 exit 1

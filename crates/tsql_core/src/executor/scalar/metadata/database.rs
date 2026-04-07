@@ -31,9 +31,21 @@ pub(crate) fn eval_databasepropertyex(
         Value::Int(1) | Value::BigInt(1) | Value::SmallInt(1) | Value::TinyInt(1) => {
             "master".to_string()
         }
+        Value::Int(2) | Value::BigInt(2) | Value::SmallInt(2) | Value::TinyInt(2) => {
+            "tempdb".to_string()
+        }
+        Value::Int(3) | Value::BigInt(3) | Value::SmallInt(3) | Value::TinyInt(3) => {
+            "model".to_string()
+        }
+        Value::Int(4) | Value::BigInt(4) | Value::SmallInt(4) | Value::TinyInt(4) => {
+            "msdb".to_string()
+        }
         _ => db_val.to_string_value(),
     };
-    let is_known_db = db_name.eq_ignore_ascii_case("master");
+    let is_known_db = matches!(
+        db_name.to_ascii_lowercase().as_str(),
+        "master" | "tempdb" | "model" | "msdb"
+    );
     let active_db = ctx
         .metadata
         .database
@@ -53,6 +65,14 @@ pub(crate) fn eval_databasepropertyex(
         "ISANSINULLDEFAULT" | "ISANSI_NULL_DEFAULT" => {
             Value::Int(if ctx.metadata.ansi_nulls { 1 } else { 0 })
         }
+        "COMPATIBILITYLEVEL" => Value::Int(160),
+        "RECOVERY" | "RECOVERYMODEL" => Value::NVarChar(if db_name.eq_ignore_ascii_case("tempdb") {
+            "SIMPLE".to_string()
+        } else {
+            "FULL".to_string()
+        }),
+        "ISAUTOSHRINK" | "ISAUTO_SHRINK_ON" => Value::Int(0),
+        "ISAUTOCLOSE" | "ISAUTO_CLOSE_ON" => Value::Int(0),
         _ => Value::Null,
     })
 }

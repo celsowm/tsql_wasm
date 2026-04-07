@@ -27,6 +27,21 @@ fn test_db_name_and_id_with_argument() {
     assert_eq!(r.rows[0][1], Value::Int(1));
 }
 
+#[test]
+fn test_db_name_and_id_system_databases() {
+    let mut engine = Engine::new();
+    let r = query(
+        &mut engine,
+        "SELECT DB_NAME(2) AS tempdb_name, DB_ID('tempdb') AS tempdb_id, DB_NAME(3) AS model_name, DB_ID('model') AS model_id, DB_NAME(4) AS msdb_name, DB_ID('msdb') AS msdb_id",
+    );
+    assert_eq!(r.rows[0][0], Value::NVarChar("tempdb".to_string()));
+    assert_eq!(r.rows[0][1], Value::Int(2));
+    assert_eq!(r.rows[0][2], Value::NVarChar("model".to_string()));
+    assert_eq!(r.rows[0][3], Value::Int(3));
+    assert_eq!(r.rows[0][4], Value::NVarChar("msdb".to_string()));
+    assert_eq!(r.rows[0][5], Value::Int(4));
+}
+
 // ─── SUSER / USER functions ──────────────────────────────────────────────
 
 #[test]
@@ -100,6 +115,32 @@ fn test_sql_server_handshake_probe_functions() {
 }
 
 #[test]
+fn test_serverproperty_is_hadr_enabled_probe() {
+    let mut engine = Engine::new();
+    let r = query(
+        &mut engine,
+        "SELECT CAST(SERVERPROPERTY('IsHadrEnabled') AS bit) AS [IsHadrEnabled]",
+    );
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0][0], Value::Bit(false));
+}
+
+#[test]
+fn test_contained_ag_session_probe_batch_returns_zero() {
+    let engine = Engine::new();
+    let batch = tsql_core::parse_batch(
+        "IF OBJECT_ID(N'sys.sp_MSIsContainedAGSession', N'P') IS NOT NULL BEGIN DECLARE @x int; EXECUTE @x = sys.sp_MSIsContainedAGSession; SELECT @x END ELSE SELECT 0",
+    )
+    .expect("parse batch failed");
+    let r = engine
+        .execute_batch(batch)
+        .expect("execute batch failed")
+        .expect("expected result");
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0][0], Value::Int(0));
+}
+
+#[test]
 fn test_xp_msver_is_available_for_object_explorer_probes() {
     let mut engine = Engine::new();
     let r = query(&mut engine, "EXEC master.dbo.xp_msver");
@@ -113,6 +154,39 @@ fn test_xp_msver_is_available_for_object_explorer_probes() {
         .rows
         .iter()
         .any(|row| matches!(&row[1], Value::NVarChar(name) if name.eq_ignore_ascii_case("PhysicalMemory"))));
+}
+
+#[test]
+fn test_xp_qv_alwayson_probe_sets_exec_return_variable() {
+    let engine = Engine::new();
+    let batch = tsql_core::parse_batch(
+        "DECLARE @alwayson INT; EXECUTE @alwayson = master.dbo.xp_qv N'3641190370', @@SERVICENAME; SELECT ISNULL(@alwayson, -1) AS [AlwaysOn]",
+    )
+    .expect("parse batch failed");
+    let r = engine
+        .execute_batch(batch)
+        .expect("execute batch failed")
+        .expect("expected result");
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0][0], Value::Int(-1));
+}
+
+#[test]
+fn test_exec_return_variable_captures_user_procedure_return_code() {
+    let mut engine = Engine::new();
+    exec(
+        &mut engine,
+        "CREATE PROCEDURE dbo.return_seven AS BEGIN RETURN 7 END",
+    );
+    let batch =
+        tsql_core::parse_batch("DECLARE @rc INT = 0; EXEC @rc = dbo.return_seven; SELECT @rc AS rc")
+            .expect("parse batch failed");
+    let r = engine
+        .execute_batch(batch)
+        .expect("execute batch failed")
+        .expect("expected result");
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0][0], Value::Int(7));
 }
 
 #[test]
@@ -166,11 +240,12 @@ fn test_has_perms_by_name_probe() {
     let mut engine = Engine::new();
     let r = query(
         &mut engine,
-        "SELECT HAS_PERMS_BY_NAME(NULL, 'SERVER', 'VIEW ANY DATABASE') AS null_case, HAS_PERMS_BY_NAME('SERVER', 'SERVER', 'VIEW ANY DATABASE') AS server_case, HAS_PERMS_BY_NAME('master', 'DATABASE', 'CONNECT') AS db_case",
+        "SELECT HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW ANY DATABASE') AS null_case, HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW SERVER STATE') AS server_state_case, HAS_PERMS_BY_NAME('SERVER', 'SERVER', 'VIEW ANY DATABASE') AS server_case, HAS_PERMS_BY_NAME('master', 'DATABASE', 'CONNECT') AS db_case",
     );
     assert_eq!(r.rows[0][0], Value::Int(1));
     assert_eq!(r.rows[0][1], Value::Int(1));
     assert_eq!(r.rows[0][2], Value::Int(1));
+    assert_eq!(r.rows[0][3], Value::Int(1));
 }
 
 #[test]

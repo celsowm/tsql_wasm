@@ -100,8 +100,9 @@ pub fn lower_procedural(proc: ast::ProceduralStatement) -> Result<executor_ast::
                 sql_expr: lower_expr(sql_expr)?,
             })))
         }
-        ast::ProceduralStatement::ExecProcedure { name, args } => {
+        ast::ProceduralStatement::ExecProcedure { return_variable, name, args } => {
             Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::ExecProcedure(executor_ast::statements::procedural::ExecProcedureStmt {
+                return_variable,
                 name: lower_object_name(name),
                 args: args.into_iter().map(lower_exec_arg).collect::<Result<Vec<_>, _>>()?,
             })))

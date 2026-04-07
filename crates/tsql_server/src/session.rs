@@ -1,7 +1,9 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
+use once_cell::sync::Lazy;
+use regex::Regex;
 
 use tsql_core::{Database, SessionId, StatementExecutor};
 use tsql_core::types::{DataType, Value};
@@ -25,7 +27,10 @@ use super::ServerConfig;
 trait AsyncReadWrite: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin {}
 impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin> AsyncReadWrite for T {}
 
+static NEXT_CONNECTION_ID: AtomicU64 = AtomicU64::new(1);
+
 pub struct TdsSession {
+    connection_id: u64,
     db: Database,
     config: Arc<ServerConfig>,
     session_pool: Arc<SessionPool>,
@@ -38,6 +43,7 @@ impl TdsSession {
     pub fn new(db: Database, config: Arc<ServerConfig>, session_pool: Arc<SessionPool>) -> Self {
         let database = config.database.clone();
         Self {
+            connection_id: NEXT_CONNECTION_ID.fetch_add(1, Ordering::Relaxed),
             db,
             config,
             session_pool,
@@ -51,22 +57,19 @@ impl TdsSession {
         let mut needs_tls_upgrade = false;
         let mut login_packet = None;
 
-        log::info!("Starting handshake for incoming connection");
+        log::info!("[conn={}] Starting handshake for incoming connection", self.connection_id);
         loop {
             let (header, data) = packet::read_message(&mut stream)
                 .await
                 .map_err(|e| format!("Handshake read error: {}", e))?;
-            log::debug!(
-                "Received handshake packet type=0x{:02X} len={}",
-                header.packet_type,
-                header.length
-            );
+            log_packet(self.connection_id, "handshake", &header, &data);
 
             if header.packet_type == TDS7_PRELOGIN {
-                log::debug!("PRELOGIN data hex: {:02X?}", data);
+                log::debug!("[conn={}] PRELOGIN data hex: {:02X?}", self.connection_id, data);
                 let prelogin = parse_prelogin(&data).map_err(|e| e.to_string())?;
                 log::debug!(
-                    "PRELOGIN: version={:?}, encryption={}",
+                    "[conn={}] PRELOGIN: version={:?}, encryption={}",
+                    self.connection_id,
                     prelogin.version,
                     prelogin.encryption
                 );
@@ -101,12 +104,17 @@ impl TdsSession {
                     .flush()
                     .await
                     .map_err(|e| format!("Failed to flush: {}", e))?;
-                log::debug!("Sent PRELOGIN response (encryption={})", server_encrypt);
+                log::debug!(
+                    "[conn={}] Sent PRELOGIN response (encryption={})",
+                    self.connection_id,
+                    server_encrypt
+                );
 
                 if needs_tls_upgrade {
                     break;
                 }
             } else if header.packet_type == TDS7_LOGIN {
+                log_packet(self.connection_id, "login", &header, &data);
                 login_packet = Some((header, data));
                 break;
             } else {
@@ -131,7 +139,10 @@ impl TdsSession {
         // In TDS 7.4, the TLS handshake is tunneled inside TDS PRELOGIN (0x12)
         // packets. After handshake completion, traffic switches to raw TLS over TCP.
         let stream: Box<dyn AsyncReadWrite> = if needs_tls_upgrade {
-            log::info!("Client requested TLS, upgrading connection via TDS-wrapped handshake");
+            log::info!(
+                "[conn={}] Client requested TLS, upgrading connection via TDS-wrapped handshake",
+                self.connection_id
+            );
 
             let tls_config = if let (Some(cert_path), Some(key_path)) =
                 (&self.config.tls_cert_path, &self.config.tls_key_path)
@@ -156,7 +167,10 @@ impl TdsSession {
             // Switch to raw mode — post-handshake traffic is raw TLS over TCP
             raw_mode.store(true, Ordering::Release);
 
-            log::info!("TLS handshake completed, switched to raw mode");
+            log::info!(
+                "[conn={}] TLS handshake completed, switched to raw mode",
+                self.connection_id
+            );
             Box::new(tls_stream)
         } else {
             Box::new(stream)
@@ -182,7 +196,8 @@ impl TdsSession {
 
         let login = parse_login7(&login_data).map_err(|e| e.to_string())?;
         log::info!(
-            "LOGIN7: user={}, database={}, app={}, packet_size={}",
+            "[conn={}] LOGIN7: user={}, database={}, app={}, packet_size={}",
+            self.connection_id,
             login.username,
             login.database,
             login.app_name,
@@ -192,7 +207,8 @@ impl TdsSession {
         if let Some(ref creds) = self.config.auth {
             if login.username != creds.user || login.password != creds.password {
                 log::warn!(
-                    "Login rejected for user={} against configured SQL auth",
+                    "[conn={}] Login rejected for user={} against configured SQL auth",
+                    self.connection_id,
                     login.username
                 );
                 let err_resp = build_error_response("Login failed for user.");
@@ -201,9 +217,9 @@ impl TdsSession {
                     .map_err(|e| e.to_string())?;
                 return Ok(());
             }
-            log::info!("Login accepted for user={}", login.username);
+            log::info!("[conn={}] Login accepted for user={}", self.connection_id, login.username);
         } else {
-            log::info!("Login accepted with authentication disabled");
+            log::info!("[conn={}] Login accepted with authentication disabled", self.connection_id);
         }
 
         if login.packet_size > 0 {
@@ -232,7 +248,7 @@ impl TdsSession {
             Some(login.app_name.clone()),
             Some(login.hostname.clone()),
         ) {
-            log::error!("Failed to set session metadata: {}", e);
+            log::error!("[conn={}] Failed to set session metadata: {}", self.connection_id, e);
         }
 
         // Build LOGINACK response
@@ -247,22 +263,18 @@ impl TdsSession {
             self.session_pool.checkin(&self.db, session_id);
             return Err(format!("Failed to write LOGINACK: {}", e));
         }
-        log::debug!("Sent LOGINACK response");
+        log::debug!("[conn={}] Sent LOGINACK response", self.connection_id);
 
         // Main loop: handle SQL Batch and other packets
         loop {
             let result = packet::read_message(&mut reader).await;
             match result {
                 Ok((header, data)) => {
-                    log::debug!(
-                        "Received packet type=0x{:02X} len={}",
-                        header.packet_type,
-                        header.length
-                    );
+                    log_packet(self.connection_id, "packet", &header, &data);
                     match header.packet_type {
                         SQL_BATCH => {
                             if let Err(e) = self.handle_sql_batch(&data, &mut writer).await {
-                                log::error!("SQL batch error: {}", e);
+                                log::error!("[conn={}] SQL batch error: {}", self.connection_id, e);
                                 let err_resp = build_error_response(&e);
                                 let _ = packet::write_packet(
                                     &mut writer,
@@ -295,6 +307,14 @@ impl TdsSession {
                                 }
                             }
                             Ok(None) => {
+                                let preview_len = data.len().min(96);
+                                log::warn!(
+                                    "[conn={}] Ignoring unsupported RPC request ({} bytes), first {} bytes: {:02X?}",
+                                    self.connection_id,
+                                    data.len(),
+                                    preview_len,
+                                    &data[..preview_len]
+                                );
                                 let mut b = PacketBuilder::new();
                                 tokens::write_done(&mut b, tokens::DONE_FINAL, 1, 0);
                                 let _ =
@@ -313,7 +333,7 @@ impl TdsSession {
                             }
                         },
                         ATTENTION => {
-                            log::debug!("ATTENTION received");
+                            log::debug!("[conn={}] ATTENTION received", self.connection_id);
                             let mut attn = PacketBuilder::new();
                             tokens::write_done(&mut attn, tokens::DONE_ATTN, 0, 0);
                             let _ =
@@ -321,16 +341,20 @@ impl TdsSession {
                                     .await;
                         }
                         _ => {
-                            log::warn!("Unsupported packet type 0x{:02X}", header.packet_type);
+                            log::warn!(
+                                "[conn={}] Unsupported packet type 0x{:02X}",
+                                self.connection_id,
+                                header.packet_type
+                            );
                         }
                     }
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
-                    log::debug!("Client disconnected");
+                    log::debug!("[conn={}] Client disconnected", self.connection_id);
                     break;
                 }
                 Err(e) => {
-                    log::error!("Read error: {}", e);
+                    log::error!("[conn={}] Read error: {}", self.connection_id, e);
                     break;
                 }
             }
@@ -360,7 +384,11 @@ impl TdsSession {
         };
 
         if !sql.trim().is_empty() {
-            log::info!("SQL batch received:\n{}", sql.trim());
+            log::info!(
+                "[conn={}] SQL batch received:\n{}",
+                self.connection_id,
+                format_sql_for_log(sql.trim())
+            );
         }
         self.execute_sql(sql.trim(), writer).await
     }
@@ -370,6 +398,8 @@ impl TdsSession {
         sql: &str,
         writer: &mut W,
     ) -> Result<bool, String> {
+        let sql = sql;
+
         if sql.is_empty() {
             let mut b = PacketBuilder::new();
             tokens::write_done(&mut b, tokens::DONE_FINAL, 1, 0);
@@ -403,7 +433,11 @@ impl TdsSession {
             return Ok(true);
         }
 
-        log::info!("Executing SQL:\n{}", sql);
+        log::info!(
+            "[conn={}] Executing SQL:\n{}",
+            self.connection_id,
+            format_sql_for_log(sql)
+        );
         let force_sysdac_probe_int = is_sysdac_instances_probe(sql);
         match self
             .db
@@ -447,7 +481,8 @@ impl TdsSession {
 
                             let mut types = Vec::new();
                             log::debug!(
-                                "Result set: columns={}, types={}",
+                                "[conn={}] Result set: columns={}, types={}",
+                                self.connection_id,
                                 query_result.columns.len(),
                                 query_result.column_types.len()
                             );
@@ -459,7 +494,8 @@ impl TdsSession {
                                     (query_result.column_types.get(idx), types.get(idx))
                                 {
                                     log::debug!(
-                                        "COLMETADATA[{}]: name='{}' runtime={:?} tds=0x{:02X} len={:02X?}",
+                                        "[conn={}] COLMETADATA[{}]: name='{}' runtime={:?} tds=0x{:02X} len={:02X?}",
+                                        self.connection_id,
                                         idx,
                                         col_name,
                                         runtime_ty,
@@ -504,6 +540,12 @@ impl TdsSession {
                     .map_err(|e| e.to_string())?;
             }
             Err(e) => {
+                log::warn!(
+                    "[conn={}] SQL execution failed for batch:\n{}\nerror: {}",
+                    self.connection_id,
+                    sql,
+                    e
+                );
                 let err_resp = build_error_response(&format!("{}", e));
                 packet::write_packet(writer, TABULAR_RESULT, &err_resp.data)
                     .await
@@ -515,6 +557,28 @@ impl TdsSession {
     }
 }
 
+static SQL_KEYWORD_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?i)\b(SELECT|FROM|WHERE|GROUP BY|ORDER BY|HAVING|JOIN|INNER|LEFT|RIGHT|FULL|ON|AS|CAST|CONVERT|DECLARE|SET|IF|BEGIN|END|ELSE|EXEC|EXECUTE|INSERT|INTO|UPDATE|DELETE|CREATE|TABLE|VIEW|VALUES|TOP|DISTINCT|ISNULL|SERVERPROPERTY|OBJECT_ID|CROSS APPLY)\b",
+    )
+    .expect("valid SQL keyword regex")
+});
+
+fn format_sql_for_log(sql: &str) -> String {
+    if std::env::var("TSQL_LOG_SQL_HIGHLIGHT")
+        .map(|v| v == "0" || v.eq_ignore_ascii_case("false"))
+        .unwrap_or(false)
+    {
+        return sql.to_string();
+    }
+
+    SQL_KEYWORD_RE
+        .replace_all(sql, |caps: &regex::Captures| {
+            format!("\x1b[1;36m{}\x1b[0m", &caps[0])
+        })
+        .to_string()
+}
+
 fn is_sysdac_instances_probe(sql: &str) -> bool {
     let normalized = sql
         .split_whitespace()
@@ -522,4 +586,16 @@ fn is_sysdac_instances_probe(sql: &str) -> bool {
         .join(" ")
         .to_lowercase();
     normalized == "select case when object_id('dbo.sysdac_instances') is not null then 1 else 0 end"
+}
+
+fn log_packet(connection_id: u64, stage: &str, header: &packet::PacketHeader, data: &[u8]) {
+    let preview_len = data.len().min(96);
+    log::debug!(
+        "[conn={}] {} packet type=0x{:02X} len={} preview={:02X?}",
+        connection_id,
+        stage,
+        header.packet_type,
+        header.length,
+        &data[..preview_len]
+    );
 }

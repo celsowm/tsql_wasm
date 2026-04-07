@@ -106,6 +106,7 @@ pub enum ProceduralStatement {
         sql_expr: Expr,
     },
     ExecProcedure {
+        return_variable: Option<String>,
         name: Vec<String>,
         args: Vec<ExecArg>,
     },

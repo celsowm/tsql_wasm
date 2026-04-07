@@ -69,6 +69,112 @@
       ]
     },
     {
+      "name": "bootstrap_server_permissions_null_probe",
+      "scope": "bootstrap",
+      "sql": "SELECT HAS_PERMS_BY_NAME(NULL, NULL, 'VIEW ANY DATABASE') AS can_view",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "can_view"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "name": "bootstrap_is_polybase_installed_probe",
+      "scope": "bootstrap",
+      "sql": "SELECT CAST(SERVERPROPERTY('IsPolyBaseInstalled') AS bit) AS [IsPolyBaseInstalled]",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "IsPolyBaseInstalled"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "name": "bootstrap_alwayson_probe",
+      "scope": "bootstrap",
+      "sql": "DECLARE @alwayson INT; EXECUTE @alwayson = master.dbo.xp_qv N'3641190370', @@SERVICENAME; SELECT ISNULL(@alwayson, -1) AS [AlwaysOn]",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "AlwaysOn"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "name": "bootstrap_is_hadr_enabled_probe",
+      "scope": "bootstrap",
+      "sql": "SELECT CAST(SERVERPROPERTY(N'IsHadrEnabled') AS bit) AS [IsHadrEnabled]",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "IsHadrEnabled"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "name": "bootstrap_contained_ag_session_probe",
+      "scope": "bootstrap",
+      "sql": "IF OBJECT_ID(N'sys.sp_MSIsContainedAGSession', N'P') IS NOT NULL BEGIN DECLARE @x int; EXECUTE @x = sys.sp_MSIsContainedAGSession; SELECT @x END ELSE SELECT 0",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "@x"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "name": "bootstrap_edition_probe",
+      "scope": "bootstrap",
+      "sql": "SELECT CAST(SERVERPROPERTY(N'Edition') AS sysname) AS [Edition]",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "Edition"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "name": "bootstrap_databases_enumeration_probe",
+      "scope": "bootstrap",
+      "sql": "SELECT name, database_id FROM sys.databases WHERE HAS_DBACCESS(name) = 1 ORDER BY name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "database_id"
+          ],
+          "min_rows": 4
+        }
+      ]
+    },
+    {
       "name": "tables_list_from_sys_tables",
       "scope": "tables",
       "sql": "SELECT s.name AS schema_name, t.name AS table_name, t.object_id, t.type_desc, t.is_ms_shipped FROM sys.tables t INNER JOIN sys.schemas s ON s.schema_id = t.schema_id WHERE t.is_ms_shipped = 0 ORDER BY s.name, t.name",
