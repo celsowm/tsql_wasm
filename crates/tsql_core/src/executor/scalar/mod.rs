@@ -413,17 +413,13 @@ fn try_system_dispatch(
             if !args.is_empty() {
                 return Some(Err(DbError::Execution("NEWID expects no arguments".into())));
             }
-            let uuid = system::deterministic_uuid(&mut *ctx.session.random_state);
-            Some(Ok(Value::UniqueIdentifier(uuid)))
+            Some(Ok(system::eval_newid(ctx)))
         }
-        "RAND" => {
-            let val = system::deterministic_rand(&mut *ctx.session.random_state);
-            Some(Ok(Value::Decimal((val * 1_000_000_000.0) as i128, 9)))
-        }
-        "OBJECT_ID" => Some(system::eval_object_id(
+        "RAND" => Some(Ok(system::eval_rand(ctx))),
+        "OBJECT_ID" => Some(metadata::eval_object_id(
             args, row, ctx, catalog, storage, clock,
         )),
-        "COLUMNPROPERTY" => Some(system::eval_columnproperty(
+        "COLUMNPROPERTY" => Some(metadata::eval_columnproperty(
             args, row, ctx, catalog, storage, clock,
         )),
         "OBJECT_NAME" => Some(metadata::eval_object_name(
@@ -498,7 +494,7 @@ fn try_system_dispatch(
                 None => Value::Null,
             }))
         }
-        "IDENT_CURRENT" => Some(system::eval_ident_current(
+        "IDENT_CURRENT" => Some(metadata::eval_ident_current(
             args, row, ctx, catalog, storage, clock,
         )),
         "@@VERSION" => Some(Ok(Value::NVarChar(
@@ -527,8 +523,8 @@ fn try_system_dispatch(
         "ERROR_NUMBER" => Some(system::eval_error_number(ctx)),
         "ERROR_SEVERITY" => Some(system::eval_error_severity(ctx)),
         "ERROR_STATE" => Some(system::eval_error_state(ctx)),
-        "DB_NAME" => Some(system::eval_db_name(args, ctx)),
-        "DB_ID" => Some(system::eval_db_id(args, ctx)),
+        "DB_NAME" => Some(metadata::eval_db_name(args, ctx)),
+        "DB_ID" => Some(metadata::eval_db_id(args, ctx)),
         "SUSER_SNAME" => Some(system::eval_suser_sname(args, ctx)),
         "SUSER_ID" => Some(system::eval_suser_id(args, ctx)),
         "USER_NAME" => Some(system::eval_user_name(args, ctx)),

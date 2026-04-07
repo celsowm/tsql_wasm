@@ -252,11 +252,34 @@ impl TdsSession {
         }
 
         // Build LOGINACK response
-        let mut b = PacketBuilder::with_capacity(256);
+        // SSMS expects the full sequence: ENVCHANGE(PacketSize), ENVCHANGE(Database),
+        // ENVCHANGE(Language), ENVCHANGE(Collation), LOGINACK, INFO, DONE_FINAL
+        let mut b = PacketBuilder::with_capacity(512);
         tokens::write_envchange_packet_size(&mut b, self.packet_size, self.packet_size);
         tokens::write_envchange_database(&mut b, &self.database, "master");
+        tokens::write_envchange_language(&mut b, "us_english", "");
         tokens::write_envchange_collation(&mut b);
         tokens::write_loginack(&mut b, 0x74000004);
+        tokens::write_info(
+            &mut b,
+            5701,
+            2,
+            0,
+            &format!("Changed database context to '{}'.", &self.database),
+            "localhost",
+            "",
+            1,
+        );
+        tokens::write_info(
+            &mut b,
+            5703,
+            1,
+            0,
+            "Changed language setting to us_english.",
+            "localhost",
+            "",
+            1,
+        );
         tokens::write_done(&mut b, tokens::DONE_FINAL, 0, 0);
 
         if let Err(e) = packet::write_packet(&mut writer, TABULAR_RESULT, b.as_bytes()).await {
@@ -282,7 +305,7 @@ impl TdsSession {
                                     &err_resp.data,
                                 )
                                 .await;
-                                break;
+                                // Don't break — keep connection alive for subsequent batches
                             }
                         }
                         RPC => match parse_rpc(&data) {
@@ -303,7 +326,7 @@ impl TdsSession {
                                         &err_resp.data,
                                     )
                                     .await;
-                                    break;
+                                    // Don't break — keep connection alive
                                 }
                             }
                             Ok(None) => {
@@ -455,76 +478,109 @@ impl TdsSession {
 
                 for (i, result) in results.into_iter().enumerate() {
                     let is_last = i == count - 1;
-                    let done_status = if is_last {
-                        tokens::DONE_FINAL
-                    } else {
-                        tokens::DONE_MORE
-                    };
 
                     match result {
-                        Some(mut query_result) if !query_result.columns.is_empty() => {
-                            if force_sysdac_probe_int
-                                && query_result.columns.len() == 1
-                                && query_result.rows.len() == 1
-                            {
-                                query_result.column_types[0] = DataType::Int;
-                                if let Some(row) = query_result.rows.get_mut(0) {
-                                    if let Some(value) = row.get_mut(0) {
-                                        let int_val = match &*value {
-                                            Value::Null => 0,
-                                            other => other.to_integer_i64().unwrap_or(0) as i32,
-                                        };
-                                        *value = Value::Int(int_val);
+                        Some(mut query_result) => {
+                            let is_proc = query_result.is_procedure;
+                            let return_status = query_result.return_status;
+
+                            if !query_result.columns.is_empty() {
+                                if force_sysdac_probe_int
+                                    && query_result.columns.len() == 1
+                                    && query_result.rows.len() == 1
+                                {
+                                    query_result.column_types[0] = DataType::Int;
+                                    if let Some(row) = query_result.rows.get_mut(0) {
+                                        if let Some(value) = row.get_mut(0) {
+                                            let int_val = match &*value {
+                                                Value::Null => 0,
+                                                other => other.to_integer_i64().unwrap_or(0) as i32,
+                                            };
+                                            *value = Value::Int(int_val);
+                                        }
                                     }
                                 }
-                            }
 
-                            let mut types = Vec::new();
-                            log::debug!(
-                                "[conn={}] Result set: columns={}, types={}",
-                                self.connection_id,
-                                query_result.columns.len(),
-                                query_result.column_types.len()
-                            );
-                            for ct in &query_result.column_types {
-                                types.push(crate::tds::type_mapping::runtime_type_to_tds(ct));
-                            }
-                            for (idx, col_name) in query_result.columns.iter().enumerate() {
-                                if let (Some(runtime_ty), Some(tds_ty)) =
-                                    (query_result.column_types.get(idx), types.get(idx))
-                                {
-                                    log::debug!(
-                                        "[conn={}] COLMETADATA[{}]: name='{}' runtime={:?} tds=0x{:02X} len={:02X?}",
-                                        self.connection_id,
-                                        idx,
-                                        col_name,
-                                        runtime_ty,
-                                        tds_ty.tds_type,
-                                        tds_ty.length_prefix
+                                let mut types = Vec::new();
+                                log::debug!(
+                                    "[conn={}] Result set: columns={}, types={}",
+                                    self.connection_id,
+                                    query_result.columns.len(),
+                                    query_result.column_types.len()
+                                );
+                                for ct in &query_result.column_types {
+                                    types.push(crate::tds::type_mapping::runtime_type_to_tds(ct));
+                                }
+                                for (idx, col_name) in query_result.columns.iter().enumerate() {
+                                    if let (Some(runtime_ty), Some(tds_ty)) =
+                                        (query_result.column_types.get(idx), types.get(idx))
+                                    {
+                                        log::debug!(
+                                            "[conn={}] COLMETADATA[{}]: name='{}' runtime={:?} tds=0x{:02X} len={:02X?}",
+                                            self.connection_id,
+                                            idx,
+                                            col_name,
+                                            runtime_ty,
+                                            tds_ty.tds_type,
+                                            tds_ty.length_prefix
+                                        );
+                                    }
+                                }
+                                tokens::write_colmetadata(&mut b, &query_result.columns, &types);
+                                for row in &query_result.rows {
+                                    tokens::write_row(&mut b, row, &types, textsize);
+                                }
+
+                                if is_proc {
+                                    tokens::write_done_in_proc(
+                                        &mut b,
+                                        tokens::DONE_MORE | tokens::DONE_COUNT,
+                                        1,
+                                        query_result.rows.len() as u64,
+                                    );
+                                } else {
+                                    let done_status = if is_last && return_status.is_none() {
+                                        tokens::DONE_FINAL
+                                    } else {
+                                        tokens::DONE_MORE
+                                    };
+                                    tokens::write_done(
+                                        &mut b,
+                                        done_status | tokens::DONE_COUNT,
+                                        1,
+                                        query_result.rows.len() as u64,
                                     );
                                 }
+                            } else if !is_proc {
+                                let done_status = if is_last && return_status.is_none() {
+                                    tokens::DONE_FINAL
+                                } else {
+                                    tokens::DONE_MORE
+                                };
+                                tokens::write_done(
+                                    &mut b,
+                                    done_status | tokens::DONE_COUNT,
+                                    1,
+                                    query_result.rows.len() as u64,
+                                );
                             }
-                            tokens::write_colmetadata(&mut b, &query_result.columns, &types);
-                            for row in &query_result.rows {
-                                tokens::write_row(&mut b, row, &types, textsize);
+
+                            if let Some(code) = return_status {
+                                tokens::write_returnstatus(&mut b, code);
+                                let done_status = if is_last {
+                                    tokens::DONE_FINAL
+                                } else {
+                                    tokens::DONE_MORE
+                                };
+                                tokens::write_doneproc(&mut b, done_status, 1, 0);
                             }
-                            tokens::write_done(
-                                &mut b,
-                                done_status | tokens::DONE_COUNT,
-                                1,
-                                query_result.rows.len() as u64,
-                            );
-                        }
-                        Some(query_result) => {
-                            // DML/DDL with row count
-                            tokens::write_done(
-                                &mut b,
-                                done_status | tokens::DONE_COUNT,
-                                1,
-                                query_result.rows.len() as u64,
-                            );
                         }
                         None => {
+                            let done_status = if is_last {
+                                tokens::DONE_FINAL
+                            } else {
+                                tokens::DONE_MORE
+                            };
                             tokens::write_done(&mut b, done_status, 1, 0);
                         }
                     }

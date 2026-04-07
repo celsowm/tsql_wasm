@@ -52,5 +52,6 @@ pub(crate) fn execute_set_op(
         columns: left.columns,
         column_types: left.column_types,
         rows,
+        ..Default::default()
     })
 }

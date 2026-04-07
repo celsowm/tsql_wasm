@@ -365,6 +365,7 @@ impl<'a> QueryExecutor<'a> {
             columns: result.columns,
             column_types: result.column_types,
             rows: final_rows,
+            ..Default::default()
         })
     }
 

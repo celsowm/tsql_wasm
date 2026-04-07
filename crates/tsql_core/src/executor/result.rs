@@ -1,4 +1,4 @@
-﻿use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 use crate::types::Value;
 
@@ -9,6 +9,8 @@ pub struct QueryResult {
     pub columns: Vec<String>,
     pub column_types: Vec<DataType>,
     pub rows: Vec<Vec<Value>>,
+    pub return_status: Option<i32>,
+    pub is_procedure: bool,
 }
 
 #[derive(Debug, Serialize)]

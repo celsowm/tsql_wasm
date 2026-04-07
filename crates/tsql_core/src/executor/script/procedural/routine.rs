@@ -64,11 +64,24 @@ impl<'a> ScriptExecutor<'a> {
     ) -> Result<Option<crate::executor::result::QueryResult>, DbError> {
         if stmt.name.name.eq_ignore_ascii_case("xp_msver") {
             self.assign_exec_return_value(&stmt.return_variable, Value::Int(0), ctx)?;
-            return Ok(Some(execute_xp_msver()));
+            let mut res = execute_xp_msver();
+            res.return_status = Some(0);
+            res.is_procedure = true;
+            return Ok(Some(res));
         }
         if stmt.name.name.eq_ignore_ascii_case("xp_qv") {
-            let (result, return_code) = self.execute_xp_qv(&stmt.args, ctx)?;
+            let (mut result, return_code) = self.execute_xp_qv(&stmt.args, ctx)?;
             self.assign_exec_return_value(&stmt.return_variable, Value::Int(return_code), ctx)?;
+            if let Some(res) = &mut result {
+                res.return_status = Some(return_code);
+                res.is_procedure = true;
+            } else {
+                result = Some(QueryResult {
+                    return_status: Some(return_code),
+                    is_procedure: true,
+                    ..Default::default()
+                });
+            }
             return Ok(result);
         }
         if stmt.name.name.eq_ignore_ascii_case("sp_MSIsContainedAGSession") {
@@ -198,8 +211,19 @@ impl<'a> ScriptExecutor<'a> {
                 Ok(StmtOutcome::Ok(r)) => (r, Value::Int(0)),
                 Err(e) => return Err(e),
             };
-            self.assign_exec_return_value(&stmt.return_variable, return_value, ctx)?;
-            Ok(result)
+            self.assign_exec_return_value(&stmt.return_variable, return_value.clone(), ctx)?;
+            let mut final_result = result;
+            if let Some(res) = &mut final_result {
+                res.return_status = Some(return_value.to_integer_i64().unwrap_or(0) as i32);
+                res.is_procedure = true;
+            } else {
+                final_result = Some(QueryResult {
+                    return_status: Some(return_value.to_integer_i64().unwrap_or(0) as i32),
+                    is_procedure: true,
+                    ..Default::default()
+                });
+            }
+            Ok(final_result)
         })();
         while ctx.frame.scope_vars.len() > scope_depth {
             ctx.leave_scope();
@@ -438,6 +462,7 @@ fn execute_xp_msver() -> QueryResult {
                 Value::NVarChar("localhost".to_string()),
             ],
         ],
+        ..Default::default()
     }
 }
 

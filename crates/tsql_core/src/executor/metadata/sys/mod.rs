@@ -1,4 +1,4 @@
-﻿mod tables;
+mod tables;
 mod constraints;
 mod routines;
 mod objects;
@@ -38,6 +38,8 @@ pub(crate) fn lookup(name: &str) -> Option<Box<dyn VirtualTable>> {
         Some(Box::new(constraints::SysKeyConstraints))
     } else if name.eq_ignore_ascii_case("default_constraints") {
         Some(Box::new(constraints::SysDefaultConstraints))
+    } else if name.eq_ignore_ascii_case("server_principals") {
+        Some(Box::new(tables::SysServerPrincipals))
     } else {
         None
     }

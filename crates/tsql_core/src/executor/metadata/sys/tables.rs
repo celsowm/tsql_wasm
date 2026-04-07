@@ -1,4 +1,4 @@
-﻿use crate::catalog::Catalog;
+use crate::catalog::Catalog;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 use super::super::VirtualTable;
@@ -11,6 +11,7 @@ pub(crate) struct SysConfigurations;
 pub(crate) struct SysTables;
 pub(crate) struct SysColumns;
 pub(crate) struct SysTypes;
+pub(crate) struct SysServerPrincipals;
 
 #[derive(Clone, Copy)]
 struct SystemDatabaseRow {
@@ -317,5 +318,42 @@ impl VirtualTable for SysTypes {
 
     fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
         builtin_types_rows()
+    }
+}
+
+impl VirtualTable for SysServerPrincipals {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "server_principals",
+            vec![
+                ("principal_id", DataType::Int, false),
+                ("name", DataType::VarChar { max_len: 128 }, false),
+                ("type", DataType::Char { len: 1 }, false),
+                ("type_desc", DataType::VarChar { max_len: 60 }, false),
+                ("is_disabled", DataType::Bit, false),
+                ("create_date", DataType::DateTime, false),
+                ("modify_date", DataType::DateTime, false),
+                ("default_database_name", DataType::VarChar { max_len: 128 }, true),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+        let created = Value::DateTime(
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap().and_hms_opt(0, 0, 0).unwrap()
+        );
+        vec![StoredRow {
+            values: vec![
+                Value::Int(1),
+                Value::VarChar("sa".to_string()),
+                Value::Char("S".to_string()),
+                Value::VarChar("SQL_LOGIN".to_string()),
+                Value::Bit(false),
+                created.clone(),
+                created.clone(),
+                Value::VarChar("master".to_string()),
+            ],
+            deleted: false,
+        }]
     }
 }

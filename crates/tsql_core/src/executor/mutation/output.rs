@@ -1,4 +1,4 @@
-﻿use crate::ast::{OutputColumn, OutputSource};
+use crate::ast::{OutputColumn, OutputSource};
 use crate::catalog::TableDef;
 use crate::error::DbError;
 use crate::storage::StoredRow;
@@ -84,6 +84,7 @@ pub fn build_output_result(
             columns,
             column_types: vec![crate::types::DataType::VarChar { max_len: 4000 }; n],
             rows,
+            ..Default::default()
         }));
     }
 
@@ -104,6 +105,7 @@ pub fn build_output_result(
             columns,
             column_types,
             rows,
+            ..Default::default()
         }));
     }
 
@@ -124,6 +126,7 @@ pub fn build_output_result(
             columns,
             column_types,
             rows,
+            ..Default::default()
         }));
     }
 
@@ -144,6 +147,7 @@ pub fn build_output_result(
         columns,
         column_types,
         rows,
+        ..Default::default()
     }))
 }
 
@@ -188,6 +192,7 @@ pub fn build_output_result_merge(
         columns,
         column_types,
         rows,
+        ..Default::default()
     }))
 }
 

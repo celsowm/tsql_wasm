@@ -40,6 +40,7 @@ pub(crate) fn execute_flat_select(
         columns,
         column_types,
         rows: projected_rows,
+        ..Default::default()
     })
 }
 

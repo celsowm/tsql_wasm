@@ -46,8 +46,8 @@ const SYSTEM_FUNCTIONS: &[BuiltinScalarFunction] = &[
         let val = system::deterministic_rand(&mut *ctx.session.random_state);
         Ok(Value::Decimal((val * 1_000_000_000.0) as i128, 9))
     }),
-    builtin!("OBJECT_ID" => system::eval_object_id),
-    builtin!("COLUMNPROPERTY" => system::eval_columnproperty),
+    builtin!("OBJECT_ID" => metadata::eval_object_id),
+    builtin!("COLUMNPROPERTY" => metadata::eval_columnproperty),
     builtin!("OBJECT_NAME" => metadata::eval_object_name),
     builtin!("OBJECT_SCHEMA_NAME" => metadata::eval_object_schema_name),
     builtin!("OBJECT_DEFINITION" => metadata::eval_object_definition),
@@ -91,7 +91,7 @@ const SYSTEM_FUNCTIONS: &[BuiltinScalarFunction] = &[
             None => Value::Null,
         })
     }),
-    builtin!("IDENT_CURRENT" => system::eval_ident_current),
+    builtin!("IDENT_CURRENT" => metadata::eval_ident_current),
     builtin!("@@VERSION" => |_args, _row, _ctx, _catalog, _storage, _clock| {
         Ok(Value::NVarChar(
             "Microsoft SQL Server 2022 (RTM) - 16.0.1000.6 (tsql_wasm emulator)".into(),
@@ -149,10 +149,10 @@ const SYSTEM_FUNCTIONS: &[BuiltinScalarFunction] = &[
         system::eval_error_state(ctx)
     }),
     builtin!("DB_NAME" => |_args, _row, ctx, _catalog, _storage, _clock| {
-        system::eval_db_name(_args, ctx)
+        metadata::eval_db_name(_args, ctx)
     }),
     builtin!("DB_ID" => |_args, _row, ctx, _catalog, _storage, _clock| {
-        system::eval_db_id(_args, ctx)
+        metadata::eval_db_id(_args, ctx)
     }),
     builtin!("SUSER_SNAME" => |_args, _row, ctx, _catalog, _storage, _clock| {
         system::eval_suser_sname(_args, ctx)

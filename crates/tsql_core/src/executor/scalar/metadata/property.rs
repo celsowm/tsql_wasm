@@ -141,3 +141,67 @@ fn eval_objectproperty_common(
         },
     })
 }
+
+pub(crate) fn eval_columnproperty(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 3 {
+        return Err(DbError::Execution(
+            "COLUMNPROPERTY expects 3 arguments".into(),
+        ));
+    }
+
+    let object_val = eval_expr_to_value(&args[0], row, ctx, catalog, storage, clock)?;
+    let column_val = eval_expr_to_value(&args[1], row, ctx, catalog, storage, clock)?;
+    let property_val = eval_expr_to_value(&args[2], row, ctx, catalog, storage, clock)?;
+
+    if object_val.is_null() || column_val.is_null() || property_val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let object_id = match object_val {
+        Value::Int(v) => Some(v),
+        Value::BigInt(v) => Some(v as i32),
+        Value::SmallInt(v) => Some(v as i32),
+        Value::TinyInt(v) => Some(v as i32),
+        Value::VarChar(_) | Value::NVarChar(_) | Value::Char(_) | Value::NChar(_) => {
+            value_to_object_id(&object_val, catalog, None)
+        }
+        _ => None,
+    };
+
+    let Some(object_id) = object_id else {
+        return Ok(Value::Null);
+    };
+    let column_name = column_val.to_string_value();
+    let property_name = property_val.to_string_value().to_uppercase();
+
+    let Some(table) = catalog
+        .get_tables()
+        .iter()
+        .find(|t| t.id as i32 == object_id)
+    else {
+        return Ok(Value::Null);
+    };
+
+    let Some((ordinal, col)) = table
+        .columns
+        .iter()
+        .enumerate()
+        .find(|(_, c)| c.name.eq_ignore_ascii_case(&column_name))
+    else {
+        return Ok(Value::Null);
+    };
+
+    match property_name.as_str() {
+        "ALLOWSNULL" => Ok(Value::Int(if col.nullable { 1 } else { 0 })),
+        "ISCOMPUTED" => Ok(Value::Int(if col.computed_expr.is_some() { 1 } else { 0 })),
+        "COLUMNID" => Ok(Value::Int((ordinal + 1) as i32)),
+        _ => Ok(Value::Int(0)), // Default for others
+    }
+}

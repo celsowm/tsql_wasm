@@ -163,3 +163,88 @@ pub(crate) fn eval_procid(ctx: &ExecutionContext) -> Result<Value, DbError> {
         None => Value::Null,
     })
 }
+
+pub(crate) fn eval_object_id(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.is_empty() || args.len() > 2 {
+        return Err(DbError::Execution("OBJECT_ID expects 1 or 2 arguments".into()));
+    }
+
+    let val = eval_expr_to_value(&args[0], row, ctx, catalog, storage, clock)?;
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+    let raw = val.to_string_value();
+    let cleaned = raw.trim().trim_matches('[').trim_matches(']');
+    let parts: Vec<&str> = cleaned.split('.').collect();
+    let (schema, name) = if parts.len() == 2 {
+        (parts[0].trim(), parts[1].trim())
+    } else {
+        ("dbo", cleaned.trim())
+    };
+
+    let object_type = if let Some(arg) = args.get(1) {
+        let ty = eval_expr_to_value(arg, row, ctx, catalog, storage, clock)?;
+        if ty.is_null() {
+            None
+        } else {
+            Some(ty.to_string_value().to_ascii_uppercase())
+        }
+    } else {
+        None
+    };
+
+    // Special handling for SSMS internal procs
+    if schema.eq_ignore_ascii_case("sys")
+        && name.eq_ignore_ascii_case("sp_MSIsContainedAGSession")
+        && object_type.as_deref().unwrap_or("P") == "P"
+    {
+        return Ok(Value::Int(2147483001));
+    }
+
+    Ok(match catalog.object_id(schema, name) {
+        Some(id) => Value::Int(id),
+        None => Value::Null,
+    })
+}
+
+pub(crate) fn eval_ident_current(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution(
+            "IDENT_CURRENT expects 1 argument".into(),
+        ));
+    }
+    let val = eval_expr_to_value(&args[0], row, ctx, catalog, storage, clock)?;
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+    let raw = val.to_string_value();
+    let parts: Vec<&str> = raw.split('.').collect();
+    let (schema, name) = if parts.len() == 2 {
+        (parts[0].trim(), parts[1].trim())
+    } else {
+        ("dbo", raw.trim())
+    };
+    let Some(table) = catalog.find_table(schema, name) else {
+        return Ok(Value::Null);
+    };
+    for col in &table.columns {
+        if let Some(identity) = &col.identity {
+            return Ok(Value::BigInt(identity.current - identity.increment));
+        }
+    }
+    Ok(Value::Null)
+}

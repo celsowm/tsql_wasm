@@ -342,6 +342,8 @@ impl<'a> WindowExecutor<'a> {
             columns,
             column_types,
             rows: final_projected_rows,
+            is_procedure: false,
+            return_status: None,
         })
     }
 
@@ -549,6 +551,8 @@ impl<'a> WindowExecutor<'a> {
             columns,
             column_types,
             rows: result,
+            is_procedure: false,
+            return_status: None,
         })
     }
 }

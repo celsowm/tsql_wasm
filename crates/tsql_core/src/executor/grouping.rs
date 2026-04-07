@@ -234,6 +234,7 @@ impl<'a> GroupExecutor<'a> {
             columns,
             column_types,
             rows: projected_rows,
+            ..Default::default()
         })
     }
 

@@ -97,14 +97,35 @@ pub async fn write_packet<W: AsyncWriteExt + Unpin>(
     packet_type: u8,
     data: &[u8],
 ) -> io::Result<()> {
-    let length = (HEADER_SIZE + data.len()) as u16;
-    let header = PacketHeader::new(packet_type, length);
-    let header_bytes = header.to_bytes();
+    // TDS requires response fragmentation if data + header exceeds the max
+    // packet size negotiated by the client (typically 8000 bytes for SSMS).
+    // Use a conservative max to avoid oversized packets.
+    const MAX_PACKET_SIZE: usize = 4096;
+    let max_data_per_packet = MAX_PACKET_SIZE - HEADER_SIZE;
 
-    writer.write_all(&header_bytes).await?;
-    if !data.is_empty() {
-        writer.write_all(data).await?;
+    if data.is_empty() {
+        let header = PacketHeader::new(packet_type, HEADER_SIZE as u16);
+        writer.write_all(&header.to_bytes()).await?;
+        writer.flush().await?;
+        return Ok(());
     }
+
+    let chunks: Vec<&[u8]> = data.chunks(max_data_per_packet).collect();
+    let total_chunks = chunks.len();
+
+    for (i, chunk) in chunks.iter().enumerate() {
+        let is_last = i == total_chunks - 1;
+        let length = (HEADER_SIZE + chunk.len()) as u16;
+        let mut header = PacketHeader::new(packet_type, length);
+        if !is_last {
+            header.status = 0x00; // not EOM — more packets follow
+        }
+        // STATUS_EOM (0x01) is already set by PacketHeader::new for the last chunk
+        header.packet_id = ((i + 1) & 0xFF) as u8;
+        writer.write_all(&header.to_bytes()).await?;
+        writer.write_all(chunk).await?;
+    }
+
     writer.flush().await?;
     Ok(())
 }

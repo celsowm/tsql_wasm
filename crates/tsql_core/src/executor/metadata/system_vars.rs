@@ -32,7 +32,7 @@ static SYSTEM_VARIABLES: &[SystemVariable] = &[
     SystemVariable { name: "@@SERVICENAME", handler: |_| Value::NVarChar("MSSQLSERVER".into()) },
     SystemVariable { name: "@@SPID", handler: |ctx| Value::SmallInt(ctx.session_id() as i16) },
     SystemVariable { name: "@@VERSION", handler: |_| Value::NVarChar("Microsoft SQL Server 2022 (RTM) - 16.0.1000.6 (tsql_wasm emulator)".into()) },
-    SystemVariable { name: "@@MICROSOFTVERSION", handler: |_| Value::Int(0x0c000000) },
+    SystemVariable { name: "@@MICROSOFTVERSION", handler: |_| Value::Int(0x10001009) },
 ];
 
 pub(crate) fn resolve_system_variable(

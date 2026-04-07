@@ -25,7 +25,7 @@ pub const DONE_ATTN: u16 = 0x0020;
 
 pub const ENVCHANGE_PACKET_SIZE: u8 = 0x04;
 pub const ENVCHANGE_DATABASE: u8 = 0x01;
-pub const ENVCHANGE_LANGUAGE: u8 = 0x02;
+pub const ENVCHANGE_LANGUAGE_TYPE: u8 = 0x02;
 pub const ENVCHANGE_COLLATION: u8 = 0x07;
 
 fn truncate_string_value(s: &str, max_chars: usize) -> String {
@@ -154,6 +154,18 @@ pub fn write_done_in_proc(b: &mut PacketBuilder, status: u16, cur_cmd: u16, row_
     b.put_u64_le(row_count);
 }
 
+pub fn write_doneproc(b: &mut PacketBuilder, status: u16, cur_cmd: u16, row_count: u64) {
+    b.put_u8(DONEPROC_TOKEN);
+    b.put_u16_le(status);
+    b.put_u16_le(cur_cmd);
+    b.put_u64_le(row_count);
+}
+
+pub fn write_returnstatus(b: &mut PacketBuilder, status: i32) {
+    b.put_u8(RETURNSTATUS_TOKEN);
+    b.put_i32_le(status);
+}
+
 pub fn write_error(
     b: &mut PacketBuilder,
     number: i32,
@@ -237,6 +249,49 @@ pub fn write_envchange_collation(b: &mut PacketBuilder) {
 
     b.put_u8(5); // old value length
     b.put_bytes(&collation);
+}
+
+pub fn write_envchange_language(b: &mut PacketBuilder, new_lang: &str, old_lang: &str) {
+    b.put_u8(ENVCHANGE_TOKEN);
+
+    let new_utf16_bytes = new_lang.len() * 2;
+    let old_utf16_bytes = old_lang.len() * 2;
+    let total_len = 1 + 1 + new_utf16_bytes + 1 + old_utf16_bytes;
+    b.put_u16_le(total_len as u16);
+
+    b.put_u8(ENVCHANGE_LANGUAGE_TYPE);
+
+    b.put_u8(new_lang.len() as u8);
+    b.put_utf16le(new_lang);
+
+    b.put_u8(old_lang.len() as u8);
+    b.put_utf16le(old_lang);
+}
+
+pub fn write_info(
+    b: &mut PacketBuilder,
+    number: i32,
+    state: u8,
+    class: u8,
+    message: &str,
+    server_name: &str,
+    proc_name: &str,
+    line_number: i32,
+) {
+    let mut data_b = PacketBuilder::new();
+    data_b.put_i32_le(number);
+    data_b.put_u8(state);
+    data_b.put_u8(class);
+    data_b.put_us_vchar_utf16(message);
+    data_b.put_b_vchar_utf16(server_name);
+    data_b.put_b_vchar_utf16(proc_name);
+    data_b.put_i32_le(line_number);
+
+    let data_bytes = data_b.as_bytes();
+
+    b.put_u8(INFO_TOKEN);
+    b.put_u16_le(data_bytes.len() as u16);
+    b.put_bytes(data_bytes);
 }
 
 pub fn write_loginack(b: &mut PacketBuilder, tds_version: u32) {
