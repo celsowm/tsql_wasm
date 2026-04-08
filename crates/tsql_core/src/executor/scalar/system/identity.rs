@@ -9,8 +9,6 @@ use super::super::super::context::ExecutionContext;
 use super::super::super::evaluator::eval_expr;
 use super::super::super::model::ContextTable;
 
-
-
 pub(crate) fn eval_suser_sname(args: &[Expr], ctx: &ExecutionContext) -> Result<Value, DbError> {
     if args.len() > 1 {
         return Err(DbError::Execution(
@@ -242,4 +240,12 @@ pub(crate) fn eval_has_perms_by_name(
         false
     };
     Ok(Value::Int(if allowed { 1 } else { 0 }))
+}
+
+pub(crate) fn eval_scope_identity(ctx: &ExecutionContext) -> Value {
+    ctx.session.current_scope_identity().map(Value::BigInt).unwrap_or(Value::Null)
+}
+
+pub(crate) fn eval_identity(ctx: &ExecutionContext) -> Value {
+    ctx.session.last_identity.as_ref().map(|&v| Value::BigInt(v)).unwrap_or(Value::Null)
 }

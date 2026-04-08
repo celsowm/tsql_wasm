@@ -309,57 +309,138 @@ pub(crate) fn eval_day(
     }
 }
 
-#[allow(dead_code)]
-pub(crate) fn format_datetime_string(dt: &str, fmt: &str) -> String {
-    match fmt.to_lowercase().as_str() {
-        "yyyy" | "yyyy-mm-dd" => {
-            if dt.len() >= 10 {
-                dt[..10].to_string()
-            } else {
-                dt.to_string()
-            }
+pub(crate) fn eval_getdate(
+    _args: &[Expr],
+    _row: &[ContextTable],
+    _ctx: &mut ExecutionContext,
+    _catalog: &dyn Catalog,
+    _storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    Ok(Value::DateTime(clock.now_datetime_literal()))
+}
+
+pub(crate) fn eval_getutcdate(
+    _args: &[Expr],
+    _row: &[ContextTable],
+    _ctx: &mut ExecutionContext,
+    _catalog: &dyn Catalog,
+    _storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    Ok(Value::DateTime(clock.now_datetime_literal())) // Simplified
+}
+
+pub(crate) fn eval_sysdatetime(
+    _args: &[Expr],
+    _row: &[ContextTable],
+    _ctx: &mut ExecutionContext,
+    _catalog: &dyn Catalog,
+    _storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    Ok(Value::DateTime2(clock.now_datetime_literal()))
+}
+
+pub(crate) fn eval_sysutcdatetime(
+    _args: &[Expr],
+    _row: &[ContextTable],
+    _ctx: &mut ExecutionContext,
+    _catalog: &dyn Catalog,
+    _storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    Ok(Value::DateTime2(clock.now_datetime_literal())) // Simplified
+}
+
+pub(crate) fn eval_sysdatetimeoffset(
+    _args: &[Expr],
+    _row: &[ContextTable],
+    _ctx: &mut ExecutionContext,
+    _catalog: &dyn Catalog,
+    _storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    // Value doesn't have DateTimeOffset, returning DateTime2
+    Ok(Value::DateTime2(clock.now_datetime_literal()))
+}
+
+pub(crate) fn eval_eomonth(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.is_empty() || args.len() > 2 {
+        return Err(DbError::Execution("EOMONTH expects 1 or 2 arguments".into()));
+    }
+    let date_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if date_val.is_null() {
+        return Ok(Value::Null);
+    }
+    let date_str = date_val.to_string_value();
+    let (mut y, mut m, _, _, _, _) = parse_datetime_parts(&date_str, &ctx.options.dateformat)?;
+
+    if args.len() == 2 {
+        let add = eval_expr(&args[1], row, ctx, catalog, storage, clock)?
+            .to_integer_i64()
+            .unwrap_or(0);
+        m += add as i32;
+        while m > 12 {
+            y += 1;
+            m -= 12;
         }
-        "mm/dd/yyyy" => {
-            if let Ok((y, m, d, _, _, _)) = parse_datetime_parts(dt, "mdy") {
-                format!("{:02}/{:02}/{}", m, d, y)
-            } else {
-                dt.to_string()
-            }
+        while m <= 0 {
+            y -= 1;
+            m += 12;
         }
-        "dd/mm/yyyy" => {
-            if let Ok((y, m, d, _, _, _)) = parse_datetime_parts(dt, "mdy") {
-                format!("{:02}/{:02}/{}", d, m, y)
-            } else {
-                dt.to_string()
-            }
-        }
-        "dd MMM yyyy" | "dd MMM yyyy hh:mi:ss" => {
-            if let Ok((y, m, d, h, mi, s)) = parse_datetime_parts(dt, "mdy") {
-                let months = [
-                    "", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct",
-                    "Nov", "Dec",
-                ];
-                let mon = if m >= 1 && m <= 12 {
-                    months[m as usize]
-                } else {
-                    "???"
-                };
-                if h > 0 || mi > 0 || s > 0 {
-                    format!("{:02} {} {} {:02}:{:02}:{:02}", d, mon, y, h, mi, s)
-                } else {
-                    format!("{:02} {} {}", d, mon, y)
-                }
-            } else {
-                dt.to_string()
-            }
-        }
-        "hh:mi:ss" => {
-            if let Ok((_, _, _, h, mi, s)) = parse_datetime_parts(dt, "mdy") {
-                format!("{:02}:{:02}:{:02}", h, mi, s)
-            } else {
-                dt.to_string()
-            }
-        }
-        _ => dt.to_string(),
+    }
+
+    let is_leap = (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
+    let days = match m {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => if is_leap { 29 } else { 28 },
+        _ => 30,
+    };
+    let last_day = format!("{:04}-{:02}-{:02}T00:00:00", y, m, days);
+    let dt = chrono::NaiveDateTime::parse_from_str(&last_day, "%Y-%m-%dT%H:%M:%S")
+        .map_err(|e| DbError::Execution(format!("Invalid date: {}", e)))?;
+    Ok(Value::Date(dt.date()))
+}
+
+pub(crate) fn eval_isdate(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.is_empty() {
+        return Ok(Value::Int(0));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if val.is_null() {
+        return Ok(Value::Int(0));
+    }
+    let s = val.to_string_value();
+    let is_valid = parse_datetime_parts(&s, &ctx.options.dateformat).is_ok();
+    Ok(Value::Int(if is_valid { 1 } else { 0 }))
+}
+
+pub(crate) fn eval_datediff_big(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    match eval_datediff(args, row, ctx, catalog, storage, clock)? {
+        Value::Int(v) => Ok(Value::BigInt(v as i64)),
+        other => Ok(other),
     }
 }

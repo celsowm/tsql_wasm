@@ -422,7 +422,8 @@ fn coerce_string(v: &str, ty: &DataType, dateformat: &str) -> Result<Value, DbEr
             Ok(Value::VarBinary(bytes))
         }
         DataType::Date => {
-            let parsed = parse_date_string(v, dateformat);
+            let parsed = parse_date_string(v, dateformat)
+                .or_else(|_| parse_datetime_string(v, dateformat).map(|dt| dt.date()));
             match parsed {
                 Ok(d) => Ok(Value::Date(d)),
                 Err(_) => Err(DbError::Execution(format!("invalid date: {}", v))),

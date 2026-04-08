@@ -1,3 +1,6 @@
+use crate::error::DbError;
+use crate::types::Value;
+
 pub fn edit_distance(s1: &str, s2: &str) -> i32 {
     let len1 = s1.chars().count();
     let len2 = s2.chars().count();
@@ -29,6 +32,44 @@ pub fn edit_distance(s1: &str, s2: &str) -> i32 {
     prev_row[len2] as i32
 }
 
+pub fn eval_edit_distance(
+    args: &[crate::ast::Expr],
+    row: &[crate::executor::model::ContextTable],
+    ctx: &mut crate::executor::context::ExecutionContext,
+    catalog: &dyn crate::catalog::Catalog,
+    storage: &dyn crate::storage::Storage,
+    clock: &dyn crate::executor::clock::Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution("EDIT_DISTANCE expects 2 arguments".into()));
+    }
+    let s1 = crate::executor::evaluator::eval_expr(&args[0], row, ctx, catalog, storage, clock)?
+        .to_string_value();
+    let s2 = crate::executor::evaluator::eval_expr(&args[1], row, ctx, catalog, storage, clock)?
+        .to_string_value();
+    Ok(Value::Int(edit_distance(&s1, &s2)))
+}
+
+pub fn eval_edit_distance_similarity(
+    args: &[crate::ast::Expr],
+    row: &[crate::executor::model::ContextTable],
+    ctx: &mut crate::executor::context::ExecutionContext,
+    catalog: &dyn crate::catalog::Catalog,
+    storage: &dyn crate::storage::Storage,
+    clock: &dyn crate::executor::clock::Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution(
+            "EDIT_DISTANCE_SIMILARITY expects 2 arguments".into(),
+        ));
+    }
+    let s1 = crate::executor::evaluator::eval_expr(&args[0], row, ctx, catalog, storage, clock)?
+        .to_string_value();
+    let s2 = crate::executor::evaluator::eval_expr(&args[1], row, ctx, catalog, storage, clock)?
+        .to_string_value();
+    Ok(Value::Float(edit_distance_similarity(&s1, &s2).to_bits()))
+}
+
 pub fn edit_distance_similarity(s1: &str, s2: &str) -> f64 {
     let len1 = s1.chars().count();
     let len2 = s2.chars().count();
@@ -53,6 +94,46 @@ pub fn jaro_winkler_distance(s1: &str, s2: &str) -> f64 {
     let winkler = jaro + (prefix_len as f64 * 0.1 * (1.0 - jaro));
 
     1.0 - winkler.min(1.0)
+}
+
+pub fn eval_jaro_winkler_distance(
+    args: &[crate::ast::Expr],
+    row: &[crate::executor::model::ContextTable],
+    ctx: &mut crate::executor::context::ExecutionContext,
+    catalog: &dyn crate::catalog::Catalog,
+    storage: &dyn crate::storage::Storage,
+    clock: &dyn crate::executor::clock::Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution(
+            "JARO_WINKLER_DISTANCE expects 2 arguments".into(),
+        ));
+    }
+    let s1 = crate::executor::evaluator::eval_expr(&args[0], row, ctx, catalog, storage, clock)?
+        .to_string_value();
+    let s2 = crate::executor::evaluator::eval_expr(&args[1], row, ctx, catalog, storage, clock)?
+        .to_string_value();
+    Ok(Value::Float(jaro_winkler_distance(&s1, &s2).to_bits()))
+}
+
+pub fn eval_jaro_winkler_similarity(
+    args: &[crate::ast::Expr],
+    row: &[crate::executor::model::ContextTable],
+    ctx: &mut crate::executor::context::ExecutionContext,
+    catalog: &dyn crate::catalog::Catalog,
+    storage: &dyn crate::storage::Storage,
+    clock: &dyn crate::executor::clock::Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution(
+            "JARO_WINKLER_SIMILARITY expects 2 arguments".into(),
+        ));
+    }
+    let s1 = crate::executor::evaluator::eval_expr(&args[0], row, ctx, catalog, storage, clock)?
+        .to_string_value();
+    let s2 = crate::executor::evaluator::eval_expr(&args[1], row, ctx, catalog, storage, clock)?
+        .to_string_value();
+    Ok(Value::Float(jaro_winkler_similarity(&s1, &s2).to_bits()))
 }
 
 pub fn jaro_winkler_similarity(s1: &str, s2: &str) -> f64 {

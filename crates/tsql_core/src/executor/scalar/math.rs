@@ -349,9 +349,183 @@ pub(crate) fn eval_log(
     Ok(Value::Float(result.to_bits()))
 }
 
-pub(crate) fn eval_pi(args: &[Expr]) -> Result<Value, DbError> {
+pub(crate) fn eval_pi(
+    args: &[Expr],
+    _row: &[ContextTable],
+    _ctx: &mut ExecutionContext,
+    _catalog: &dyn Catalog,
+    _storage: &dyn Storage,
+    _clock: &dyn Clock,
+) -> Result<Value, DbError> {
     if !args.is_empty() {
         return Err(DbError::Execution("PI expects no arguments".into()));
     }
     Ok(Value::Float(std::f64::consts::PI.to_bits()))
+}
+
+pub(crate) fn eval_ceiling(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    eval_math_unary(args, row, ctx, catalog, storage, clock, "CEILING", |f| f.ceil())
+}
+
+pub(crate) fn eval_floor(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    eval_math_unary(args, row, ctx, catalog, storage, clock, "FLOOR", |f| f.floor())
+}
+
+pub(crate) fn eval_square(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    eval_math_unary(args, row, ctx, catalog, storage, clock, "SQUARE", |f| f * f)
+}
+
+pub(crate) fn eval_exp(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    eval_math_unary(args, row, ctx, catalog, storage, clock, "EXP", |f| f.exp())
+}
+
+pub(crate) fn eval_log10(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    eval_math_unary(args, row, ctx, catalog, storage, clock, "LOG10", |f| f.log10())
+}
+
+pub(crate) fn eval_sin(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    eval_math_unary(args, row, ctx, catalog, storage, clock, "SIN", |f| f.sin())
+}
+
+pub(crate) fn eval_cos(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    eval_math_unary(args, row, ctx, catalog, storage, clock, "COS", |f| f.cos())
+}
+
+pub(crate) fn eval_tan(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    eval_math_unary(args, row, ctx, catalog, storage, clock, "TAN", |f| f.tan())
+}
+
+pub(crate) fn eval_asin(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    eval_math_unary(args, row, ctx, catalog, storage, clock, "ASIN", |f| f.asin())
+}
+
+pub(crate) fn eval_acos(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    eval_math_unary(args, row, ctx, catalog, storage, clock, "ACOS", |f| f.acos())
+}
+
+pub(crate) fn eval_atan(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    eval_math_unary(args, row, ctx, catalog, storage, clock, "ATAN", |f| f.atan())
+}
+
+pub(crate) fn eval_cot(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    eval_math_unary(args, row, ctx, catalog, storage, clock, "COT", |f| 1.0 / f.tan())
+}
+
+pub(crate) fn eval_degrees(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    eval_math_unary(args, row, ctx, catalog, storage, clock, "DEGREES", |f| f.to_degrees())
+}
+
+pub(crate) fn eval_radians(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    eval_math_unary(args, row, ctx, catalog, storage, clock, "RADIANS", |f| f.to_radians())
+}
+
+pub(crate) fn eval_rand(
+    _args: &[Expr],
+    _row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    _catalog: &dyn Catalog,
+    _storage: &dyn Storage,
+    _clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    use super::system::random::deterministic_rand;
+    let val = deterministic_rand(&mut *ctx.session.random_state);
+    Ok(Value::Float(val.to_bits()))
 }
