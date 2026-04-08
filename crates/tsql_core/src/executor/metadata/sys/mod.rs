@@ -25,6 +25,12 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(tables::SysTables))
     } else if name.eq_ignore_ascii_case("columns") {
         Some(Box::new(tables::SysColumns))
+    } else if name.eq_ignore_ascii_case("all_columns") {
+        Some(Box::new(tables::SysAllColumns))
+    } else if name.eq_ignore_ascii_case("data_spaces") {
+        Some(Box::new(tables::SysDataSpaces))
+    } else if name.eq_ignore_ascii_case("extended_properties") {
+        Some(Box::new(tables::SysExtendedProperties))
     } else if name.eq_ignore_ascii_case("types") {
         Some(Box::new(tables::SysTypes))
     } else if name.eq_ignore_ascii_case("indexes") {

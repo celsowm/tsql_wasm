@@ -17,6 +17,10 @@ impl VirtualTable for SysIndexes {
                 ("type", DataType::TinyInt, false),
                 ("type_desc", DataType::VarChar { max_len: 60 }, false),
                 ("is_unique", DataType::Bit, false),
+                ("data_space_id", DataType::Int, false),
+                ("is_primary_key", DataType::Bit, false),
+                ("is_unique_constraint", DataType::Bit, false),
+                ("is_hypothetical", DataType::Bit, false),
             ],
         )
     }
@@ -37,6 +41,10 @@ impl VirtualTable for SysIndexes {
                         "NONCLUSTERED".to_string()
                     }),
                     Value::Bit(idx.is_unique),
+                    Value::Int(1),
+                    Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Bit(false),
                 ],
                 deleted: false,
             })

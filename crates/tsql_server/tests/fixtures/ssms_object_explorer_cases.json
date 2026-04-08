@@ -206,6 +206,21 @@
       ]
     },
     {
+      "name": "bootstrap_user_databases_include_tsql_wasm",
+      "scope": "bootstrap",
+      "sql": "SELECT dtb.name AS [Database_Name] FROM sys.databases AS dtb WHERE (CAST(case when dtb.name in ('master','model','msdb','tempdb') then 1 else dtb.is_distributor end AS bit)=0) ORDER BY [Database_Name] ASC",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "Database_Name"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
       "name": "tables_list_from_sys_tables",
       "scope": "tables",
       "sql": "SELECT tbl.name AS [Name], SCHEMA_NAME(tbl.schema_id) AS [Schema], 'Server[@Name=' + quotename(CAST(serverproperty(N'Servername') AS sysname),'''') + ']' + '/Database[@Name=' + quotename(db_name(),'''') + ']' + '/Table[@Name=' + quotename(tbl.name,'''') + ' and @Schema=' + quotename(SCHEMA_NAME(tbl.schema_id),'''') + ']' AS [Urn], tbl.create_date AS [CreateDate], CAST(tbl.is_memory_optimized AS bit) AS [IsMemoryOptimized], CAST(CASE idx.type WHEN 5 THEN 1 ELSE 0 END AS bit) AS [HasClusteredColumnStoreIndex] FROM sys.tables AS tbl LEFT JOIN sys.indexes AS idx ON idx.object_id = tbl.object_id AND idx.type = 5 WHERE tbl.is_ms_shipped = 0 ORDER BY [Schema], [Name]",
@@ -220,6 +235,27 @@
             "CreateDate",
             "IsMemoryOptimized",
             "HasClusteredColumnStoreIndex"
+          ],
+          "min_rows": 6
+        }
+      ]
+    },
+    {
+      "name": "tables_list_from_ssms_like_query",
+      "scope": "tables",
+      "sql": "SELECT tbl.name AS [Name], SCHEMA_NAME(tbl.schema_id) AS [Schema], CAST(tbl.is_memory_optimized AS bit) AS [IsMemoryOptimized], CAST(CASE idx.type WHEN 5 THEN 1 ELSE 0 END AS bit) AS [HasClusteredColumnStoreIndex], CAST(CASE WHEN 'PS' = dsidx.type THEN 1 ELSE 0 END AS bit) AS [IsPartitioned], CAST(ISNULL((SELECT distinct 1 FROM sys.all_columns WHERE object_id = tbl.object_id AND is_sparse = 1), 0) AS bit) AS [HasSparseColumn], CAST(CASE WHEN (SELECT major_id FROM sys.extended_properties WHERE major_id = tbl.object_id AND minor_id = 0 AND class = 1 AND name = N'microsoft_database_tools_support') IS NOT NULL THEN 1 ELSE 0 END AS bit) AS [HasMdtSupport] FROM sys.tables AS tbl LEFT JOIN sys.indexes AS idx ON idx.object_id = tbl.object_id AND (idx.index_id < 2 OR (tbl.is_memory_optimized = 1 AND idx.index_id = (SELECT MIN(index_id) FROM sys.indexes WHERE object_id = tbl.object_id))) LEFT OUTER JOIN sys.data_spaces AS dsidx ON dsidx.data_space_id = idx.data_space_id WHERE CAST(ISNULL(tbl.ledger_type, 0) AS int) = 0 AND tbl.is_filetable = 0 AND CAST(tbl.is_memory_optimized AS bit) = 0 AND tbl.temporal_type = 0 AND CAST(tbl.is_external AS bit) = 0 AND CAST(tbl.is_node AS bit) = 0 AND CAST(tbl.is_edge AS bit) = 0 AND tbl.is_ms_shipped = 0 ORDER BY [Schema], [Name]",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "Name",
+            "Schema",
+            "IsMemoryOptimized",
+            "HasClusteredColumnStoreIndex",
+            "IsPartitioned",
+            "HasSparseColumn",
+            "HasMdtSupport"
           ],
           "min_rows": 6
         }

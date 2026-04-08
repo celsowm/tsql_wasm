@@ -486,11 +486,7 @@ impl TdsSession {
             return Ok(true);
         }
 
-        log::info!(
-            "[conn={}] Executing SQL:\n{}",
-            self.connection_id,
-            format_sql_for_log(sql)
-        );
+        log_sql_execution(self.connection_id, sql);
         let force_sysdac_probe_int = is_sysdac_instances_probe(sql);
         match self
             .db
@@ -629,7 +625,7 @@ impl TdsSession {
                 log::warn!(
                     "[conn={}] SQL execution failed for batch:\n{}\nerror: {}",
                     self.connection_id,
-                    sql,
+                    format_sql_for_log(sql),
                     e
                 );
                 let err_resp = build_error_response(&format!("{}", e));
@@ -651,18 +647,58 @@ static SQL_KEYWORD_RE: Lazy<Regex> = Lazy::new(|| {
 });
 
 fn format_sql_for_log(sql: &str) -> String {
+    let text = if std::env::var("TSQL_LOG_FULL_SQL")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        sql.to_string()
+    } else {
+        truncate_for_log(sql, 1200)
+    };
+
     if std::env::var("TSQL_LOG_SQL_HIGHLIGHT")
         .map(|v| v == "0" || v.eq_ignore_ascii_case("false"))
         .unwrap_or(false)
     {
-        return sql.to_string();
+        return text;
     }
 
     SQL_KEYWORD_RE
-        .replace_all(sql, |caps: &regex::Captures| {
+        .replace_all(&text, |caps: &regex::Captures| {
             format!("\x1b[1;36m{}\x1b[0m", &caps[0])
         })
         .to_string()
+}
+
+fn log_sql_execution(connection_id: u64, sql: &str) {
+    if !std::env::var("TSQL_LOG_EXECUTING_SQL")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+    {
+        return;
+    }
+
+    log::info!(
+        "[conn={}] Executing SQL:\n{}",
+        connection_id,
+        format_sql_for_log(sql)
+    );
+}
+
+fn truncate_for_log(text: &str, max_chars: usize) -> String {
+    let total_chars = text.chars().count();
+    if total_chars <= max_chars {
+        return text.to_string();
+    }
+
+    let cut_at = text
+        .char_indices()
+        .nth(max_chars)
+        .map(|(idx, _)| idx)
+        .unwrap_or(text.len());
+    let mut preview = text[..cut_at].to_string();
+    preview.push_str("... [truncated]");
+    preview
 }
 
 fn is_sysdac_instances_probe(sql: &str) -> bool {

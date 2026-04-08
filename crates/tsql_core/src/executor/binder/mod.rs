@@ -103,6 +103,12 @@ pub fn bind_expr(
                 .iter()
                 .map(|a| bind_expr(a, row, ctx))
                 .collect::<Result<Vec<_>, _>>()?;
+            if !bound_args
+                .iter()
+                .all(|arg| matches!(arg, BoundExpr::Literal(_)))
+            {
+                return Ok(BoundExpr::Dynamic(expr.clone()));
+            }
             Ok(BoundExpr::FunctionCall {
                 name: name.clone(),
                 args: bound_args,

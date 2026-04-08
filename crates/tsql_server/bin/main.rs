@@ -130,10 +130,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.database = "tsql_wasm".to_string();
     }
 
-    println!("tsql-server v{}", env!("CARGO_PKG_VERSION"));
-    println!("Host: {}", config.host);
-    println!("Port: {}", config.port);
-    println!(
+    log::info!("tsql-server v{}", env!("CARGO_PKG_VERSION"));
+    log::info!("Host: {}", config.host);
+    log::info!("Port: {}", config.port);
+    log::info!(
         "Auth: {}",
         if config.auth.is_some() {
             "enabled"
@@ -141,7 +141,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "disabled (accept any login)"
         }
     );
-    println!(
+    log::info!(
         "TLS: {}",
         if config.tls_enabled {
             format!("enabled ({})", config.tls_cert_path.as_ref().unwrap())
@@ -149,38 +149,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "disabled".to_string()
         }
     );
-    println!("Database: {}", config.database);
-    println!(
+    log::info!("Database: {}", config.database);
+    log::info!(
         "Session pool: min={}, max={}, idle_timeout={}s",
         config.pool_min_size, config.pool_max_size, config.pool_idle_timeout_secs
     );
-    println!();
 
     // Create database and seed playground if enabled
     let db = tsql_core::Database::new();
     if playground_mode {
-        println!("🚀 Starting in PLAYGROUND mode...");
-        println!("Seeding database with sample tables, views, and data...");
+        log::info!("Starting in PLAYGROUND mode...");
+        log::info!("Seeding database with sample tables, views, and data...");
         if let Err(e) = playground::seed_playground(&db) {
-            eprintln!("Warning: Some playground seed operations failed: {}", e);
+            log::warn!("Some playground seed operations failed: {}", e);
         }
-        println!("✓ Playground database ready!");
-        println!();
-        println!("Sample tables:");
-        println!("  - dbo.Customers");
-        println!("  - dbo.Products");
-        println!("  - dbo.Orders");
-        println!("  - dbo.OrderItems");
-        println!("  - dbo.Employees");
-        println!("  - dbo.Categories");
-        println!();
-        println!("Sample views:");
-        println!("  - dbo.vCustomerOrders");
-        println!("  - dbo.vOrderDetails");
-        println!("  - dbo.vProductSales");
-        println!("  - dbo.vEmployeeHierarchy");
-        println!("  - dbo.vMonthlySales");
-        println!();
+        log::info!("Playground database ready");
+        log::info!("Sample tables: dbo.Customers, dbo.Products, dbo.Orders, dbo.OrderItems, dbo.Employees, dbo.Categories");
+        log::info!("Sample views: dbo.vCustomerOrders, dbo.vOrderDetails, dbo.vProductSales, dbo.vEmployeeHierarchy, dbo.vMonthlySales");
     }
 
     let server = TdsServer::new_with_database(db, config);
@@ -191,9 +176,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn init_logger() {
     use std::io::Write;
+    use std::sync::mpsc;
+    use std::thread;
+
+    struct AsyncPipeWriter {
+        sender: mpsc::Sender<Vec<u8>>,
+    }
+
+    impl Write for AsyncPipeWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.sender
+                .send(buf.to_vec())
+                .map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "logger worker stopped"))?;
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let (tx, rx) = mpsc::channel::<Vec<u8>>();
+    thread::spawn(move || {
+        let stderr = std::io::stderr();
+        let mut handle = stderr.lock();
+        while let Ok(buf) = rx.recv() {
+            if handle.write_all(&buf).is_err() {
+                break;
+            }
+            if handle.flush().is_err() {
+                break;
+            }
+        }
+    });
 
     let mut builder =
         env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
+    builder.target(env_logger::Target::Pipe(Box::new(AsyncPipeWriter { sender: tx })));
     builder.format(|buf, record| {
         let ts = buf.timestamp_millis();
         writeln!(

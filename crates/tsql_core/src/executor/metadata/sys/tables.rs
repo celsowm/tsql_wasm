@@ -10,49 +10,60 @@ pub(crate) struct SysSysDatabases;
 pub(crate) struct SysConfigurations;
 pub(crate) struct SysTables;
 pub(crate) struct SysColumns;
+pub(crate) struct SysAllColumns;
+pub(crate) struct SysDataSpaces;
+pub(crate) struct SysExtendedProperties;
 pub(crate) struct SysTypes;
 pub(crate) struct SysServerPrincipals;
 
 #[derive(Clone, Copy)]
-struct SystemDatabaseRow {
+struct DatabaseRow {
     id: i32,
     name: &'static str,
     compatibility_level: u8,
     recovery_model: &'static str,
 }
 
-const SYSTEM_DATABASES: &[SystemDatabaseRow] = &[
-    SystemDatabaseRow {
+const CATALOG_DATABASES: &[DatabaseRow] = &[
+    DatabaseRow {
         id: 1,
         name: "master",
         compatibility_level: 160,
         recovery_model: "FULL",
     },
-    SystemDatabaseRow {
+    DatabaseRow {
         id: 2,
         name: "tempdb",
         compatibility_level: 160,
         recovery_model: "SIMPLE",
     },
-    SystemDatabaseRow {
+    DatabaseRow {
         id: 3,
         name: "model",
         compatibility_level: 160,
         recovery_model: "FULL",
     },
-    SystemDatabaseRow {
+    DatabaseRow {
         id: 4,
         name: "msdb",
         compatibility_level: 160,
         recovery_model: "FULL",
     },
-    SystemDatabaseRow {
+];
+
+const USER_DATABASES: &[DatabaseRow] = &[
+    // The playground database is a user database, not a system database.
+    DatabaseRow {
         id: 5,
         name: "tsql_wasm",
         compatibility_level: 160,
         recovery_model: "FULL",
     },
 ];
+
+fn catalog_databases() -> impl Iterator<Item = &'static DatabaseRow> {
+    CATALOG_DATABASES.iter().chain(USER_DATABASES.iter())
+}
 
 impl VirtualTable for SysSchemas {
     fn definition(&self) -> crate::catalog::TableDef {
@@ -94,6 +105,7 @@ impl VirtualTable for SysDatabases {
                 ("user_access", DataType::TinyInt, false),
                 ("user_access_desc", DataType::VarChar { max_len: 60 }, false),
                 ("is_read_only", DataType::Bit, false),
+                ("is_fulltext_enabled", DataType::Bit, false),
                 ("recovery_model", DataType::TinyInt, false),
                 (
                     "recovery_model_desc",
@@ -103,6 +115,7 @@ impl VirtualTable for SysDatabases {
                 ("is_auto_close_on", DataType::Bit, false),
                 ("is_auto_shrink_on", DataType::Bit, false),
                 ("is_in_standby", DataType::Bit, false),
+                ("is_distributor", DataType::Bit, false),
                 ("is_cleanly_shutdown", DataType::Bit, false),
             ],
         )
@@ -115,8 +128,7 @@ impl VirtualTable for SysDatabases {
                 .and_hms_opt(0, 0, 0)
                 .unwrap(),
         );
-        SYSTEM_DATABASES
-            .iter()
+        catalog_databases()
             .map(|db| StoredRow {
                 values: vec![
                     Value::Int(db.id),
@@ -131,12 +143,14 @@ impl VirtualTable for SysDatabases {
                     Value::TinyInt(0),
                     Value::VarChar("MULTI_USER".to_string()),
                     Value::Bit(false),
+                    Value::Bit(false),
                     Value::TinyInt(match db.recovery_model {
                         "SIMPLE" => 3,
                         "BULK_LOGGED" => 2,
                         _ => 1,
                     }),
                     Value::VarChar(db.recovery_model.to_string()),
+                    Value::Bit(false),
                     Value::Bit(false),
                     Value::Bit(false),
                     Value::Bit(false),
@@ -209,8 +223,7 @@ impl VirtualTable for SysSysDatabases {
                 .and_hms_opt(0, 0, 0)
                 .unwrap(),
         );
-        SYSTEM_DATABASES
-            .iter()
+        catalog_databases()
             .map(|db| StoredRow {
                 values: vec![
                     Value::VarChar(db.name.to_string()),
@@ -245,6 +258,12 @@ impl VirtualTable for SysTables {
                 ("modify_date", DataType::DateTime, false),
                 ("is_memory_optimized", DataType::Bit, false),
                 ("is_ms_shipped", DataType::Bit, false),
+                ("is_filetable", DataType::Bit, false),
+                ("temporal_type", DataType::TinyInt, false),
+                ("is_external", DataType::Bit, false),
+                ("is_node", DataType::Bit, false),
+                ("is_edge", DataType::Bit, false),
+                ("ledger_type", DataType::Int, true),
             ],
         )
     }
@@ -271,6 +290,12 @@ impl VirtualTable for SysTables {
                     created.clone(),
                     Value::Bit(false),
                     Value::Bit(false),
+                    Value::Bit(false),
+                    Value::TinyInt(0),
+                    Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Int(0),
                 ],
                 deleted: false,
             })
@@ -280,38 +305,109 @@ impl VirtualTable for SysTables {
 
 impl VirtualTable for SysColumns {
     fn definition(&self) -> crate::catalog::TableDef {
+        column_table_def("columns", false)
+    }
+
+    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+        column_rows(catalog, false)
+    }
+}
+
+impl VirtualTable for SysAllColumns {
+    fn definition(&self) -> crate::catalog::TableDef {
+        column_table_def("all_columns", true)
+    }
+
+    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+        column_rows(catalog, true)
+    }
+}
+
+impl VirtualTable for SysDataSpaces {
+    fn definition(&self) -> crate::catalog::TableDef {
         virtual_table_def(
-            "columns",
+            "data_spaces",
             vec![
-                ("object_id", DataType::Int, false),
-                ("column_id", DataType::Int, false),
+                ("data_space_id", DataType::Int, false),
                 ("name", DataType::VarChar { max_len: 128 }, false),
-                ("user_type_id", DataType::Int, false),
-                ("max_length", DataType::SmallInt, false),
-                ("is_nullable", DataType::Bit, false),
+                ("type", DataType::Char { len: 2 }, false),
+                ("type_desc", DataType::VarChar { max_len: 60 }, false),
+                ("is_default", DataType::Bit, false),
+                ("is_system", DataType::Bit, false),
             ],
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
-        let mut rows = Vec::new();
-        for t in catalog.get_tables() {
-            for c in &t.columns {
-                rows.push(StoredRow {
-                    values: vec![
-                        Value::Int(t.id as i32),
-                        Value::Int(c.id as i32),
-                        Value::VarChar(c.name.clone()),
-                        Value::Int(system_type_id(&c.data_type)),
-                        Value::SmallInt(type_max_length(&c.data_type)),
-                        Value::Bit(c.nullable),
-                    ],
-                    deleted: false,
-                });
-            }
-        }
-        rows
+    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+        vec![StoredRow {
+            values: vec![
+                Value::Int(1),
+                Value::VarChar("PRIMARY".to_string()),
+                Value::Char("FG".to_string()),
+                Value::VarChar("ROWS_FILEGROUP".to_string()),
+                Value::Bit(true),
+                Value::Bit(false),
+            ],
+            deleted: false,
+        }]
     }
+}
+
+impl VirtualTable for SysExtendedProperties {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "extended_properties",
+            vec![
+                ("major_id", DataType::Int, false),
+                ("minor_id", DataType::Int, false),
+                ("class", DataType::Int, false),
+                ("name", DataType::VarChar { max_len: 128 }, false),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+        Vec::new()
+    }
+}
+
+fn column_table_def(name: &str, include_sparse: bool) -> crate::catalog::TableDef {
+    let mut cols = vec![
+        ("object_id", DataType::Int, false),
+        ("column_id", DataType::Int, false),
+        ("name", DataType::VarChar { max_len: 128 }, false),
+        ("user_type_id", DataType::Int, false),
+        ("max_length", DataType::SmallInt, false),
+        ("is_nullable", DataType::Bit, false),
+    ];
+    if include_sparse {
+        cols.push(("is_sparse", DataType::Bit, false));
+    }
+    virtual_table_def(name, cols)
+}
+
+fn column_rows(catalog: &dyn Catalog, include_sparse: bool) -> Vec<StoredRow> {
+    let mut rows = Vec::new();
+    for t in catalog.get_tables() {
+        for c in &t.columns {
+            let mut values = vec![
+                Value::Int(t.id as i32),
+                Value::Int(c.id as i32),
+                Value::VarChar(c.name.clone()),
+                Value::Int(system_type_id(&c.data_type)),
+                Value::SmallInt(type_max_length(&c.data_type)),
+                Value::Bit(c.nullable),
+            ];
+            if include_sparse {
+                values.push(Value::Bit(false));
+            }
+            rows.push(StoredRow {
+                values,
+                deleted: false,
+            });
+        }
+    }
+    rows
 }
 
 impl VirtualTable for SysTypes {
