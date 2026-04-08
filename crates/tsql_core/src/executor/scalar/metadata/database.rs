@@ -40,11 +40,14 @@ pub(crate) fn eval_databasepropertyex(
         Value::Int(4) | Value::BigInt(4) | Value::SmallInt(4) | Value::TinyInt(4) => {
             "msdb".to_string()
         }
+        Value::Int(5) | Value::BigInt(5) | Value::SmallInt(5) | Value::TinyInt(5) => {
+            "tsql_wasm".to_string()
+        }
         _ => db_val.to_string_value(),
     };
     let is_known_db = matches!(
         db_name.to_ascii_lowercase().as_str(),
-        "master" | "tempdb" | "model" | "msdb"
+        "master" | "tempdb" | "model" | "msdb" | "tsql_wasm"
     );
     let active_db = ctx
         .metadata
@@ -122,11 +125,13 @@ pub(crate) fn eval_db_name(args: &[Expr], ctx: &ExecutionContext) -> Result<Valu
             Expr::Integer(2) => "tempdb".to_string(),
             Expr::Integer(3) => "model".to_string(),
             Expr::Integer(4) => "msdb".to_string(),
+            Expr::Integer(5) => "tsql_wasm".to_string(),
             Expr::String(s) | Expr::UnicodeString(s) => {
                 if s.eq_ignore_ascii_case("master")
                     || s.eq_ignore_ascii_case("tempdb")
                     || s.eq_ignore_ascii_case("model")
                     || s.eq_ignore_ascii_case("msdb")
+                    || s.eq_ignore_ascii_case("tsql_wasm")
                 {
                     s.clone()
                 } else {
@@ -155,6 +160,7 @@ pub(crate) fn eval_db_id(args: &[Expr], _ctx: &ExecutionContext) -> Result<Value
             Expr::Integer(2) => Value::Int(2),
             Expr::Integer(3) => Value::Int(3),
             Expr::Integer(4) => Value::Int(4),
+            Expr::Integer(5) => Value::Int(5),
             Expr::String(s) | Expr::UnicodeString(s) if s.eq_ignore_ascii_case("master") => {
                 Value::Int(1)
             }
@@ -166,6 +172,9 @@ pub(crate) fn eval_db_id(args: &[Expr], _ctx: &ExecutionContext) -> Result<Value
             }
             Expr::String(s) | Expr::UnicodeString(s) if s.eq_ignore_ascii_case("msdb") => {
                 Value::Int(4)
+            }
+            Expr::String(s) | Expr::UnicodeString(s) if s.eq_ignore_ascii_case("tsql_wasm") => {
+                Value::Int(5)
             }
             _ => Value::Null,
         });

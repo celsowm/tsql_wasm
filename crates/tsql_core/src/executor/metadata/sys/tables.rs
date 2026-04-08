@@ -46,6 +46,12 @@ const SYSTEM_DATABASES: &[SystemDatabaseRow] = &[
         compatibility_level: 160,
         recovery_model: "FULL",
     },
+    SystemDatabaseRow {
+        id: 5,
+        name: "tsql_wasm",
+        compatibility_level: 160,
+        recovery_model: "FULL",
+    },
 ];
 
 impl VirtualTable for SysSchemas {

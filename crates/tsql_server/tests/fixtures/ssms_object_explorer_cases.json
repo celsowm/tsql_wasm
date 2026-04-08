@@ -185,7 +185,23 @@
             "name",
             "database_id"
           ],
-          "min_rows": 4
+          "min_rows": 5
+        }
+      ]
+    },
+    {
+      "name": "bootstrap_databases_contains_tsql_wasm",
+      "scope": "bootstrap",
+      "sql": "SELECT name, database_id FROM sys.databases WHERE name = 'tsql_wasm'",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "database_id"
+          ],
+          "min_rows": 1
         }
       ]
     },

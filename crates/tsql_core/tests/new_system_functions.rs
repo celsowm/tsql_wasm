@@ -249,10 +249,11 @@ fn test_has_dbaccess_for_master() {
     let mut engine = Engine::new();
     let r = query(
         &mut engine,
-        "SELECT HAS_DBACCESS('master') AS has_master, HAS_DBACCESS('msdb') AS has_msdb",
+        "SELECT HAS_DBACCESS('master') AS has_master, HAS_DBACCESS('msdb') AS has_msdb, HAS_DBACCESS('tsql_wasm') AS has_tsql_wasm",
     );
     assert_eq!(r.rows[0][0], Value::Int(1));
-    assert_eq!(r.rows[0][1], Value::Int(0));
+    assert_eq!(r.rows[0][1], Value::Int(1));
+    assert_eq!(r.rows[0][2], Value::Int(1));
 }
 
 #[test]

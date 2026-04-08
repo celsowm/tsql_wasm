@@ -9,6 +9,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut config = ServerConfig::default();
     let mut playground_mode = false;
+    let mut database_arg_provided = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -48,6 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--database" | "-d" => {
                 i += 1;
                 config.database = args.get(i).cloned().unwrap_or_default();
+                database_arg_provided = true;
             }
             "--pool-min" => {
                 i += 1;
@@ -120,6 +122,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("Error: TLS is enabled but no certificate specified.");
         eprintln!("Use --tls-gen to generate a self-signed certificate, or --tls-cert and --tls-key to specify existing files.");
         std::process::exit(1);
+    }
+
+    // In playground mode, default to a user database so SSMS Object Explorer
+    // can enumerate it as a regular database node. Respect explicit --database.
+    if playground_mode && !database_arg_provided {
+        config.database = "tsql_wasm".to_string();
     }
 
     println!("tsql-server v{}", env!("CARGO_PKG_VERSION"));

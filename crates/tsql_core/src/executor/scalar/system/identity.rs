@@ -177,6 +177,7 @@ pub(crate) fn eval_has_dbaccess(
         || db_name.eq_ignore_ascii_case("tempdb")
         || db_name.eq_ignore_ascii_case("model")
         || db_name.eq_ignore_ascii_case("msdb")
+        || db_name.eq_ignore_ascii_case("tsql_wasm")
     {
         1
     } else {
