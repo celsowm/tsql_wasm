@@ -312,11 +312,6 @@ fn binary_to_i64(data: &[u8]) -> Option<i64> {
         n = (n << 8) | (*b as u64);
     }
 
-    let bit_width = (data.len() * 8) as u32;
-    if bit_width < 64 && (n & (1u64 << (bit_width - 1))) != 0 {
-        n |= (!0u64) << bit_width;
-    }
-
     Some(n as i64)
 }
 

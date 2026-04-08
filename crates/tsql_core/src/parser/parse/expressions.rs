@@ -170,8 +170,9 @@ fn infix_binding_power(op: &BinaryOp) -> (u8, u8) {
         BinaryOp::Or => (1, 2),
         BinaryOp::And => (3, 4),
         BinaryOp::Eq | BinaryOp::NotEq | BinaryOp::Gt | BinaryOp::Lt | BinaryOp::Gte | BinaryOp::Lte | BinaryOp::Like => (5, 6),
-        BinaryOp::Add | BinaryOp::Subtract => (7, 8),
-        BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo | BinaryOp::BitwiseAnd | BinaryOp::BitwiseOr | BinaryOp::BitwiseXor => (9, 10),
+        BinaryOp::BitwiseAnd | BinaryOp::BitwiseOr | BinaryOp::BitwiseXor => (7, 8),
+        BinaryOp::Add | BinaryOp::Subtract => (9, 10),
+        BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo => (11, 12),
     }
 }
 
@@ -213,15 +214,22 @@ pub fn parse_primary(parser: &mut Parser) -> ParseResult<Expr> {
             let hex = hex.clone();
             let _ = parser.next();
             let hex_str = if hex.starts_with("0x") || hex.starts_with("0X") { &hex[2..] } else { hex.as_ref() };
-            let bytes = (0..hex_str.len())
+            let padded;
+            let normalized = if hex_str.len() % 2 != 0 {
+                padded = format!("0{}", hex_str);
+                padded.as_str()
+            } else {
+                hex_str
+            };
+            let bytes = (0..normalized.len())
                 .step_by(2)
-                .map(|i| u8::from_str_radix(&hex_str[i..std::cmp::min(i + 2, hex_str.len())], 16).unwrap_or(0))
+                .map(|i| u8::from_str_radix(&normalized[i..i + 2], 16).unwrap_or(0))
                 .collect();
             Ok(Expr::BinaryLiteral(bytes))
         }
         Some(Token::Tilde) => {
             let _ = parser.next();
-            let expr = parse_pratt_expr(parser, 12)?;
+            let expr = parse_pratt_expr(parser, 14)?;
             Ok(Expr::Unary { op: UnaryOp::BitwiseNot, expr: Box::new(expr) })
         }
         Some(Token::Identifier(id)) => {
@@ -269,7 +277,7 @@ pub fn parse_primary(parser: &mut Parser) -> ParseResult<Expr> {
                  parser.expect_rparen()?;
                  Ok(Expr::Exists { subquery, negated: true })
              } else {
-                 let expr = parse_pratt_expr(parser, 12)?;
+                 let expr = parse_pratt_expr(parser, 14)?;
                  Ok(Expr::Unary { op: UnaryOp::Not, expr: Box::new(expr) })
              }
         }
@@ -280,8 +288,8 @@ pub fn parse_primary(parser: &mut Parser) -> ParseResult<Expr> {
         }
         Some(Token::Operator(op)) if *op == "-" => {
              let _ = parser.next();
-             let expr = parse_pratt_expr(parser, 12)?;
-             Ok(Expr::Unary { op: UnaryOp::Negate, expr: Box::new(expr) })
+             let expr = parse_pratt_expr(parser, 14)?;
+              Ok(Expr::Unary { op: UnaryOp::Negate, expr: Box::new(expr) })
         }
         Some(Token::Keyword(k)) if matches!(parser.peek_at(1), Some(Token::LParen) | Some(Token::Dot)) => {
             let name = k.as_ref().to_string();
