@@ -1,11 +1,16 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.Data.SqlClient;
-
-var azureConnStr = "Server=tcp:[::1],11433;Database=master;User Id=sa;Password=Test@12345;TrustServerCertificate=True;Encrypt=false;Connection Timeout=10;";
 
 // Resolve the compat-query binary path
 var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+var credentialsPath = Path.Combine(repoRoot, "scripts", "credentials.json");
+var credentialsJson = File.ReadAllText(credentialsPath);
+var credentials = JsonSerializer.Deserialize<Dictionary<string, string>>(credentialsJson)!;
+var azureUser = credentials["sql_server_user"];
+var azurePassword = credentials["sql_server_password"];
+var azureConnStr = $"Server=tcp:[::1],11433;Database=master;User Id={azureUser};Password={azurePassword};TrustServerCertificate=True;Encrypt=false;Connection Timeout=10;";
 var compatBin = Path.Combine(repoRoot, "target", "debug", "compat-query.exe");
 
 if (!File.Exists(compatBin))

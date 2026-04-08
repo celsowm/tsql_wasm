@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import datetime as dt
 import os
 import subprocess
 import threading
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -41,11 +43,44 @@ def clean(text: str) -> str:
     return "".join(c for c in text if c.isprintable() or c in "\r\n\t")
 
 
+def supports_ansi_color() -> bool:
+    return sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
+
+
+def ansi_green(text: str) -> str:
+    if not supports_ansi_color():
+        return text
+    return f"\033[32m{text}\033[0m"
+
+
 @dataclass(frozen=True)
 class BackendSpec:
     name: str
     host: str
     port: int
+
+
+@dataclass(frozen=True)
+class SqlCredentials:
+    user: str
+    password: str
+
+
+def load_sql_credentials(root: Path | None = None) -> SqlCredentials:
+    base = root or repo_root()
+    path = base / "scripts" / "credentials.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if "sql_server_user" not in data or "sql_server_password" not in data:
+        raise RuntimeError(f"Missing sql_server_user/sql_server_password in {path}")
+    user = str(data["sql_server_user"]).strip()
+    password = str(data["sql_server_password"])
+    if len(password) < 8:
+        raise RuntimeError(
+            f"sql_server_password in {path} is too short; SQL Server requires at least 8 characters"
+        )
+    if not user:
+        raise RuntimeError(f"sql_server_user in {path} is empty")
+    return SqlCredentials(user=user, password=password)
 
 
 class RunLogger:
@@ -65,6 +100,13 @@ class RunLogger:
             self._fh.write(text + "\n")
             self._fh.flush()
         print(text, flush=True)
+
+    def line_console(self, msg: str, console_msg: str) -> None:
+        text = f"[{ts()}] {msg}"
+        with self._lock:
+            self._fh.write(text + "\n")
+            self._fh.flush()
+        print(console_msg, flush=True)
 
     def blank(self) -> None:
         with self._lock:

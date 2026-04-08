@@ -4,6 +4,10 @@ $ErrorActionPreference = "Stop"
 # SSMS Preview often defaults to encrypted connections, so we start with TLS enabled.
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
+$credentialsPath = Join-Path $repoRoot "scripts\credentials.json"
+$credentials = Get-Content -LiteralPath $credentialsPath -Raw | ConvertFrom-Json
+$sqlUser = $credentials.sql_server_user
+$sqlPassword = $credentials.sql_server_password
 
 $cargo = Join-Path $env:USERPROFILE ".cargo\bin\cargo.exe"
 if (-not (Test-Path $cargo)) {
@@ -74,11 +78,11 @@ $args = @(
     "--tls-gen"
     "--host", "127.0.0.1"
     "--port", "1433"
-    "--user", "sa"
-    "--password", "12345"
+    "--user", $sqlUser
+    "--password", $sqlPassword
 )
 
-Write-LogLine "Starting tsql-server playground on localhost:1433 with TLS and sa / 12345..." Green
+Write-LogLine "Starting tsql-server playground on localhost:1433 with TLS and $sqlUser / $sqlPassword..." Green
 Write-LogLine "Use Server Name = localhost in SSMS." Green
 Write-LogLine "Writing server log to $script:LogFile" Cyan
 Write-LogBlankLine

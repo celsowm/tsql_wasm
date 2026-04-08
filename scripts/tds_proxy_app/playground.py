@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from .common import RunLogger, q
+from .common import RunLogger, load_sql_credentials, q
 
 
 class PlaygroundServerManager:
@@ -19,6 +19,7 @@ class PlaygroundServerManager:
         self.run_dir = run_dir
         self.proc: Optional[subprocess.Popen[str]] = None
         self.reader: Optional[threading.Thread] = None
+        self.credentials = load_sql_credentials(root)
         self.binary = self._find_binary()
 
     def build(self) -> None:
@@ -36,7 +37,7 @@ class PlaygroundServerManager:
         )
         self.binary = self._find_binary()
 
-    def start(self, tls_enabled: bool) -> None:
+    def start(self, tls_enabled: bool, port: int) -> None:
         if self.proc is not None:
             self.stop()
         if self.binary is None:
@@ -47,16 +48,19 @@ class PlaygroundServerManager:
             "--host",
             "127.0.0.1",
             "--port",
-            "1433",
+            str(port),
             "--user",
-            "sa",
+            self.credentials.user,
             "--password",
-            "12345",
+            self.credentials.password,
         ]
         args.append("--tls-gen" if tls_enabled else "--no-tls")
         self.runlog.line(
-            "Starting tsql-server playground on 127.0.0.1:1433 "
+            f"Starting tsql-server playground on 127.0.0.1:{port} "
             + ("with TLS" if tls_enabled else "without TLS")
+        )
+        self.runlog.line(
+            f"Playground credentials: {self.credentials.user} / {self.credentials.password}"
         )
         self.runlog.line(f"Playground binary: {self.binary}")
         self.proc = subprocess.Popen(
@@ -67,7 +71,7 @@ class PlaygroundServerManager:
             text=True,
         )
         self.reader = self._start_stdout_reader(self.proc)
-        self._wait_for_port("127.0.0.1", 1433, "playground")
+        self._wait_for_port("127.0.0.1", port, "playground")
 
     def stop(self) -> None:
         if self.proc is None:

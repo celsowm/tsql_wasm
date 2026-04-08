@@ -4,14 +4,15 @@ import subprocess
 import time
 from typing import Optional
 
-from .common import RunLogger, q
+from .common import RunLogger, load_sql_credentials, q
 
 
 class AzureSqlEdgeManager:
     def __init__(self, runlog: RunLogger) -> None:
         self.runlog = runlog
         self.container_name = "tsql_test_sqlserver"
-        self.sa_password = "Test@12345"
+        self.credentials = load_sql_credentials()
+        self.sa_password = self.credentials.password
 
     def start(self) -> None:
         self.ensure_podman_machine()
@@ -107,6 +108,28 @@ class AzureSqlEdgeManager:
                 ]
             )
         else:
+            current_password = self._inspect_container_password()
+            if current_password is not None and current_password != self.sa_password:
+                self.runlog.line("Azure SQL Edge container has stale password; recreating it")
+                self._run(["podman", "rm", "-f", self.container_name], allow_failure=True)
+                self._run(
+                    [
+                        "podman",
+                        "run",
+                        "-d",
+                        "--name",
+                        self.container_name,
+                        "-e",
+                        "ACCEPT_EULA=Y",
+                        "-e",
+                        f"MSSQL_SA_PASSWORD={self.sa_password}",
+                        "-p",
+                        "11433:1433",
+                        "--memory=512m",
+                        "mcr.microsoft.com/azure-sql-edge:latest",
+                    ]
+                )
+                return
             running = self._run(
                 ["podman", "ps", "--filter", f"name={self.container_name}", "--format", "{{.Names}}"],
                 allow_failure=True,
@@ -126,6 +149,22 @@ class AzureSqlEdgeManager:
             if "found" in (probe.stdout or ""):
                 return candidate
         raise RuntimeError("sqlcmd not found inside Azure SQL Edge container")
+
+    def _inspect_container_password(self) -> Optional[str]:
+        proc = self._run(
+            [
+                "podman",
+                "inspect",
+                "--format",
+                "{{range .Config.Env}}{{println .}}{{end}}",
+                self.container_name,
+            ],
+            allow_failure=True,
+        )
+        for line in (proc.stdout or "").splitlines():
+            if line.startswith("MSSQL_SA_PASSWORD="):
+                return line.split("=", 1)[1]
+        return None
 
     def _wait_for_ready(self) -> None:
         self.runlog.line("Waiting for Azure SQL Edge to become ready")

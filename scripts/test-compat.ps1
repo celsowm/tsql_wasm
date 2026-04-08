@@ -2,6 +2,9 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
+$credentialsPath = Join-Path $repoRoot "scripts\credentials.json"
+$credentials = Get-Content -LiteralPath $credentialsPath -Raw | ConvertFrom-Json
+$sqlPassword = $credentials.sql_server_password
 
 # ══════════════════════════════════════════════════════════════════════
 # STEP 1 — Ensure Podman + Azure SQL Edge are running
@@ -24,7 +27,7 @@ if (-not $existing) {
     Write-Host "Creating Azure SQL Edge container..." -ForegroundColor Yellow
     podman run -d --name tsql_test_sqlserver `
         -e ACCEPT_EULA=Y `
-        -e MSSQL_SA_PASSWORD=Test@12345 `
+        -e MSSQL_SA_PASSWORD=$sqlPassword `
         -p 11433:1433 `
         --memory=512m `
         mcr.microsoft.com/azure-sql-edge:latest | Out-Null

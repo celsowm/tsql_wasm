@@ -8,7 +8,15 @@ from pathlib import Path
 from typing import Optional
 
 from .capture import CaptureSession
-from .common import BackendSpec, PhaseState, RunLogger, now_tag, repo_root
+from .common import (
+    BackendSpec,
+    PhaseState,
+    RunLogger,
+    ansi_green,
+    load_sql_credentials,
+    now_tag,
+    repo_root,
+)
 from .azure import AzureSqlEdgeManager
 from .proxy import TdsProxyServer
 from .playground import PlaygroundServerManager
@@ -32,12 +40,13 @@ class Orchestrator:
         self.capture_dir = run_dir / "captures"
         self.capture_dir.mkdir(parents=True, exist_ok=True)
         self.logger = RunLogger(run_dir / "tds_proxy.log")
+        self.credentials = load_sql_credentials(root)
         self.stop_event = threading.Event()
-        self.phase = PhaseState(BackendSpec("azure", "127.0.0.1", azure_port))
+        self.phase = PhaseState(BackendSpec("azure", "localhost", azure_port))
         self.proxy = TdsProxyServer(self.logger, self.phase, proxy_host, proxy_port, self.stop_event)
         self.azure_manager = AzureSqlEdgeManager(self.logger)
         self.playground_manager = PlaygroundServerManager(self.logger, root, run_dir)
-        self.azure = BackendSpec("azure", "127.0.0.1", azure_port)
+        self.azure = BackendSpec("azure", "localhost", azure_port)
         self.playground = BackendSpec("playground", "127.0.0.1", playground_port)
         self.use_pcap = use_pcap
         self.interface_override = interface_override
@@ -50,19 +59,24 @@ class Orchestrator:
         self._register_cleanup()
         self.logger.line(f"Run directory: {self.run_dir}")
         self.logger.line(f"Log file: {self.run_dir / 'tds_proxy.log'}")
-        self.logger.line(f"Proxy endpoint: 127.0.0.1:{self.proxy.port}")
-        self.logger.line(f"Azure backend: 127.0.0.1:{self.azure.port}")
-        self.logger.line(f"Playground backend: 127.0.0.1:{self.playground.port}")
+        self.logger.line(f"Proxy endpoint: {self.proxy.host}:{self.proxy.port}")
+        self.logger.line(f"Azure backend: {self.azure.host}:{self.azure.port}")
+        self.logger.line(f"Playground backend: {self.playground.host}:{self.playground.port}")
+        self.logger.line_console(
+            f"SSMS login: {self.credentials.user} / {self.credentials.password}",
+            f"SSMS login: {self.credentials.user} / {ansi_green(self.credentials.password)}",
+        )
+        self.logger.line("Same credentials apply to both phases.")
         self.logger.blank()
         self.proxy_thread.start()
         self._phase_azure()
         self._prompt(
-            "Phase 1 is live. Connect SSMS to 127.0.0.1:1434, inspect the tree, "
+            f"Phase 1 is live. Connect SSMS to 127.0.0.1:{self.proxy.port}, inspect the tree, "
             "then press Enter to switch to the playground phase..."
         )
         self._phase_playground()
         self._prompt(
-            "Phase 2 is live. Reconnect SSMS to 127.0.0.1:1434, inspect again, "
+            f"Phase 2 is live. Reconnect SSMS to 127.0.0.1:{self.proxy.port}, inspect again, "
             "then press Enter to finish..."
         )
 
@@ -100,7 +114,7 @@ class Orchestrator:
         self.phase.set("playground", self.playground)
         self.capture = self._start_capture("playground", self.playground.port)
         self.playground_manager.build()
-        self.playground_manager.start(self.playground_tls)
+        self.playground_manager.start(self.playground_tls, self.playground.port)
         self._log_capture()
 
     def _start_capture(self, phase: str, backend_port: int) -> CaptureSession:
@@ -147,9 +161,9 @@ def parse_args() -> argparse.Namespace:
         description="Two-phase TDS proxy and capture orchestrator for SSMS",
     )
     parser.add_argument("--proxy-host", default="127.0.0.1")
-    parser.add_argument("--proxy-port", type=int, default=1434)
+    parser.add_argument("--proxy-port", type=int, default=1433)
     parser.add_argument("--azure-port", type=int, default=11433)
-    parser.add_argument("--playground-port", type=int, default=1433)
+    parser.add_argument("--playground-port", type=int, default=14330)
     parser.add_argument("--run-dir", default=None, help="Output directory for logs and pcap files")
     parser.add_argument(
         "--capture-interface",

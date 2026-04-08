@@ -48,8 +48,7 @@ class TdsProxyServer:
                 f"{addr[0]}:{addr[1]} -> {backend.host}:{backend.port}"
             )
             try:
-                server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                server.connect((backend.host, backend.port))
+                server = socket.create_connection((backend.host, backend.port), timeout=5)
             except Exception as exc:
                 self.runlog.line(
                     f"[{phase_name}] backend connect failed {backend.host}:{backend.port}: {exc}"
