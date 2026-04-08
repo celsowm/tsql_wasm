@@ -20,6 +20,12 @@ dist/
 # Node
 node_modules/
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyc.*
+
 # IDE
 .vscode/
 .idea/
