@@ -1,8 +1,8 @@
-﻿use crate::catalog::Catalog;
+use super::super::virtual_table_def;
+use super::super::VirtualTable;
+use crate::catalog::Catalog;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
-use super::super::VirtualTable;
-use super::super::virtual_table_def;
 
 pub(crate) struct SysObjects;
 
@@ -90,7 +90,9 @@ impl VirtualTable for SysObjects {
                 }
 
                 if let Some(_default_expr) = &col.default {
-                    let name = col.default_constraint_name.clone()
+                    let name = col
+                        .default_constraint_name
+                        .clone()
                         .unwrap_or_else(|| format!("DF_{}_{}", t.name, col.name));
                     rows.push(StoredRow {
                         values: vec![
@@ -154,10 +156,9 @@ impl VirtualTable for SysObjects {
         }
         for routine in catalog.get_routines() {
             let (ty, desc) = match &routine.kind {
-                crate::catalog::RoutineKind::Procedure { .. } => (
-                    "P ".to_string(),
-                    "SQL_STORED_PROCEDURE".to_string(),
-                ),
+                crate::catalog::RoutineKind::Procedure { .. } => {
+                    ("P ".to_string(), "SQL_STORED_PROCEDURE".to_string())
+                }
                 crate::catalog::RoutineKind::Function {
                     body: crate::ast::FunctionBody::InlineTable(_),
                     ..
@@ -165,10 +166,9 @@ impl VirtualTable for SysObjects {
                     "IF".to_string(),
                     "SQL_INLINE_TABLE_VALUED_FUNCTION".to_string(),
                 ),
-                crate::catalog::RoutineKind::Function { .. } => (
-                    "FN".to_string(),
-                    "SQL_SCALAR_FUNCTION".to_string(),
-                ),
+                crate::catalog::RoutineKind::Function { .. } => {
+                    ("FN".to_string(), "SQL_SCALAR_FUNCTION".to_string())
+                }
             };
             rows.push(StoredRow {
                 values: vec![
@@ -210,7 +210,11 @@ impl VirtualTable for SysObjects {
                     Value::VarChar(trigger.name.clone()),
                     Value::Int(catalog.get_schema_id(&trigger.schema).unwrap_or(1) as i32),
                     Value::Null,
-                    Value::Int(catalog.object_id(&trigger.table_schema, &trigger.table_name).unwrap_or(0)),
+                    Value::Int(
+                        catalog
+                            .object_id(&trigger.table_schema, &trigger.table_name)
+                            .unwrap_or(0),
+                    ),
                     Value::Char("TR".to_string()),
                     Value::VarChar("SQL_TRIGGER".to_string()),
                     created.clone(),

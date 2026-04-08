@@ -1,8 +1,8 @@
-﻿use crate::catalog::Catalog;
+use super::super::virtual_table_def;
+use super::super::VirtualTable;
+use crate::catalog::Catalog;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
-use super::super::VirtualTable;
-use super::super::virtual_table_def;
 
 pub(crate) struct SysHostInfo;
 
@@ -12,9 +12,17 @@ impl VirtualTable for SysHostInfo {
             "dm_os_host_info",
             vec![
                 ("host_platform", DataType::VarChar { max_len: 128 }, false),
-                ("host_distribution", DataType::VarChar { max_len: 128 }, false),
+                (
+                    "host_distribution",
+                    DataType::VarChar { max_len: 128 },
+                    false,
+                ),
                 ("host_release", DataType::VarChar { max_len: 128 }, false),
-                ("host_service_pack_level", DataType::VarChar { max_len: 128 }, false),
+                (
+                    "host_service_pack_level",
+                    DataType::VarChar { max_len: 128 },
+                    false,
+                ),
                 ("host_sku", DataType::Int, false),
                 ("os_language_version", DataType::Int, false),
             ],

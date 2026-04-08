@@ -1,10 +1,10 @@
-mod sys;
-mod info_schema_tables;
 mod info_schema_columns;
-mod info_schema_routines;
 mod info_schema_constraints;
-mod info_schema_empty;
 mod info_schema_dispatch;
+mod info_schema_empty;
+mod info_schema_routines;
+mod info_schema_tables;
+mod sys;
 pub(crate) mod system_vars;
 
 use crate::catalog::{Catalog, ColumnDef, TableDef};
@@ -21,8 +21,8 @@ pub(crate) fn resolve_virtual_table(
     name: &str,
     catalog: &dyn Catalog,
 ) -> Option<(TableDef, Vec<StoredRow>)> {
-    let vt: Option<Box<dyn VirtualTable>> = if schema.eq_ignore_ascii_case("sys") {
-        sys::lookup(name)
+    let vt: Option<Box<dyn VirtualTable>> = if let Some(vt) = sys::lookup(schema, name) {
+        Some(vt)
     } else if schema.eq_ignore_ascii_case("INFORMATION_SCHEMA") {
         info_schema_dispatch::lookup(name)
     } else {
@@ -209,9 +209,11 @@ pub(super) fn numeric_precision_radix(dt: &DataType) -> Value {
 
 pub(super) fn numeric_scale_val(dt: &DataType) -> Value {
     match dt {
-        DataType::Bit | DataType::TinyInt | DataType::SmallInt | DataType::Int | DataType::BigInt => {
-            Value::Int(0)
-        }
+        DataType::Bit
+        | DataType::TinyInt
+        | DataType::SmallInt
+        | DataType::Int
+        | DataType::BigInt => Value::Int(0),
         DataType::Decimal { scale, .. } => Value::Int(*scale as i32),
         DataType::Money | DataType::SmallMoney => Value::Int(4),
         _ => Value::Null,
@@ -230,12 +232,8 @@ pub(super) fn datetime_precision_val(dt: &DataType) -> Value {
 
 pub(super) fn charset_name(dt: &DataType) -> Value {
     match dt {
-        DataType::Char { .. } | DataType::VarChar { .. } => {
-            Value::VarChar("iso_1".to_string())
-        }
-        DataType::NChar { .. } | DataType::NVarChar { .. } => {
-            Value::VarChar("UNICODE".to_string())
-        }
+        DataType::Char { .. } | DataType::VarChar { .. } => Value::VarChar("iso_1".to_string()),
+        DataType::NChar { .. } | DataType::NVarChar { .. } => Value::VarChar("UNICODE".to_string()),
         _ => Value::Null,
     }
 }

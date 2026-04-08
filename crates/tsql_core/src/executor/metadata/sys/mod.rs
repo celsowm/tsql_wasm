@@ -1,14 +1,19 @@
-mod tables;
 mod constraints;
-mod routines;
-mod objects;
-mod indexes;
 mod host_info;
+mod indexes;
+mod objects;
+mod policy_configuration;
+mod routines;
+mod tables;
 
 use super::VirtualTable;
 
-pub(crate) fn lookup(name: &str) -> Option<Box<dyn VirtualTable>> {
-    if name.eq_ignore_ascii_case("schemas") {
+pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> {
+    if schema.eq_ignore_ascii_case("dbo") && name.eq_ignore_ascii_case("syspolicy_configuration") {
+        Some(Box::new(policy_configuration::SysPolicyConfiguration))
+    } else if !schema.eq_ignore_ascii_case("sys") {
+        None
+    } else if name.eq_ignore_ascii_case("schemas") {
         Some(Box::new(tables::SysSchemas))
     } else if name.eq_ignore_ascii_case("databases") {
         Some(Box::new(tables::SysDatabases))

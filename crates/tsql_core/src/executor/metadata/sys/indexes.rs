@@ -1,8 +1,8 @@
-﻿use crate::catalog::Catalog;
+use super::super::virtual_table_def;
+use super::super::VirtualTable;
+use crate::catalog::Catalog;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
-use super::super::VirtualTable;
-use super::super::virtual_table_def;
 
 pub(crate) struct SysIndexes;
 

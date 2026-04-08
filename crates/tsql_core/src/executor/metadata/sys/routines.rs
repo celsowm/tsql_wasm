@@ -1,8 +1,8 @@
-﻿use crate::catalog::Catalog;
+use super::super::virtual_table_def;
+use super::super::VirtualTable;
+use crate::catalog::Catalog;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
-use super::super::VirtualTable;
-use super::super::virtual_table_def;
 
 pub(crate) struct SysRoutines;
 
@@ -31,9 +31,10 @@ impl VirtualTable for SysRoutines {
                 crate::catalog::RoutineKind::Function {
                     body: crate::ast::FunctionBody::InlineTable(_),
                     ..
-                } => {
-                    ("IF".to_string(), "SQL_INLINE_TABLE_VALUED_FUNCTION".to_string())
-                }
+                } => (
+                    "IF".to_string(),
+                    "SQL_INLINE_TABLE_VALUED_FUNCTION".to_string(),
+                ),
                 crate::catalog::RoutineKind::Function { .. } => {
                     ("FN".to_string(), "SQL_SCALAR_FUNCTION".to_string())
                 }

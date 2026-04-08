@@ -108,7 +108,10 @@ fn test_sql_server_handshake_probe_functions() {
     assert!(matches!(r.rows[0][5], Value::Int(_)));
     assert_eq!(r.rows[0][6], Value::NVarChar("TCP".to_string()));
 
-    let r = query(&mut engine, "SELECT host_platform, host_sku FROM sys.dm_os_host_info");
+    let r = query(
+        &mut engine,
+        "SELECT host_platform, host_sku FROM sys.dm_os_host_info",
+    );
     assert_eq!(r.rows.len(), 1);
     assert_eq!(r.rows[0][0], Value::VarChar("Windows".to_string()));
     assert_eq!(r.rows[0][1], Value::Int(7));
@@ -178,9 +181,10 @@ fn test_exec_return_variable_captures_user_procedure_return_code() {
         &mut engine,
         "CREATE PROCEDURE dbo.return_seven AS BEGIN RETURN 7 END",
     );
-    let batch =
-        tsql_core::parse_batch("DECLARE @rc INT = 0; EXEC @rc = dbo.return_seven; SELECT @rc AS rc")
-            .expect("parse batch failed");
+    let batch = tsql_core::parse_batch(
+        "DECLARE @rc INT = 0; EXEC @rc = dbo.return_seven; SELECT @rc AS rc",
+    )
+    .expect("parse batch failed");
     let r = engine
         .execute_batch(batch)
         .expect("execute batch failed")
@@ -211,6 +215,22 @@ fn test_sys_configurations_object_explorer_probe() {
     );
     assert_eq!(r.rows.len(), 1);
     assert_eq!(r.rows[0][0], Value::Int(0));
+}
+
+#[test]
+fn test_syspolicy_configuration_object_explorer_probe() {
+    let mut engine = Engine::new();
+    let r = query(
+        &mut engine,
+        "SELECT \
+            CAST((SELECT current_value FROM msdb.dbo.syspolicy_configuration WHERE name = 'Enabled') AS bit) AS Enabled, \
+            CAST((SELECT current_value FROM msdb.dbo.syspolicy_configuration WHERE name = 'HistoryRetentionInDays') AS int) AS HistoryRetentionInDays, \
+            CAST((SELECT current_value FROM msdb.dbo.syspolicy_configuration WHERE name = 'LogOnSuccess') AS bit) AS LogOnSuccess",
+    );
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0][0], Value::Bit(true));
+    assert_eq!(r.rows[0][1], Value::Int(90));
+    assert_eq!(r.rows[0][2], Value::Bit(false));
 }
 
 #[test]

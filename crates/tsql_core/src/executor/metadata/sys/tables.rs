@@ -1,8 +1,8 @@
+use super::super::VirtualTable;
+use super::super::{builtin_types_rows, system_type_id, type_max_length, virtual_table_def};
 use crate::catalog::Catalog;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
-use super::super::VirtualTable;
-use super::super::{builtin_types_rows, virtual_table_def, system_type_id, type_max_length};
 
 pub(crate) struct SysSchemas;
 pub(crate) struct SysDatabases;
@@ -89,7 +89,11 @@ impl VirtualTable for SysDatabases {
                 ("user_access_desc", DataType::VarChar { max_len: 60 }, false),
                 ("is_read_only", DataType::Bit, false),
                 ("recovery_model", DataType::TinyInt, false),
-                ("recovery_model_desc", DataType::VarChar { max_len: 60 }, false),
+                (
+                    "recovery_model_desc",
+                    DataType::VarChar { max_len: 60 },
+                    false,
+                ),
                 ("is_auto_close_on", DataType::Bit, false),
                 ("is_auto_shrink_on", DataType::Bit, false),
                 ("is_in_standby", DataType::Bit, false),
@@ -333,14 +337,21 @@ impl VirtualTable for SysServerPrincipals {
                 ("is_disabled", DataType::Bit, false),
                 ("create_date", DataType::DateTime, false),
                 ("modify_date", DataType::DateTime, false),
-                ("default_database_name", DataType::VarChar { max_len: 128 }, true),
+                (
+                    "default_database_name",
+                    DataType::VarChar { max_len: 128 },
+                    true,
+                ),
             ],
         )
     }
 
     fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
         let created = Value::DateTime(
-            chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap().and_hms_opt(0, 0, 0).unwrap()
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap(),
         );
         vec![StoredRow {
             values: vec![
