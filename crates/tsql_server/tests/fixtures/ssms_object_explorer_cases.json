@@ -192,17 +192,18 @@
     {
       "name": "tables_list_from_sys_tables",
       "scope": "tables",
-      "sql": "SELECT s.name AS schema_name, t.name AS table_name, t.object_id, t.type_desc, t.is_ms_shipped FROM sys.tables t INNER JOIN sys.schemas s ON s.schema_id = t.schema_id WHERE t.is_ms_shipped = 0 ORDER BY s.name, t.name",
+      "sql": "SELECT tbl.name AS [Name], SCHEMA_NAME(tbl.schema_id) AS [Schema], 'Server[@Name=' + quotename(CAST(serverproperty(N'Servername') AS sysname),'''') + ']' + '/Database[@Name=' + quotename(db_name(),'''') + ']' + '/Table[@Name=' + quotename(tbl.name,'''') + ' and @Schema=' + quotename(SCHEMA_NAME(tbl.schema_id),'''') + ']' AS [Urn], tbl.create_date AS [CreateDate], CAST(tbl.is_memory_optimized AS bit) AS [IsMemoryOptimized], CAST(CASE idx.type WHEN 5 THEN 1 ELSE 0 END AS bit) AS [HasClusteredColumnStoreIndex] FROM sys.tables AS tbl LEFT JOIN sys.indexes AS idx ON idx.object_id = tbl.object_id AND idx.type = 5 WHERE tbl.is_ms_shipped = 0 ORDER BY [Schema], [Name]",
       "must_succeed": true,
       "result_set_count": 1,
       "result_sets": [
         {
           "required_columns": [
-            "schema_name",
-            "table_name",
-            "object_id",
-            "type_desc",
-            "is_ms_shipped"
+            "Name",
+            "Schema",
+            "Urn",
+            "CreateDate",
+            "IsMemoryOptimized",
+            "HasClusteredColumnStoreIndex"
           ],
           "min_rows": 6
         }

@@ -22,8 +22,12 @@ fn test_sys_schemas_and_tables() {
     let schemas = query(&mut e, "SELECT name FROM sys.schemas WHERE name = 'app'");
     assert_eq!(schemas.rows.len(), 1);
 
-    let tables = query(&mut e, "SELECT name FROM sys.tables WHERE name = 'users'");
+    let tables = query(
+        &mut e,
+        "SELECT name, is_memory_optimized FROM sys.tables WHERE name = 'users'",
+    );
     assert_eq!(tables.rows.len(), 1);
+    assert_eq!(tables.rows[0][1].to_string_value(), "0");
 }
 
 #[test]

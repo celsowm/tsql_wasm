@@ -101,8 +101,8 @@ fn assert_seeded_table_presence(case: &ContractCase, result_sets: &[tsql_core::Q
     let table_name_idx = result
         .columns
         .iter()
-        .position(|c| c.eq_ignore_ascii_case("table_name"))
-        .unwrap_or_else(|| panic!("case '{}' missing table_name column", case.name));
+        .position(|c| c.eq_ignore_ascii_case("table_name") || c.eq_ignore_ascii_case("name"))
+        .unwrap_or_else(|| panic!("case '{}' missing table name column", case.name));
 
     let table_names: HashSet<String> = result
         .rows

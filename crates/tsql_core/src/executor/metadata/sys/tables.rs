@@ -237,6 +237,7 @@ impl VirtualTable for SysTables {
                 ("type_desc", DataType::VarChar { max_len: 60 }, false),
                 ("create_date", DataType::DateTime, false),
                 ("modify_date", DataType::DateTime, false),
+                ("is_memory_optimized", DataType::Bit, false),
                 ("is_ms_shipped", DataType::Bit, false),
             ],
         )
@@ -262,6 +263,7 @@ impl VirtualTable for SysTables {
                     Value::VarChar("USER_TABLE".to_string()),
                     created.clone(),
                     created.clone(),
+                    Value::Bit(false),
                     Value::Bit(false),
                 ],
                 deleted: false,
