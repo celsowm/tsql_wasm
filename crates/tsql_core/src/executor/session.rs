@@ -1,4 +1,4 @@
-﻿use std::collections::HashMap;
+use std::collections::HashMap;
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -124,6 +124,7 @@ pub struct SessionRuntime<C, S> {
     pub(crate) workspace: Option<TxWorkspace<C, S>>,
     pub(crate) options: SessionOptions,
     pub(crate) random_state: u64,
+    pub(crate) current_database: String,
     pub(crate) original_database: String,
     pub(crate) user: Option<String>,
     pub(crate) app_name: Option<String>,
@@ -148,6 +149,7 @@ where
             workspace: None,
             options: SessionOptions::default(),
             random_state: 1,
+            current_database: "master".to_string(),
             original_database: "master".to_string(),
             user: None,
             app_name: None,
@@ -165,6 +167,8 @@ where
         self.workspace = None;
         self.options = SessionOptions::default();
         self.random_state = 1;
+        self.current_database = "master".to_string();
+        self.original_database = "master".to_string();
         self.user = None;
         self.app_name = None;
         self.host_name = None;
@@ -216,7 +220,9 @@ where
             sessions: dashmap::DashMap::new(),
             deadlock_priorities: dashmap::DashMap::new(),
             next_session_id: std::sync::atomic::AtomicU64::new(1),
-            dirty_buffer: std::sync::Arc::new(parking_lot::Mutex::new(super::dirty_buffer::DirtyBuffer::new())),
+            dirty_buffer: std::sync::Arc::new(parking_lot::Mutex::new(
+                super::dirty_buffer::DirtyBuffer::new(),
+            )),
         }
     }
 }

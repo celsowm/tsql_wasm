@@ -104,6 +104,7 @@ where
         user: Option<String>,
         app_name: Option<String>,
         host_name: Option<String>,
+        database: Option<String>,
     ) -> Result<(), DbError> {
         let session_mutex = self
             .state
@@ -114,6 +115,21 @@ where
         session.user = user;
         session.app_name = app_name;
         session.host_name = host_name;
+        if let Some(database) = database {
+            session.current_database = database.clone();
+            session.original_database = database;
+        }
+        Ok(())
+    }
+
+    fn set_session_database(&self, session_id: SessionId, database: String) -> Result<(), DbError> {
+        let session_mutex = self
+            .state
+            .sessions
+            .get(&session_id)
+            .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
+        let mut session = session_mutex.lock();
+        session.current_database = database;
         Ok(())
     }
 }
@@ -174,7 +190,14 @@ where
         ctx.session.identity_insert = options.identity_insert.clone();
         if is_transaction_statement(&stmt) {
             match transaction_exec::execute_transaction_statement(
-                state, session_id, tx_manager, journal.as_mut(), workspace, ctx, options, stmt,
+                state,
+                session_id,
+                tx_manager,
+                journal.as_mut(),
+                workspace,
+                ctx,
+                options,
+                stmt,
             ) {
                 Ok(r) => on_result(r),
                 Err(e) => {

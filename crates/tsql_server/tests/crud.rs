@@ -1,5 +1,4 @@
-mod common;
-use common::*;
+use tsql_server_test_support::*;
 
 #[tokio::test]
 async fn test_create_table_and_insert() {

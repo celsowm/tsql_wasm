@@ -1,12 +1,12 @@
+use once_cell::sync::Lazy;
+use regex::Regex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
-use once_cell::sync::Lazy;
-use regex::Regex;
 
-use tsql_core::{Database, SessionId, StatementExecutor};
 use tsql_core::types::{DataType, Value};
+use tsql_core::{Database, SessionId, StatementExecutor};
 
 use super::pool::{CheckoutError, SessionPool};
 use super::tds::batch::{build_error_response, parse_sql_batch};
@@ -57,7 +57,10 @@ impl TdsSession {
         let mut needs_tls_upgrade = false;
         let mut login_packet = None;
 
-        log::info!("[conn={}] Starting handshake for incoming connection", self.connection_id);
+        log::info!(
+            "[conn={}] Starting handshake for incoming connection",
+            self.connection_id
+        );
         loop {
             let (header, data) = packet::read_message(&mut stream)
                 .await
@@ -65,7 +68,11 @@ impl TdsSession {
             log_packet(self.connection_id, "handshake", &header, &data);
 
             if header.packet_type == TDS7_PRELOGIN {
-                log::debug!("[conn={}] PRELOGIN data hex: {:02X?}", self.connection_id, data);
+                log::debug!(
+                    "[conn={}] PRELOGIN data hex: {:02X?}",
+                    self.connection_id,
+                    data
+                );
                 let prelogin = parse_prelogin(&data).map_err(|e| e.to_string())?;
                 log::debug!(
                     "[conn={}] PRELOGIN: version={:?}, encryption={}",
@@ -217,9 +224,16 @@ impl TdsSession {
                     .map_err(|e| e.to_string())?;
                 return Ok(());
             }
-            log::info!("[conn={}] Login accepted for user={}", self.connection_id, login.username);
+            log::info!(
+                "[conn={}] Login accepted for user={}",
+                self.connection_id,
+                login.username
+            );
         } else {
-            log::info!("[conn={}] Login accepted with authentication disabled", self.connection_id);
+            log::info!(
+                "[conn={}] Login accepted with authentication disabled",
+                self.connection_id
+            );
         }
 
         if login.packet_size > 0 {
@@ -247,8 +261,13 @@ impl TdsSession {
             Some(login.username.clone()),
             Some(login.app_name.clone()),
             Some(login.hostname.clone()),
+            Some(self.database.clone()),
         ) {
-            log::error!("[conn={}] Failed to set session metadata: {}", self.connection_id, e);
+            log::error!(
+                "[conn={}] Failed to set session metadata: {}",
+                self.connection_id,
+                e
+            );
         }
 
         // Build LOGINACK response
@@ -446,6 +465,17 @@ impl TdsSession {
                 .trim_matches(']');
             let old_db = self.database.clone();
             self.database = db_name.to_string();
+            if let Err(e) = self
+                .db
+                .executor()
+                .set_session_database(session_id, self.database.clone())
+            {
+                log::error!(
+                    "[conn={}] Failed to update session database context: {}",
+                    self.connection_id,
+                    e
+                );
+            }
 
             let mut b = PacketBuilder::new();
             tokens::write_envchange_database(&mut b, &self.database, &old_db);

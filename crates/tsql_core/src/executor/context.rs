@@ -77,7 +77,10 @@ pub struct WindowContext {
 
 impl WindowContext {
     pub fn get(&self, key: &str) -> Option<Value> {
-        self.results.get(key).and_then(|vals| vals.get(self.row_idx)).cloned()
+        self.results
+            .get(key)
+            .and_then(|vals| vals.get(self.row_idx))
+            .cloned()
     }
 }
 
@@ -328,9 +331,7 @@ impl RowContext {
     }
 
     pub fn get_window_value(&self, key: &str) -> Option<Value> {
-        self.window_context
-            .as_ref()
-            .and_then(|wc| wc.get(key))
+        self.window_context.as_ref().and_then(|wc| wc.get(key))
     }
 }
 
@@ -386,7 +387,7 @@ impl<'a> ExecutionContext<'a> {
             },
             metadata: SessionMetadata {
                 id: session_id,
-                database: Some(session.original_database.clone()),
+                database: Some(session.current_database.clone()),
                 original_database: session.original_database.clone(),
                 user: session.user.clone(),
                 app_name: session.app_name.clone(),

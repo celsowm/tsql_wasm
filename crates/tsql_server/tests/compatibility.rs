@@ -1,7 +1,6 @@
-mod common;
-
-use common::*;
-use tiberius::{Row};
+use tiberius::Row;
+use tsql_server::ServerConfig;
+use tsql_server_test_support::*;
 
 #[tokio::test]
 async fn test_sysdac_probe_returns_int() {
@@ -15,9 +14,15 @@ async fn test_sysdac_probe_returns_int() {
         )
         .await
         .expect("Query failed");
-    let rows: Vec<Row> = stream.into_first_result().await.expect("Failed to read result");
+    let rows: Vec<Row> = stream
+        .into_first_result()
+        .await
+        .expect("Failed to read result");
     assert_eq!(rows.len(), 1);
-    let flag: i32 = rows[0].try_get(0).expect("int conversion failed").expect("missing value");
+    let flag: i32 = rows[0]
+        .try_get(0)
+        .expect("int conversion failed")
+        .expect("missing value");
     assert_eq!(flag, 0);
 }
 
@@ -30,7 +35,10 @@ async fn test_cast_null_as_int_metadata() {
         .query("SELECT CAST(NULL AS int) AS v", &[])
         .await
         .expect("Query failed");
-    let rows: Vec<Row> = stream.into_first_result().await.expect("Failed to read result");
+    let rows: Vec<Row> = stream
+        .into_first_result()
+        .await
+        .expect("Failed to read result");
     assert_eq!(rows.len(), 1);
     let value: Option<i32> = rows[0]
         .try_get(0)
@@ -65,7 +73,10 @@ async fn test_object_explorer_server_probe_shape() {
         )
         .await
         .expect("Query failed");
-    let rows: Vec<Row> = stream.into_first_result().await.expect("Failed to read result");
+    let rows: Vec<Row> = stream
+        .into_first_result()
+        .await
+        .expect("Failed to read result");
     assert_eq!(rows.len(), 1);
 
     let is_single_user: Option<bool> = rows[0].try_get(8).unwrap();
@@ -86,10 +97,50 @@ async fn test_object_explorer_database_list_probe() {
         )
         .await
         .expect("Query failed");
-    let rows: Vec<Row> = stream.into_first_result().await.expect("Failed to read result");
+    let rows: Vec<Row> = stream
+        .into_first_result()
+        .await
+        .expect("Failed to read result");
     assert_eq!(rows.len(), 1);
     let name: &str = rows[0].try_get(0).unwrap().unwrap();
     assert_eq!(name, "master");
+}
+
+#[tokio::test]
+async fn test_database_context_tracks_login_database() {
+    let port = start_server_with_config(ServerConfig {
+        host: "127.0.0.1".to_string(),
+        port: 0,
+        auth: None,
+        database: "msdb".to_string(),
+        packet_size: 4096,
+        tls_enabled: false,
+        tls_cert_path: None,
+        tls_key_path: None,
+        pool_min_size: 1,
+        pool_max_size: 50,
+        pool_idle_timeout_secs: 300,
+    })
+    .await;
+    let mut client = connect(port).await;
+
+    let stream = client
+        .query(
+            "SELECT DB_NAME() AS current_db, ORIGINAL_DB_NAME() AS original_db",
+            &[],
+        )
+        .await
+        .expect("Query failed");
+    let rows: Vec<Row> = stream
+        .into_first_result()
+        .await
+        .expect("Failed to read result");
+    assert_eq!(rows.len(), 1);
+
+    let current_db: &str = rows[0].try_get(0).unwrap().unwrap();
+    let original_db: &str = rows[0].try_get(1).unwrap().unwrap();
+    assert_eq!(current_db, "msdb");
+    assert_eq!(original_db, "msdb");
 }
 
 #[tokio::test]
@@ -104,7 +155,10 @@ async fn test_object_explorer_srvrolemember_probe() {
         )
         .await
         .expect("Query failed");
-    let rows: Vec<Row> = stream.into_first_result().await.expect("Failed to read result");
+    let rows: Vec<Row> = stream
+        .into_first_result()
+        .await
+        .expect("Failed to read result");
     assert_eq!(rows.len(), 1);
     let roles_mask: i32 = rows[0].try_get(0).unwrap().unwrap();
     assert_eq!(roles_mask, 1);

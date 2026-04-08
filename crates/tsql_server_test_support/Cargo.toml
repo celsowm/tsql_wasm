@@ -1,0 +1,13 @@
+[package]
+name = "tsql_server_test_support"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tsql_server = { path = "../tsql_server" }
+tiberius = { version = "0.11", default-features = false, features = ["tokio", "tds73", "chrono", "rustls"] }
+tokio = { version = "1", features = ["net"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+log = "0.4"
+env_logger = "0.11"
+

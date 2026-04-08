@@ -1,9 +1,8 @@
-mod common;
-use common::*;
 use tiberius::{Client, Config};
 use tokio::net::TcpStream;
 use tokio_util::compat::TokioAsyncWriteCompatExt;
-use tsql_server::{ServerConfig, TdsServer, Credentials};
+use tsql_server::{Credentials, ServerConfig, TdsServer};
+use tsql_server_test_support::*;
 
 #[tokio::test]
 async fn test_auth_reject() {

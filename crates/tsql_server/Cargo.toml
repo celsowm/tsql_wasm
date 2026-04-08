@@ -19,6 +19,7 @@ regex = "1"
 once_cell = "1"
 
 [dev-dependencies]
+tsql_server_test_support = { path = "../tsql_server_test_support" }
 tiberius = { version = "0.11", default-features = false, features = ["tokio", "tds73", "chrono", "rustls"] }
 tokio-util = { version = "0.7", features = ["compat"] }
 chrono = "0.4"

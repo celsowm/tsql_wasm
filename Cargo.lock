@@ -1455,6 +1455,19 @@ dependencies = [
  "tokio-rustls 0.26.4",
  "tokio-util",
  "tsql_core",
+ "tsql_server_test_support",
+]
+
+[[package]]
+name = "tsql_server_test_support"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "log",
+ "tiberius 0.11.8",
+ "tokio",
+ "tokio-util",
+ "tsql_server",
 ]
 
 [[package]]

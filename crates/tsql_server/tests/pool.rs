@@ -1,10 +1,9 @@
-mod common;
-use common::*;
-use tsql_server::ServerConfig;
+use tiberius::Client;
 use tiberius::Config;
 use tokio::net::TcpStream;
 use tokio_util::compat::TokioAsyncWriteCompatExt;
-use tiberius::Client;
+use tsql_server::ServerConfig;
+use tsql_server_test_support::*;
 
 #[tokio::test]
 async fn test_session_pool_reuse_resets_session_state() {

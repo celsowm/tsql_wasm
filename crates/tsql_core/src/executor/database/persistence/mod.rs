@@ -306,9 +306,14 @@ where
         user: Option<String>,
         app_name: Option<String>,
         host_name: Option<String>,
+        database: Option<String>,
     ) -> Result<(), DbError> {
         self.executor()
-            .set_session_metadata(session_id, user, app_name, host_name)
+            .set_session_metadata(session_id, user, app_name, host_name, database)
+    }
+
+    fn set_session_database(&self, session_id: SessionId, database: String) -> Result<(), DbError> {
+        self.executor().set_session_database(session_id, database)
     }
 }
 

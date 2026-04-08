@@ -1,12 +1,11 @@
-mod common;
-use common::*;
 use tsql_server::playground;
 use tsql_server::ServerConfig;
 use tsql_server::TdsServer;
+use tsql_server_test_support::*;
 
 #[tokio::test]
 async fn test_playground_tables() {
-    let _ = env_logger::builder().is_test(true).try_init();
+    init_test_logger();
 
     let config = ServerConfig {
         host: "127.0.0.1".to_string(),
