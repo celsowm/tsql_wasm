@@ -604,7 +604,11 @@ pub fn is_stop_keyword(k: &str) -> bool {
         Keyword::Union | Keyword::Intersect | Keyword::Except | Keyword::Cross |
         Keyword::Apply | Keyword::Outer | Keyword::Inner | Keyword::Left |
         Keyword::Right | Keyword::Full | Keyword::Pivot | Keyword::Unpivot |
-        Keyword::Output | Keyword::With | Keyword::By | Keyword::Asc | Keyword::Desc
+        Keyword::Output | Keyword::With | Keyword::By | Keyword::Asc | Keyword::Desc |
+        Keyword::Create | Keyword::Alter | Keyword::Drop | Keyword::Truncate |
+        Keyword::Begin | Keyword::Commit | Keyword::Rollback |
+        Keyword::While | Keyword::Return | Keyword::Fetch | Keyword::Close | Keyword::Deallocate | Keyword::Open | Keyword::Save |
+        Keyword::Try | Keyword::Catch | Keyword::RaiseError
     )).unwrap_or(false)
 }
 

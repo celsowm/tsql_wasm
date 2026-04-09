@@ -169,7 +169,7 @@ impl<'a> RpcFrameParser<'a> {
         let type_id = self.reader.read_u8()?;
 
         match type_id {
-            0xE7 => {
+            0xE7 | 0xA7 => {
                 if self.reader.remaining() < 9 {
                     return Ok(None);
                 }
@@ -183,7 +183,28 @@ impl<'a> RpcFrameParser<'a> {
                     return Ok(None);
                 }
                 let bytes = self.reader.read_bytes(actual_len)?;
-                Ok(Some(decode::decode_utf16le(bytes)))
+                if type_id == 0xE7 {
+                    Ok(Some(decode::decode_utf16le(bytes)))
+                } else {
+                    Ok(Some(String::from_utf8_lossy(bytes).to_string()))
+                }
+            }
+            0x63 | 0x23 => { // NTEXT or TEXT
+                if self.reader.remaining() < 13 {
+                    return Ok(None);
+                }
+                let _max_len = self.reader.read_u32_le()?;
+                self.reader.skip(5)?;
+                let actual_len = self.reader.read_u32_le()? as usize;
+                if self.reader.remaining() < actual_len {
+                    return Ok(None);
+                }
+                let bytes = self.reader.read_bytes(actual_len)?;
+                if type_id == 0x63 {
+                    Ok(Some(decode::decode_utf16le(bytes)))
+                } else {
+                    Ok(Some(String::from_utf8_lossy(bytes).to_string()))
+                }
             }
             0xF1 => {
                 if self.reader.remaining() < 8 {

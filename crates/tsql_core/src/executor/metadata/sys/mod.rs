@@ -37,6 +37,8 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(indexes::SysIndexes))
     } else if name.eq_ignore_ascii_case("objects") {
         Some(Box::new(objects::SysObjects))
+    } else if name.eq_ignore_ascii_case("system_views") {
+        Some(Box::new(objects::SysSystemViews))
     } else if name.eq_ignore_ascii_case("dm_os_host_info") {
         Some(Box::new(host_info::SysHostInfo))
     } else if name.eq_ignore_ascii_case("check_constraints") {

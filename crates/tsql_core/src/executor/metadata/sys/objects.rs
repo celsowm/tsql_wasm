@@ -5,6 +5,7 @@ use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
 pub(crate) struct SysObjects;
+pub(crate) struct SysSystemViews;
 
 impl VirtualTable for SysObjects {
     fn definition(&self) -> crate::catalog::TableDef {
@@ -242,5 +243,32 @@ impl VirtualTable for SysObjects {
             });
         }
         rows
+    }
+}
+
+impl VirtualTable for SysSystemViews {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "system_views",
+            vec![
+                ("name", DataType::VarChar { max_len: 128 }, false),
+                ("object_id", DataType::Int, false),
+                ("principal_id", DataType::Int, true),
+                ("schema_id", DataType::Int, false),
+                ("parent_object_id", DataType::Int, false),
+                ("type", DataType::Char { len: 2 }, true),
+                ("type_desc", DataType::VarChar { max_len: 60 }, true),
+                ("create_date", DataType::DateTime, false),
+                ("modify_date", DataType::DateTime, false),
+                ("is_ms_shipped", DataType::Bit, false),
+                ("is_published", DataType::Bit, false),
+                ("is_schema_published", DataType::Bit, false),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+        // Return empty for now so SSMS doesn't crash on extended_properties check
+        Vec::new()
     }
 }

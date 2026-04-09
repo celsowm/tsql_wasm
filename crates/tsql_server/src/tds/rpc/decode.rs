@@ -93,6 +93,36 @@ pub(super) fn read_typed_value(r: &mut PacketReader, type_id: u8) -> io::Result<
             };
             Ok(scalar(ty, format!("'{}'", s.replace('\'', "''"))))
         }
+        // NTEXTTYPE
+        0x63 => {
+            if r.remaining() < 13 {
+                return Ok(scalar("NTEXT".into(), "NULL".into()));
+            }
+            let _max_len = r.read_u32_le()?;
+            r.skip(5)?;
+            let actual_len = r.read_u32_le()? as usize;
+            if r.remaining() < actual_len {
+                return Ok(scalar("NTEXT".into(), "NULL".into()));
+            }
+            let bytes = r.read_bytes(actual_len)?;
+            let s = decode_utf16le(bytes);
+            Ok(scalar("NTEXT".into(), format!("N'{}'", s.replace('\'', "''"))))
+        }
+        // TEXTTYPE
+        0x23 => {
+            if r.remaining() < 13 {
+                return Ok(scalar("TEXT".into(), "NULL".into()));
+            }
+            let _max_len = r.read_u32_le()?;
+            r.skip(5)?;
+            let actual_len = r.read_u32_le()? as usize;
+            if r.remaining() < actual_len {
+                return Ok(scalar("TEXT".into(), "NULL".into()));
+            }
+            let bytes = r.read_bytes(actual_len)?;
+            let s = String::from_utf8_lossy(bytes).to_string();
+            Ok(scalar("TEXT".into(), format!("'{}'", s.replace('\'', "''"))))
+        }
         // DECIMALNTYPE / NUMERICNTYPE
         0x6A | 0x6C => {
             let _max_len = r.read_u8()?;
