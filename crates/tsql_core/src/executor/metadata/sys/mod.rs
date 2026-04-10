@@ -1,4 +1,5 @@
 mod constraints;
+mod hadr;
 mod host_info;
 mod indexes;
 mod objects;
@@ -53,6 +54,14 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(constraints::SysDefaultConstraints))
     } else if name.eq_ignore_ascii_case("server_principals") {
         Some(Box::new(tables::SysServerPrincipals))
+    } else if name.eq_ignore_ascii_case("availability_replicas") {
+        Some(Box::new(hadr::SysAvailabilityReplicas))
+    } else if name.eq_ignore_ascii_case("availability_groups") {
+        Some(Box::new(hadr::SysAvailabilityGroups))
+    } else if name.eq_ignore_ascii_case("dm_hadr_database_replica_states") {
+        Some(Box::new(hadr::SysDmHadrDatabaseReplicaStates))
+    } else if name.eq_ignore_ascii_case("database_mirroring") {
+        Some(Box::new(hadr::SysDatabaseMirroring))
     } else {
         None
     }

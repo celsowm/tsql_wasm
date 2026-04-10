@@ -4,6 +4,7 @@ import argparse
 import atexit
 import signal
 import threading
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -55,7 +56,7 @@ class Orchestrator:
         self.proxy_thread = threading.Thread(target=self.proxy.start, daemon=True, name="tds-proxy")
         self.cleaned = False
 
-    def run(self) -> None:
+    def run(self, interactive: bool = True, skip_azure: bool = False) -> None:
         self._register_cleanup()
         self.logger.line(f"Run directory: {self.run_dir}")
         self.logger.line(f"Log file: {self.run_dir / 'tds_proxy.log'}")
@@ -69,16 +70,32 @@ class Orchestrator:
         self.logger.line("Same credentials apply to both phases.")
         self.logger.blank()
         self.proxy_thread.start()
-        self._phase_azure()
-        self._prompt(
-            f"Phase 1 is live. Connect SSMS to 127.0.0.1:{self.proxy.port}, inspect the tree, "
-            "then press Enter to switch to the playground phase..."
-        )
+        
+        if not skip_azure:
+            self._phase_azure()
+            if interactive:
+                self._prompt(
+                    f"Phase 1 is live. Connect SSMS to 127.0.0.1:{self.proxy.port}, inspect the tree, "
+                    "then press Enter to switch to the playground phase..."
+                )
+            else:
+                self.logger.line("Running in non-interactive mode. Phase 1 is live.")
+                self.logger.line("Phase 1 is live for 20 seconds, then switching to Phase 2...")
+                time.sleep(20)
+        else:
+            self.logger.line("Skipping Phase 1 (Azure).")
+        
         self._phase_playground()
-        self._prompt(
-            f"Phase 2 is live. Reconnect SSMS to 127.0.0.1:{self.proxy.port}, inspect again, "
-            "then press Enter to finish..."
-        )
+        if interactive:
+            self._prompt(
+                f"Phase 2 is live. Reconnect SSMS to 127.0.0.1:{self.proxy.port}, inspect again, "
+                "then press Enter to finish..."
+            )
+        else:
+            self.logger.line("Phase 2 is live. Press Ctrl+C to stop.")
+            # Keep running until interrupted
+            while not self.stop_event.is_set():
+                time.sleep(1)
 
     def cleanup(self) -> None:
         if self.cleaned:
@@ -116,6 +133,9 @@ class Orchestrator:
         self.playground_manager.build()
         self.playground_manager.start(self.playground_tls, self.playground.port)
         self._log_capture()
+        self.logger.line(
+            f"PHASE2_READY playground is ready on {self.playground.host}:{self.playground.port}"
+        )
 
     def _start_capture(self, phase: str, backend_port: int) -> CaptureSession:
         capture = CaptureSession(
@@ -180,6 +200,16 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Start the playground without TLS.",
     )
+    parser.add_argument(
+        "--no-interactive",
+        action="store_true",
+        help="Run without prompting for input.",
+    )
+    parser.add_argument(
+        "--skip-azure",
+        action="store_true",
+        help="Skip Phase 1 and go straight to Phase 2.",
+    )
     return parser.parse_args()
 
 
@@ -202,7 +232,7 @@ def run_from_args(args: argparse.Namespace) -> int:
     )
 
     try:
-        orchestrator.run()
+        orchestrator.run(interactive=not args.no_interactive, skip_azure=args.skip_azure)
     except KeyboardInterrupt:
         orchestrator.logger.line("Interrupted by user")
         orchestrator.cleanup()
