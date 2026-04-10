@@ -62,6 +62,8 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(hadr::SysDmHadrDatabaseReplicaStates))
     } else if name.eq_ignore_ascii_case("database_mirroring") {
         Some(Box::new(hadr::SysDatabaseMirroring))
+    } else if name.eq_ignore_ascii_case("master_files") {
+        Some(Box::new(hadr::SysMasterFiles))
     } else {
         None
     }

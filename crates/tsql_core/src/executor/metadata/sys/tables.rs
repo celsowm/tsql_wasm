@@ -264,6 +264,9 @@ impl VirtualTable for SysTables {
                 ("is_node", DataType::Bit, false),
                 ("is_edge", DataType::Bit, false),
                 ("ledger_type", DataType::Int, true),
+                ("durability", DataType::TinyInt, false),
+                ("durability_desc", DataType::VarChar { max_len: 60 }, false),
+                ("history_table_id", DataType::Int, true),
             ],
         )
     }
@@ -296,6 +299,9 @@ impl VirtualTable for SysTables {
                     Value::Bit(false),
                     Value::Bit(false),
                     Value::Int(0),
+                    Value::TinyInt(0),                         // durability (SCHEMA_AND_DATA)
+                    Value::VarChar("SCHEMA_AND_DATA".to_string()), // durability_desc
+                    Value::Null,                               // history_table_id
                 ],
                 deleted: false,
             })
