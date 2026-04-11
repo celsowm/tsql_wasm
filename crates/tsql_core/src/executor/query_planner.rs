@@ -1,7 +1,7 @@
 ﻿use std::cmp::Ordering;
 use std::collections::HashSet;
 
-use crate::ast::{BinaryOp, Expr, JoinType, OrderByExpr, SelectStmt, TableRef};
+use crate::ast::{BinaryOp, Expr, OrderByExpr, SelectStmt, TableRef};
 use crate::catalog::Catalog;
 use crate::error::DbError;
 use crate::types::Value;
@@ -12,177 +12,25 @@ use super::string_norm::normalize_identifier;
 use super::evaluator::eval_expr;
 use super::metadata::resolve_virtual_table;
 use super::model::{BoundTable, JoinedRow};
-use super::planner::{LogicalPlan, PhysicalJoin, PhysicalPlan, PhysicalScan, ScanStrategy};
+use super::planner::{LogicalPlan, PhysicalPlan, PhysicalScan, ScanStrategy};
 use super::value_ops::compare_values;
 
-pub fn build_logical_plan(stmt: &SelectStmt) -> Result<LogicalPlan, DbError> {
-    let Some(from) = &stmt.from else {
-        return Err(DbError::Execution("planner requires FROM source".into()));
-    };
-    
-    let mut plan = LogicalPlan::Scan {
-        table: from.clone(),
-    };
-
-    if let Some(pivot) = &from.pivot {
-        plan = LogicalPlan::Pivot {
-            input: Box::new(plan),
-            spec: *pivot.clone(),
-            alias: from.alias.clone().unwrap_or_else(|| "pivoted".to_string()),
-        };
-    }
-
-    if let Some(unpivot) = &from.unpivot {
-        plan = LogicalPlan::Unpivot {
-            input: Box::new(plan),
-            spec: *unpivot.clone(),
-            alias: from.alias.clone().unwrap_or_else(|| "unpivoted".to_string()),
-        };
-    }
-
-    for join in &stmt.joins {
-        // Note: Joining with a pivoted table is slightly different than LogicalPlan::Join currently models 
-        // if we want to preserve the join structure. For now let's just stick to standard join.
-        plan = LogicalPlan::Join {
-            left: Box::new(plan),
-            join: crate::ast::JoinClause {
-                join_type: join.join_type,
-                table: join.table.clone(), // This is still used by bind_table_fn in physical plan
-                on: join.on.clone(),
-            },
-        };
-    }
-    if let Some(selection) = &stmt.selection {
-        plan = LogicalPlan::Filter {
-            input: Box::new(plan),
-            predicate: selection.clone(),
-        };
-    }
-    if !stmt.group_by.is_empty() || stmt.having.is_some() {
-        plan = LogicalPlan::Aggregate {
-            input: Box::new(plan),
-            group_by: stmt.group_by.clone(),
-            having: stmt.having.clone(),
-        };
-    }
-    plan = LogicalPlan::Project {
-        input: Box::new(plan),
-        projection: stmt.projection.clone(),
-    };
-    if stmt.distinct {
-        plan = LogicalPlan::Distinct {
-            input: Box::new(plan),
-        };
-    }
-    if !stmt.order_by.is_empty() {
-        plan = LogicalPlan::Sort {
-            input: Box::new(plan),
-            order_by: stmt.order_by.clone(),
-        };
-    }
-    if let Some(top) = &stmt.top {
-        plan = LogicalPlan::Top {
-            input: Box::new(plan),
-            top: top.clone(),
-        };
-    }
-    Ok(plan)
+pub fn build_logical_plan(_stmt: &SelectStmt) -> Result<LogicalPlan, DbError> {
+    Err(DbError::Execution(
+        "build_logical_plan is deprecated for FROM tree execution".into(),
+    ))
 }
 
 pub fn build_physical_plan(
-    stmt: &SelectStmt,
-    logical: &LogicalPlan,
-    catalog: &dyn Catalog,
-    ctx: &mut ExecutionContext,
-    bind_table_fn: impl Fn(TableRef, &dyn Catalog, &mut ExecutionContext) -> Result<BoundTable, DbError>,
+    _stmt: &SelectStmt,
+    _logical: &LogicalPlan,
+    _catalog: &dyn Catalog,
+    _ctx: &mut ExecutionContext,
+    _bind_table_fn: impl Fn(TableRef, &dyn Catalog, &mut ExecutionContext) -> Result<BoundTable, DbError>,
 ) -> Result<PhysicalPlan, DbError> {
-    let Some(from) = stmt.from.clone() else {
-        return Err(DbError::Execution("planner requires FROM source".into()));
-    };
-
-    let all_inner = stmt.joins.iter().all(|j| j.join_type == JoinType::Inner || j.join_type == JoinType::Cross);
-    let mut alias_predicates: std::collections::HashMap<String, Vec<Expr>> =
-        std::collections::HashMap::new();
-    let mut residual = stmt.selection.clone();
-    if all_inner && stmt.joins.is_empty() {
-        alias_predicates.insert("".to_string(), split_conjuncts(stmt.selection.clone()));
-        residual = None;
-    }
-
-    let mut joins = stmt.joins.clone();
-    if all_inner && !joins.is_empty() {
-        joins = reorder_inner_joins_heuristic(&from, joins)?;
-    }
-
-    let base_bound = bind_table_fn(from, catalog, ctx)?;
-    let base_predicate = if joins.is_empty() {
-        alias_predicates.remove("").and_then(and_terms)
-    } else {
-        None
-    };
-    let base_scan = plan_scan(&base_bound, base_predicate, &stmt.order_by, catalog);
-
-    let mut physical_joins = Vec::new();
-    for join in joins {
-        let right_bound = bind_table_fn(join.table.clone(), catalog, ctx)?;
-        let right_pred = alias_predicates
-            .remove(&normalize_identifier(&right_bound.alias))
-            .and_then(and_terms);
-        let right_scan = plan_scan(&right_bound, right_pred, &[], catalog);
-        physical_joins.push(PhysicalJoin {
-            right: right_scan,
-            join,
-        });
-    }
-
-    let mut pivots = Vec::new();
-    let mut unpivots = Vec::new();
-    
-    fn collect_transformations(plan: &LogicalPlan, pivots: &mut Vec<super::planner::PhysicalPivot>, unpivots: &mut Vec<super::planner::PhysicalUnpivot>) {
-        match plan {
-            LogicalPlan::Pivot { input, spec, alias } => {
-                collect_transformations(input, pivots, unpivots);
-                pivots.push(super::planner::PhysicalPivot { spec: spec.clone(), alias: alias.clone() });
-            }
-            LogicalPlan::Unpivot { input, spec, alias } => {
-                collect_transformations(input, pivots, unpivots);
-                unpivots.push(super::planner::PhysicalUnpivot { spec: spec.clone(), alias: alias.clone() });
-            }
-            LogicalPlan::Filter { input, .. } => collect_transformations(input, pivots, unpivots),
-            LogicalPlan::Project { input, .. } => collect_transformations(input, pivots, unpivots),
-            LogicalPlan::Sort { input, .. } => collect_transformations(input, pivots, unpivots),
-            LogicalPlan::Top { input, .. } => collect_transformations(input, pivots, unpivots),
-            LogicalPlan::Aggregate { input, .. } => collect_transformations(input, pivots, unpivots),
-            LogicalPlan::Distinct { input } => collect_transformations(input, pivots, unpivots),
-            LogicalPlan::Join { left, .. } => collect_transformations(left, pivots, unpivots),
-            LogicalPlan::Scan { .. } => {}
-        }
-    }
-    collect_transformations(logical, &mut pivots, &mut unpivots);
-
-    let required_columns = required_columns_from_logical(logical);
-    let order_satisfied_by_scan = physical_joins.is_empty()
-        && base_scan.pushed_predicate.is_none()
-        && scan_satisfies_order(&base_scan, &stmt.order_by, catalog);
-
-    Ok(PhysicalPlan {
-        base: base_scan,
-        joins: physical_joins,
-        applies: stmt.applies.clone(),
-        pivots,
-        unpivots,
-        residual_filter: residual,
-        projection: stmt.projection.clone(),
-        group_by: stmt.group_by.clone(),
-        having: stmt.having.clone(),
-        distinct: stmt.distinct,
-        order_by: stmt.order_by.clone(),
-        top: stmt.top.clone(),
-        required_columns,
-        order_satisfied_by_scan,
-        offset: stmt.offset.clone(),
-        fetch: stmt.fetch.clone(),
-    })
+    Err(DbError::Execution(
+        "build_physical_plan is deprecated for FROM tree execution".into(),
+    ))
 }
 
 fn reorder_inner_joins_heuristic(

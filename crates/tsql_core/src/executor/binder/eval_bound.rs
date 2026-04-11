@@ -154,7 +154,16 @@ pub fn eval_bound_expr_inner(
                     has_null = true;
                     continue;
                 }
-                if val == item_val {
+                let equals = super::super::operators::eval_binary(
+                    &crate::ast::BinaryOp::Eq,
+                    val.clone(),
+                    item_val,
+                    ctx.metadata.ansi_nulls,
+                    ctx.options.concat_null_yields_null,
+                    ctx.options.arithabort,
+                    ctx.options.ansi_warnings,
+                )?;
+                if super::super::value_ops::truthy(&equals) {
                     found = true;
                     break;
                 }

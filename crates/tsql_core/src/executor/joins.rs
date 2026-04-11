@@ -1,43 +1,58 @@
-﻿use crate::ast::{JoinClause, JoinType};
+use crate::ast::{Expr, JoinType};
+use crate::catalog::Catalog;
 use crate::error::DbError;
+use crate::storage::Storage;
 
 use super::clock::Clock;
 use super::context::ExecutionContext;
 use super::evaluator::eval_predicate;
-use super::model::{BoundTable, ContextTable, JoinedRow};
-use crate::catalog::Catalog;
-use crate::storage::Storage;
+use super::model::{ContextTable, JoinedRow};
 
 pub fn apply_join(
-    rows: Vec<JoinedRow>,
+    left_rows: Vec<JoinedRow>,
+    left_shape: &[ContextTable],
     right_rows: Vec<JoinedRow>,
-    right: BoundTable,
-    join: &JoinClause,
+    right_shape: &[ContextTable],
+    join_type: JoinType,
+    on: Option<&Expr>,
     ctx: &mut ExecutionContext,
     catalog: &dyn Catalog,
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Vec<JoinedRow>, DbError> {
-    match join.join_type {
-        JoinType::Cross => apply_cross_join(rows, right_rows),
-        JoinType::Inner | JoinType::Left => {
-            apply_join_left(rows, right_rows, right, join, ctx, catalog, storage, clock)
-        }
-        JoinType::Right => {
-            apply_join_right(rows, right_rows, right, join, ctx, catalog, storage, clock)
-        }
-        JoinType::Full => {
-            apply_join_full(rows, right_rows, right, join, ctx, catalog, storage, clock)
-        }
+    match join_type {
+        JoinType::Cross => apply_cross_join(left_rows, right_rows),
+        JoinType::Inner | JoinType::Left => apply_join_left(
+            left_rows,
+            right_rows,
+            right_shape,
+            join_type,
+            on,
+            ctx,
+            catalog,
+            storage,
+            clock,
+        ),
+        JoinType::Right => apply_join_right(
+            left_rows, left_shape, right_rows, on, ctx, catalog, storage, clock,
+        ),
+        JoinType::Full => apply_join_full(
+            left_rows,
+            left_shape,
+            right_rows,
+            right_shape,
+            on,
+            ctx,
+            catalog,
+            storage,
+            clock,
+        ),
     }
 }
 
-fn apply_cross_join(
-    rows: Vec<JoinedRow>,
-    right_rows: Vec<JoinedRow>,
-) -> Result<Vec<JoinedRow>, DbError> {
+fn apply_cross_join(left_rows: Vec<JoinedRow>, right_rows: Vec<JoinedRow>) -> Result<Vec<JoinedRow>, DbError> {
     let mut next_rows = Vec::new();
-    for left_row in &rows {
+    for left_row in &left_rows {
         for right_row in &right_rows {
             let mut candidate = left_row.clone();
             candidate.extend(right_row.clone());
@@ -48,20 +63,20 @@ fn apply_cross_join(
 }
 
 fn apply_join_left(
-    rows: Vec<JoinedRow>,
+    left_rows: Vec<JoinedRow>,
     right_rows: Vec<JoinedRow>,
-    right: BoundTable,
-    join: &JoinClause,
+    right_shape: &[ContextTable],
+    join_type: JoinType,
+    on: Option<&Expr>,
     ctx: &mut ExecutionContext,
     catalog: &dyn Catalog,
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Vec<JoinedRow>, DbError> {
-    let on_expr = join.on.as_ref()
-        .ok_or_else(|| DbError::Parse("JOIN requires ON clause".into()))?;
+    let on_expr = on.ok_or_else(|| DbError::Parse("JOIN requires ON clause".into()))?;
     let mut next_rows = Vec::new();
 
-    for left_row in rows {
+    for left_row in left_rows {
         let mut matched = false;
         for right_row in &right_rows {
             let mut candidate = left_row.clone();
@@ -72,14 +87,14 @@ fn apply_join_left(
             }
         }
 
-        if !matched && join.join_type == JoinType::Left {
+        if !matched && join_type == JoinType::Left {
             let mut candidate = left_row.clone();
-            candidate.push(ContextTable {
-                table: right.table.clone(),
-                alias: right.alias.clone(),
+            candidate.extend(right_shape.iter().map(|ctx| ContextTable {
+                table: ctx.table.clone(),
+                alias: ctx.alias.clone(),
                 row: None,
                 storage_index: None,
-            });
+            }));
             next_rows.push(candidate);
         }
     }
@@ -88,22 +103,21 @@ fn apply_join_left(
 }
 
 fn apply_join_right(
-    rows: Vec<JoinedRow>,
+    left_rows: Vec<JoinedRow>,
+    left_shape: &[ContextTable],
     right_rows: Vec<JoinedRow>,
-    _right: BoundTable,
-    join: &JoinClause,
+    on: Option<&Expr>,
     ctx: &mut ExecutionContext,
     catalog: &dyn Catalog,
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Vec<JoinedRow>, DbError> {
-    let on_expr = join.on.as_ref()
-        .ok_or_else(|| DbError::Parse("JOIN requires ON clause".into()))?;
+    let on_expr = on.ok_or_else(|| DbError::Parse("JOIN requires ON clause".into()))?;
     let mut next_rows = Vec::new();
 
     for right_row in &right_rows {
         let mut matched = false;
-        for left_row in &rows {
+        for left_row in &left_rows {
             let mut candidate = left_row.clone();
             candidate.extend(right_row.clone());
             if eval_predicate(on_expr, &candidate, ctx, catalog, storage, clock)? {
@@ -113,16 +127,17 @@ fn apply_join_right(
         }
 
         if !matched {
-            if let Some(first_left) = rows.first() {
-                let mut candidate: JoinedRow = first_left.iter().map(|ctx| ContextTable {
+            let mut candidate: JoinedRow = left_shape
+                .iter()
+                .map(|ctx| ContextTable {
                     table: ctx.table.clone(),
                     alias: ctx.alias.clone(),
                     row: None,
                     storage_index: None,
-                }).collect();
-                candidate.extend(right_row.clone());
-                next_rows.push(candidate);
-            }
+                })
+                .collect();
+            candidate.extend(right_row.clone());
+            next_rows.push(candidate);
         }
     }
 
@@ -130,21 +145,21 @@ fn apply_join_right(
 }
 
 fn apply_join_full(
-    rows: Vec<JoinedRow>,
+    left_rows: Vec<JoinedRow>,
+    left_shape: &[ContextTable],
     right_rows: Vec<JoinedRow>,
-    right: BoundTable,
-    join: &JoinClause,
+    right_shape: &[ContextTable],
+    on: Option<&Expr>,
     ctx: &mut ExecutionContext,
     catalog: &dyn Catalog,
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Vec<JoinedRow>, DbError> {
-    let on_expr = join.on.as_ref()
-        .ok_or_else(|| DbError::Parse("JOIN requires ON clause".into()))?;
+    let on_expr = on.ok_or_else(|| DbError::Parse("JOIN requires ON clause".into()))?;
     let mut next_rows = Vec::new();
     let mut matched_right: Vec<bool> = vec![false; right_rows.len()];
 
-    for left_row in &rows {
+    for left_row in &left_rows {
         let mut matched = false;
         for (ri, right_row) in right_rows.iter().enumerate() {
             let mut candidate = left_row.clone();
@@ -158,28 +173,29 @@ fn apply_join_full(
 
         if !matched {
             let mut candidate = left_row.clone();
-            candidate.push(ContextTable {
-                table: right.table.clone(),
-                alias: right.alias.clone(),
+            candidate.extend(right_shape.iter().map(|ctx| ContextTable {
+                table: ctx.table.clone(),
+                alias: ctx.alias.clone(),
                 row: None,
                 storage_index: None,
-            });
+            }));
             next_rows.push(candidate);
         }
     }
 
     for (ri, matched) in matched_right.iter().enumerate() {
         if !matched {
-            if let Some(first_left) = rows.first() {
-                let mut candidate: JoinedRow = first_left.iter().map(|ctx| ContextTable {
+            let mut candidate: JoinedRow = left_shape
+                .iter()
+                .map(|ctx| ContextTable {
                     table: ctx.table.clone(),
                     alias: ctx.alias.clone(),
                     row: None,
                     storage_index: None,
-                }).collect();
-                candidate.extend(right_rows[ri].clone());
-                next_rows.push(candidate);
-            }
+                })
+                .collect();
+            candidate.extend(right_rows[ri].clone());
+            next_rows.push(candidate);
         }
     }
 

@@ -62,10 +62,14 @@ mod dml_enhanced_tests {
         let sql = "SELECT * FROM t WITH (NOLOCK, TABLOCK)";
         let stmt = parse_sql(sql).unwrap();
         if let Statement::Dml(DmlStatement::Select(s)) = stmt {
-            let tref = s.from.unwrap();
-            assert_eq!(tref.hints.len(), 2);
-            assert_eq!(tref.hints[0], "NOLOCK");
-            assert_eq!(tref.hints[1], "TABLOCK");
+            match s.from_clause.unwrap() {
+                FromNode::Table(tref) => {
+                    assert_eq!(tref.hints.len(), 2);
+                    assert_eq!(tref.hints[0], "NOLOCK");
+                    assert_eq!(tref.hints[1], "TABLOCK");
+                }
+                _ => panic!("Expected table FROM node"),
+            }
         } else {
             panic!("Expected Select statement");
         }

@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, DataTypeSpec, Expr, FunctionBody, JoinClause, JoinType, ObjectName, OrderByExpr, RoutineParam, RoutineParamType, SelectItem, SelectStmt, Statement, TableFactor, TableRef, TriggerEvent, UnaryOp};
+use crate::ast::{BinaryOp, DataTypeSpec, Expr, FromNode, FunctionBody, JoinClause, JoinType, ObjectName, OrderByExpr, RoutineParam, RoutineParamType, SelectItem, SelectStmt, Statement, TableFactor, TableRef, TriggerEvent, UnaryOp};
 use super::normalize_table_ref;
 
 pub(crate) fn format_data_type_spec(dt: &DataTypeSpec) -> String {
@@ -212,13 +212,9 @@ pub(crate) fn format_select_stmt(stmt: &SelectStmt) -> String {
         out.push_str(" INTO ");
         out.push_str(&format_object_name(into));
     }
-    if let Some(from) = &stmt.from {
+    if let Some(from) = &stmt.from_clause {
         out.push_str(" FROM ");
-        out.push_str(&format_table_ref(from));
-    }
-    for join in &stmt.joins {
-        out.push(' ');
-        out.push_str(&format_join(join));
+        out.push_str(&format_from_node(from));
     }
     for apply in &stmt.applies {
         out.push(' ');
@@ -260,6 +256,38 @@ pub(crate) fn format_select_stmt(stmt: &SelectStmt) -> String {
         }
     }
     out
+}
+
+fn format_from_node(node: &FromNode) -> String {
+    match node {
+        FromNode::Table(table) => format_table_ref(table),
+        FromNode::Aliased { source, alias } => format!("({}) AS {}", format_from_node(source), alias),
+        FromNode::Join {
+            left,
+            join_type,
+            right,
+            on,
+        } => {
+            let join_kw = match join_type {
+                JoinType::Inner => "INNER JOIN",
+                JoinType::Left => "LEFT JOIN",
+                JoinType::Right => "RIGHT JOIN",
+                JoinType::Full => "FULL OUTER JOIN",
+                JoinType::Cross => "CROSS JOIN",
+            };
+            if let Some(on_expr) = on {
+                format!(
+                    "{} {} {} ON {}",
+                    format_from_node(left),
+                    join_kw,
+                    format_from_node(right),
+                    format_expr(on_expr)
+                )
+            } else {
+                format!("{} {} {}", format_from_node(left), join_kw, format_from_node(right))
+            }
+        }
+    }
 }
 
 pub(crate) fn format_param(param: &RoutineParam) -> String {
@@ -406,6 +434,10 @@ pub(crate) fn format_statement(stmt: &Statement) -> String {
             if let Some(from) = &stmt.from {
                 out.push_str(" FROM ");
                 out.push_str(&format_table_ref(from));
+            }
+            for join in &stmt.joins {
+                out.push(' ');
+                out.push_str(&format_join(join));
             }
             out
         }

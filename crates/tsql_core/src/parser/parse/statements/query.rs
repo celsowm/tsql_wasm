@@ -251,13 +251,32 @@ pub fn parse_table_ref(parser: &mut Parser) -> ParseResult<TableRef> {
                     Some(alias),
                     Vec::new(),
                 )
-            } else {
+            } else if parser.at_keyword(Keyword::Select) {
                 let subquery = Box::new(parse_select(parser)?);
                 parser.expect_rparen()?;
                 let alias = parse_required_alias(parser)?;
                 (
                     TableFactor::Derived(subquery),
                     Some(alias),
+                    Vec::new(),
+                )
+            } else {
+                let base = parse_table_ref(parser)?;
+                let mut joins = Vec::new();
+                while !matches!(parser.peek(), Some(Token::RParen)) {
+                    match parse_join_clause(parser)? {
+                        Some(join) => joins.push(join),
+                        None => break,
+                    }
+                }
+                parser.expect_rparen()?;
+                let alias = parse_optional_alias(parser);
+                (
+                    TableFactor::JoinedGroup {
+                        base: Box::new(base),
+                        joins,
+                    },
+                    alias,
                     Vec::new(),
                 )
             }

@@ -51,6 +51,10 @@ pub enum DataType {
 pub enum TableFactor {
     Named(ObjectName),
     Derived(Box<crate::parser::ast::statements::query::SelectStmt>),
+    JoinedGroup {
+        base: Box<TableRef>,
+        joins: Vec<crate::parser::ast::statements::query::JoinClause>,
+    },
     Values {
         rows: Vec<Vec<crate::parser::ast::expressions::Expr>>,
         columns: Vec<String>,
@@ -66,7 +70,10 @@ impl TableFactor {
     pub fn as_object_name(&self) -> Option<&ObjectName> {
         match self {
             TableFactor::Named(name) => Some(name),
-            TableFactor::Derived(_) | TableFactor::Values { .. } | TableFactor::TableValuedFunction { .. } => None,
+            TableFactor::Derived(_)
+            | TableFactor::JoinedGroup { .. }
+            | TableFactor::Values { .. }
+            | TableFactor::TableValuedFunction { .. } => None,
         }
     }
 

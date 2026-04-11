@@ -251,6 +251,20 @@ fn test_correlated_in() {
     assert_eq!(result.rows.len(), 5);
 }
 
+#[test]
+fn test_join_group_in_parentheses() {
+    let mut engine = setup_engine();
+    let result = query(
+        &mut engine,
+        "SELECT e.name AS employee_name, d.name AS department_name FROM (employees e JOIN departments d ON e.department_id = d.id) ORDER BY e.name",
+    );
+
+    assert_eq!(result.rows.len(), 5);
+    assert_eq!(result.columns, vec!["employee_name", "department_name"]);
+    assert_eq!(col_str(&result.rows[0], 0), "Alice");
+    assert_eq!(col_str(&result.rows[0], 1), "Engineering");
+}
+
 // ─── Subqueries with comparison operators ─────────────────────────────────
 
 #[test]

@@ -7,7 +7,7 @@ use crate::executor::result::QueryResult;
 use crate::executor::value_ops::coerce_value_to_type_with_dateformat;
 use crate::catalog::Catalog;
 use crate::storage::Storage;
-use crate::ast::SelectStmt;
+use crate::ast::{FromNode, SelectStmt};
 use super::super::ScriptExecutor;
 
 impl<'a> ScriptExecutor<'a> {
@@ -39,8 +39,18 @@ impl<'a> ScriptExecutor<'a> {
         }
 
         let q = SelectStmt {
-            from: stmt.from,
-            joins: stmt.joins,
+            from_clause: stmt.from.map(|from| {
+                let mut node = FromNode::Table(from);
+                for join in stmt.joins {
+                    node = FromNode::Join {
+                        left: Box::new(node),
+                        join_type: join.join_type,
+                        right: Box::new(FromNode::Table(join.table)),
+                        on: join.on,
+                    };
+                }
+                node
+            }),
             applies: vec![],
             projection: stmt
                 .targets

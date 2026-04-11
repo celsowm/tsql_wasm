@@ -51,3 +51,17 @@ fn test_nested_parentheses_with_and_after_inner_group() {
     let parsed = parse_sql(sql);
     assert!(parsed.is_ok(), "parse failed: {:?}", parsed.err());
 }
+
+#[test]
+fn test_ssms_partition_functions_join_group_parse() {
+    let sql = "select func.name, func.function_id, func.type, func.fanout, func.boundary_value_on_right, para.parameter_id, tp.name as type_name, convert(smallint, case when (tp.name = N'nchar' or tp.name = N'nvarchar') then para.max_length / 2 else para.max_length end) as max_length, para.precision, para.scale, para.collation_name from sys.partition_functions func left outer join (sys.partition_parameters para join sys.types tp on tp.user_type_id = para.system_type_id) on para.function_id = func.function_id order by func.function_id, para.parameter_id";
+    let parsed = parse_sql(sql);
+    assert!(parsed.is_ok(), "parse failed: {:?}", parsed.err());
+}
+
+#[test]
+fn test_ssms_partition_schemes_join_group_parse() {
+    let sql = "select sch.name, sch.data_space_id, sch.function_id, dest.destination_id, fg.name as fg_name, fg.type from sys.partition_schemes sch inner join (sys.destination_data_spaces dest inner join sys.filegroups fg on fg.data_space_id = dest.data_space_id) on dest.partition_scheme_id = sch.data_space_id order by sch.data_space_id, dest.destination_id";
+    let parsed = parse_sql(sql);
+    assert!(parsed.is_ok(), "parse failed: {:?}", parsed.err());
+}

@@ -5,8 +5,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SelectStmt {
-    pub from: Option<TableRef>,
-    pub joins: Vec<JoinClause>,
+    pub from_clause: Option<FromNode>,
     pub applies: Vec<ApplyClause>,
     pub projection: Vec<SelectItem>,
     pub into_table: Option<ObjectName>,
@@ -18,6 +17,21 @@ pub struct SelectStmt {
     pub order_by: Vec<OrderByExpr>,
     pub offset: Option<Expr>,
     pub fetch: Option<Expr>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum FromNode {
+    Table(TableRef),
+    Aliased {
+        source: Box<FromNode>,
+        alias: String,
+    },
+    Join {
+        left: Box<FromNode>,
+        join_type: JoinType,
+        right: Box<FromNode>,
+        on: Option<Expr>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

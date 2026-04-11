@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::ast::{DeleteStmt, SelectItem, SelectStmt, TableFactor};
+use crate::ast::{DeleteStmt, FromNode, SelectItem, SelectStmt, TableFactor};
 use crate::error::DbError;
 
 use super::super::context::ExecutionContext;
@@ -102,29 +102,7 @@ impl<'a> MutationExecutor<'a> {
         };
 
         let query_stmt = SelectStmt {
-            from: stmt.from.as_ref().and_then(|f| f.tables.get(0).cloned()).or_else(|| {
-                    Some(crate::ast::TableRef {
-                        factor: TableFactor::Named(stmt.table.clone()),
-                        alias: None,
-                        pivot: None,
-                        unpivot: None,
-                        hints: Vec::new(),
-                    })
-            }),
-            joins: {
-                let mut all_joins = Vec::new();
-                if let Some(from) = &stmt.from {
-                    for extra_table in from.tables.iter().skip(1) {
-                        all_joins.push(crate::ast::JoinClause {
-                            join_type: crate::ast::JoinType::Cross,
-                            table: extra_table.clone(),
-                            on: None,
-                        });
-                    }
-                    all_joins.extend(from.joins.clone());
-                }
-                all_joins
-            },
+            from_clause: build_from_node_for_delete(stmt.from.as_ref(), &stmt.table),
             applies: stmt.from.as_ref().map(|f| f.applies.clone()).unwrap_or_default(),
             projection: vec![SelectItem {
                 expr: crate::ast::Expr::Wildcard,
@@ -279,4 +257,40 @@ impl<'a> MutationExecutor<'a> {
 
         Ok(None)
     }
+}
+
+fn build_from_node_for_delete(
+    from: Option<&crate::ast::FromClause>,
+    target: &crate::ast::ObjectName,
+) -> Option<FromNode> {
+    let base = from.and_then(|f| f.tables.first().cloned()).or_else(|| {
+        Some(crate::ast::TableRef {
+            factor: TableFactor::Named(target.clone()),
+            alias: None,
+            pivot: None,
+            unpivot: None,
+            hints: Vec::new(),
+        })
+    })?;
+
+    let mut node = FromNode::Table(base);
+    if let Some(from_clause) = from {
+        for extra_table in from_clause.tables.iter().skip(1) {
+            node = FromNode::Join {
+                left: Box::new(node),
+                join_type: crate::ast::JoinType::Cross,
+                right: Box::new(FromNode::Table(extra_table.clone())),
+                on: None,
+            };
+        }
+        for join in &from_clause.joins {
+            node = FromNode::Join {
+                left: Box::new(node),
+                join_type: join.join_type,
+                right: Box::new(FromNode::Table(join.table.clone())),
+                on: join.on.clone(),
+            };
+        }
+    }
+    Some(node)
 }

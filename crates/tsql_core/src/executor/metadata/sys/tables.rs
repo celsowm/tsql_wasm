@@ -655,6 +655,8 @@ fn column_table_def(name: &str, include_sparse: bool) -> crate::catalog::TableDe
         ("is_xml_document", DataType::Bit, false),
         ("is_column_set", DataType::Bit, false),
         ("xml_collection_id", DataType::Int, true),
+        ("generated_always_type", DataType::TinyInt, false),
+        ("graph_type", DataType::Int, true),
         ("default_object_id", DataType::Int, false),
         ("is_dropped_ledger_column", DataType::Bit, false),
     ];
@@ -697,6 +699,8 @@ fn column_rows(catalog: &dyn Catalog, include_sparse: bool) -> Vec<StoredRow> {
                 Value::Bit(c.computed_expr.is_some()),
                 Value::Bit(false),
                 Value::Bit(false),
+                Value::Null,
+                Value::TinyInt(0),
                 Value::Null,
                 Value::Int(if c.default.is_some() {
                     let table_bucket = (t.id % 100_000) as i32;

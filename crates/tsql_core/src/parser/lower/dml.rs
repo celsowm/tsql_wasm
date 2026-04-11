@@ -57,18 +57,7 @@ pub fn lower_select(s: ast::SelectStmt) -> Result<executor_ast::statements::quer
         return Err(DbError::Parse("Subqueries with UNION/INTERSECT/EXCEPT not yet supported in this version".into()));
     }
 
-    let mut from = None;
-    let mut joins = Vec::new();
-
-    if let Some(from_ref) = s.from {
-        let (tr, mut j) = lower_table_ref_recursive(from_ref)?;
-        from = Some(tr);
-        joins.append(&mut j);
-    }
-
-    for join in s.joins {
-        joins.push(lower_join_clause(join)?);
-    }
+    let from_clause = lower_select_from_clause(s.from, s.joins)?;
 
     Ok(executor_ast::statements::query::SelectStmt {
         distinct: s.distinct,
@@ -78,8 +67,7 @@ pub fn lower_select(s: ast::SelectStmt) -> Result<executor_ast::statements::quer
             alias: i.alias,
         })).collect::<Result<Vec<_>, DbError>>()?,
         into_table: s.into_table.map(lower_object_name_owned),
-        from,
-        joins,
+        from_clause,
         applies: s.applies.into_iter().map(|a| {
             let (tr, extra_joins) = lower_table_ref_recursive(a.table)?;
             if !extra_joins.is_empty() {
@@ -89,14 +77,13 @@ pub fn lower_select(s: ast::SelectStmt) -> Result<executor_ast::statements::quer
                 executor_ast::common::TableFactor::Derived(s) => *s,
                 executor_ast::common::TableFactor::Values { rows, columns } => {
                     executor_ast::statements::query::SelectStmt {
-                        from: Some(executor_ast::common::TableRef {
+                        from_clause: Some(executor_ast::statements::query::FromNode::Table(executor_ast::common::TableRef {
                             factor: executor_ast::common::TableFactor::Values { rows, columns },
                             alias: tr.alias.clone(),
                             pivot: None,
                             unpivot: None,
                             hints: Vec::new(),
-                        }),
-                        joins: Vec::new(),
+                        })),
                         applies: Vec::new(),
                         projection: vec![executor_ast::statements::query::SelectItem {
                             expr: executor_ast::expressions::Expr::Wildcard,
@@ -133,15 +120,154 @@ pub fn lower_select(s: ast::SelectStmt) -> Result<executor_ast::statements::quer
     })
 }
 
+fn lower_select_from_clause(
+    from: Option<ast::TableRef>,
+    joins: Vec<ast::JoinClause>,
+) -> Result<Option<executor_ast::statements::query::FromNode>, DbError> {
+    let Some(from_ref) = from else {
+        return Ok(None);
+    };
+    let mut node = lower_table_ref_to_from_node(from_ref)?;
+    for join in joins {
+        node = executor_ast::statements::query::FromNode::Join {
+            left: Box::new(node),
+            join_type: lower_join_type(join.join_type),
+            right: Box::new(lower_table_ref_to_from_node(join.table)?),
+            on: join.on.map(lower_expr).transpose()?,
+        };
+    }
+    Ok(Some(node))
+}
+
+fn lower_table_ref_to_from_node(
+    tr: ast::TableRef,
+) -> Result<executor_ast::statements::query::FromNode, DbError> {
+    let alias = tr.alias.clone();
+    let hints = tr.hints.clone();
+    let pivot = tr.pivot.clone();
+    let unpivot = tr.unpivot.clone();
+    match tr.factor {
+        ast::TableFactor::JoinedGroup { base, joins } => {
+            if !hints.is_empty() || pivot.is_some() || unpivot.is_some() {
+                return Err(DbError::Parse(
+                    "hints/PIVOT/UNPIVOT on grouped joins are not supported in this version".into(),
+                ));
+            }
+            let mut node = lower_table_ref_to_from_node(*base)?;
+            for join in joins {
+                node = executor_ast::statements::query::FromNode::Join {
+                    left: Box::new(node),
+                    join_type: lower_join_type(join.join_type),
+                    right: Box::new(lower_table_ref_to_from_node(join.table)?),
+                    on: join.on.map(lower_expr).transpose()?,
+                };
+            }
+            if let Some(alias) = alias {
+                Ok(executor_ast::statements::query::FromNode::Aliased {
+                    source: Box::new(node),
+                    alias,
+                })
+            } else {
+                Ok(node)
+            }
+        }
+        _ => Ok(executor_ast::statements::query::FromNode::Table(lower_table_ref_flat(tr)?)),
+    }
+}
+
+fn lower_table_ref_flat(tr: ast::TableRef) -> Result<executor_ast::common::TableRef, DbError> {
+    let alias = tr.alias;
+    let hints = tr.hints;
+    let pivot = tr.pivot.map(|p| Box::new(executor_ast::common::PivotSpec {
+        aggregate_func: p.aggregate_func,
+        aggregate_col: p.aggregate_col,
+        pivot_col: p.pivot_col,
+        pivot_values: p.pivot_values,
+    }));
+    let unpivot = tr.unpivot.map(|u| Box::new(executor_ast::common::UnpivotSpec {
+        value_col: u.value_col,
+        pivot_col: u.pivot_col,
+        column_list: u.column_list,
+    }));
+
+    let factor = match tr.factor {
+        ast::TableFactor::Named(name) => {
+            executor_ast::common::TableFactor::Named(lower_object_name_owned(name))
+        }
+        ast::TableFactor::Values { rows, columns } => executor_ast::common::TableFactor::Values {
+            rows: rows
+                .into_iter()
+                .map(|r| {
+                    r.into_iter()
+                        .map(lower_expr)
+                        .collect::<Result<Vec<_>, DbError>>()
+                })
+                .collect::<Result<Vec<_>, DbError>>()?,
+            columns,
+        },
+        ast::TableFactor::Derived(subquery) => {
+            executor_ast::common::TableFactor::Derived(Box::new(lower_select(*subquery)?))
+        }
+        ast::TableFactor::TableValuedFunction {
+            name,
+            args,
+            alias: tvf_alias,
+        } => {
+            let func_name = match name.last() {
+                Some(last) => last.to_string(),
+                None => return Err(DbError::Parse("table-valued function name is empty".into())),
+            };
+            let arg_strs: Vec<String> = args
+                .into_iter()
+                .map(|a| {
+                    lower_expr(a).map(|expr| crate::executor::tooling::formatting::format_expr(&expr))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let full_name = format!("{}({})", func_name, arg_strs.join(", "));
+            return Ok(executor_ast::common::TableRef {
+                factor: executor_ast::common::TableFactor::Named(executor_ast::common::ObjectName {
+                    schema: if name.len() > 1 {
+                        Some(name[0].to_string())
+                    } else {
+                        None
+                    },
+                    name: full_name,
+                }),
+                alias: tvf_alias.or(alias),
+                pivot,
+                unpivot,
+                hints: Vec::new(),
+            });
+        }
+        ast::TableFactor::JoinedGroup { .. } => {
+            return Err(DbError::Parse(
+                "internal error: grouped joins must be lowered through FromNode".into(),
+            ));
+        }
+    };
+
+    Ok(executor_ast::common::TableRef {
+        factor,
+        alias,
+        pivot,
+        unpivot,
+        hints,
+    })
+}
+
+fn lower_join_type(join_type: ast::JoinType) -> executor_ast::statements::query::JoinType {
+    match join_type {
+        ast::JoinType::Inner => executor_ast::statements::query::JoinType::Inner,
+        ast::JoinType::Left => executor_ast::statements::query::JoinType::Left,
+        ast::JoinType::Right => executor_ast::statements::query::JoinType::Right,
+        ast::JoinType::Full => executor_ast::statements::query::JoinType::Full,
+        ast::JoinType::Cross => executor_ast::statements::query::JoinType::Cross,
+    }
+}
+
 pub fn lower_join_clause(join: ast::JoinClause) -> Result<executor_ast::statements::query::JoinClause, DbError> {
     Ok(executor_ast::statements::query::JoinClause {
-        join_type: match join.join_type {
-            ast::JoinType::Inner => executor_ast::statements::query::JoinType::Inner,
-            ast::JoinType::Left => executor_ast::statements::query::JoinType::Left,
-            ast::JoinType::Right => executor_ast::statements::query::JoinType::Right,
-            ast::JoinType::Full => executor_ast::statements::query::JoinType::Full,
-            ast::JoinType::Cross => executor_ast::statements::query::JoinType::Cross,
-        },
+        join_type: lower_join_type(join.join_type),
         table: lower_table_ref_recursive(join.table)?.0,
         on: join.on.map(lower_expr).transpose()?,
     })
@@ -192,6 +318,16 @@ pub fn lower_table_ref_recursive(tr: ast::TableRef) -> Result<(executor_ast::com
             unpivot,
             hints,
         }, Vec::new())),
+        ast::TableFactor::JoinedGroup { base, joins } => {
+            if alias.is_some() {
+                return Err(DbError::Parse("aliases on grouped joins are not supported in this version".into()));
+            }
+            let (base_tr, mut extra_joins) = lower_table_ref_recursive(*base)?;
+            for join in joins {
+                extra_joins.push(lower_join_clause(join)?);
+            }
+            Ok((base_tr, extra_joins))
+        }
         ast::TableFactor::Values { rows, columns } => Ok((executor_ast::common::TableRef {
             factor: executor_ast::common::TableFactor::Values {
                 rows: rows.into_iter().map(|r| r.into_iter().map(lower_expr).collect::<Result<Vec<_>, _>>()).collect::<Result<Vec<_>, _>>()?,

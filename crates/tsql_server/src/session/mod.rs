@@ -9,6 +9,13 @@ use tsql_core::types::{DataType, Value};
 use tsql_core::{Database, SessionId, StatementExecutor};
 
 use super::pool::{CheckoutError, SessionPool};
+mod compat;
+mod response;
+
+use self::compat::{
+    extract_leading_use_database, is_ssms_contained_auth_probe, parse_simple_use_database,
+};
+use self::response::{build_single_int_result, build_use_database_response};
 use super::tds::batch::{build_error_response, parse_sql_batch};
 use super::tds::login::parse_login7;
 use super::tds::packet::{
@@ -455,39 +462,25 @@ impl TdsSession {
             .session_id
             .ok_or_else(|| "session not initialized".to_string())?;
 
-        let upper = sql.to_uppercase();
-        if upper.starts_with("USE ") {
-            let db_name = sql[4..]
-                .trim()
-                .trim_end_matches(';')
-                .trim()
-                .trim_matches('[')
-                .trim_matches(']');
-            let old_db = self.database.clone();
-            self.database = db_name.to_string();
-            if let Err(e) = self
-                .db
-                .executor()
-                .set_session_database(session_id, self.database.clone())
-            {
-                log::error!(
-                    "[conn={}] Failed to update session database context: {}",
-                    self.connection_id,
-                    e
-                );
+        if is_ssms_contained_auth_probe(sql) {
+            if let Some(db_name) = extract_leading_use_database(sql) {
+                self.apply_use_database(session_id, &db_name, writer).await?;
             }
-
-            let mut b = PacketBuilder::new();
-            tokens::write_envchange_database(&mut b, &self.database, &old_db);
-            tokens::write_done(&mut b, tokens::DONE_FINAL, 1, 0);
-            packet::write_packet(writer, TABULAR_RESULT, b.as_bytes())
+            // SSMS expects a scalar response for this probe; returning 0 keeps the flow compatible.
+            let data = build_single_int_result("", 0);
+            packet::write_packet(writer, TABULAR_RESULT, &data)
                 .await
                 .map_err(|e| e.to_string())?;
             return Ok(true);
         }
 
+        if let Some(db_name) = parse_simple_use_database(sql) {
+            self.apply_use_database(session_id, &db_name, writer).await?;
+            return Ok(true);
+        }
+
         log_sql_execution(self.connection_id, sql);
-        let force_sysdac_probe_int = is_sysdac_instances_probe(sql);
+        let force_sysdac_probe_int = self::compat::is_sysdac_instances_probe(sql);
         match self
             .db
             .executor()
@@ -637,6 +630,32 @@ impl TdsSession {
 
         Ok(true)
     }
+
+    async fn apply_use_database<W: AsyncWriteExt + Unpin>(
+        &mut self,
+        session_id: SessionId,
+        db_name: &str,
+        writer: &mut W,
+    ) -> Result<(), String> {
+        let old_db = self.database.clone();
+        self.database = db_name.to_string();
+        if let Err(e) = self
+            .db
+            .executor()
+            .set_session_database(session_id, self.database.clone())
+        {
+            log::error!(
+                "[conn={}] Failed to update session database context: {}",
+                self.connection_id,
+                e
+            );
+        }
+
+        let data = build_use_database_response(&self.database, &old_db);
+        packet::write_packet(writer, TABULAR_RESULT, &data)
+            .await
+            .map_err(|e| e.to_string())
+    }
 }
 
 static SQL_KEYWORD_RE: Lazy<Regex> = Lazy::new(|| {
@@ -696,15 +715,6 @@ fn truncate_for_log(text: &str, max_chars: usize) -> String {
     let mut preview = text[..cut_at].to_string();
     preview.push_str("... [truncated]");
     preview
-}
-
-fn is_sysdac_instances_probe(sql: &str) -> bool {
-    let normalized = sql
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase();
-    normalized == "select case when object_id('dbo.sysdac_instances') is not null then 1 else 0 end"
 }
 
 fn log_packet(connection_id: u64, stage: &str, header: &packet::PacketHeader, data: &[u8]) {

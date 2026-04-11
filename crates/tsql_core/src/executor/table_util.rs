@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::ast::{DdlStatement, DmlStatement, ObjectName, SelectStmt, Statement, TableRef};
+use crate::ast::{DdlStatement, DmlStatement, FromNode, ObjectName, SelectStmt, Statement, TableRef};
 
 use super::string_norm::normalize_identifier;
 
@@ -72,11 +72,21 @@ fn collect_tables_from_statement(stmt: &Statement, out: &mut HashSet<String>) {
 }
 
 fn collect_tables_from_select(select: &SelectStmt, out: &mut HashSet<String>) {
-    if let Some(from) = &select.from {
-        out.insert(normalize_table_ref(from));
+    if let Some(from) = &select.from_clause {
+        collect_tables_from_node(from, out);
     }
-    for join in &select.joins {
-        out.insert(normalize_table_ref(&join.table));
+}
+
+fn collect_tables_from_node(node: &FromNode, out: &mut HashSet<String>) {
+    match node {
+        FromNode::Table(table) => {
+            out.insert(normalize_table_ref(table));
+        }
+        FromNode::Aliased { source, .. } => collect_tables_from_node(source, out),
+        FromNode::Join { left, right, .. } => {
+            collect_tables_from_node(left, out);
+            collect_tables_from_node(right, out);
+        }
     }
 }
 

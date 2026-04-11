@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use crate::ast::{DdlStatement, DmlStatement, Statement};
-use super::formatting::{format_expr, format_join, format_select_columns};
+use super::formatting::{format_expr, format_select_columns, format_select_stmt};
 use super::{collect_read_tables, collect_write_tables, normalize_object_name, select_from_name};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,10 +26,10 @@ pub fn explain_statement(stmt: &Statement) -> ExplainPlan {
                 op: "Scan".to_string(),
                 detail: format!("from {}", select_from_name(s)),
             });
-            for join in &s.joins {
+            if s.from_clause.is_some() {
                 operators.push(ExplainOperator {
-                    op: "Join".to_string(),
-                    detail: format_join(join),
+                    op: "FromTree".to_string(),
+                    detail: format_select_stmt(s),
                 });
             }
             if let Some(where_expr) = &s.selection {

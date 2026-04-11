@@ -3,6 +3,7 @@ mod hadr;
 mod host_info;
 mod indexes;
 mod objects;
+mod partition;
 mod policy_configuration;
 mod routines;
 mod tables;
@@ -12,6 +13,8 @@ use super::VirtualTable;
 pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> {
     if schema.eq_ignore_ascii_case("dbo") && name.eq_ignore_ascii_case("syspolicy_configuration") {
         Some(Box::new(policy_configuration::SysPolicyConfiguration))
+    } else if schema.eq_ignore_ascii_case("dbo") && name.eq_ignore_ascii_case("sysobjects") {
+        Some(Box::new(objects::SysCompatSysObjects))
     } else if !schema.eq_ignore_ascii_case("sys") {
         None
     } else if name.eq_ignore_ascii_case("schemas") {
@@ -42,6 +45,16 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(tables::SysXmlIndexes))
     } else if name.eq_ignore_ascii_case("table_types") {
         Some(Box::new(tables::SysTableTypes))
+    } else if name.eq_ignore_ascii_case("partition_functions") {
+        Some(Box::new(partition::SysPartitionFunctions))
+    } else if name.eq_ignore_ascii_case("partition_parameters") {
+        Some(Box::new(partition::SysPartitionParameters))
+    } else if name.eq_ignore_ascii_case("partition_schemes") {
+        Some(Box::new(partition::SysPartitionSchemes))
+    } else if name.eq_ignore_ascii_case("destination_data_spaces") {
+        Some(Box::new(partition::SysDestinationDataSpaces))
+    } else if name.eq_ignore_ascii_case("filegroups") {
+        Some(Box::new(partition::SysFilegroups))
     } else if name.eq_ignore_ascii_case("edge_constraints") {
         Some(Box::new(tables::SysEdgeConstraints))
     } else if name.eq_ignore_ascii_case("assembly_modules") {
@@ -60,6 +73,8 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(indexes::SysIndexes))
     } else if name.eq_ignore_ascii_case("objects") {
         Some(Box::new(objects::SysObjects))
+    } else if name.eq_ignore_ascii_case("sysobjects") {
+        Some(Box::new(objects::SysCompatSysObjects))
     } else if name.eq_ignore_ascii_case("system_views") {
         Some(Box::new(objects::SysSystemViews))
     } else if name.eq_ignore_ascii_case("dm_os_host_info") {

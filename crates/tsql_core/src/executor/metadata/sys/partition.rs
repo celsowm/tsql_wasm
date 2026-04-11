@@ -1,0 +1,102 @@
+use super::super::virtual_table_def;
+use super::super::VirtualTable;
+use crate::catalog::Catalog;
+use crate::storage::StoredRow;
+use crate::types::DataType;
+
+pub(crate) struct SysPartitionFunctions;
+pub(crate) struct SysPartitionParameters;
+pub(crate) struct SysPartitionSchemes;
+pub(crate) struct SysDestinationDataSpaces;
+pub(crate) struct SysFilegroups;
+
+impl VirtualTable for SysPartitionFunctions {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "partition_functions",
+            vec![
+                ("name", DataType::VarChar { max_len: 128 }, false),
+                ("function_id", DataType::Int, false),
+                ("type", DataType::TinyInt, false),
+                ("fanout", DataType::Int, false),
+                ("boundary_value_on_right", DataType::Bit, false),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+        vec![]
+    }
+}
+
+impl VirtualTable for SysPartitionParameters {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "partition_parameters",
+            vec![
+                ("parameter_id", DataType::Int, false),
+                ("function_id", DataType::Int, false),
+                ("system_type_id", DataType::Int, false),
+                ("max_length", DataType::SmallInt, false),
+                ("precision", DataType::TinyInt, false),
+                ("scale", DataType::TinyInt, false),
+                ("collation_name", DataType::VarChar { max_len: 128 }, true),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+        vec![]
+    }
+}
+
+impl VirtualTable for SysPartitionSchemes {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "partition_schemes",
+            vec![
+                ("name", DataType::VarChar { max_len: 128 }, false),
+                ("data_space_id", DataType::Int, false),
+                ("function_id", DataType::Int, false),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+        vec![]
+    }
+}
+
+impl VirtualTable for SysDestinationDataSpaces {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "destination_data_spaces",
+            vec![
+                ("partition_scheme_id", DataType::Int, false),
+                ("destination_id", DataType::Int, false),
+                ("data_space_id", DataType::Int, false),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+        vec![]
+    }
+}
+
+impl VirtualTable for SysFilegroups {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "filegroups",
+            vec![
+                ("data_space_id", DataType::Int, false),
+                ("name", DataType::VarChar { max_len: 128 }, false),
+                ("type", DataType::Char { len: 2 }, false),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+        vec![]
+    }
+}

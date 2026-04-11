@@ -6,6 +6,7 @@ use crate::types::{DataType, Value};
 
 pub(crate) struct SysObjects;
 pub(crate) struct SysSystemViews;
+pub(crate) struct SysCompatSysObjects;
 
 impl VirtualTable for SysObjects {
     fn definition(&self) -> crate::catalog::TableDef {
@@ -270,5 +271,43 @@ impl VirtualTable for SysSystemViews {
     fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
         // Return empty for now so SSMS doesn't crash on extended_properties check
         Vec::new()
+    }
+}
+
+impl VirtualTable for SysCompatSysObjects {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "sysobjects",
+            vec![
+                ("id", DataType::Int, false),
+                ("name", DataType::VarChar { max_len: 128 }, false),
+                ("xtype", DataType::Char { len: 2 }, false),
+                ("uid", DataType::SmallInt, false),
+            ],
+        )
+    }
+
+    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+        let base = SysObjects;
+        base.rows(catalog)
+            .into_iter()
+            .map(|r| {
+                let object_id = r.values.first().cloned().unwrap_or(Value::Int(0));
+                let name = r
+                    .values
+                    .get(1)
+                    .cloned()
+                    .unwrap_or(Value::VarChar(String::new()));
+                let xtype = match r.values.get(5) {
+                    Some(Value::Char(v)) => Value::Char(v.clone()),
+                    Some(Value::VarChar(v)) => Value::Char(v.clone()),
+                    _ => Value::Char("U ".to_string()),
+                };
+                StoredRow {
+                    values: vec![object_id, name, xtype, Value::SmallInt(1)],
+                    deleted: false,
+                }
+            })
+            .collect()
     }
 }

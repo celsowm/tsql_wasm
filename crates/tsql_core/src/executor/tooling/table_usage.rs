@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
-use crate::ast::{DdlStatement, DmlStatement, SelectStmt, Statement};
+use crate::ast::{DdlStatement, DmlStatement, FromNode, SelectStmt, Statement};
 
-use super::object_name::{normalize_object_name, normalize_table_ref};
+use super::object_name::{normalize_from_node, normalize_object_name, normalize_table_ref};
 
 pub(crate) fn collect_read_tables(stmt: &Statement) -> HashSet<String> {
     let mut out = HashSet::new();
@@ -55,11 +55,22 @@ fn collect_tables_from_statement(stmt: &Statement, out: &mut HashSet<String>) {
 }
 
 fn collect_tables_from_select(select: &SelectStmt, out: &mut HashSet<String>) {
-    if let Some(from) = &select.from {
-        out.insert(normalize_table_ref(from));
+    if let Some(from) = &select.from_clause {
+        collect_tables_from_from_node(from, out);
     }
-    for join in &select.joins {
-        out.insert(normalize_table_ref(&join.table));
+}
+
+fn collect_tables_from_from_node(node: &FromNode, out: &mut HashSet<String>) {
+    match node {
+        FromNode::Table(table) => {
+            out.insert(normalize_table_ref(table));
+        }
+        FromNode::Aliased { source, .. } => collect_tables_from_from_node(source, out),
+        FromNode::Join { left, right, .. } => {
+            collect_tables_from_from_node(left, out);
+            collect_tables_from_from_node(right, out);
+            out.insert(normalize_from_node(node));
+        }
     }
 }
 
