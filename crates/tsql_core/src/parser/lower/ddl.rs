@@ -42,13 +42,13 @@ pub fn lower_ddl(ddl: ast::DdlStatement) -> Result<executor_ast::Statement, DbEr
             name: lower_object_name(name),
         }))),
         ast::DdlStatement::DropSchema(name) => Ok(executor_ast::Statement::Ddl(executor_ast::statements::DdlStatement::DropSchema(executor_ast::statements::ddl::DropSchemaStmt {
-            name: name,
+            name,
         }))),
         ast::DdlStatement::CreateIndex { name, table, columns } => {
             Ok(executor_ast::Statement::Ddl(executor_ast::statements::DdlStatement::CreateIndex(executor_ast::statements::ddl::CreateIndexStmt {
                 name: lower_object_name(name),
                 table: lower_object_name(table),
-                columns: columns,
+                columns,
             })))
         }
         ast::DdlStatement::CreateType { name, columns } => {
@@ -59,7 +59,7 @@ pub fn lower_ddl(ddl: ast::DdlStatement) -> Result<executor_ast::Statement, DbEr
             })))
         }
         ast::DdlStatement::CreateSchema(name) => Ok(executor_ast::Statement::Ddl(executor_ast::statements::DdlStatement::CreateSchema(executor_ast::statements::ddl::CreateSchemaStmt {
-            name: name,
+            name,
         }))),
     }
 }
@@ -178,15 +178,15 @@ pub fn lower_table_constraint(c: ast::TableConstraint) -> Result<executor_ast::s
     match c {
         ast::TableConstraint::PrimaryKey { name, columns } => Ok(executor_ast::statements::ddl::TableConstraintSpec::PrimaryKey {
             name: name.unwrap_or_default(),
-            columns: columns,
+            columns,
         }),
         ast::TableConstraint::Unique { name, columns } => Ok(executor_ast::statements::ddl::TableConstraintSpec::Unique {
             name: name.unwrap_or_default(),
-            columns: columns,
+            columns,
         }),
         ast::TableConstraint::ForeignKey { name, columns, ref_table, ref_columns, on_delete, on_update } => Ok(executor_ast::statements::ddl::TableConstraintSpec::ForeignKey {
             name: name.unwrap_or_default(),
-            columns: columns,
+            columns,
             referenced_table: lower_object_name(ref_table),
             referenced_columns: ref_columns,
             on_delete: on_delete.map(lower_referential_action),
@@ -198,7 +198,7 @@ pub fn lower_table_constraint(c: ast::TableConstraint) -> Result<executor_ast::s
         }),
         ast::TableConstraint::Default { name, column, expr } => Ok(executor_ast::statements::ddl::TableConstraintSpec::Default {
             name: name.unwrap_or_default(),
-            column: column,
+            column,
             expr: lower_expr(expr)?,
         }),
     }

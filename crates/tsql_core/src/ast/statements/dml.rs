@@ -53,6 +53,7 @@ pub struct MergeStmt {
     pub output_into: Option<ObjectName>,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MergeSource {
     Table(TableRef),

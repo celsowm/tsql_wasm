@@ -62,40 +62,40 @@ pub(super) fn schema_name_by_id(catalog: &dyn Catalog, schema_id: u32) -> Option
         .map(|s| s.name.clone())
 }
 
-pub(super) fn table_by_object_id<'a>(
-    catalog: &'a dyn Catalog,
+pub(super) fn table_by_object_id(
+    catalog: &dyn Catalog,
     object_id: i32,
-) -> Option<&'a TableDef> {
+) -> Option<&TableDef> {
     catalog
         .get_tables()
         .iter()
         .find(|t| t.id as i32 == object_id)
 }
 
-pub(super) fn routine_by_object_id<'a>(
-    catalog: &'a dyn Catalog,
+pub(super) fn routine_by_object_id(
+    catalog: &dyn Catalog,
     object_id: i32,
-) -> Option<&'a RoutineDef> {
+) -> Option<&RoutineDef> {
     catalog
         .get_routines()
         .iter()
         .find(|r| r.object_id == object_id)
 }
 
-pub(super) fn view_by_object_id<'a>(
-    catalog: &'a dyn Catalog,
+pub(super) fn view_by_object_id(
+    catalog: &dyn Catalog,
     object_id: i32,
-) -> Option<&'a ViewDef> {
+) -> Option<&ViewDef> {
     catalog
         .get_views()
         .iter()
         .find(|v| v.object_id == object_id)
 }
 
-pub(super) fn trigger_by_object_id<'a>(
-    catalog: &'a dyn Catalog,
+pub(super) fn trigger_by_object_id(
+    catalog: &dyn Catalog,
     object_id: i32,
-) -> Option<&'a TriggerDef> {
+) -> Option<&TriggerDef> {
     catalog
         .get_triggers()
         .iter()
@@ -340,11 +340,11 @@ pub(super) fn table_has_index(catalog: &dyn Catalog, table: &TableDef) -> bool {
         .any(|idx| idx.table_id == table.id)
 }
 
-pub(super) fn index_by_id<'a>(
-    catalog: &'a dyn Catalog,
+pub(super) fn index_by_id(
+    catalog: &dyn Catalog,
     table_id: i32,
     index_id: i32,
-) -> Option<&'a IndexDef> {
+) -> Option<&IndexDef> {
     catalog
         .get_indexes()
         .iter()

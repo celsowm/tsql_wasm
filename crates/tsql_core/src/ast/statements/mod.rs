@@ -14,6 +14,7 @@ use crate::ast::statements::procedural::*;
 use crate::ast::statements::query::*;
 use serde::{Deserialize, Serialize};
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Statement {
     Dml(DmlStatement),
@@ -25,6 +26,7 @@ pub enum Statement {
     WithCte(WithCteStmt),
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DmlStatement {
     Select(SelectStmt),
@@ -36,6 +38,7 @@ pub enum DmlStatement {
     SelectAssign(SelectAssignStmt),
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DdlStatement {
     CreateTable(CreateTableStmt),
@@ -102,9 +105,10 @@ pub enum SessionStatement {
     SetIdentityInsert(SetIdentityInsertStmt),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum IsolationLevel {
     ReadUncommitted,
+    #[default]
     ReadCommitted,
     RepeatableRead,
     Serializable,

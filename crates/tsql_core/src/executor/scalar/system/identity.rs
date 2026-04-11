@@ -226,12 +226,7 @@ pub(crate) fn eval_has_perms_by_name(
     let is_database_context = class_name == "DATABASE" || securable_name.eq_ignore_ascii_case("master");
 
     let allowed = if is_server_context {
-        match perm.as_str() {
-            "VIEW ANY DATABASE" | "CONNECT SQL" | "VIEW SERVER STATE" | "VIEW ANY DEFINITION" => {
-                true
-            }
-            _ => false,
-        }
+        matches!(perm.as_str(), "VIEW ANY DATABASE" | "CONNECT SQL" | "VIEW SERVER STATE" | "VIEW ANY DEFINITION")
     } else if is_database_context {
         match perm.as_str() {
             "CONNECT" | "ANY" | "VIEW DATABASE STATE" | "VIEW DEFINITION" => true,

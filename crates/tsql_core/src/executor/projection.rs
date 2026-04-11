@@ -138,7 +138,7 @@ pub fn compare_projected_rows(
 ) -> Result<Ordering, DbError> {
     for item in order_by {
         let idx = resolve_projected_order_index(columns, item)
-            .ok_or_else(|| DbError::invalid_identifier(&format!("invalid column in ORDER BY: {}", expr_label(&item.expr))))?;
+            .ok_or_else(|| DbError::invalid_identifier(format!("invalid column in ORDER BY: {}", expr_label(&item.expr))))?;
         let ord = compare_values(
             a.get(idx).unwrap_or(&Value::Null),
             b.get(idx).unwrap_or(&Value::Null),

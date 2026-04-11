@@ -8,6 +8,7 @@ use super::context::ExecutionContext;
 use super::evaluator::eval_predicate;
 use super::model::{ContextTable, JoinedRow};
 
+#[allow(clippy::too_many_arguments)]
 pub fn apply_join(
     left_rows: Vec<JoinedRow>,
     left_shape: &[ContextTable],
@@ -62,6 +63,7 @@ fn apply_cross_join(left_rows: Vec<JoinedRow>, right_rows: Vec<JoinedRow>) -> Re
     Ok(next_rows)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_join_left(
     left_rows: Vec<JoinedRow>,
     right_rows: Vec<JoinedRow>,
@@ -97,6 +99,7 @@ fn apply_join_left(
     Ok(next_rows)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_join_right(
     left_rows: Vec<JoinedRow>,
     left_shape: &[ContextTable],
@@ -131,6 +134,7 @@ fn apply_join_right(
     Ok(next_rows)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_join_full(
     left_rows: Vec<JoinedRow>,
     left_shape: &[ContextTable],

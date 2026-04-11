@@ -15,7 +15,7 @@ use super::order_validation::validate_projected_order_by;
 pub(crate) fn apply_source_ordering(
     executor: &QueryExecutor<'_>,
     query: &RelationalQuery,
-    source_rows: &mut Vec<JoinedRow>,
+    source_rows: &mut [JoinedRow],
     ctx: &mut ExecutionContext,
 ) -> Result<(), DbError> {
     let order_by = &query.sort.order_by;

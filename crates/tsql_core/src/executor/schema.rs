@@ -181,7 +181,7 @@ impl<'a> SchemaExecutor<'a> {
                     &index_name,
                     &table.schema_name,
                     &table.name,
-                    &[col.name.clone()],
+                    std::slice::from_ref(&col.name),
                     true,  // is_clustered
                     col.unique,  // is_unique
                 ).map_err(|e| DbError::Execution(format!("Failed to create primary key index: {}", e)))?;

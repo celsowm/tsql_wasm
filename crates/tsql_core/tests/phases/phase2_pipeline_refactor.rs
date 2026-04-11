@@ -1,15 +1,15 @@
 use tsql_core::{parse_sql, types::Value, Engine};
 
 fn exec(engine: &mut Engine, sql: &str) {
-    let stmt = parse_sql(sql).expect(&format!("parse failed: {}", sql));
-    engine.execute(stmt).expect(&format!("execute failed: {}", sql));
+    let stmt = parse_sql(sql).unwrap_or_else(|_| panic!("parse failed: {}", sql));
+    engine.execute(stmt).unwrap_or_else(|_| panic!("execute failed: {}", sql));
 }
 
 fn query(engine: &mut Engine, sql: &str) -> tsql_core::QueryResult {
-    let stmt = parse_sql(sql).expect(&format!("parse failed: {}", sql));
+    let stmt = parse_sql(sql).unwrap_or_else(|_| panic!("parse failed: {}", sql));
     engine
         .execute(stmt)
-        .expect(&format!("execute failed: {}", sql))
+        .unwrap_or_else(|_| panic!("execute failed: {}", sql))
         .expect("expected result")
 }
 

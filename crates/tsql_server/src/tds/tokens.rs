@@ -166,6 +166,7 @@ pub fn write_returnstatus(b: &mut PacketBuilder, status: i32) {
     b.put_i32_le(status);
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn write_error(
     b: &mut PacketBuilder,
     number: i32,
@@ -268,6 +269,7 @@ pub fn write_envchange_language(b: &mut PacketBuilder, new_lang: &str, old_lang:
     b.put_utf16le(old_lang);
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn write_info(
     b: &mut PacketBuilder,
     number: i32,
@@ -330,12 +332,7 @@ pub fn write_result_set(
         write_row(b, row, types, textsize);
     }
 
-    let status = if rows.is_empty() {
-        DONE_COUNT
-    } else {
-        DONE_COUNT
-    };
-    write_done(b, status, cur_cmd, rows.len() as u64);
+    write_done(b, DONE_COUNT, cur_cmd, rows.len() as u64);
 }
 
 #[cfg(test)]

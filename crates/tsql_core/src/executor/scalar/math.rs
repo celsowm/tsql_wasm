@@ -10,6 +10,7 @@ use super::super::evaluator::eval_expr;
 use super::super::model::ContextTable;
 use super::super::value_helpers::value_to_f64;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn eval_math_unary<F>(
     args: &[Expr],
     row: &[ContextTable],
@@ -75,6 +76,7 @@ where
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn eval_math_unary_float<F>(
     args: &[Expr],
     row: &[ContextTable],

@@ -98,7 +98,7 @@ impl<'a> ScriptExecutor<'a> {
                         }
 
                         if iteration >= max_recursion {
-                            return Err(DbError::Execution(format!("The maximum recursion 100 has been exhausted before statement completion.")));
+                            return Err(DbError::Execution("The maximum recursion 100 has been exhausted before statement completion.".to_string()));
                         }
 
                         ctx.row.ctes.insert(&cte_def.name, table_def, all_rows);

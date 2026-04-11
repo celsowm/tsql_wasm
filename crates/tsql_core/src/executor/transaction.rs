@@ -104,12 +104,6 @@ impl<C, S, X> Default for TransactionManager<C, S, X> {
     }
 }
 
-impl Default for IsolationLevel {
-    fn default() -> Self {
-        Self::ReadCommitted
-    }
-}
-
 impl<C, S, X> TransactionManager<C, S, X>
 where
     C: Clone,

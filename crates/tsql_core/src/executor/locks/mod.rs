@@ -89,6 +89,7 @@ impl LockTable {
 
 // ── Statement-level table locking ────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 impl LockTable {
     pub fn acquire_statement_locks<C, S>(
         state_lock: &parking_lot::Mutex<LockTable>,
@@ -301,6 +302,7 @@ impl LockTable {
         blockers
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn acquire_row_lock(
         state_lock: &parking_lot::Mutex<LockTable>,
         session_id: SessionId,

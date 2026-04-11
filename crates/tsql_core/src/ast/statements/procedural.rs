@@ -83,6 +83,7 @@ pub struct DropProcedureStmt {
     pub name: ObjectName,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FunctionBody {
     ScalarReturn(Expr),

@@ -277,6 +277,7 @@ fn test_phase8_parser_fuzz_boundary_conditions() {
 
 /// Parser fuzzing test: random mutations of valid SQL
 #[test]
+#[allow(clippy::type_complexity)]
 fn test_phase8_parser_fuzz_mutations() {
     let valid_statements = vec![
         "SELECT 1",

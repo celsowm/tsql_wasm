@@ -109,6 +109,7 @@ pub(crate) fn eval_lower(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn eval_trim(
     args: &[Expr],
     row: &[ContextTable],

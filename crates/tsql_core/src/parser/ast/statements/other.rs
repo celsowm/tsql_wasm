@@ -4,6 +4,7 @@ use super::super::common::TableRef;
 use super::query::{SelectStmt, JoinClause};
 use serde::{Deserialize, Serialize};
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Statement {
     Dml(DmlStatement),
@@ -18,6 +19,7 @@ pub enum Statement {
     },
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DmlStatement {
     Select(Box<SelectStmt>),
@@ -32,6 +34,7 @@ pub enum DmlStatement {
     },
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DdlStatement {
     Create(Box<CreateStmt>),
@@ -63,6 +66,7 @@ pub enum DdlStatement {
     CreateSchema(String),
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ProceduralStatement {
     Declare(Vec<DeclareVar>),
@@ -281,6 +285,7 @@ pub struct RoutineParam {
     pub default: Option<Expr>,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum FunctionBody {
     ScalarReturn(Expr),
@@ -313,6 +318,7 @@ pub struct ForeignKeyRef {
     pub on_update: Option<ReferentialAction>,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AlterTableAction {
     AddColumn(ColumnDef),

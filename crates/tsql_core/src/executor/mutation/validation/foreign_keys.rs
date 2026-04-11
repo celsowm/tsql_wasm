@@ -52,7 +52,7 @@ pub(crate) fn enforce_foreign_keys_on_delete(
                             }
                             crate::ast::ReferentialAction::SetNull => {
                                 let mut new_row = other_row.clone();
-                                for (_i, col_name) in fk.columns.iter().enumerate() {
+                                for col_name in fk.columns.iter() {
                                     let col_idx = other_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
                                         .ok_or_else(|| DbError::column_not_found(col_name))?;
                                     new_row.values[col_idx] = Value::Null;
@@ -61,7 +61,7 @@ pub(crate) fn enforce_foreign_keys_on_delete(
                             }
                             crate::ast::ReferentialAction::SetDefault => {
                                 let mut new_row = other_row.clone();
-                                for (_i, col_name) in fk.columns.iter().enumerate() {
+                                for col_name in fk.columns.iter() {
                                     let col_idx = other_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
                                         .ok_or_else(|| DbError::column_not_found(col_name))?;
                                     if let Some(_default) = &other_table.columns[col_idx].default {
@@ -148,7 +148,7 @@ pub(crate) fn enforce_foreign_keys_on_update(
                             }
                             crate::ast::ReferentialAction::SetNull => {
                                 let mut updated_row = other_row.clone();
-                                for (_i, col_name) in fk.columns.iter().enumerate() {
+                                for col_name in fk.columns.iter() {
                                     let col_idx = other_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
                                         .ok_or_else(|| DbError::column_not_found(col_name))?;
                                     updated_row.values[col_idx] = Value::Null;
@@ -157,7 +157,7 @@ pub(crate) fn enforce_foreign_keys_on_update(
                             }
                             crate::ast::ReferentialAction::SetDefault => {
                                 let mut updated_row = other_row.clone();
-                                for (_i, col_name) in fk.columns.iter().enumerate() {
+                                for col_name in fk.columns.iter() {
                                     let col_idx = other_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
                                         .ok_or_else(|| DbError::column_not_found(col_name))?;
                                     if let Some(_default) = &other_table.columns[col_idx].default {

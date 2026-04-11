@@ -7,8 +7,8 @@ use tsql_core::{parse_sql, Engine};
 
 
 fn engine_exec(engine: &mut Engine, sql: &str) -> Option<tsql_core::QueryResult> {
-    let stmt = parse_sql(sql).expect(&format!("Parser falhou: {}", sql));
-    engine.execute(stmt).expect(&format!("Engine falhou: {}", sql))
+    let stmt = parse_sql(sql).unwrap_or_else(|_| panic!("Parser falhou: {}", sql));
+    engine.execute(stmt).unwrap_or_else(|_| panic!("Engine falhou: {}", sql))
 }
 
 // ─── IS NULL ────────────────────────────────────────────────────────────

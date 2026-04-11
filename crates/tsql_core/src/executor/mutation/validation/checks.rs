@@ -22,7 +22,7 @@ pub(crate) fn validate_row_against_table(
     Ok(())
 }
 
-pub(crate) fn enforce_checks_on_row<'a>(
+pub(crate) fn enforce_checks_on_row(
     table: &TableDef,
     row: &StoredRow,
     ctx: &mut ExecutionContext<'_>,

@@ -30,7 +30,7 @@ fn test_schemata_default() {
         &mut e,
         "SELECT CATALOG_NAME, SCHEMA_NAME, SCHEMA_OWNER FROM INFORMATION_SCHEMA.SCHEMATA",
     );
-    assert!(r.rows.len() >= 1);
+    assert!(!r.rows.is_empty());
     assert_eq!(val(&r, 0, 0), "tsql_wasm");
     assert_eq!(val(&r, 0, 1), "dbo");
     assert_eq!(val(&r, 0, 2), "dbo");

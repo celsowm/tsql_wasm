@@ -96,9 +96,8 @@ impl TdsSession {
                 // prelogin encryption negotiation.
                 let server_encrypt = if self.config.tls_enabled {
                     ENCRYPT_ON
-                } else if prelogin.encryption == ENCRYPT_NOT_SUP {
-                    ENCRYPT_NOT_SUP
-                } else if prelogin.encryption == ENCRYPT_ON
+                } else if prelogin.encryption == ENCRYPT_NOT_SUP
+                    || prelogin.encryption == ENCRYPT_ON
                     || prelogin.encryption == ENCRYPT_REQUIRED
                 {
                     ENCRYPT_NOT_SUP
@@ -447,8 +446,6 @@ impl TdsSession {
         sql: &str,
         writer: &mut W,
     ) -> Result<bool, String> {
-        let sql = sql;
-
         if sql.is_empty() {
             let mut b = PacketBuilder::new();
             tokens::write_done(&mut b, tokens::DONE_FINAL, 1, 0);

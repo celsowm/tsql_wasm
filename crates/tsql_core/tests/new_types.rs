@@ -233,7 +233,7 @@ fn test_float_basic() {
         Value::Float(b) => *b,
         _ => panic!("expected Float"),
     });
-    assert!((v - 3.14).abs() < 1e-10);
+    assert!((v - std::f64::consts::PI).abs() < 1e-10);
 }
 
 #[test]
@@ -277,6 +277,7 @@ fn test_float_arithmetic() {
 }
 
 #[test]
+#[allow(clippy::approx_constant)]
 fn test_float_cast() {
     let mut engine = Engine::new();
     let r = query(&mut engine, "SELECT CAST('3.14' AS FLOAT) AS v");
@@ -288,6 +289,7 @@ fn test_float_cast() {
 }
 
 #[test]
+#[allow(clippy::approx_constant)]
 fn test_float_negate() {
     let mut engine = Engine::new();
     let r = query(&mut engine, "SELECT -CAST(3.14 AS FLOAT) AS v");

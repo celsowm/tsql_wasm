@@ -404,7 +404,7 @@ fn format_float_value(f: f64, fmt: &str) -> String {
 }
 
 fn format_number_with_commas(s: &str) -> String {
-    let (negative, abs) = if s.starts_with('-') { (true, &s[1..]) } else { (false, s) };
+    let (negative, abs) = if let Some(stripped) = s.strip_prefix('-') { (true, stripped) } else { (false, s) };
     let parts: Vec<&str> = abs.splitn(2, '.').collect();
     let int_part = parts[0];
     let frac_part = parts.get(1).copied();
@@ -412,7 +412,7 @@ fn format_number_with_commas(s: &str) -> String {
     let mut result = String::new();
     let chars: Vec<char> = int_part.chars().collect();
     for (i, c) in chars.iter().enumerate() {
-        if i > 0 && (chars.len() - i) % 3 == 0 { result.push(','); }
+        if i > 0 && (chars.len() - i).is_multiple_of(3) { result.push(','); }
         result.push(*c);
     }
     if let Some(frac) = frac_part {

@@ -134,6 +134,12 @@ pub struct PacketBuilder {
     buf: Vec<u8>,
 }
 
+impl Default for PacketBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PacketBuilder {
     pub fn new() -> Self {
         Self { buf: Vec::new() }

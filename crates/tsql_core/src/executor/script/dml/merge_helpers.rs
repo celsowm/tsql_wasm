@@ -127,6 +127,7 @@ pub(crate) fn merge_source_context(
     }]
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn merge_apply_update_action(
     stmt: &MergeStmt,
     target_table: &TableDef,
@@ -185,6 +186,7 @@ pub(crate) fn merge_apply_update_action(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn merge_apply_delete_action(
     stmt: &MergeStmt,
     target_table: &TableDef,
@@ -213,6 +215,7 @@ pub(crate) fn merge_apply_delete_action(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn merge_apply_insert_action(
     stmt: &MergeStmt,
     target_table: &TableDef,
@@ -287,6 +290,7 @@ pub(crate) fn merge_apply_insert_action(
     Ok(temp_row)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn merge_process_matched_phase(
     stmt: &MergeStmt,
     target_table: &TableDef,
@@ -306,8 +310,8 @@ pub(crate) fn merge_process_matched_phase(
     let source_alias = merge_source_alias(stmt)?;
     let source_table_def = synthetic_source_table(source_alias.clone(), target_table);
 
-    for i in 0..target_rows.len() {
-        if target_rows[i].deleted {
+    for (i, target_row) in target_rows.iter().enumerate() {
+        if target_row.deleted {
             continue;
         }
 
@@ -413,6 +417,7 @@ pub(crate) fn merge_process_matched_phase(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn merge_process_not_matched_phase(
     stmt: &MergeStmt,
     target_table: &TableDef,

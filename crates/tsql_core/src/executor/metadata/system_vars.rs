@@ -28,11 +28,11 @@ static SYSTEM_VARIABLES: &[SystemVariable] = &[
     },
     SystemVariable {
         name: "@@LANGUAGE",
-        handler: |ctx| Value::NVarChar(ctx.options.language.clone().into()),
+        handler: |ctx| Value::NVarChar(ctx.options.language.clone()),
     },
     SystemVariable {
         name: "@@TEXTSIZE",
-        handler: |ctx| Value::Int(ctx.options.textsize as i32),
+        handler: |ctx| Value::Int(ctx.options.textsize),
     },
     SystemVariable {
         name: "@@MAX_PRECISION",

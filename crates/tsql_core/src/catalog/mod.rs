@@ -106,6 +106,7 @@ impl TableDef {
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RoutineKind {
     Procedure {
@@ -203,6 +204,7 @@ pub trait IndexRegistry {
         columns: &[String],
         // Using TableRegistry to find tables instead of passing them
     ) -> Result<(), DbError>;
+    #[allow(clippy::too_many_arguments)]
     fn create_index_with_options(
         &mut self,
         schema: &str,

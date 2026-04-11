@@ -281,12 +281,10 @@ where
     if lv.is_null() || rv.is_null() {
         if ansi_nulls {
             return Value::Null;
+        } else if lv.is_null() && rv.is_null() {
+            return Value::Bit(pred(Ordering::Equal));
         } else {
-            if lv.is_null() && rv.is_null() {
-                return Value::Bit(pred(Ordering::Equal));
-            } else {
-                return Value::Bit(false);
-            }
+            return Value::Bit(false);
         }
     }
     Value::Bit(pred(compare_values(&lv, &rv)))

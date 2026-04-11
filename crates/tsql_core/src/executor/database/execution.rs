@@ -117,6 +117,7 @@ where
 }
 
 #[allow(deprecated)]
+#[allow(clippy::type_complexity)]
 fn build_execution_context<'a, C, S>(
     session_id: SessionId,
     session: &'a mut SessionRuntime<C, S>,
@@ -207,6 +208,7 @@ where
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn execute_stmt_loop<C, S, F>(
     state: &SharedState<C, S>,
     session_id: SessionId,

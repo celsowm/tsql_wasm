@@ -32,7 +32,7 @@ impl PipelineState {
             .projection
             .items
             .iter()
-            .flat_map(|item| expand_projection_columns(&[item.clone()], None))
+            .flat_map(|item| expand_projection_columns(std::slice::from_ref(item), None))
             .collect();
 
         let needs_pre_sort = requires_pre_sort(query, &projection_columns, has_aggregate);

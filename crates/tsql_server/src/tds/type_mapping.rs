@@ -254,7 +254,7 @@ pub fn value_to_wire_bytes(value: &Value, ti: &TypeInfo) -> Vec<u8> {
                 }
             };
             let negative = raw < 0;
-            let abs_val = raw.abs() as u128;
+            let abs_val = raw.unsigned_abs();
             buf.push(if negative { 0x00 } else { 0x01 });
             let limb_count = (len - 1) / 4;
             for i in 0..limb_count {

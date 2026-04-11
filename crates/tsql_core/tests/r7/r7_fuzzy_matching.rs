@@ -113,5 +113,5 @@ fn test_fuzzy_join() {
     
     // Just verify the query runs without error and returns results
     let result = query(&mut engine, "SELECT c.name, o.customer_name, EDIT_DISTANCE(c.name, o.customer_name) AS dist FROM customers c, orders o");
-    assert!(result.rows.len() >= 1);
+    assert!(!result.rows.is_empty());
 }

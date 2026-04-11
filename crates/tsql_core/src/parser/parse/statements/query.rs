@@ -11,28 +11,25 @@ pub fn parse_select(parser: &mut Parser) -> ParseResult<SelectStmt> {
 pub fn parse_select_body(parser: &mut Parser) -> ParseResult<SelectStmt> {
     let mut current = parse_single_select_body(parser)?;
 
-    loop {
-        let kind = match parser.peek() {
-            Some(Token::Keyword(k)) => match *k {
-                Keyword::Union => {
+    while let Some(Token::Keyword(k)) = parser.peek() {
+        let kind = match *k {
+            Keyword::Union => {
+                let _ = parser.next();
+                if matches!(parser.peek(), Some(Token::Keyword(Keyword::All))) {
                     let _ = parser.next();
-                    if matches!(parser.peek(), Some(Token::Keyword(Keyword::All))) {
-                        let _ = parser.next();
-                        SetOpKind::UnionAll
-                    } else {
-                        SetOpKind::Union
-                    }
+                    SetOpKind::UnionAll
+                } else {
+                    SetOpKind::Union
                 }
-                Keyword::Intersect => {
-                    let _ = parser.next();
-                    SetOpKind::Intersect
-                }
-                Keyword::Except => {
-                    let _ = parser.next();
-                    SetOpKind::Except
-                }
-                _ => break,
-            },
+            }
+            Keyword::Intersect => {
+                let _ = parser.next();
+                SetOpKind::Intersect
+            }
+            Keyword::Except => {
+                let _ = parser.next();
+                SetOpKind::Except
+            }
             _ => break,
         };
 
@@ -102,38 +99,34 @@ pub fn parse_single_select_body(parser: &mut Parser) -> ParseResult<SelectStmt> 
     }
 
     let mut applies = Vec::new();
-    loop {
-        if let Some(Token::Keyword(k)) = parser.peek() {
-            let apply_type = match *k {
-                Keyword::Cross => {
-                    let saved = parser.save();
+    while let Some(Token::Keyword(k)) = parser.peek() {
+        let apply_type = match *k {
+            Keyword::Cross => {
+                let saved = parser.save();
+                let _ = parser.next();
+                if matches!(parser.peek(), Some(Token::Keyword(Keyword::Apply))) {
                     let _ = parser.next();
-                    if matches!(parser.peek(), Some(Token::Keyword(Keyword::Apply))) {
-                        let _ = parser.next();
-                        ApplyType::Cross
-                    } else {
-                        parser.restore(saved);
-                        break;
-                    }
+                    ApplyType::Cross
+                } else {
+                    parser.restore(saved);
+                    break;
                 }
-                Keyword::Outer => {
-                    let saved = parser.save();
+            }
+            Keyword::Outer => {
+                let saved = parser.save();
+                let _ = parser.next();
+                if matches!(parser.peek(), Some(Token::Keyword(Keyword::Apply))) {
                     let _ = parser.next();
-                    if matches!(parser.peek(), Some(Token::Keyword(Keyword::Apply))) {
-                        let _ = parser.next();
-                        ApplyType::Outer
-                    } else {
-                        parser.restore(saved);
-                        break;
-                    }
+                    ApplyType::Outer
+                } else {
+                    parser.restore(saved);
+                    break;
                 }
-                _ => break,
-            };
-            let table = parse_table_ref(parser)?;
-            applies.push(ApplyClause { apply_type, table });
-        } else {
-            break;
-        }
+            }
+            _ => break,
+        };
+        let table = parse_table_ref(parser)?;
+        applies.push(ApplyClause { apply_type, table });
     }
 
     let mut selection = None;

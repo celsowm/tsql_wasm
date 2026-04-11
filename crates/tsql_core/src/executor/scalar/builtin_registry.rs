@@ -103,7 +103,7 @@ const SYSTEM_FUNCTIONS: &[BuiltinScalarFunction] = &[
         Ok(Value::Null)
     }),
     builtin!("@@FETCH_STATUS" => |_args, _row, ctx, _catalog, _storage, _clock| {
-        Ok(Value::Int(*ctx.session.fetch_status as i32))
+        Ok(Value::Int(*ctx.session.fetch_status))
     }),
     builtin!("@@NESTLEVEL" => |_args, _row, ctx, _catalog, _storage, _clock| {
         Ok(Value::Int(ctx.frame.depth as i32))
@@ -338,7 +338,7 @@ const JSON_FUNCTIONS: &[BuiltinScalarFunction] = &[
         json::json_array_length(&json_val.to_string_value())
     }),
     builtin!("JSON_KEYS" => |args, row, ctx, catalog, storage, clock| {
-        if args.len() < 1 || args.len() > 2 {
+        if args.is_empty() || args.len() > 2 {
             return Err(DbError::Execution("JSON_KEYS expects 1 or 2 arguments".into()));
         }
         let json_val = crate::executor::evaluator::eval_expr(&args[0], row, ctx, catalog, storage, clock)?;

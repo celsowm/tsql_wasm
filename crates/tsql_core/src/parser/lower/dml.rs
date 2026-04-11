@@ -331,7 +331,7 @@ pub fn lower_table_ref_recursive(tr: ast::TableRef) -> Result<(executor_ast::com
         ast::TableFactor::Values { rows, columns } => Ok((executor_ast::common::TableRef {
             factor: executor_ast::common::TableFactor::Values {
                 rows: rows.into_iter().map(|r| r.into_iter().map(lower_expr).collect::<Result<Vec<_>, _>>()).collect::<Result<Vec<_>, _>>()?,
-                columns: columns,
+                columns,
             },
             alias,
             pivot,
@@ -480,7 +480,7 @@ pub fn lower_merge(s: ast::MergeStmt) -> Result<executor_ast::statements::dml::M
                     })).collect::<Result<Vec<_>, _>>()?,
                 },
                 ast::MergeAction::Insert { columns, values } => executor_ast::statements::dml::MergeAction::Insert {
-                    columns: columns,
+                    columns,
                     values: values.into_iter().map(lower_expr).collect::<Result<Vec<_>, _>>()?,
                 },
                 ast::MergeAction::Delete => executor_ast::statements::dml::MergeAction::Delete,

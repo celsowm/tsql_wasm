@@ -32,6 +32,12 @@ pub struct IdentityState {
     pub(crate) scope_stack: Vec<Option<i64>>,
 }
 
+impl Default for IdentityState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl IdentityState {
     pub fn new() -> Self {
         Self {
@@ -50,6 +56,12 @@ pub struct TableState {
     pub(crate) temp_map: HashMap<String, String>,
     pub(crate) var_map: HashMap<String, String>,
     pub(crate) var_counter: u64,
+}
+
+impl Default for TableState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TableState {
@@ -71,6 +83,12 @@ impl TableState {
 pub struct CursorState {
     pub(crate) map: HashMap<String, super::model::Cursor>,
     pub(crate) fetch_status: i32,
+}
+
+impl Default for CursorState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl CursorState {
@@ -99,6 +117,12 @@ pub struct SessionSnapshot {
 #[derive(Debug, Clone)]
 pub struct DiagnosticsState {
     pub(crate) print_output: Vec<String>,
+}
+
+impl Default for DiagnosticsState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DiagnosticsState {

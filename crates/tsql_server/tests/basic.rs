@@ -46,11 +46,8 @@ async fn test_error_handling() {
     let mut client = connect(port).await;
 
     let result = client.query("SELECT * FROM nonexistent_table", &[]).await;
-    match result {
-        Ok(stream) => {
-            let first_result = stream.into_first_result().await;
-            assert!(first_result.is_err());
-        }
-        Err(_) => {}
+    if let Ok(stream) = result {
+        let first_result = stream.into_first_result().await;
+        assert!(first_result.is_err());
     }
 }

@@ -138,9 +138,7 @@ impl<'a> MutationExecutor<'a> {
                     let _ = self.storage.clear_table(id);
                 }
 
-                if let Err(e) = res {
-                    return Err(e);
-                }
+                res?;
             }
         }
         Ok(())

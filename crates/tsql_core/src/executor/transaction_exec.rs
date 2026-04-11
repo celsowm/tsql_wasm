@@ -11,6 +11,7 @@ use super::session::SharedState;
 use super::table_util::{collect_read_tables, collect_write_tables};
 use super::transaction::{TransactionManager, WriteIntentKind};
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn execute_transaction_statement<C, S>(
     state: &SharedState<C, S>,
     session_id: SessionId,

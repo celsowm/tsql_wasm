@@ -43,6 +43,7 @@ fn is_statement_starter(tok: Option<&Token>) -> bool {
 // Re-export canonical implementations from control_flow.rs
 pub use super::control_flow::{parse_if, parse_begin_end, parse_try_catch};
 
+#[allow(clippy::while_let_loop)]
 pub fn parse_declare(parser: &mut Parser) -> ParseResult<Vec<DeclareVar>> {
     let mut vars = Vec::new();
     loop {

@@ -90,7 +90,7 @@ pub fn lower_expr(parser_expr: ast::Expr) -> Result<executor_ast::expressions::E
         }),
         ast::Expr::Subquery(s) => Ok(executor_ast::expressions::Expr::Subquery(Box::new(lower_select(*s)?))),
         ast::Expr::FunctionCall { name, args } => Ok(executor_ast::expressions::Expr::FunctionCall {
-            name: name,
+            name,
             args: args.into_iter().map(lower_expr).collect::<Result<Vec<_>, _>>()?,
         }),
         ast::Expr::WindowFunction { name, args, partition_by, order_by, frame } => {

@@ -50,6 +50,7 @@ pub struct AlterTableStmt {
     pub action: AlterTableAction,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AlterTableAction {
     AddColumn(ColumnSpec),

@@ -32,14 +32,14 @@ pub fn lower_procedural(proc: ast::ProceduralStatement) -> Result<executor_ast::
         }
         ast::ProceduralStatement::DeclareTableVar { name, columns, constraints } => {
             Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::DeclareTableVar(executor_ast::statements::procedural::DeclareTableVarStmt {
-                name: name,
+                name,
                 columns: columns.into_iter().map(super::ddl::lower_column_def).collect::<Result<Vec<_>, _>>()?,
                 table_constraints: constraints.into_iter().map(super::ddl::lower_table_constraint).collect::<Result<Vec<_>, _>>()?,
             })))
         }
         ast::ProceduralStatement::DeclareCursor { name, query } => {
             Ok(executor_ast::Statement::Procedural(executor_ast::statements::ProceduralStatement::DeclareCursor(executor_ast::statements::procedural::DeclareCursorStmt {
-                name: name,
+                name,
                 query: lower_select(query)?,
             })))
         }
@@ -131,7 +131,7 @@ pub fn lower_cursor(cursor: ast::CursorStatement) -> Result<executor_ast::Statem
         ast::CursorStatement::Open(name) => Ok(executor_ast::Statement::Cursor(executor_ast::statements::CursorStatement::OpenCursor(name))),
         ast::CursorStatement::Fetch { name, direction, into_vars } => {
             Ok(executor_ast::Statement::Cursor(executor_ast::statements::CursorStatement::FetchCursor(executor_ast::statements::procedural::FetchCursorStmt {
-                name: name,
+                name,
                 direction: lower_fetch_direction(direction)?,
                 into: into_vars,
             })))

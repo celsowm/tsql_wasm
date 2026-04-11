@@ -16,6 +16,7 @@ use super::result::QueryResult;
 use super::value_ops::truthy;
 use crate::storage::Storage;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn eval_case(
     operand: Option<&Expr>,
     when_clauses: &[WhenClause],
@@ -51,6 +52,7 @@ pub(crate) fn eval_case(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn eval_in_list(
     in_expr: &Expr,
     list: &[Expr],
@@ -79,6 +81,7 @@ pub(crate) fn eval_in_list(
     Ok(Value::Bit(if negated { !found } else { found }))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn eval_between(
     between_expr: &Expr,
     low: &Expr,
@@ -108,6 +111,7 @@ pub(crate) fn eval_between(
     Ok(Value::Bit(if negated { !result } else { result }))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn eval_like(
     like_expr: &Expr,
     pattern: &Expr,
@@ -207,6 +211,7 @@ pub(crate) fn eval_exists(
     Ok(Value::Bit(if negated { !exists } else { exists }))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn eval_in_subquery(
     in_expr: &Expr,
     stmt: &crate::ast::SelectStmt,

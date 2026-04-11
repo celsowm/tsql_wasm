@@ -125,7 +125,7 @@ pub(crate) fn eval_datepart(
     let (y, m, d, h, mi, s) = parse_datetime_parts(&date_str, &ctx.options.dateformat)?;
 
     let result = match part.as_str() {
-        "year" | "yy" | "yyyy" => y as i32,
+        "year" | "yy" | "yyyy" => y,
         "month" | "mm" | "m" => m,
         "day" | "dd" | "d" => d,
         "hour" | "hh" => h,
@@ -134,18 +134,18 @@ pub(crate) fn eval_datepart(
         "weekday" | "dw" | "w" => {
             let dow = day_of_week_from_date(y, m, d);
             let datefirst = ctx.metadata.datefirst;
-            ((dow - datefirst + 7) % 7 + 1) as i32
+            (dow - datefirst + 7) % 7 + 1
         }
         "dayofweek" => {
             let dow = day_of_week_from_date(y, m, d);
-            (dow + 1) as i32
+            dow + 1
         }
         "dayofyear" | "dy" => {
             let days = date_to_days(y, m, d);
             let jan1 = date_to_days(y, 1, 1);
             ((days - jan1) + 1) as i32
         }
-        "quarter" | "qq" | "q" => ((m - 1) / 3 + 1) as i32,
+        "quarter" | "qq" | "q" => (m - 1) / 3 + 1,
         "millisecond" | "ms" => 0i32,
         "microsecond" | "mcs" => 0i32,
         "nanosecond" | "ns" => 0i32,

@@ -77,7 +77,7 @@ fn eval_having_expr(
                         storage,
                         clock,
                     )?;
-                    matches!(compare_values(&op_val, &when_val), Ordering::Equal)
+                    matches!(compare_values(op_val, &when_val), Ordering::Equal)
                 } else {
                     let cond = eval_having_expr(
                         &clause.condition,
@@ -260,7 +260,7 @@ impl<'a> GroupExecutor<'a> {
                     }
                 }
                 expr => {
-                    let row_to_use = sample_row.cloned().unwrap_or_else(|| vec![]);
+                    let row_to_use = sample_row.cloned().unwrap_or_else(Vec::new);
                     out.push(eval_expr(
                         expr,
                         &row_to_use,

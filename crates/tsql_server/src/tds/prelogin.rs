@@ -133,7 +133,7 @@ pub fn build_prelogin_response(encryption: u8) -> Vec<u8> {
     // THREADID:  8..12   (4 bytes)
     // MARS:      12      (1 byte)
 
-    let version_offset = token_table_size + 0;
+    let version_offset = token_table_size;
     let enc_offset = token_table_size + 6;
     let inst_offset = token_table_size + 7;
     let thread_offset = token_table_size + 8;

@@ -56,7 +56,7 @@ impl<'a> ScriptExecutor<'a> {
             ..
         } = routine;
         let RoutineKind::Procedure { body } = kind else {
-            return Err(DbError::object_not_found(&format!("'{}.{}' is not a procedure", schema, stmt.name.name)));
+            return Err(DbError::object_not_found(format!("'{}.{}' is not a procedure", schema, stmt.name.name)));
         };
         ctx.push_module(ModuleFrame {
             object_id,

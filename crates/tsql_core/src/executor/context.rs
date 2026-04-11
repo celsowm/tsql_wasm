@@ -421,6 +421,7 @@ impl<'a> ExecutionContext<'a> {
 
     /// Legacy constructor — prefer `from_session()` for new code.
     #[deprecated(since = "0.2.0", note = "Use ExecutionContext::from_session() instead")]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         variables: &'a mut Variables,
         session_last_identity: &'a mut Option<i64>,

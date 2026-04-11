@@ -9,7 +9,8 @@ use super::super::super::evaluator::eval_expr_to_type_in_context;
 use super::super::super::model::single_row_context;
 use super::padding::{apply_ansi_padding, enforce_string_length};
 
-pub(crate) fn apply_assignments<'a>(
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_assignments(
     table: &TableDef,
     row: &mut StoredRow,
     assignments: &[Assignment],

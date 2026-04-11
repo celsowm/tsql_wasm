@@ -9,7 +9,7 @@ pub(crate) fn validate_projected_order_by(
 ) -> Result<(), DbError> {
     for item in order_by {
         if resolve_projected_order_index(columns, item).is_none() {
-            return Err(DbError::invalid_identifier(&format!(
+            return Err(DbError::invalid_identifier(format!(
                 "invalid column in ORDER BY: {}",
                 expr_label(&item.expr)
             )));

@@ -5,7 +5,7 @@ use winnow::token::{take_while, any};
 use winnow::combinator::{alt, repeat, opt};
 use winnow::ascii::float;
 
-pub fn lex<'a>(input: &mut &'a str, quoted_identifier: bool) -> ModalResult<Vec<Token>> {
+pub fn lex(input: &mut &str, quoted_identifier: bool) -> ModalResult<Vec<Token>> {
     repeat(0.., alt((
         parse_whitespace.map(|_| None),
         parse_comment.map(|_| None),
@@ -50,7 +50,7 @@ fn parse_whitespace<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
     take_while(1.., |c: char| c.is_whitespace()).parse_next(input)
 }
 
-fn parse_comment<'a>(input: &mut &'a str) -> ModalResult<()> {
+fn parse_comment(input: &mut &str) -> ModalResult<()> {
     if input.starts_with("--") {
         let rest = &input[2..];
         let next_is_ws = rest.chars().next().map(|c| c.is_whitespace()).unwrap_or(true);
@@ -70,7 +70,7 @@ fn parse_comment<'a>(input: &mut &'a str) -> ModalResult<()> {
     }
 }
 
-fn parse_number<'a>(input: &mut &'a str) -> ModalResult<f64> {
+fn parse_number(input: &mut &str) -> ModalResult<f64> {
     let start = *input;
     let result: ModalResult<f64> = float.parse_next(input);
     if let Ok(val) = result {
@@ -181,7 +181,7 @@ fn parse_quoted_identifier<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
     Ok(&start[..len])
 }
 
-fn parse_operator_token<'a>(input: &mut &'a str) -> ModalResult<Token> {
+fn parse_operator_token(input: &mut &str) -> ModalResult<Token> {
     alt((
         "~".map(|_| Token::Tilde),
         alt((
@@ -198,7 +198,7 @@ fn parse_operator_token<'a>(input: &mut &'a str) -> ModalResult<Token> {
     )).parse_next(input)
 }
 
-fn parse_punctuation<'a>(input: &mut &'a str) -> ModalResult<Option<Token>> {
+fn parse_punctuation(input: &mut &str) -> ModalResult<Option<Token>> {
     alt((
         "(".map(|_| Some(Token::LParen)),
         ")".map(|_| Some(Token::RParen)),

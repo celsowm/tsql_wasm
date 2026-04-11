@@ -89,7 +89,7 @@ pub(crate) fn resolve_identifier(
     match matches.len() {
         0 => Err(DbError::column_not_found(name)),
         1 => Ok(matches[0].1.clone()),
-        _ => Err(DbError::invalid_identifier(&format!("ambiguous column '{}'", name))),
+        _ => Err(DbError::invalid_identifier(format!("ambiguous column '{}'", name))),
     }
 }
 

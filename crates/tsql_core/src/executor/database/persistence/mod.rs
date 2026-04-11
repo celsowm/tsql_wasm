@@ -66,7 +66,23 @@ where
             inner: Arc::new(state),
         }
     }
+}
 
+impl<C, S> Default for DatabaseInner<C, S>
+where
+    C: EngineCatalog,
+    S: EngineStorage,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<C, S> DatabaseInner<C, S>
+where
+    C: EngineCatalog,
+    S: EngineStorage,
+{
     pub fn new_with_durability(durability: Box<dyn DurabilitySink<C>>) -> Self {
         let state = if let Some(checkpoint) = durability.latest_checkpoint() {
             SharedState::from_checkpoint(checkpoint, durability, S::default())

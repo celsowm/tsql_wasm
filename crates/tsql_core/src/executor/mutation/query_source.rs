@@ -78,7 +78,7 @@ fn match_table_ref(
     table_lookup: &impl Fn(&str, &str) -> Option<TableDef>,
 ) -> Option<(TableDef, String)> {
     let tname = tref.factor.as_object_name().map(|o| o.name.as_str()).unwrap_or("");
-    let alias = tref.alias.as_ref().map(|s| s.as_str()).unwrap_or(tname);
+    let alias = tref.alias.as_deref().unwrap_or(tname);
     if !alias.eq_ignore_ascii_case(target_name) && (tref.factor.is_derived() || !tname.eq_ignore_ascii_case(target_name)) {
         return None;
     }
