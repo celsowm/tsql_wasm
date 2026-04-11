@@ -1,8 +1,8 @@
-﻿use crate::ast::TryCatchStmt;
+use super::super::ScriptExecutor;
+use crate::ast::TryCatchStmt;
 use crate::error::StmtResult;
 use crate::executor::context::ExecutionContext;
 use crate::executor::result::QueryResult;
-use super::super::ScriptExecutor;
 
 impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_try_catch(

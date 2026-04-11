@@ -1,11 +1,10 @@
-﻿use serde_json::Value as JsonValue;
+use serde_json::Value as JsonValue;
 
 use crate::error::DbError;
 use crate::types::Value;
 
 pub fn parse_json(s: &str) -> Result<JsonValue, DbError> {
-    serde_json::from_str(s)
-        .map_err(|e| DbError::Execution(format!("Invalid JSON: {}", e)))
+    serde_json::from_str(s).map_err(|e| DbError::Execution(format!("Invalid JSON: {}", e)))
 }
 
 pub fn json_to_string(json: &JsonValue) -> String {
@@ -41,7 +40,11 @@ pub fn json_modify(json_str: &str, path: &str, new_value: &str) -> Result<Value,
     if let Ok(new_json) = parse_json(new_value) {
         set_json_value(&mut json, &normalized_path, new_json);
     } else {
-        set_json_value(&mut json, &normalized_path, JsonValue::String(new_value.to_string()));
+        set_json_value(
+            &mut json,
+            &normalized_path,
+            JsonValue::String(new_value.to_string()),
+        );
     }
 
     Ok(Value::NVarChar(json_to_string(&json)))

@@ -1,6 +1,6 @@
 use super::super::value_helpers::{rescale_raw, value_to_f64};
-use chrono::{NaiveDate, NaiveDateTime};
 use crate::types::Value;
+use chrono::{NaiveDate, NaiveDateTime};
 use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -33,8 +33,9 @@ pub(crate) fn enforce_checks_on_row(
     let joined = single_row_context(table, row.clone());
     for col in &table.columns {
         if let Some(check_expr) = &col.check {
-            let check_val =
-                super::super::super::evaluator::eval_expr(check_expr, &joined, ctx, catalog, storage, clock)?;
+            let check_val = super::super::super::evaluator::eval_expr(
+                check_expr, &joined, ctx, catalog, storage, clock,
+            )?;
             if !check_val.is_null() && !super::super::super::value_ops::truthy(&check_val) {
                 let cname = col
                     .check_constraint_name
@@ -49,8 +50,9 @@ pub(crate) fn enforce_checks_on_row(
     }
 
     for chk in &table.check_constraints {
-        let check_val =
-            super::super::super::evaluator::eval_expr(&chk.expr, &joined, ctx, catalog, storage, clock)?;
+        let check_val = super::super::super::evaluator::eval_expr(
+            &chk.expr, &joined, ctx, catalog, storage, clock,
+        )?;
         if !check_val.is_null() && !super::super::super::value_ops::truthy(&check_val) {
             return Err(DbError::Execution(format!(
                 "CHECK constraint '{}' violated",

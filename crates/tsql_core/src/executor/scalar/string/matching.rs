@@ -83,7 +83,11 @@ pub(crate) fn eval_patindex(
         target.rfind(pat).map(|pos| (pos + 1) as i64).unwrap_or(0)
     } else if ends_with_wild {
         target.find(pat).map(|pos| (pos + 1) as i64).unwrap_or(0)
-    } else if target == pat { 1 } else { 0 };
+    } else if target == pat {
+        1
+    } else {
+        0
+    };
 
     Ok(Value::Int(result as i32))
 }

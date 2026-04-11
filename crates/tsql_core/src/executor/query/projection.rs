@@ -63,9 +63,11 @@ pub(crate) fn project_flat_rows(
                             Some(name) => name,
                             None => continue,
                         };
-                        out.extend(crate::executor::projection::expand_qualified_wildcard_values(
-                            row, table_name,
-                        ));
+                        out.extend(
+                            crate::executor::projection::expand_qualified_wildcard_values(
+                                row, table_name,
+                            ),
+                        );
                     }
                     expr => {
                         let val = eval_expr(expr, row, ctx, catalog, storage, clock);
@@ -108,7 +110,10 @@ fn derive_types_from_rows(rows: &[Vec<Value>], col_count: usize) -> Vec<Option<D
     out
 }
 
-fn expand_projection_types(projection: &[SelectItem], sample: Option<&JoinedRow>) -> Vec<Option<DataType>> {
+fn expand_projection_types(
+    projection: &[SelectItem],
+    sample: Option<&JoinedRow>,
+) -> Vec<Option<DataType>> {
     let mut types = Vec::new();
     for item in projection {
         types.extend(expand_projection_item_types(item, sample));
@@ -116,12 +121,21 @@ fn expand_projection_types(projection: &[SelectItem], sample: Option<&JoinedRow>
     types
 }
 
-fn expand_projection_item_types(item: &SelectItem, sample: Option<&JoinedRow>) -> Vec<Option<DataType>> {
+fn expand_projection_item_types(
+    item: &SelectItem,
+    sample: Option<&JoinedRow>,
+) -> Vec<Option<DataType>> {
     match &item.expr {
         Expr::Wildcard => {
             if let Some(row) = sample {
                 row.iter()
-                    .flat_map(|binding| binding.table.columns.iter().map(|c| Some(c.data_type.clone())))
+                    .flat_map(|binding| {
+                        binding
+                            .table
+                            .columns
+                            .iter()
+                            .map(|c| Some(c.data_type.clone()))
+                    })
                     .collect()
             } else {
                 vec![None]
@@ -138,7 +152,13 @@ fn expand_projection_item_types(item: &SelectItem, sample: Option<&JoinedRow>) -
                         binding.alias.eq_ignore_ascii_case(table_name)
                             || binding.table.name.eq_ignore_ascii_case(table_name)
                     })
-                    .flat_map(|binding| binding.table.columns.iter().map(|c| Some(c.data_type.clone())))
+                    .flat_map(|binding| {
+                        binding
+                            .table
+                            .columns
+                            .iter()
+                            .map(|c| Some(c.data_type.clone()))
+                    })
                     .collect()
             } else {
                 vec![None]
@@ -168,17 +188,23 @@ fn infer_expr_type(expr: &Expr, sample: Option<&JoinedRow>) -> Option<DataType> 
             max_len: v.encode_utf16().count().max(1) as u16,
         }),
         Expr::Null => None,
-        Expr::IsNull(_) | Expr::IsNotNull(_) | Expr::InList { .. } | Expr::Between { .. } | Expr::Like { .. } => {
-            Some(DataType::Bit)
-        }
+        Expr::IsNull(_)
+        | Expr::IsNotNull(_)
+        | Expr::InList { .. }
+        | Expr::Between { .. }
+        | Expr::Like { .. } => Some(DataType::Bit),
         Expr::Exists { .. } | Expr::InSubquery { .. } => Some(DataType::Bit),
         Expr::Cast { target, .. }
         | Expr::TryCast { target, .. }
         | Expr::Convert { target, .. }
-        | Expr::TryConvert { target, .. } => Some(super::super::type_mapping::data_type_spec_to_runtime(target)),
+        | Expr::TryConvert { target, .. } => Some(
+            super::super::type_mapping::data_type_spec_to_runtime(target),
+        ),
         Expr::Unary { op, expr: inner } => match op {
             crate::ast::UnaryOp::Not => Some(DataType::Bit),
-            crate::ast::UnaryOp::Negate | crate::ast::UnaryOp::BitwiseNot => infer_expr_type(inner, sample),
+            crate::ast::UnaryOp::Negate | crate::ast::UnaryOp::BitwiseNot => {
+                infer_expr_type(inner, sample)
+            }
         },
         Expr::Binary { left, op, right } => match op {
             crate::ast::BinaryOp::Eq
@@ -194,7 +220,8 @@ fn infer_expr_type(expr: &Expr, sample: Option<&JoinedRow>) -> Option<DataType> 
                 let rt = infer_expr_type(right, sample);
                 if is_text_type(lt.as_ref()) || is_text_type(rt.as_ref()) {
                     Some(DataType::VarChar { max_len: 4000 })
-                } else if matches!(lt, Some(DataType::Float)) || matches!(rt, Some(DataType::Float)) {
+                } else if matches!(lt, Some(DataType::Float)) || matches!(rt, Some(DataType::Float))
+                {
                     Some(DataType::Float)
                 } else {
                     Some(DataType::Int)
@@ -252,7 +279,10 @@ fn lookup_identifier_type(name: &str, sample: Option<&JoinedRow>) -> Option<Data
     None
 }
 
-fn lookup_qualified_identifier_type(parts: &[String], sample: Option<&JoinedRow>) -> Option<DataType> {
+fn lookup_qualified_identifier_type(
+    parts: &[String],
+    sample: Option<&JoinedRow>,
+) -> Option<DataType> {
     let row = sample?;
     if parts.is_empty() {
         return None;

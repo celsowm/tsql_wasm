@@ -29,7 +29,8 @@ pub(crate) fn choose_scan_strategy(
     };
 
     if let Some(pred) = predicate {
-        if let Some((op, _)) = extract_index_predicate_rhs(Some(pred), &bound.alias, &first_col.name)
+        if let Some((op, _)) =
+            extract_index_predicate_rhs(Some(pred), &bound.alias, &first_col.name)
         {
             if matches!(op, BinaryOp::Eq) {
                 return ScanStrategy::IndexSeek { index_id: idx.id };

@@ -127,9 +127,7 @@ fn eval_expr_inner(
         } else {
             Value::BigInt(*v)
         }),
-        Expr::FloatLiteral(s) => {
-            super::value_ops::parse_numeric_literal(s)
-        }
+        Expr::FloatLiteral(s) => super::value_ops::parse_numeric_literal(s),
         Expr::BinaryLiteral(bytes) => Ok(Value::Binary(bytes.clone())),
         Expr::String(v) => Ok(Value::VarChar(v.clone())),
         Expr::UnicodeString(v) => Ok(Value::NVarChar(v.clone())),

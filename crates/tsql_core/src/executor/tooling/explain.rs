@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
-use crate::ast::{DdlStatement, DmlStatement, FromNode, Statement};
 use super::formatting::{format_expr, format_from_node, format_select_columns, format_select_stmt};
 use super::{collect_read_tables, collect_write_tables, normalize_object_name, select_from_name};
+use crate::ast::{DdlStatement, DmlStatement, FromNode, Statement};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExplainOperator {
@@ -60,10 +60,14 @@ pub fn explain_statement(stmt: &Statement) -> ExplainPlan {
                 }
             }
             if !s.order_by.is_empty() {
-                let order_exprs: Vec<String> = s.order_by.iter().map(|oe| {
-                    let dir = if oe.asc { "" } else { " DESC" };
-                    format!("{}{}", format_expr(&oe.expr), dir)
-                }).collect();
+                let order_exprs: Vec<String> = s
+                    .order_by
+                    .iter()
+                    .map(|oe| {
+                        let dir = if oe.asc { "" } else { " DESC" };
+                        format!("{}{}", format_expr(&oe.expr), dir)
+                    })
+                    .collect();
                 operators.push(ExplainOperator {
                     op: "Sort".to_string(),
                     detail: format!("ORDER BY {}", order_exprs.join(", ")),
@@ -81,9 +85,11 @@ pub fn explain_statement(stmt: &Statement) -> ExplainPlan {
         Statement::Dml(DmlStatement::Update(u)) => {
             let mut detail = normalize_object_name(&u.table);
             if !u.assignments.is_empty() {
-                let assigns: Vec<String> = u.assignments.iter().map(|a| {
-                    format!("{} = {}", a.column, format_expr(&a.expr))
-                }).collect();
+                let assigns: Vec<String> = u
+                    .assignments
+                    .iter()
+                    .map(|a| format!("{} = {}", a.column, format_expr(&a.expr)))
+                    .collect();
                 detail = format!("{} SET {}", detail, assigns.join(", "));
             }
             operators.push(ExplainOperator {

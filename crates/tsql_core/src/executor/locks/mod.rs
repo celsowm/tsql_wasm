@@ -1,7 +1,7 @@
-﻿mod types;
-mod workspace;
-pub(crate) mod table_locks;
 pub(crate) mod row_locks;
+pub(crate) mod table_locks;
+mod types;
+mod workspace;
 
 pub use types::{AcquiredLock, LockMode, LockResource, SessionId, TableLockState};
 pub use workspace::TxWorkspace;
@@ -10,8 +10,8 @@ use crate::ast::{IsolationLevel, Statement};
 use crate::error::DbError;
 
 use super::table_util::{collect_read_tables, collect_write_tables};
-use table_locks::TableLockManager;
 use row_locks::RowLockManager;
+use table_locks::TableLockManager;
 
 /// Unified lock manager that delegates to table-level and row-level sub-managers.
 pub struct LockTable {
@@ -173,7 +173,9 @@ impl LockTable {
             }
 
             if timeout_ms == 0 {
-                let (table, mode) = conflict_info.ok_or_else(|| DbError::Execution("lock conflict without conflict info".into()))?;
+                let (table, mode) = conflict_info.ok_or_else(|| {
+                    DbError::Execution("lock conflict without conflict info".into())
+                })?;
                 return Err(DbError::Execution(format!(
                     "lock conflict (no-wait): {:?} lock on '{}' is blocked",
                     mode, table
@@ -205,7 +207,9 @@ impl LockTable {
             let elapsed = start.elapsed();
             if timeout_ms > 0 && elapsed.as_millis() >= timeout_ms as u128 {
                 guard.wait_for_graph.remove_waiter(session_id);
-                let (table, mode) = conflict_info.ok_or_else(|| DbError::Execution("lock timeout without conflict info".into()))?;
+                let (table, mode) = conflict_info.ok_or_else(|| {
+                    DbError::Execution("lock timeout without conflict info".into())
+                })?;
                 return Err(DbError::Execution(format!(
                     "lock timeout ({}ms): {:?} lock on '{}' is blocked",
                     timeout_ms, mode, table
@@ -216,11 +220,13 @@ impl LockTable {
             if timeout_ms < 0 {
                 condvar.wait(&mut guard);
             } else {
-                let remaining = std::time::Duration::from_millis(timeout_ms as u64)
-                    .saturating_sub(elapsed);
+                let remaining =
+                    std::time::Duration::from_millis(timeout_ms as u64).saturating_sub(elapsed);
                 if condvar.wait_for(&mut guard, remaining).timed_out() {
                     guard.wait_for_graph.remove_waiter(session_id);
-                    let (table, mode) = conflict_info.ok_or_else(|| DbError::Execution("lock timeout without conflict info".into()))?;
+                    let (table, mode) = conflict_info.ok_or_else(|| {
+                        DbError::Execution("lock timeout without conflict info".into())
+                    })?;
                     return Err(DbError::Execution(format!(
                         "lock timeout ({}ms): {:?} lock on '{}' is blocked",
                         timeout_ms, mode, table
@@ -294,7 +300,10 @@ impl LockTable {
         mode: LockMode,
     ) -> Vec<SessionId> {
         let mut blockers = self.tables.get_blocking_sessions(session_id, table, mode);
-        for b in self.rows.get_blocking_sessions(session_id, table, row_id, mode) {
+        for b in self
+            .rows
+            .get_blocking_sessions(session_id, table, row_id, mode)
+        {
             if !blockers.contains(&b) {
                 blockers.push(b);
             }
@@ -372,8 +381,8 @@ impl LockTable {
             if timeout_ms < 0 {
                 condvar.wait(&mut guard);
             } else {
-                let remaining = std::time::Duration::from_millis(timeout_ms as u64)
-                    .saturating_sub(elapsed);
+                let remaining =
+                    std::time::Duration::from_millis(timeout_ms as u64).saturating_sub(elapsed);
                 if condvar.wait_for(&mut guard, remaining).timed_out() {
                     guard.wait_for_graph.remove_waiter(session_id);
                     return Err(DbError::Execution(format!(

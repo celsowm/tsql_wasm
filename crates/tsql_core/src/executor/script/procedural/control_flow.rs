@@ -1,8 +1,8 @@
+use super::super::ScriptExecutor;
 use crate::ast::{IfStmt, WhileStmt};
 use crate::error::{StmtOutcome, StmtResult};
 use crate::executor::context::ExecutionContext;
 use crate::executor::result::QueryResult;
-use super::super::ScriptExecutor;
 
 impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_break(
@@ -12,7 +12,9 @@ impl<'a> ScriptExecutor<'a> {
         if ctx.loop_depth() > 0 {
             Ok(StmtOutcome::Break)
         } else {
-            Err(crate::error::DbError::Execution("BREAK outside of WHILE".into()))
+            Err(crate::error::DbError::Execution(
+                "BREAK outside of WHILE".into(),
+            ))
         }
     }
 
@@ -23,7 +25,9 @@ impl<'a> ScriptExecutor<'a> {
         if ctx.loop_depth() > 0 {
             Ok(StmtOutcome::Continue)
         } else {
-            Err(crate::error::DbError::Execution("CONTINUE outside of WHILE".into()))
+            Err(crate::error::DbError::Execution(
+                "CONTINUE outside of WHILE".into(),
+            ))
         }
     }
 
@@ -83,7 +87,9 @@ impl<'a> ScriptExecutor<'a> {
                     Ok(StmtOutcome::Return(v)) => return Ok(StmtOutcome::Return(v)),
                     other => {
                         last_batch = other;
-                        if last_batch.is_err() || last_batch.as_ref().is_ok_and(|o| o.is_control_flow()) {
+                        if last_batch.is_err()
+                            || last_batch.as_ref().is_ok_and(|o| o.is_control_flow())
+                        {
                             return last_batch;
                         }
                     }

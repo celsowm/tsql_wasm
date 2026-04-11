@@ -1,7 +1,7 @@
 use crate::parser::ast::*;
-use crate::parser::token::Keyword;
+use crate::parser::error::{Expected, ParseResult};
 use crate::parser::state::Parser;
-use crate::parser::error::{ParseResult, Expected};
+use crate::parser::token::Keyword;
 
 pub fn parse_begin_transaction(parser: &mut Parser) -> ParseResult<Statement> {
     if let Some(Token::Keyword(k)) = parser.peek() {
@@ -70,7 +70,9 @@ pub fn parse_save_transaction(parser: &mut Parser) -> ParseResult<Statement> {
         }
     }
     if let Some(Token::Identifier(id)) = parser.next() {
-        Ok(Statement::Transaction(TransactionStatement::Save(id.clone())))
+        Ok(Statement::Transaction(TransactionStatement::Save(
+            id.clone(),
+        )))
     } else {
         parser.backtrack(Expected::Description("identifier"))
     }

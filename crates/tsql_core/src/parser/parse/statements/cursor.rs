@@ -1,7 +1,7 @@
 use crate::parser::ast::*;
-use crate::parser::token::Keyword;
+use crate::parser::error::{Expected, ParseResult};
 use crate::parser::state::Parser;
-use crate::parser::error::{ParseResult, Expected};
+use crate::parser::token::Keyword;
 
 pub fn parse_open_cursor(parser: &mut Parser) -> ParseResult<Statement> {
     if let Some(Token::Identifier(id)) = parser.next() {
@@ -31,17 +31,33 @@ pub fn parse_fetch_cursor(parser: &mut Parser) -> ParseResult<Statement> {
     let mut direction = FetchDirection::Next;
     if let Some(Token::Keyword(k)) = parser.peek() {
         match *k {
-            Keyword::Next => { let _ = parser.next(); direction = FetchDirection::Next; }
-            Keyword::Prior => { let _ = parser.next(); direction = FetchDirection::Prior; }
-            Keyword::First => { let _ = parser.next(); direction = FetchDirection::First; }
-            Keyword::Last => { let _ = parser.next(); direction = FetchDirection::Last; }
+            Keyword::Next => {
+                let _ = parser.next();
+                direction = FetchDirection::Next;
+            }
+            Keyword::Prior => {
+                let _ = parser.next();
+                direction = FetchDirection::Prior;
+            }
+            Keyword::First => {
+                let _ = parser.next();
+                direction = FetchDirection::First;
+            }
+            Keyword::Last => {
+                let _ = parser.next();
+                direction = FetchDirection::Last;
+            }
             Keyword::Absolute => {
                 let _ = parser.next();
-                direction = FetchDirection::Absolute(crate::parser::parse::expressions::parse_expr(parser)?);
+                direction = FetchDirection::Absolute(
+                    crate::parser::parse::expressions::parse_expr(parser)?,
+                );
             }
             Keyword::Relative => {
                 let _ = parser.next();
-                direction = FetchDirection::Relative(crate::parser::parse::expressions::parse_expr(parser)?);
+                direction = FetchDirection::Relative(
+                    crate::parser::parse::expressions::parse_expr(parser)?,
+                );
             }
             _ => {}
         }
@@ -57,13 +73,20 @@ pub fn parse_fetch_cursor(parser: &mut Parser) -> ParseResult<Statement> {
     let mut into_vars = None;
     if matches!(parser.peek(), Some(Token::Keyword(Keyword::Into))) {
         let _ = parser.next();
-        into_vars = Some(crate::parser::parse::expressions::parse_comma_list(parser, |p| {
-            if let Some(Token::Variable(v)) = p.next() {
-                Ok(v.clone())
-            } else {
-                p.backtrack(Expected::Description("variable"))
-            }
-        })?);
+        into_vars = Some(crate::parser::parse::expressions::parse_comma_list(
+            parser,
+            |p| {
+                if let Some(Token::Variable(v)) = p.next() {
+                    Ok(v.clone())
+                } else {
+                    p.backtrack(Expected::Description("variable"))
+                }
+            },
+        )?);
     }
-    Ok(Statement::Cursor(CursorStatement::Fetch { name, direction, into_vars }))
+    Ok(Statement::Cursor(CursorStatement::Fetch {
+        name,
+        direction,
+        into_vars,
+    }))
 }

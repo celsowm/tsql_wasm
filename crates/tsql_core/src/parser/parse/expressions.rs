@@ -1,6 +1,6 @@
 use crate::parser::ast::*;
+use crate::parser::error::{Expected, ParseResult};
 use crate::parser::state::Parser;
-use crate::parser::error::{ParseResult, Expected};
 use crate::parser::token::Keyword;
 
 pub fn parse_expr(parser: &mut Parser) -> ParseResult<Expr> {
@@ -16,7 +16,9 @@ fn parse_pratt_expr(parser: &mut Parser, min_bp: u8) -> ParseResult<Expr> {
             if let Some(Token::Keyword(k)) = parser.peek() {
                 if *k == Keyword::Is {
                     let (l_bp, ()) = postfix_binding_power(k);
-                    if l_bp < min_bp { break; }
+                    if l_bp < min_bp {
+                        break;
+                    }
                     let _ = parser.next();
                     let mut negated = false;
                     if parser.at_keyword(Keyword::Not) {
@@ -24,12 +26,18 @@ fn parse_pratt_expr(parser: &mut Parser, min_bp: u8) -> ParseResult<Expr> {
                         negated = true;
                     }
                     parser.expect_keyword(Keyword::Null)?;
-                    left = if negated { Expr::IsNotNull(Box::new(left)) } else { Expr::IsNull(Box::new(left)) };
+                    left = if negated {
+                        Expr::IsNotNull(Box::new(left))
+                    } else {
+                        Expr::IsNull(Box::new(left))
+                    };
                     continue;
                 }
                 if *k == Keyword::Like {
                     let (l_bp, r_bp) = infix_binding_power_special("LIKE");
-                    if l_bp < min_bp { break; }
+                    if l_bp < min_bp {
+                        break;
+                    }
                     let _ = parser.next();
                     let pattern = parse_pratt_expr(parser, r_bp)?;
                     left = Expr::Like {
@@ -41,7 +49,9 @@ fn parse_pratt_expr(parser: &mut Parser, min_bp: u8) -> ParseResult<Expr> {
                 }
                 if *k == Keyword::Between {
                     let (l_bp, _) = infix_binding_power_special("BETWEEN");
-                    if l_bp < min_bp { break; }
+                    if l_bp < min_bp {
+                        break;
+                    }
                     let _ = parser.next();
                     let low = parse_pratt_expr(parser, 6)?;
                     parser.expect_keyword(Keyword::And)?;
@@ -56,67 +66,95 @@ fn parse_pratt_expr(parser: &mut Parser, min_bp: u8) -> ParseResult<Expr> {
                 }
                 if *k == Keyword::In {
                     let (l_bp, _) = infix_binding_power_special("IN");
-                    if l_bp < min_bp { break; }
+                    if l_bp < min_bp {
+                        break;
+                    }
                     let _ = parser.next();
                     parser.expect_lparen()?;
                     if parser.at_keyword(Keyword::Select) {
-                        let subquery = Box::new(crate::parser::parse::statements::query::parse_select(parser)?);
+                        let subquery = Box::new(
+                            crate::parser::parse::statements::query::parse_select(parser)?,
+                        );
                         parser.expect_rparen()?;
-                        left = Expr::InSubquery { expr: Box::new(left), subquery, negated: false };
+                        left = Expr::InSubquery {
+                            expr: Box::new(left),
+                            subquery,
+                            negated: false,
+                        };
                     } else {
                         let list = parse_comma_list(parser, parse_expr)?;
                         parser.expect_rparen()?;
-                        left = Expr::InList { expr: Box::new(left), list, negated: false };
+                        left = Expr::InList {
+                            expr: Box::new(left),
+                            list,
+                            negated: false,
+                        };
                     }
                     continue;
                 }
                 if *k == Keyword::Not {
                     if let Some(Token::Keyword(k2)) = parser.peek_at(1) {
                         if *k2 == Keyword::Like {
-                             let (l_bp, r_bp) = infix_binding_power_special("LIKE");
-                             if l_bp < min_bp { break; }
-                             let _ = parser.next();
-                             let _ = parser.next();
-                             let pattern = parse_pratt_expr(parser, r_bp)?;
-                             left = Expr::Like {
-                                 expr: Box::new(left),
-                                 pattern: Box::new(pattern),
-                                 negated: true,
-                             };
-                             continue;
+                            let (l_bp, r_bp) = infix_binding_power_special("LIKE");
+                            if l_bp < min_bp {
+                                break;
+                            }
+                            let _ = parser.next();
+                            let _ = parser.next();
+                            let pattern = parse_pratt_expr(parser, r_bp)?;
+                            left = Expr::Like {
+                                expr: Box::new(left),
+                                pattern: Box::new(pattern),
+                                negated: true,
+                            };
+                            continue;
                         }
                         if *k2 == Keyword::Between {
-                             let (l_bp, _) = infix_binding_power_special("BETWEEN");
-                             if l_bp < min_bp { break; }
-                             let _ = parser.next();
-                             let _ = parser.next();
-                             let low = parse_pratt_expr(parser, 6)?;
-                             parser.expect_keyword(Keyword::And)?;
-                             let high = parse_pratt_expr(parser, 6)?;
-                             left = Expr::Between {
-                                 expr: Box::new(left),
-                                 low: Box::new(low),
-                                 high: Box::new(high),
-                                 negated: true,
-                             };
-                             continue;
+                            let (l_bp, _) = infix_binding_power_special("BETWEEN");
+                            if l_bp < min_bp {
+                                break;
+                            }
+                            let _ = parser.next();
+                            let _ = parser.next();
+                            let low = parse_pratt_expr(parser, 6)?;
+                            parser.expect_keyword(Keyword::And)?;
+                            let high = parse_pratt_expr(parser, 6)?;
+                            left = Expr::Between {
+                                expr: Box::new(left),
+                                low: Box::new(low),
+                                high: Box::new(high),
+                                negated: true,
+                            };
+                            continue;
                         }
                         if *k2 == Keyword::In {
-                             let (l_bp, _) = infix_binding_power_special("IN");
-                             if l_bp < min_bp { break; }
-                             let _ = parser.next();
-                             let _ = parser.next();
-                             parser.expect_lparen()?;
-                             if parser.at_keyword(Keyword::Select) {
-                                 let subquery = Box::new(crate::parser::parse::statements::query::parse_select(parser)?);
-                                 parser.expect_rparen()?;
-                                 left = Expr::InSubquery { expr: Box::new(left), subquery, negated: true };
-                             } else {
-                                 let list = parse_comma_list(parser, parse_expr)?;
-                                 parser.expect_rparen()?;
-                                 left = Expr::InList { expr: Box::new(left), list, negated: true };
-                             }
-                             continue;
+                            let (l_bp, _) = infix_binding_power_special("IN");
+                            if l_bp < min_bp {
+                                break;
+                            }
+                            let _ = parser.next();
+                            let _ = parser.next();
+                            parser.expect_lparen()?;
+                            if parser.at_keyword(Keyword::Select) {
+                                let subquery = Box::new(
+                                    crate::parser::parse::statements::query::parse_select(parser)?,
+                                );
+                                parser.expect_rparen()?;
+                                left = Expr::InSubquery {
+                                    expr: Box::new(left),
+                                    subquery,
+                                    negated: true,
+                                };
+                            } else {
+                                let list = parse_comma_list(parser, parse_expr)?;
+                                parser.expect_rparen()?;
+                                left = Expr::InList {
+                                    expr: Box::new(left),
+                                    list,
+                                    negated: true,
+                                };
+                            }
+                            continue;
                         }
                     }
                 }
@@ -169,7 +207,13 @@ fn infix_binding_power(op: &BinaryOp) -> (u8, u8) {
     match op {
         BinaryOp::Or => (1, 2),
         BinaryOp::And => (3, 4),
-        BinaryOp::Eq | BinaryOp::NotEq | BinaryOp::Gt | BinaryOp::Lt | BinaryOp::Gte | BinaryOp::Lte | BinaryOp::Like => (5, 6),
+        BinaryOp::Eq
+        | BinaryOp::NotEq
+        | BinaryOp::Gt
+        | BinaryOp::Lt
+        | BinaryOp::Gte
+        | BinaryOp::Lte
+        | BinaryOp::Like => (5, 6),
         BinaryOp::BitwiseAnd | BinaryOp::BitwiseOr | BinaryOp::BitwiseXor => (7, 8),
         BinaryOp::Add | BinaryOp::Subtract => (9, 10),
         BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo => (11, 12),
@@ -189,16 +233,20 @@ fn postfix_binding_power(_op: &Keyword) -> (u8, ()) {
 
 pub fn parse_primary(parser: &mut Parser) -> ParseResult<Expr> {
     match parser.peek() {
-        Some(Token::Number { value: n, is_float, raw }) => {
-             let n = *n;
-             let is_float = *is_float;
-             let raw = raw.clone();
-             let _ = parser.next();
-             if !is_float && n.fract() == 0.0 {
-                 Ok(Expr::Integer(n as i64))
-             } else {
-                 Ok(Expr::Float(raw))
-             }
+        Some(Token::Number {
+            value: n,
+            is_float,
+            raw,
+        }) => {
+            let n = *n;
+            let is_float = *is_float;
+            let raw = raw.clone();
+            let _ = parser.next();
+            if !is_float && n.fract() == 0.0 {
+                Ok(Expr::Integer(n as i64))
+            } else {
+                Ok(Expr::Float(raw))
+            }
         }
         Some(Token::String(s)) => {
             let s = s.clone();
@@ -213,7 +261,11 @@ pub fn parse_primary(parser: &mut Parser) -> ParseResult<Expr> {
         Some(Token::BinaryLiteral(hex)) => {
             let hex = hex.clone();
             let _ = parser.next();
-            let hex_str = if hex.starts_with("0x") || hex.starts_with("0X") { &hex[2..] } else { hex.as_ref() };
+            let hex_str = if hex.starts_with("0x") || hex.starts_with("0X") {
+                &hex[2..]
+            } else {
+                hex.as_ref()
+            };
             let padded;
             let normalized = if hex_str.len() % 2 != 0 {
                 padded = format!("0{}", hex_str);
@@ -230,7 +282,10 @@ pub fn parse_primary(parser: &mut Parser) -> ParseResult<Expr> {
         Some(Token::Tilde) => {
             let _ = parser.next();
             let expr = parse_pratt_expr(parser, 14)?;
-            Ok(Expr::Unary { op: UnaryOp::BitwiseNot, expr: Box::new(expr) })
+            Ok(Expr::Unary {
+                op: UnaryOp::BitwiseNot,
+                expr: Box::new(expr),
+            })
         }
         Some(Token::Identifier(id)) => {
             let id = id.clone();
@@ -248,9 +303,14 @@ pub fn parse_primary(parser: &mut Parser) -> ParseResult<Expr> {
         Some(Token::Keyword(k)) if *k == Keyword::Exists => {
             let _ = parser.next();
             parser.expect_lparen()?;
-            let subquery = Box::new(crate::parser::parse::statements::query::parse_select(parser)?);
+            let subquery = Box::new(crate::parser::parse::statements::query::parse_select(
+                parser,
+            )?);
             parser.expect_rparen()?;
-            Ok(Expr::Exists { subquery, negated: false })
+            Ok(Expr::Exists {
+                subquery,
+                negated: false,
+            })
         }
         Some(Token::Keyword(k)) if *k == Keyword::Cast => {
             let _ = parser.next();
@@ -269,17 +329,25 @@ pub fn parse_primary(parser: &mut Parser) -> ParseResult<Expr> {
             parse_try_convert(parser)
         }
         Some(Token::Keyword(k)) if *k == Keyword::Not => {
-             let _ = parser.next();
-             if parser.at_keyword(Keyword::Exists) {
-                 let _ = parser.next();
-                 parser.expect_lparen()?;
-                 let subquery = Box::new(crate::parser::parse::statements::query::parse_select(parser)?);
-                 parser.expect_rparen()?;
-                 Ok(Expr::Exists { subquery, negated: true })
-             } else {
-                 let expr = parse_pratt_expr(parser, 14)?;
-                 Ok(Expr::Unary { op: UnaryOp::Not, expr: Box::new(expr) })
-             }
+            let _ = parser.next();
+            if parser.at_keyword(Keyword::Exists) {
+                let _ = parser.next();
+                parser.expect_lparen()?;
+                let subquery = Box::new(crate::parser::parse::statements::query::parse_select(
+                    parser,
+                )?);
+                parser.expect_rparen()?;
+                Ok(Expr::Exists {
+                    subquery,
+                    negated: true,
+                })
+            } else {
+                let expr = parse_pratt_expr(parser, 14)?;
+                Ok(Expr::Unary {
+                    op: UnaryOp::Not,
+                    expr: Box::new(expr),
+                })
+            }
         }
         Some(Token::Keyword(k)) if matches!(parser.peek_at(1), Some(Token::LParen)) => {
             let name = k.as_ref().to_string();
@@ -287,11 +355,16 @@ pub fn parse_primary(parser: &mut Parser) -> ParseResult<Expr> {
             parse_identifier_or_function(parser, name)
         }
         Some(Token::Operator(op)) if *op == "-" => {
-             let _ = parser.next();
-             let expr = parse_pratt_expr(parser, 14)?;
-              Ok(Expr::Unary { op: UnaryOp::Negate, expr: Box::new(expr) })
+            let _ = parser.next();
+            let expr = parse_pratt_expr(parser, 14)?;
+            Ok(Expr::Unary {
+                op: UnaryOp::Negate,
+                expr: Box::new(expr),
+            })
         }
-        Some(Token::Keyword(k)) if matches!(parser.peek_at(1), Some(Token::LParen) | Some(Token::Dot)) => {
+        Some(Token::Keyword(k))
+            if matches!(parser.peek_at(1), Some(Token::LParen) | Some(Token::Dot)) =>
+        {
             let name = k.as_ref().to_string();
             let _ = parser.next();
             parse_identifier_or_function(parser, name)
@@ -304,7 +377,9 @@ pub fn parse_primary(parser: &mut Parser) -> ParseResult<Expr> {
         Some(Token::LParen) => {
             let _ = parser.next();
             let expr = if parser.at_keyword(Keyword::Select) {
-                Expr::Subquery(Box::new(crate::parser::parse::statements::query::parse_select(parser)?))
+                Expr::Subquery(Box::new(
+                    crate::parser::parse::statements::query::parse_select(parser)?,
+                ))
             } else {
                 parse_expr(parser)?
             };
@@ -315,9 +390,7 @@ pub fn parse_primary(parser: &mut Parser) -> ParseResult<Expr> {
             let _ = parser.next();
             Ok(Expr::Wildcard)
         }
-        _ => {
-            parser.backtrack(Expected::Description("expression"))
-        },
+        _ => parser.backtrack(Expected::Description("expression")),
     }
 }
 
@@ -343,7 +416,11 @@ pub fn parse_case(parser: &mut Parser) -> ParseResult<Expr> {
     }
 
     parser.expect_keyword(Keyword::End)?;
-    Ok(Expr::Case { operand, when_clauses, else_result })
+    Ok(Expr::Case {
+        operand,
+        when_clauses,
+        else_result,
+    })
 }
 
 pub fn parse_cast(parser: &mut Parser) -> ParseResult<Expr> {
@@ -352,7 +429,10 @@ pub fn parse_cast(parser: &mut Parser) -> ParseResult<Expr> {
     parser.expect_keyword(Keyword::As)?;
     let target = parse_data_type(parser)?;
     parser.expect_rparen()?;
-    Ok(Expr::Cast { expr: Box::new(expr), target })
+    Ok(Expr::Cast {
+        expr: Box::new(expr),
+        target,
+    })
 }
 
 pub fn parse_convert(parser: &mut Parser) -> ParseResult<Expr> {
@@ -366,11 +446,15 @@ pub fn parse_convert(parser: &mut Parser) -> ParseResult<Expr> {
         if let Some(Token::Number { value: s, .. }) = parser.next() {
             style = Some(*s as i32);
         } else {
-             return parser.backtrack(Expected::Description("number"));
+            return parser.backtrack(Expected::Description("number"));
         }
     }
     parser.expect_rparen()?;
-    Ok(Expr::Convert { target, expr: Box::new(expr), style })
+    Ok(Expr::Convert {
+        target,
+        expr: Box::new(expr),
+        style,
+    })
 }
 
 pub fn parse_try_cast(parser: &mut Parser) -> ParseResult<Expr> {
@@ -379,7 +463,10 @@ pub fn parse_try_cast(parser: &mut Parser) -> ParseResult<Expr> {
     parser.expect_keyword(Keyword::As)?;
     let target = parse_data_type(parser)?;
     parser.expect_rparen()?;
-    Ok(Expr::TryCast { expr: Box::new(expr), target })
+    Ok(Expr::TryCast {
+        expr: Box::new(expr),
+        target,
+    })
 }
 
 pub fn parse_try_convert(parser: &mut Parser) -> ParseResult<Expr> {
@@ -393,11 +480,15 @@ pub fn parse_try_convert(parser: &mut Parser) -> ParseResult<Expr> {
         if let Some(Token::Number { value: s, .. }) = parser.next() {
             style = Some(*s as i32);
         } else {
-             return parser.backtrack(Expected::Description("number"));
+            return parser.backtrack(Expected::Description("number"));
         }
     }
     parser.expect_rparen()?;
-    Ok(Expr::TryConvert { target, expr: Box::new(expr), style })
+    Ok(Expr::TryConvert {
+        target,
+        expr: Box::new(expr),
+        style,
+    })
 }
 
 fn parse_identifier_or_function(parser: &mut Parser, name: String) -> ParseResult<Expr> {
@@ -437,7 +528,11 @@ fn parse_identifier_or_function(parser: &mut Parser, name: String) -> ParseResul
         let mut function_name = if parts.len() == 1 {
             parts.remove(0)
         } else {
-            parts.iter().map(|p| p.as_ref()).collect::<Vec<_>>().join(".")
+            parts
+                .iter()
+                .map(|p| p.as_ref())
+                .collect::<Vec<_>>()
+                .join(".")
         };
         if has_distinct {
             function_name = format!("{}_DISTINCT", function_name.to_uppercase());
@@ -445,11 +540,20 @@ fn parse_identifier_or_function(parser: &mut Parser, name: String) -> ParseResul
         if parser.at_keyword(Keyword::Over) {
             return parse_window_over(parser, function_name, args);
         }
-        Ok(Expr::FunctionCall { name: function_name, args })
+        Ok(Expr::FunctionCall {
+            name: function_name,
+            args,
+        })
     } else if parts.len() == 1 {
         let upper = parts[0].to_uppercase();
-        if matches!(upper.as_str(), "CURRENT_TIMESTAMP" | "CURRENT_DATE" | "GETDATE") {
-            Ok(Expr::FunctionCall { name: parts.remove(0), args: vec![] })
+        if matches!(
+            upper.as_str(),
+            "CURRENT_TIMESTAMP" | "CURRENT_DATE" | "GETDATE"
+        ) {
+            Ok(Expr::FunctionCall {
+                name: parts.remove(0),
+                args: vec![],
+            })
         } else {
             Ok(Expr::Identifier(parts.remove(0)))
         }
@@ -460,11 +564,7 @@ fn parse_identifier_or_function(parser: &mut Parser, name: String) -> ParseResul
     }
 }
 
-fn parse_window_over(
-    parser: &mut Parser,
-    name: String,
-    args: Vec<Expr>,
-) -> ParseResult<Expr> {
+fn parse_window_over(parser: &mut Parser, name: String, args: Vec<Expr>) -> ParseResult<Expr> {
     parser.expect_keyword(Keyword::Over)?;
     parser.expect_lparen()?;
 
@@ -479,7 +579,10 @@ fn parse_window_over(
     if parser.at_keyword(Keyword::Order) {
         let _ = parser.next();
         parser.expect_keyword(Keyword::By)?;
-        order_by = parse_comma_list(parser, crate::parser::parse::statements::query::parse_order_by_expr)?;
+        order_by = parse_comma_list(
+            parser,
+            crate::parser::parse::statements::query::parse_order_by_expr,
+        )?;
     }
 
     let mut frame = None;
@@ -535,7 +638,13 @@ fn parse_window_over(
     }
 
     parser.expect_rparen()?;
-    Ok(Expr::WindowFunction { name, args, partition_by, order_by, frame })
+    Ok(Expr::WindowFunction {
+        name,
+        args,
+        partition_by,
+        order_by,
+        frame,
+    })
 }
 
 fn parse_window_frame_bound(parser: &mut Parser) -> ParseResult<WindowFrameBound> {
@@ -572,7 +681,8 @@ fn parse_window_frame_bound(parser: &mut Parser) -> ParseResult<WindowFrameBound
 }
 
 pub fn parse_comma_list<P, R>(parser: &mut Parser, mut parser_fn: P) -> ParseResult<Vec<R>>
-where P: FnMut(&mut Parser) -> ParseResult<R>
+where
+    P: FnMut(&mut Parser) -> ParseResult<R>,
 {
     let mut results = Vec::new();
     results.push(parser_fn(parser)?);
@@ -589,21 +699,67 @@ where P: FnMut(&mut Parser) -> ParseResult<R>
 }
 
 pub fn is_stop_keyword(k: &str) -> bool {
-    Keyword::parse(k).map(|kw| matches!(kw,
-        Keyword::Where | Keyword::Group | Keyword::Order | Keyword::Having |
-        Keyword::Else | Keyword::End | Keyword::If | Keyword::Declare |
-        Keyword::Set | Keyword::Exec | Keyword::Execute | Keyword::Print |
-        Keyword::Select | Keyword::Insert | Keyword::Update | Keyword::Delete |
-        Keyword::Go | Keyword::From | Keyword::Join | Keyword::On |
-        Keyword::Union | Keyword::Intersect | Keyword::Except | Keyword::Cross |
-        Keyword::Apply | Keyword::Outer | Keyword::Inner | Keyword::Left |
-        Keyword::Right | Keyword::Full | Keyword::Pivot | Keyword::Unpivot |
-        Keyword::Output | Keyword::With | Keyword::By | Keyword::Asc | Keyword::Desc |
-        Keyword::Create | Keyword::Alter | Keyword::Drop | Keyword::Truncate |
-        Keyword::Begin | Keyword::Commit | Keyword::Rollback |
-        Keyword::While | Keyword::Return | Keyword::Fetch | Keyword::Close | Keyword::Deallocate | Keyword::Open | Keyword::Save |
-        Keyword::Try | Keyword::Catch | Keyword::RaiseError
-    )).unwrap_or(false)
+    Keyword::parse(k)
+        .map(|kw| {
+            matches!(
+                kw,
+                Keyword::Where
+                    | Keyword::Group
+                    | Keyword::Order
+                    | Keyword::Having
+                    | Keyword::Else
+                    | Keyword::End
+                    | Keyword::If
+                    | Keyword::Declare
+                    | Keyword::Set
+                    | Keyword::Exec
+                    | Keyword::Execute
+                    | Keyword::Print
+                    | Keyword::Select
+                    | Keyword::Insert
+                    | Keyword::Update
+                    | Keyword::Delete
+                    | Keyword::Go
+                    | Keyword::From
+                    | Keyword::Join
+                    | Keyword::On
+                    | Keyword::Union
+                    | Keyword::Intersect
+                    | Keyword::Except
+                    | Keyword::Cross
+                    | Keyword::Apply
+                    | Keyword::Outer
+                    | Keyword::Inner
+                    | Keyword::Left
+                    | Keyword::Right
+                    | Keyword::Full
+                    | Keyword::Pivot
+                    | Keyword::Unpivot
+                    | Keyword::Output
+                    | Keyword::With
+                    | Keyword::By
+                    | Keyword::Asc
+                    | Keyword::Desc
+                    | Keyword::Create
+                    | Keyword::Alter
+                    | Keyword::Drop
+                    | Keyword::Truncate
+                    | Keyword::Begin
+                    | Keyword::Commit
+                    | Keyword::Rollback
+                    | Keyword::While
+                    | Keyword::Return
+                    | Keyword::Fetch
+                    | Keyword::Close
+                    | Keyword::Deallocate
+                    | Keyword::Open
+                    | Keyword::Save
+                    | Keyword::Try
+                    | Keyword::Catch
+                    | Keyword::RaiseError
+            )
+        })
+        .unwrap_or(false)
 }
 
 pub fn parse_data_type(parser: &mut Parser) -> ParseResult<DataType> {
@@ -634,7 +790,11 @@ pub fn parse_data_type(parser: &mut Parser) -> ParseResult<DataType> {
                         }
                         parser.expect_rparen()?;
                     }
-                    if upper == "DECIMAL" { Ok(DataType::Decimal(p, s)) } else { Ok(DataType::Numeric(p, s)) }
+                    if upper == "DECIMAL" {
+                        Ok(DataType::Decimal(p, s))
+                    } else {
+                        Ok(DataType::Numeric(p, s))
+                    }
                 }
                 "CHAR" => {
                     let mut size = None;
@@ -720,115 +880,123 @@ pub fn parse_data_type(parser: &mut Parser) -> ParseResult<DataType> {
                             _ => return parser.backtrack(Expected::Description("identifier")),
                         }
                     }
-                    Ok(DataType::Custom(parts.iter().map(|p| p.as_ref()).collect::<Vec<_>>().join(".")))
+                    Ok(DataType::Custom(
+                        parts
+                            .iter()
+                            .map(|p| p.as_ref())
+                            .collect::<Vec<_>>()
+                            .join("."),
+                    ))
                 }
             }
         }
-        Some(Token::Keyword(kw)) => {
-            match kw {
-                Keyword::Int => Ok(DataType::Int),
-                Keyword::BigInt => Ok(DataType::BigInt),
-                Keyword::SmallInt => Ok(DataType::SmallInt),
-                Keyword::TinyInt => Ok(DataType::TinyInt),
-                Keyword::Bit => Ok(DataType::Bit),
-                Keyword::Float => Ok(DataType::Float),
-                Keyword::Real => Ok(DataType::Real),
-                Keyword::Decimal | Keyword::Numeric => {
-                    let is_decimal = matches!(kw, Keyword::Decimal);
-                    let mut p = 18;
-                    let mut s = 0;
-                    if matches!(parser.peek(), Some(Token::LParen)) {
+        Some(Token::Keyword(kw)) => match kw {
+            Keyword::Int => Ok(DataType::Int),
+            Keyword::BigInt => Ok(DataType::BigInt),
+            Keyword::SmallInt => Ok(DataType::SmallInt),
+            Keyword::TinyInt => Ok(DataType::TinyInt),
+            Keyword::Bit => Ok(DataType::Bit),
+            Keyword::Float => Ok(DataType::Float),
+            Keyword::Real => Ok(DataType::Real),
+            Keyword::Decimal | Keyword::Numeric => {
+                let is_decimal = matches!(kw, Keyword::Decimal);
+                let mut p = 18;
+                let mut s = 0;
+                if matches!(parser.peek(), Some(Token::LParen)) {
+                    let _ = parser.next();
+                    if let Some(Token::Number { value: val, .. }) = parser.next() {
+                        p = *val as u8;
+                    }
+                    if matches!(parser.peek(), Some(Token::Comma)) {
                         let _ = parser.next();
                         if let Some(Token::Number { value: val, .. }) = parser.next() {
-                            p = *val as u8;
+                            s = *val as u8;
                         }
-                        if matches!(parser.peek(), Some(Token::Comma)) {
-                            let _ = parser.next();
-                            if let Some(Token::Number { value: val, .. }) = parser.next() {
-                                s = *val as u8;
-                            }
-                        }
-                        parser.expect_rparen()?;
                     }
-                    if is_decimal { Ok(DataType::Decimal(p, s)) } else { Ok(DataType::Numeric(p, s)) }
+                    parser.expect_rparen()?;
                 }
-                Keyword::Char => {
-                    let mut size = None;
-                    if matches!(parser.peek(), Some(Token::LParen)) {
-                        let _ = parser.next();
-                        if let Some(Token::Number { value: s, .. }) = parser.next() {
-                            size = Some(*s as u32);
-                        }
-                        parser.expect_rparen()?;
-                    }
-                    Ok(DataType::Char(size))
+                if is_decimal {
+                    Ok(DataType::Decimal(p, s))
+                } else {
+                    Ok(DataType::Numeric(p, s))
                 }
-                Keyword::Varchar => {
-                    let mut size = None;
-                    if matches!(parser.peek(), Some(Token::LParen)) {
-                        let _ = parser.next();
-                        if let Some(Token::Number { value: s, .. }) = parser.next() {
-                            size = Some(*s as u32);
-                        }
-                        parser.expect_rparen()?;
-                    }
-                    Ok(DataType::VarChar(size))
-                }
-                Keyword::NChar => {
-                    let mut size = None;
-                    if matches!(parser.peek(), Some(Token::LParen)) {
-                        let _ = parser.next();
-                        if let Some(Token::Number { value: s, .. }) = parser.next() {
-                            size = Some(*s as u32);
-                        }
-                        parser.expect_rparen()?;
-                    }
-                    Ok(DataType::NChar(size))
-                }
-                Keyword::Nvarchar => {
-                    let mut size = None;
-                    if matches!(parser.peek(), Some(Token::LParen)) {
-                        let _ = parser.next();
-                        if let Some(Token::Number { value: s, .. }) = parser.next() {
-                            size = Some(*s as u32);
-                        }
-                        parser.expect_rparen()?;
-                    }
-                    Ok(DataType::NVarChar(size))
-                }
-                Keyword::Binary => {
-                    let mut size = None;
-                    if matches!(parser.peek(), Some(Token::LParen)) {
-                        let _ = parser.next();
-                        if let Some(Token::Number { value: s, .. }) = parser.next() {
-                            size = Some(*s as u32);
-                        }
-                        parser.expect_rparen()?;
-                    }
-                    Ok(DataType::Binary(size))
-                }
-                Keyword::Varbinary => {
-                    let mut size = None;
-                    if matches!(parser.peek(), Some(Token::LParen)) {
-                        let _ = parser.next();
-                        if let Some(Token::Number { value: s, .. }) = parser.next() {
-                            size = Some(*s as u32);
-                        }
-                        parser.expect_rparen()?;
-                    }
-                    Ok(DataType::VarBinary(size))
-                }
-                Keyword::Money => Ok(DataType::Money),
-                Keyword::SmallMoney => Ok(DataType::SmallMoney),
-                Keyword::UniqueIdentifier => Ok(DataType::UniqueIdentifier),
-                Keyword::SysName => Ok(DataType::NVarChar(Some(128))),
-                Keyword::Date => Ok(DataType::Date),
-                Keyword::DateTime => Ok(DataType::DateTime),
-                Keyword::DateTime2 => Ok(DataType::DateTime2),
-                Keyword::Time => Ok(DataType::Time),
-                _ => Ok(DataType::Custom(kw.as_ref().to_string())),
             }
-        }
+            Keyword::Char => {
+                let mut size = None;
+                if matches!(parser.peek(), Some(Token::LParen)) {
+                    let _ = parser.next();
+                    if let Some(Token::Number { value: s, .. }) = parser.next() {
+                        size = Some(*s as u32);
+                    }
+                    parser.expect_rparen()?;
+                }
+                Ok(DataType::Char(size))
+            }
+            Keyword::Varchar => {
+                let mut size = None;
+                if matches!(parser.peek(), Some(Token::LParen)) {
+                    let _ = parser.next();
+                    if let Some(Token::Number { value: s, .. }) = parser.next() {
+                        size = Some(*s as u32);
+                    }
+                    parser.expect_rparen()?;
+                }
+                Ok(DataType::VarChar(size))
+            }
+            Keyword::NChar => {
+                let mut size = None;
+                if matches!(parser.peek(), Some(Token::LParen)) {
+                    let _ = parser.next();
+                    if let Some(Token::Number { value: s, .. }) = parser.next() {
+                        size = Some(*s as u32);
+                    }
+                    parser.expect_rparen()?;
+                }
+                Ok(DataType::NChar(size))
+            }
+            Keyword::Nvarchar => {
+                let mut size = None;
+                if matches!(parser.peek(), Some(Token::LParen)) {
+                    let _ = parser.next();
+                    if let Some(Token::Number { value: s, .. }) = parser.next() {
+                        size = Some(*s as u32);
+                    }
+                    parser.expect_rparen()?;
+                }
+                Ok(DataType::NVarChar(size))
+            }
+            Keyword::Binary => {
+                let mut size = None;
+                if matches!(parser.peek(), Some(Token::LParen)) {
+                    let _ = parser.next();
+                    if let Some(Token::Number { value: s, .. }) = parser.next() {
+                        size = Some(*s as u32);
+                    }
+                    parser.expect_rparen()?;
+                }
+                Ok(DataType::Binary(size))
+            }
+            Keyword::Varbinary => {
+                let mut size = None;
+                if matches!(parser.peek(), Some(Token::LParen)) {
+                    let _ = parser.next();
+                    if let Some(Token::Number { value: s, .. }) = parser.next() {
+                        size = Some(*s as u32);
+                    }
+                    parser.expect_rparen()?;
+                }
+                Ok(DataType::VarBinary(size))
+            }
+            Keyword::Money => Ok(DataType::Money),
+            Keyword::SmallMoney => Ok(DataType::SmallMoney),
+            Keyword::UniqueIdentifier => Ok(DataType::UniqueIdentifier),
+            Keyword::SysName => Ok(DataType::NVarChar(Some(128))),
+            Keyword::Date => Ok(DataType::Date),
+            Keyword::DateTime => Ok(DataType::DateTime),
+            Keyword::DateTime2 => Ok(DataType::DateTime2),
+            Keyword::Time => Ok(DataType::Time),
+            _ => Ok(DataType::Custom(kw.as_ref().to_string())),
+        },
         _ => parser.backtrack(Expected::Description("data type")),
     }
 }

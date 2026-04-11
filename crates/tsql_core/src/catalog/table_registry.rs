@@ -8,14 +8,18 @@ impl TableRegistry for CatalogImpl {
     }
 
     fn find_table(&self, schema: &str, name: &str) -> Option<&TableDef> {
-        let schema_id = self.get_schema_id(schema)?; 
-        let idx = self.table_map.get(&(schema_id, normalize_identifier(name)))?;
+        let schema_id = self.get_schema_id(schema)?;
+        let idx = self
+            .table_map
+            .get(&(schema_id, normalize_identifier(name)))?;
         Some(&self.tables[*idx])
     }
 
     fn find_table_mut(&mut self, schema: &str, name: &str) -> Option<&mut TableDef> {
         let schema_id = self.get_schema_id(schema)?;
-        let idx = self.table_map.get(&(schema_id, normalize_identifier(name)))?;
+        let idx = self
+            .table_map
+            .get(&(schema_id, normalize_identifier(name)))?;
         Some(&mut self.tables[*idx])
     }
 

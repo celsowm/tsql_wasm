@@ -351,7 +351,10 @@ impl CatalogImpl {
             .enumerate()
             .map(|(i, r)| {
                 (
-                    (normalize_identifier(&r.schema), normalize_identifier(&r.name)),
+                    (
+                        normalize_identifier(&r.schema),
+                        normalize_identifier(&r.name),
+                    ),
                     i,
                 )
             })
@@ -362,7 +365,10 @@ impl CatalogImpl {
             .enumerate()
             .map(|(i, t)| {
                 (
-                    (normalize_identifier(&t.schema), normalize_identifier(&t.name)),
+                    (
+                        normalize_identifier(&t.schema),
+                        normalize_identifier(&t.name),
+                    ),
                     i,
                 )
             })
@@ -373,7 +379,10 @@ impl CatalogImpl {
             .enumerate()
             .map(|(i, v)| {
                 (
-                    (normalize_identifier(&v.schema), normalize_identifier(&v.name)),
+                    (
+                        normalize_identifier(&v.schema),
+                        normalize_identifier(&v.name),
+                    ),
                     i,
                 )
             })
@@ -384,7 +393,10 @@ impl CatalogImpl {
             .enumerate()
             .map(|(i, t)| {
                 (
-                    (normalize_identifier(&t.schema), normalize_identifier(&t.name)),
+                    (
+                        normalize_identifier(&t.schema),
+                        normalize_identifier(&t.name),
+                    ),
                     i,
                 )
             })
@@ -407,8 +419,10 @@ impl CatalogImpl {
         // If swap_remove moved the last element into `idx`, update its map entry.
         if idx < self.tables.len() {
             let swapped = &self.tables[idx];
-            self.table_map
-                .insert((swapped.schema_id, normalize_identifier(&swapped.name)), idx);
+            self.table_map.insert(
+                (swapped.schema_id, normalize_identifier(&swapped.name)),
+                idx,
+            );
         }
 
         // Remove associated indexes and rebuild only the index_map.

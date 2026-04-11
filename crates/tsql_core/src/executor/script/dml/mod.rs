@@ -1,6 +1,6 @@
+pub(crate) mod cte;
 pub(crate) mod merge;
 mod merge_helpers;
-pub(crate) mod cte;
 
 use super::ScriptExecutor;
 use crate::ast::{DeleteStmt, InsertStmt, UpdateStmt};
@@ -8,8 +8,8 @@ use crate::catalog::{Catalog, TableDef};
 use crate::error::DbError;
 use crate::executor::context::ExecutionContext;
 use crate::executor::mutation::MutationExecutor;
-use crate::executor::query::QueryExecutor;
 use crate::executor::query::plan::RelationalQuery;
+use crate::executor::query::QueryExecutor;
 use crate::executor::result::QueryResult;
 use crate::storage::{Storage, StoredRow};
 
@@ -127,7 +127,7 @@ impl<'a> ScriptExecutor<'a> {
                 foreign_keys: vec![],
             };
             self.catalog.register_table(table);
-            self.storage.ensure_table(table_id);
+            self.storage.ensure_table(table_id)?;
 
             for row_values in &result.rows {
                 let row = StoredRow {

@@ -98,12 +98,13 @@ impl AsyncRead for TdsTlsIo {
                 }
             }
             let pkt_type = this.header_buf[0];
-            let total_len =
-                u16::from_be_bytes([this.header_buf[2], this.header_buf[3]]) as usize;
+            let total_len = u16::from_be_bytes([this.header_buf[2], this.header_buf[3]]) as usize;
             let payload_len = total_len.saturating_sub(TDS_HEADER_SIZE);
             log::debug!(
                 "TdsTlsIo READ: TDS type=0x{:02X} total={} payload={}",
-                pkt_type, total_len, payload_len
+                pkt_type,
+                total_len,
+                payload_len
             );
 
             this.read_buf.clear();
@@ -165,9 +166,7 @@ impl AsyncWrite for TdsTlsIo {
         // If we have a pending write_buf, flush it first
         if !this.write_buf.is_empty() {
             while this.write_pos < this.write_buf.len() {
-                match Pin::new(&mut this.stream)
-                    .poll_write(cx, &this.write_buf[this.write_pos..])
-                {
+                match Pin::new(&mut this.stream).poll_write(cx, &this.write_buf[this.write_pos..]) {
                     Poll::Ready(Ok(n)) => {
                         this.write_pos += n;
                     }
@@ -195,9 +194,7 @@ impl AsyncWrite for TdsTlsIo {
 
         // Try to write as much as possible
         while this.write_pos < this.write_buf.len() {
-            match Pin::new(&mut this.stream)
-                .poll_write(cx, &this.write_buf[this.write_pos..])
-            {
+            match Pin::new(&mut this.stream).poll_write(cx, &this.write_buf[this.write_pos..]) {
                 Poll::Ready(Ok(n)) => {
                     this.write_pos += n;
                 }

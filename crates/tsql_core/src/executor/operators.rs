@@ -1,4 +1,4 @@
-﻿use std::cmp::Ordering;
+use std::cmp::Ordering;
 
 use crate::ast::{BinaryOp, UnaryOp};
 use crate::error::DbError;
@@ -21,12 +21,18 @@ pub(crate) fn eval_binary(
         BinaryOp::NotEq => Ok(compare_bool(lv, rv, |o| o != Ordering::Equal, ansi_nulls)),
         BinaryOp::Gt => Ok(compare_bool(lv, rv, |o| o == Ordering::Greater, ansi_nulls)),
         BinaryOp::Lt => Ok(compare_bool(lv, rv, |o| o == Ordering::Less, ansi_nulls)),
-        BinaryOp::Gte => Ok(compare_bool(lv, rv, |o| {
-            matches!(o, Ordering::Greater | Ordering::Equal)
-        }, ansi_nulls)),
-        BinaryOp::Lte => Ok(compare_bool(lv, rv, |o| {
-            matches!(o, Ordering::Less | Ordering::Equal)
-        }, ansi_nulls)),
+        BinaryOp::Gte => Ok(compare_bool(
+            lv,
+            rv,
+            |o| matches!(o, Ordering::Greater | Ordering::Equal),
+            ansi_nulls,
+        )),
+        BinaryOp::Lte => Ok(compare_bool(
+            lv,
+            rv,
+            |o| matches!(o, Ordering::Less | Ordering::Equal),
+            ansi_nulls,
+        )),
         BinaryOp::And => eval_and(lv, rv),
         BinaryOp::Or => eval_or(lv, rv),
         BinaryOp::Add => eval_add(lv, rv, concat_null_yields_null, arithabort, ansi_warnings),
@@ -75,8 +81,16 @@ fn eval_add(
         if (lv.is_null() || rv.is_null()) && concat_null_yields_null {
             return Ok(Value::Null);
         }
-        let ls = if lv.is_null() { String::new() } else { lv.to_string_value() };
-        let rs = if rv.is_null() { String::new() } else { rv.to_string_value() };
+        let ls = if lv.is_null() {
+            String::new()
+        } else {
+            lv.to_string_value()
+        };
+        let rs = if rv.is_null() {
+            String::new()
+        } else {
+            rv.to_string_value()
+        };
         return Ok(Value::VarChar(format!("{}{}", ls, rs)));
     }
     if lv.is_null() || rv.is_null() {
@@ -306,9 +320,7 @@ fn extract_money_as_i128(v: &Value) -> i128 {
         Value::BigInt(v) => *v as i128 * 10000,
         Value::TinyInt(v) => *v as i128 * 10000,
         Value::SmallInt(v) => *v as i128 * 10000,
-        Value::Decimal(raw, scale) => {
-            super::value_helpers::rescale_raw(*raw, *scale, 4)
-        }
+        Value::Decimal(raw, scale) => super::value_helpers::rescale_raw(*raw, *scale, 4),
         Value::Float(v) => (f64::from_bits(*v) * 10000.0) as i128,
         _ => 0,
     }
@@ -358,7 +370,9 @@ fn arithmetic_overflow(
 
 fn divide_by_zero(arithabort: bool, ansi_warnings: bool) -> Result<Value, DbError> {
     if arithabort || ansi_warnings {
-        Err(DbError::Execution("Divide by zero error encountered.".into()))
+        Err(DbError::Execution(
+            "Divide by zero error encountered.".into(),
+        ))
     } else {
         Ok(Value::Null)
     }

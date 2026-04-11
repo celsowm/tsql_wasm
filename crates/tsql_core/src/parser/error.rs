@@ -48,10 +48,14 @@ impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "parse error at token {}", self.position)?;
         if !self.expected.is_empty() {
-            let expected_strs: Vec<String> = self.expected.iter().map(|e| match e {
-                Expected::Keyword(kw) => format!("keyword {}", kw),
-                Expected::Description(d) => d.to_string(),
-            }).collect();
+            let expected_strs: Vec<String> = self
+                .expected
+                .iter()
+                .map(|e| match e {
+                    Expected::Keyword(kw) => format!("keyword {}", kw),
+                    Expected::Description(d) => d.to_string(),
+                })
+                .collect();
             write!(f, ", expected: {}", expected_strs.join(", "))?;
         }
         if let Some(ref found) = self.found {

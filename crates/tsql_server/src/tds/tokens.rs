@@ -1,7 +1,7 @@
 use super::packet::PacketBuilder;
 use super::type_mapping::{
-    value_to_wire_bytes, TypeInfo, BIGBINARYTYPE, BIGCHARTYPE, BIGVARBINARYTYPE,
-    BIGVARCHARTYPE, NCHARTYPE, NVARCHARTYPE,
+    value_to_wire_bytes, TypeInfo, BIGBINARYTYPE, BIGCHARTYPE, BIGVARBINARYTYPE, BIGVARCHARTYPE,
+    NCHARTYPE, NVARCHARTYPE,
 };
 use tsql_core::types::Value;
 
@@ -350,7 +350,9 @@ mod tests {
 
         let bytes = b.as_bytes();
         assert_eq!(bytes[0], ROW_TOKEN);
-        assert!(bytes.windows(5).any(|w| w == [0x03, 0x00, b'h', b'e', b'l']));
+        assert!(bytes
+            .windows(5)
+            .any(|w| w == [0x03, 0x00, b'h', b'e', b'l']));
     }
 
     #[test]

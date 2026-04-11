@@ -1,5 +1,9 @@
-use crate::ast::{BinaryOp, DataTypeSpec, Expr, FromNode, FunctionBody, JoinClause, JoinType, ObjectName, OrderByExpr, RoutineParam, RoutineParamType, SelectItem, SelectStmt, Statement, TableFactor, TableRef, TriggerEvent, UnaryOp};
 use super::normalize_table_ref;
+use crate::ast::{
+    BinaryOp, DataTypeSpec, Expr, FromNode, FunctionBody, JoinClause, JoinType, ObjectName,
+    OrderByExpr, RoutineParam, RoutineParamType, SelectItem, SelectStmt, Statement, TableFactor,
+    TableRef, TriggerEvent, UnaryOp,
+};
 
 pub(crate) fn format_data_type_spec(dt: &DataTypeSpec) -> String {
     match dt {
@@ -76,29 +80,71 @@ pub(crate) fn format_expr(expr: &Expr) -> String {
         }
         Expr::IsNull(inner) => format!("{} IS NULL", format_expr(inner)),
         Expr::IsNotNull(inner) => format!("{} IS NOT NULL", format_expr(inner)),
-        Expr::Cast { expr, target } => format!("CAST({} AS {})", format_expr(expr), format_data_type_spec(target)),
-        Expr::TryCast { expr, target } => format!("TRY_CAST({} AS {})", format_expr(expr), format_data_type_spec(target)),
-        Expr::Convert { target, expr, style } => {
+        Expr::Cast { expr, target } => format!(
+            "CAST({} AS {})",
+            format_expr(expr),
+            format_data_type_spec(target)
+        ),
+        Expr::TryCast { expr, target } => format!(
+            "TRY_CAST({} AS {})",
+            format_expr(expr),
+            format_data_type_spec(target)
+        ),
+        Expr::Convert {
+            target,
+            expr,
+            style,
+        } => {
             if let Some(s) = style {
-                format!("CONVERT({}, {}, {})", format_data_type_spec(target), format_expr(expr), s)
+                format!(
+                    "CONVERT({}, {}, {})",
+                    format_data_type_spec(target),
+                    format_expr(expr),
+                    s
+                )
             } else {
-                format!("CONVERT({}, {})", format_data_type_spec(target), format_expr(expr))
+                format!(
+                    "CONVERT({}, {})",
+                    format_data_type_spec(target),
+                    format_expr(expr)
+                )
             }
         }
-        Expr::TryConvert { target, expr, style } => {
+        Expr::TryConvert {
+            target,
+            expr,
+            style,
+        } => {
             if let Some(s) = style {
-                format!("TRY_CONVERT({}, {}, {})", format_data_type_spec(target), format_expr(expr), s)
+                format!(
+                    "TRY_CONVERT({}, {}, {})",
+                    format_data_type_spec(target),
+                    format_expr(expr),
+                    s
+                )
             } else {
-                format!("TRY_CONVERT({}, {})", format_data_type_spec(target), format_expr(expr))
+                format!(
+                    "TRY_CONVERT({}, {})",
+                    format_data_type_spec(target),
+                    format_expr(expr)
+                )
             }
         }
-        Expr::Case { operand, when_clauses, else_result } => {
+        Expr::Case {
+            operand,
+            when_clauses,
+            else_result,
+        } => {
             let mut parts = vec!["CASE".to_string()];
             if let Some(op) = operand {
                 parts.push(format_expr(op));
             }
             for clause in when_clauses {
-                parts.push(format!("WHEN {} THEN {}", format_expr(&clause.condition), format_expr(&clause.result)));
+                parts.push(format!(
+                    "WHEN {} THEN {}",
+                    format_expr(&clause.condition),
+                    format_expr(&clause.result)
+                ));
             }
             if let Some(else_expr) = else_result {
                 parts.push(format!("ELSE {}", format_expr(else_expr)));
@@ -106,7 +152,11 @@ pub(crate) fn format_expr(expr: &Expr) -> String {
             parts.push("END".to_string());
             parts.join(" ")
         }
-        Expr::InList { expr, list, negated } => {
+        Expr::InList {
+            expr,
+            list,
+            negated,
+        } => {
             let list_str: Vec<String> = list.iter().map(format_expr).collect();
             if *negated {
                 format!("{} NOT IN ({})", format_expr(expr), list_str.join(", "))
@@ -114,23 +164,54 @@ pub(crate) fn format_expr(expr: &Expr) -> String {
                 format!("{} IN ({})", format_expr(expr), list_str.join(", "))
             }
         }
-        Expr::Between { expr, low, high, negated } => {
+        Expr::Between {
+            expr,
+            low,
+            high,
+            negated,
+        } => {
             let not = if *negated { "NOT " } else { "" };
-            format!("{} {}BETWEEN {} AND {}", format_expr(expr), not, format_expr(low), format_expr(high))
+            format!(
+                "{} {}BETWEEN {} AND {}",
+                format_expr(expr),
+                not,
+                format_expr(low),
+                format_expr(high)
+            )
         }
-        Expr::Like { expr, pattern, negated } => {
+        Expr::Like {
+            expr,
+            pattern,
+            negated,
+        } => {
             let not = if *negated { "NOT " } else { "" };
             format!("{} {}LIKE {}", format_expr(expr), not, format_expr(pattern))
         }
         Expr::Subquery(_) => "(SELECT ...)".to_string(),
-        Expr::Exists { subquery: _, negated } => {
-            if *negated { "NOT EXISTS (...)" } else { "EXISTS (...)" }.to_string()
+        Expr::Exists {
+            subquery: _,
+            negated,
+        } => if *negated {
+            "NOT EXISTS (...)"
+        } else {
+            "EXISTS (...)"
         }
-        Expr::InSubquery { expr, subquery: _, negated } => {
+        .to_string(),
+        Expr::InSubquery {
+            expr,
+            subquery: _,
+            negated,
+        } => {
             let not = if *negated { "NOT " } else { "" };
             format!("{} {}IN (...)", format_expr(expr), not)
         }
-        Expr::WindowFunction { func, partition_by, order_by, frame: _, .. } => {
+        Expr::WindowFunction {
+            func,
+            partition_by,
+            order_by,
+            frame: _,
+            ..
+        } => {
             let func_name_owned: String;
             let func_name = match func {
                 crate::ast::WindowFunc::RowNumber => "ROW_NUMBER()",
@@ -155,10 +236,13 @@ pub(crate) fn format_expr(expr: &Expr) -> String {
                 parts.push(format!("PARTITION BY {}", partition_str.join(", ")));
             }
             if !order_by.is_empty() {
-                let order_str: Vec<String> = order_by.iter().map(|oe| {
-                    let dir = if oe.asc { "" } else { " DESC" };
-                    format!("{}{}", format_expr(&oe.expr), dir)
-                }).collect();
+                let order_str: Vec<String> = order_by
+                    .iter()
+                    .map(|oe| {
+                        let dir = if oe.asc { "" } else { " DESC" };
+                        format!("{}{}", format_expr(&oe.expr), dir)
+                    })
+                    .collect();
                 parts.push(format!("ORDER BY {}", order_str.join(", ")));
             }
             parts.join(" ")
@@ -261,7 +345,9 @@ pub(crate) fn format_select_stmt(stmt: &SelectStmt) -> String {
 pub(crate) fn format_from_node(node: &FromNode) -> String {
     match node {
         FromNode::Table(table) => format_table_ref(table),
-        FromNode::Aliased { source, alias } => format!("({}) AS {}", format_from_node(source), alias),
+        FromNode::Aliased { source, alias } => {
+            format!("({}) AS {}", format_from_node(source), alias)
+        }
         FromNode::Join {
             left,
             join_type,
@@ -284,7 +370,12 @@ pub(crate) fn format_from_node(node: &FromNode) -> String {
                     format_expr(on_expr)
                 )
             } else {
-                format!("{} {} {}", format_from_node(left), join_kw, format_from_node(right))
+                format!(
+                    "{} {} {}",
+                    format_from_node(left),
+                    join_kw,
+                    format_from_node(right)
+                )
             }
         }
     }
@@ -355,7 +446,9 @@ pub(crate) fn format_statement(stmt: &Statement) -> String {
         Statement::Procedural(crate::ast::ProceduralStatement::Return(Some(expr))) => {
             format!("RETURN {}", format_expr(expr))
         }
-        Statement::Procedural(crate::ast::ProceduralStatement::Return(None)) => "RETURN".to_string(),
+        Statement::Procedural(crate::ast::ProceduralStatement::Return(None)) => {
+            "RETURN".to_string()
+        }
         Statement::Procedural(crate::ast::ProceduralStatement::Print(expr)) => {
             format!("PRINT {}", format_expr(expr))
         }
@@ -370,7 +463,10 @@ pub(crate) fn format_statement(stmt: &Statement) -> String {
         }
         Statement::Procedural(crate::ast::ProceduralStatement::If(stmt)) => {
             let mut out = format!("IF {} ", format_expr(&stmt.condition));
-            out.push_str(&format!("BEGIN {} END", format_statement_list(&stmt.then_body)));
+            out.push_str(&format!(
+                "BEGIN {} END",
+                format_statement_list(&stmt.then_body)
+            ));
             if let Some(else_body) = &stmt.else_body {
                 out.push_str(" ELSE ");
                 out.push_str(&format!("BEGIN {} END", format_statement_list(else_body)));
@@ -443,13 +539,21 @@ pub(crate) fn format_statement(stmt: &Statement) -> String {
         }
         Statement::Dml(crate::ast::DmlStatement::Merge(_)) => "MERGE".to_string(),
         Statement::Procedural(crate::ast::ProceduralStatement::DeclareCursor(stmt)) => {
-            format!("DECLARE {} CURSOR FOR {}", stmt.name, format_select_stmt(&stmt.query))
+            format!(
+                "DECLARE {} CURSOR FOR {}",
+                stmt.name,
+                format_select_stmt(&stmt.query)
+            )
         }
-        Statement::Cursor(crate::ast::CursorStatement::OpenCursor(name)) => format!("OPEN {}", name),
+        Statement::Cursor(crate::ast::CursorStatement::OpenCursor(name)) => {
+            format!("OPEN {}", name)
+        }
         Statement::Cursor(crate::ast::CursorStatement::FetchCursor(stmt)) => {
             format!("FETCH {}", stmt.name)
         }
-        Statement::Cursor(crate::ast::CursorStatement::CloseCursor(name)) => format!("CLOSE {}", name),
+        Statement::Cursor(crate::ast::CursorStatement::CloseCursor(name)) => {
+            format!("CLOSE {}", name)
+        }
         Statement::Cursor(crate::ast::CursorStatement::DeallocateCursor(name)) => {
             format!("DEALLOCATE {}", name)
         }
@@ -552,10 +656,18 @@ pub(crate) fn format_statement(stmt: &Statement) -> String {
             format!("DROP SCHEMA {}", stmt.name)
         }
         Statement::Ddl(crate::ast::DdlStatement::CreateIndex(stmt)) => {
-            format!("CREATE INDEX {} ON {}", format_object_name(&stmt.name), format_object_name(&stmt.table))
+            format!(
+                "CREATE INDEX {} ON {}",
+                format_object_name(&stmt.name),
+                format_object_name(&stmt.table)
+            )
         }
         Statement::Ddl(crate::ast::DdlStatement::DropIndex(stmt)) => {
-            format!("DROP INDEX {} ON {}", format_object_name(&stmt.name), format_object_name(&stmt.table))
+            format!(
+                "DROP INDEX {} ON {}",
+                format_object_name(&stmt.name),
+                format_object_name(&stmt.table)
+            )
         }
         Statement::Ddl(crate::ast::DdlStatement::TruncateTable(stmt)) => {
             format!("TRUNCATE TABLE {}", format_object_name(&stmt.name))
@@ -673,13 +785,16 @@ pub(crate) fn format_select_columns(projection: &[SelectItem]) -> String {
     if projection.is_empty() {
         return "*".to_string();
     }
-    let cols: Vec<String> = projection.iter().map(|item| {
-        if let Some(alias) = &item.alias {
-            format!("{} AS {}", format_expr(&item.expr), alias)
-        } else {
-            format_expr(&item.expr)
-        }
-    }).collect();
+    let cols: Vec<String> = projection
+        .iter()
+        .map(|item| {
+            if let Some(alias) = &item.alias {
+                format!("{} AS {}", format_expr(&item.expr), alias)
+            } else {
+                format_expr(&item.expr)
+            }
+        })
+        .collect();
     cols.join(", ")
 }
 
@@ -692,7 +807,12 @@ pub(crate) fn format_join(join: &JoinClause) -> String {
         JoinType::Cross => "CROSS JOIN",
     };
     if let Some(on_expr) = &join.on {
-        format!("{} {} ON {}", join_type, normalize_table_ref(&join.table), format_expr(on_expr))
+        format!(
+            "{} {} ON {}",
+            join_type,
+            normalize_table_ref(&join.table),
+            format_expr(on_expr)
+        )
     } else {
         format!("{} {}", join_type, normalize_table_ref(&join.table))
     }

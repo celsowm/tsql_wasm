@@ -9,16 +9,13 @@ use crate::catalog::{
 use crate::error::DbError;
 use crate::storage::Storage;
 
-use super::type_mapping::data_type_spec_to_runtime;
 use super::tooling::format_view_definition;
 use super::tooling::SessionOptions;
+use super::type_mapping::data_type_spec_to_runtime;
 
 /// S6: Shared constraint application logic extracted from create_table and alter_table.
 /// Eliminates ~65 lines of duplicated constraint handling.
-fn apply_table_constraint(
-    table: &mut TableDef,
-    tc: TableConstraintSpec,
-) -> Result<(), DbError> {
+fn apply_table_constraint(table: &mut TableDef, tc: TableConstraintSpec) -> Result<(), DbError> {
     match tc {
         TableConstraintSpec::Default { name, column, expr } => {
             let col = table
@@ -30,7 +27,9 @@ fn apply_table_constraint(
             col.default_constraint_name = Some(name);
         }
         TableConstraintSpec::Check { name, expr } => {
-            table.check_constraints.push(CheckConstraintDef { name, expr });
+            table
+                .check_constraints
+                .push(CheckConstraintDef { name, expr });
         }
         TableConstraintSpec::ForeignKey {
             name,
@@ -170,31 +169,35 @@ impl<'a> SchemaExecutor<'a> {
         }
 
         self.catalog.register_table(table.clone());
-        self.storage.ensure_table(table_id);
-        
+        self.storage.ensure_table(table_id)?;
+
         // Create clustered indexes for PRIMARY KEYs
         for col in &table.columns {
             if col.primary_key {
                 let index_name = format!("PK__{}__{}", table.name, col.name);
-                self.catalog.create_index_with_options(
-                    "dbo",
-                    &index_name,
-                    &table.schema_name,
-                    &table.name,
-                    std::slice::from_ref(&col.name),
-                    true,  // is_clustered
-                    col.unique,  // is_unique
-                ).map_err(|e| DbError::Execution(format!("Failed to create primary key index: {}", e)))?;
+                self.catalog
+                    .create_index_with_options(
+                        "dbo",
+                        &index_name,
+                        &table.schema_name,
+                        &table.name,
+                        std::slice::from_ref(&col.name),
+                        true,       // is_clustered
+                        col.unique, // is_unique
+                    )
+                    .map_err(|e| {
+                        DbError::Execution(format!("Failed to create primary key index: {}", e))
+                    })?;
             }
         }
-        
+
         Ok(())
     }
 
     pub(crate) fn drop_table(&mut self, stmt: DropTableStmt) -> Result<(), DbError> {
         let schema_name = stmt.name.schema_or_dbo().to_string();
         let table_id = self.catalog.drop_table(&schema_name, &stmt.name.name)?;
-        self.storage.remove_table(table_id);
+        self.storage.remove_table(table_id)?;
         Ok(())
     }
 
@@ -365,7 +368,10 @@ impl<'a> SchemaExecutor<'a> {
                     if let Some(pos) = removed {
                         table_mut.foreign_keys.remove(pos);
                     } else {
-                        return Err(DbError::constraint_not_found(&stmt.table.name, constraint_name));
+                        return Err(DbError::constraint_not_found(
+                            &stmt.table.name,
+                            constraint_name,
+                        ));
                     }
                 }
             }

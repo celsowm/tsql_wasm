@@ -1,5 +1,5 @@
-use crate::types::Value;
 use super::super::super::context::ExecutionContext;
+use crate::types::Value;
 
 pub(crate) fn deterministic_uuid(state: &mut u64) -> uuid::Uuid {
     *state = state

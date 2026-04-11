@@ -1,7 +1,7 @@
 use crate::error::DbError;
 
-use crate::executor::projection::{expr_label, resolve_projected_order_index};
 use crate::ast::OrderByExpr;
+use crate::executor::projection::{expr_label, resolve_projected_order_index};
 
 pub(crate) fn validate_projected_order_by(
     columns: &[String],

@@ -7,13 +7,13 @@ use crate::parser::parse_expr_subquery_aware;
 use crate::storage::{Storage, StoredRow};
 use crate::types::Value;
 
+use super::super::QueryExecutor;
+use super::query_result_to_bound_table;
 use crate::executor::clock::Clock;
 use crate::executor::context::{ExecutionContext, ModuleFrame, ModuleKind};
 use crate::executor::evaluator::eval_expr;
 use crate::executor::model::BoundTable;
 use crate::executor::{type_mapping, value_ops};
-use super::super::QueryExecutor;
-use super::query_result_to_bound_table;
 
 pub(super) fn bind_builtin_tvf(
     catalog: &dyn Catalog,
@@ -178,7 +178,11 @@ pub(super) fn bind_inline_tvf(
     }
     let fname = name[..open].trim();
     let args_raw = &name[open + 1..name.len() - 1];
-    let schema = tref.factor.as_object_name().map(|o| o.schema_or_dbo()).unwrap_or("dbo");
+    let schema = tref
+        .factor
+        .as_object_name()
+        .map(|o| o.schema_or_dbo())
+        .unwrap_or("dbo");
     let Some(routine) = catalog.find_routine(schema, fname).cloned() else {
         return Ok(None);
     };
@@ -226,12 +230,11 @@ pub(super) fn bind_inline_tvf(
             let expr = parse_expr_subquery_aware(arg_raw)?;
             let val = eval_expr(&expr, &[], ctx, catalog, storage, clock)?;
             let ty = type_mapping::data_type_spec_to_runtime(dt);
-            let coerced = value_ops::coerce_value_to_type_with_dateformat(
-                val,
-                &ty,
-                &ctx.options.dateformat,
-            )?;
-            ctx.session.variables.insert(param.name.clone(), (ty, coerced));
+            let coerced =
+                value_ops::coerce_value_to_type_with_dateformat(val, &ty, &ctx.options.dateformat)?;
+            ctx.session
+                .variables
+                .insert(param.name.clone(), (ty, coerced));
             ctx.register_declared_var(&param.name);
         }
 

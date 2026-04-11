@@ -1,6 +1,10 @@
-use crate::ast::{Expr, FromClause, FromNode, ObjectName, SelectItem, TableFactor, TableRef, TopSpec};
+use crate::ast::{
+    Expr, FromClause, FromNode, ObjectName, SelectItem, TableFactor, TableRef, TopSpec,
+};
 use crate::catalog::TableDef;
-use crate::executor::query::plan::{FilterPlan, PaginationPlan, ProjectionPlan, RelationalQuery, SortPlan};
+use crate::executor::query::plan::{
+    FilterPlan, PaginationPlan, ProjectionPlan, RelationalQuery, SortPlan,
+};
 
 pub(crate) fn build_mutation_query(
     from: Option<&FromClause>,
@@ -77,13 +81,23 @@ fn match_table_ref(
     target_name: &str,
     table_lookup: &impl Fn(&str, &str) -> Option<TableDef>,
 ) -> Option<(TableDef, String)> {
-    let tname = tref.factor.as_object_name().map(|o| o.name.as_str()).unwrap_or("");
+    let tname = tref
+        .factor
+        .as_object_name()
+        .map(|o| o.name.as_str())
+        .unwrap_or("");
     let alias = tref.alias.as_deref().unwrap_or(tname);
-    if !alias.eq_ignore_ascii_case(target_name) && (tref.factor.is_derived() || !tname.eq_ignore_ascii_case(target_name)) {
+    if !alias.eq_ignore_ascii_case(target_name)
+        && (tref.factor.is_derived() || !tname.eq_ignore_ascii_case(target_name))
+    {
         return None;
     }
 
-    let schema = tref.factor.as_object_name().map(|o| o.schema_or_dbo()).unwrap_or("dbo");
+    let schema = tref
+        .factor
+        .as_object_name()
+        .map(|o| o.schema_or_dbo())
+        .unwrap_or("dbo");
     let table = match table_lookup(schema, tname) {
         Some(t) => t,
         None => {

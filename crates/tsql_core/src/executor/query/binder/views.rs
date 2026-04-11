@@ -3,11 +3,11 @@ use crate::catalog::Catalog;
 use crate::error::DbError;
 use crate::storage::Storage;
 
+use super::super::QueryExecutor;
+use super::query_result_to_bound_table;
 use crate::executor::clock::Clock;
 use crate::executor::context::ExecutionContext;
 use crate::executor::model::BoundTable;
-use super::super::QueryExecutor;
-use super::query_result_to_bound_table;
 
 pub(super) fn bind_view(
     catalog: &dyn Catalog,
@@ -17,7 +17,11 @@ pub(super) fn bind_view(
     ctx: &mut ExecutionContext,
     executor: &QueryExecutor<'_>,
 ) -> Result<Option<BoundTable>, DbError> {
-    let schema = tref.factor.as_object_name().map(|o| o.schema_or_dbo()).unwrap_or("dbo");
+    let schema = tref
+        .factor
+        .as_object_name()
+        .map(|o| o.schema_or_dbo())
+        .unwrap_or("dbo");
     let name = match &tref.factor {
         TableFactor::Named(o) => &o.name,
         TableFactor::Derived(_) => return Ok(None),
@@ -40,5 +44,3 @@ pub(super) fn bind_view(
         result,
     )))
 }
-
-

@@ -30,7 +30,9 @@ pub(crate) fn execute_pivot(
         for ct in first_row {
             for (col_idx, col) in ct.table.columns.iter().enumerate() {
                 let name = &col.name;
-                if !name.eq_ignore_ascii_case(&spec.aggregate_col) && !name.eq_ignore_ascii_case(&spec.pivot_col) {
+                if !name.eq_ignore_ascii_case(&spec.aggregate_col)
+                    && !name.eq_ignore_ascii_case(&spec.pivot_col)
+                {
                     grouping_cols.push((ct.alias.clone(), name.clone(), col_idx));
                 }
             }
@@ -46,7 +48,12 @@ pub(crate) fn execute_pivot(
             let mut val = Value::Null;
             for ct in row {
                 if ct.alias.eq_ignore_ascii_case(alias) {
-                    if let Some(pos) = ct.table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name)) {
+                    if let Some(pos) = ct
+                        .table
+                        .columns
+                        .iter()
+                        .position(|c| c.name.eq_ignore_ascii_case(col_name))
+                    {
                         if let Some(r) = &ct.row {
                             val = r.values[pos].clone();
                         }
@@ -68,10 +75,9 @@ pub(crate) fn execute_pivot(
                 .iter()
                 .find(|ct| ct.alias == *alias)
                 .and_then(|ct| ct.table.columns.iter().find(|c| c.name == *col_name))
-                .ok_or_else(|| DbError::Execution(format!(
-                    "pivot grouping column '{}' not found",
-                    col_name
-                )))?;
+                .ok_or_else(|| {
+                    DbError::Execution(format!("pivot grouping column '{}' not found", col_name))
+                })?;
             pivot_columns.push(original_col.clone());
         }
     }
@@ -112,7 +118,12 @@ pub(crate) fn execute_pivot(
                 .filter(|r| {
                     let mut pv = Value::Null;
                     for ct in r.iter() {
-                        if let Some(pos) = ct.table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(&spec.pivot_col)) {
+                        if let Some(pos) = ct
+                            .table
+                            .columns
+                            .iter()
+                            .position(|c| c.name.eq_ignore_ascii_case(&spec.pivot_col))
+                        {
                             if let Some(row) = &ct.row {
                                 pv = row.values[pos].clone();
                                 break;
@@ -140,7 +151,12 @@ pub(crate) fn execute_pivot(
                 .map(|r| {
                     let mut av = Value::Null;
                     for ct in r.iter() {
-                        if let Some(pos) = ct.table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(&spec.aggregate_col)) {
+                        if let Some(pos) = ct
+                            .table
+                            .columns
+                            .iter()
+                            .position(|c| c.name.eq_ignore_ascii_case(&spec.aggregate_col))
+                        {
                             if let Some(row) = &ct.row {
                                 av = row.values[pos].clone();
                                 break;
@@ -184,15 +200,17 @@ fn apply_aggregate_to_values(
                 }
                 match sum {
                     None => sum = Some(v),
-                    Some(s) => sum = Some(super::super::super::operators::eval_binary(
-                        &BinaryOp::Add,
-                        s,
-                        v,
-                        ctx.metadata.ansi_nulls,
-                        ctx.options.concat_null_yields_null,
-                        ctx.options.arithabort,
-                        ctx.options.ansi_warnings,
-                    )?),
+                    Some(s) => {
+                        sum = Some(super::super::super::operators::eval_binary(
+                            &BinaryOp::Add,
+                            s,
+                            v,
+                            ctx.metadata.ansi_nulls,
+                            ctx.options.concat_null_yields_null,
+                            ctx.options.arithabort,
+                            ctx.options.ansi_warnings,
+                        )?)
+                    }
                 }
             }
             Ok(sum.unwrap_or(Value::Null))
@@ -207,15 +225,17 @@ fn apply_aggregate_to_values(
                 count += 1;
                 match sum {
                     None => sum = Some(v),
-                    Some(s) => sum = Some(super::super::super::operators::eval_binary(
-                        &BinaryOp::Add,
-                        s,
-                        v,
-                        ctx.metadata.ansi_nulls,
-                        ctx.options.concat_null_yields_null,
-                        ctx.options.arithabort,
-                        ctx.options.ansi_warnings,
-                    )?),
+                    Some(s) => {
+                        sum = Some(super::super::super::operators::eval_binary(
+                            &BinaryOp::Add,
+                            s,
+                            v,
+                            ctx.metadata.ansi_nulls,
+                            ctx.options.concat_null_yields_null,
+                            ctx.options.arithabort,
+                            ctx.options.ansi_warnings,
+                        )?)
+                    }
                 }
             }
             if count == 0 {
@@ -235,7 +255,9 @@ fn apply_aggregate_to_values(
                 ctx.options.ansi_warnings,
             )
         }
-        "COUNT" => Ok(Value::Int(values.iter().filter(|v| !v.is_null()).count() as i32)),
+        "COUNT" => Ok(Value::Int(
+            values.iter().filter(|v| !v.is_null()).count() as i32
+        )),
         "MIN" => {
             let mut min = None;
             for v in values {
@@ -244,7 +266,10 @@ fn apply_aggregate_to_values(
                 }
                 match min {
                     None => min = Some(v),
-                    Some(ref m) if crate::executor::value_ops::compare_values(&v, m) == std::cmp::Ordering::Less => {
+                    Some(ref m)
+                        if crate::executor::value_ops::compare_values(&v, m)
+                            == std::cmp::Ordering::Less =>
+                    {
                         min = Some(v)
                     }
                     _ => {}
@@ -260,7 +285,10 @@ fn apply_aggregate_to_values(
                 }
                 match max {
                     None => max = Some(v),
-                    Some(ref m) if crate::executor::value_ops::compare_values(&v, m) == std::cmp::Ordering::Greater => {
+                    Some(ref m)
+                        if crate::executor::value_ops::compare_values(&v, m)
+                            == std::cmp::Ordering::Greater =>
+                    {
                         max = Some(v)
                     }
                     _ => {}
@@ -268,7 +296,9 @@ fn apply_aggregate_to_values(
             }
             Ok(max.unwrap_or(Value::Null))
         }
-        "COUNT_BIG" => Ok(Value::BigInt(values.iter().filter(|v| !v.is_null()).count() as i64)),
+        "COUNT_BIG" => Ok(Value::BigInt(
+            values.iter().filter(|v| !v.is_null()).count() as i64,
+        )),
         "STRING_AGG" => {
             let mut result = String::new();
             let mut first = true;

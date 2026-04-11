@@ -72,7 +72,9 @@ pub(crate) fn eval_quotename(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.is_empty() || args.len() > 2 {
-        return Err(DbError::Execution("QUOTENAME expects 1 or 2 arguments".into()));
+        return Err(DbError::Execution(
+            "QUOTENAME expects 1 or 2 arguments".into(),
+        ));
     }
     let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
     if val.is_null() {
@@ -91,7 +93,12 @@ pub(crate) fn eval_quotename(
         '\'' => format!("'{}'", s.replace('\'', "''")),
         '[' | ']' => format!("[{}]", s.replace(']', "]]")),
         '"' => format!("\"{}\"", s.replace('"', "\"\"")),
-        _ => return Err(DbError::Execution(format!("Unsupported quote character '{}'", quote_char))),
+        _ => {
+            return Err(DbError::Execution(format!(
+                "Unsupported quote character '{}'",
+                quote_char
+            )))
+        }
     };
     Ok(Value::NVarChar(result))
 }

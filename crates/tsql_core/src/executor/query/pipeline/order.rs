@@ -59,8 +59,7 @@ pub(crate) fn apply_result_ordering(
     let order_by_refs = &query.sort.order_by;
     validate_projected_order_by(columns, order_by_refs)?;
     final_rows.sort_by(|a, b| {
-        compare_projected_rows(a, b, columns, order_by_refs)
-            .unwrap_or(Ordering::Equal)
+        compare_projected_rows(a, b, columns, order_by_refs).unwrap_or(Ordering::Equal)
     });
     Ok(final_rows)
 }

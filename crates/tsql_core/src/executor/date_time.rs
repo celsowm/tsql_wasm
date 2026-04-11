@@ -121,7 +121,10 @@ fn parse_date_part(date_part: &str, dateformat: &str) -> Result<(i32, i32, i32),
         .filter(|s| !s.is_empty())
         .collect();
     if segments.len() < 3 {
-        return Err(DbError::Execution(format!("invalid datetime format: '{}'", date_part)));
+        return Err(DbError::Execution(format!(
+            "invalid datetime format: '{}'",
+            date_part
+        )));
     }
 
     if segments[0].len() == 4 {
@@ -183,7 +186,7 @@ fn parse_time_part(time_part: &str) -> Result<(i32, i32, i32), DbError> {
 }
 
 fn parse_i32(segment: &str, label: &str, source: &str) -> Result<i32, DbError> {
-    segment.parse::<i32>().map_err(|_| {
-        DbError::Execution(format!("invalid {} in '{}'", label, source))
-    })
+    segment
+        .parse::<i32>()
+        .map_err(|_| DbError::Execution(format!("invalid {} in '{}'", label, source)))
 }

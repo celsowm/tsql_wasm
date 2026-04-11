@@ -1,13 +1,13 @@
-﻿use crate::ast::FetchCursorStmt;
+use super::super::ScriptExecutor;
+use crate::ast::FetchCursorStmt;
+use crate::catalog::Catalog;
 use crate::error::DbError;
 use crate::executor::context::ExecutionContext;
-use crate::executor::query::QueryExecutor;
 use crate::executor::query::plan::RelationalQuery;
+use crate::executor::query::QueryExecutor;
 use crate::executor::result::QueryResult;
 use crate::executor::value_ops::coerce_value_to_type_with_dateformat;
-use crate::catalog::Catalog;
 use crate::storage::Storage;
-use super::super::ScriptExecutor;
 
 impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_declare_cursor(
@@ -31,12 +31,16 @@ impl<'a> ScriptExecutor<'a> {
         name: String,
         ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
-        let mut cursor = ctx.session.cursors.get(&name).cloned().ok_or_else(|| {
-            DbError::cursor_not_declared(&name)
-        })?;
-        let query = cursor.query.clone().ok_or_else(|| {
-            DbError::cursor_has_no_query(&name)
-        })?;
+        let mut cursor = ctx
+            .session
+            .cursors
+            .get(&name)
+            .cloned()
+            .ok_or_else(|| DbError::cursor_not_declared(&name))?;
+        let query = cursor
+            .query
+            .clone()
+            .ok_or_else(|| DbError::cursor_has_no_query(&name))?;
         let result = QueryExecutor {
             catalog: self.catalog as &dyn Catalog,
             storage: self.storage as &dyn Storage,
@@ -54,9 +58,12 @@ impl<'a> ScriptExecutor<'a> {
         name: String,
         ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
-        let mut cursor = ctx.session.cursors.get(&name).cloned().ok_or_else(|| {
-            DbError::cursor_not_declared(&name)
-        })?;
+        let mut cursor = ctx
+            .session
+            .cursors
+            .get(&name)
+            .cloned()
+            .ok_or_else(|| DbError::cursor_not_declared(&name))?;
         cursor.current_row = -1;
         ctx.session.cursors.insert(name, cursor);
         Ok(None)
@@ -76,9 +83,12 @@ impl<'a> ScriptExecutor<'a> {
         stmt: FetchCursorStmt,
         ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
-        let mut cursor = ctx.session.cursors.get(&stmt.name).cloned().ok_or_else(|| {
-            DbError::cursor_not_declared(&stmt.name)
-        })?;
+        let mut cursor = ctx
+            .session
+            .cursors
+            .get(&stmt.name)
+            .cloned()
+            .ok_or_else(|| DbError::cursor_not_declared(&stmt.name))?;
 
         let row_count = cursor.query_result.rows.len() as i64;
 
@@ -96,7 +106,14 @@ impl<'a> ScriptExecutor<'a> {
                 cursor.current_row = row_count - 1;
             }
             crate::ast::FetchDirection::Absolute(expr) => {
-                let val = super::super::super::evaluator::eval_expr(&expr, &[], ctx, self.catalog, self.storage, self.clock)?;
+                let val = super::super::super::evaluator::eval_expr(
+                    &expr,
+                    &[],
+                    ctx,
+                    self.catalog,
+                    self.storage,
+                    self.clock,
+                )?;
                 let n = val.to_integer_i64().unwrap_or(0);
                 if n > 0 {
                     cursor.current_row = n - 1;
@@ -107,7 +124,14 @@ impl<'a> ScriptExecutor<'a> {
                 }
             }
             crate::ast::FetchDirection::Relative(expr) => {
-                let val = super::super::super::evaluator::eval_expr(&expr, &[], ctx, self.catalog, self.storage, self.clock)?;
+                let val = super::super::super::evaluator::eval_expr(
+                    &expr,
+                    &[],
+                    ctx,
+                    self.catalog,
+                    self.storage,
+                    self.clock,
+                )?;
                 let n = val.to_integer_i64().unwrap_or(0);
                 cursor.current_row += n;
             }

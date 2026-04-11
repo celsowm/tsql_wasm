@@ -1,7 +1,7 @@
 use crate::parser::ast::*;
-use crate::parser::token::Keyword;
+use crate::parser::error::{Expected, ParseResult};
 use crate::parser::state::Parser;
-use crate::parser::error::{ParseResult, Expected};
+use crate::parser::token::Keyword;
 
 pub fn parse_if(parser: &mut Parser) -> ParseResult<Statement> {
     let condition = crate::parser::parse::expressions::parse_expr(parser)?;
@@ -31,11 +31,13 @@ pub fn parse_begin_end(parser: &mut Parser) -> ParseResult<Statement> {
             break;
         }
         if parser.is_empty() {
-             return parser.backtrack(Expected::Description("statement"));
+            return parser.backtrack(Expected::Description("statement"));
         }
         statements.push(crate::parser::parse::parse_statement(parser)?);
     }
-    Ok(Statement::Procedural(ProceduralStatement::BeginEnd(statements)))
+    Ok(Statement::Procedural(ProceduralStatement::BeginEnd(
+        statements,
+    )))
 }
 
 pub fn parse_try_catch(parser: &mut Parser) -> ParseResult<Statement> {
@@ -71,5 +73,8 @@ pub fn parse_try_catch(parser: &mut Parser) -> ParseResult<Statement> {
         catch_body.push(crate::parser::parse::parse_statement(parser)?);
     }
 
-    Ok(Statement::Procedural(ProceduralStatement::TryCatch { try_body, catch_body }))
+    Ok(Statement::Procedural(ProceduralStatement::TryCatch {
+        try_body,
+        catch_body,
+    }))
 }

@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use super::slicing::SourceSpan;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TraceStatementEvent {

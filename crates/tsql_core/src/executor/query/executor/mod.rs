@@ -24,7 +24,9 @@ impl<'a> QueryExecutor<'a> {
         }
 
         if into_table.is_some() {
-            return Err(DbError::Execution("SELECT INTO is handled by ScriptExecutor".into()));
+            return Err(DbError::Execution(
+                "SELECT INTO is handled by ScriptExecutor".into(),
+            ));
         }
 
         Ok(result)

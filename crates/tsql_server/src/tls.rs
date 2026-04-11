@@ -3,8 +3,8 @@ use rustls::ServerConfig;
 use std::io;
 
 pub fn generate_self_signed_cert(cert_path: &str, key_path: &str) -> io::Result<()> {
-    let certified_key = generate_simple_self_signed(vec!["localhost".to_string()])
-        .map_err(io::Error::other)?;
+    let certified_key =
+        generate_simple_self_signed(vec!["localhost".to_string()]).map_err(io::Error::other)?;
 
     let pem_cert = certified_key.cert.pem();
     let pem_key = certified_key.key_pair.serialize_pem();

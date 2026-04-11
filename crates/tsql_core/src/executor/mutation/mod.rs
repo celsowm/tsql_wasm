@@ -1,17 +1,17 @@
 mod delete;
-mod insert_source;
 mod insert;
+mod insert_source;
+pub(crate) mod output;
 pub(crate) mod query_source;
 mod shared;
-pub(crate) mod output;
 mod update;
 pub(crate) mod validation;
 
 pub(crate) use output::{build_output_result_merge, MergeOutputRow};
 
 use crate::catalog::Catalog;
-use crate::storage::Storage;
 use crate::error::DbError;
+use crate::storage::Storage;
 
 use super::clock::Clock;
 use super::context::{ModuleFrame, ModuleKind};
@@ -45,7 +45,8 @@ impl<'a> MutationExecutor<'a> {
         deleted_rows: &[crate::storage::StoredRow],
         ctx: &mut super::context::ExecutionContext<'_>,
     ) -> Result<(), crate::error::DbError> {
-        let triggers: Vec<crate::catalog::TriggerDef> = self.catalog
+        let triggers: Vec<crate::catalog::TriggerDef> = self
+            .catalog
             .find_triggers_for_table(table.schema_or_dbo(), &table.name)
             .into_iter()
             .cloned()
@@ -54,7 +55,9 @@ impl<'a> MutationExecutor<'a> {
         for trigger in triggers {
             if trigger.events.contains(&event) && trigger.is_instead_of == is_instead_of {
                 if ctx.trigger_depth() >= 16 {
-                    return Err(DbError::Execution("Maximum trigger nesting level (16) exceeded.".into()));
+                    return Err(DbError::Execution(
+                        "Maximum trigger nesting level (16) exceeded.".into(),
+                    ));
                 }
                 // Setup inserted/deleted pseudo-tables
                 let mut trigger_ctx = ctx.subquery();
@@ -81,11 +84,14 @@ impl<'a> MutationExecutor<'a> {
                         foreign_keys: vec![],
                     };
                     self.catalog.register_table(ins_table);
-                    self.storage.ensure_table(table_id);
+                    self.storage.ensure_table(table_id)?;
                     for row in inserted_rows {
                         self.storage.insert_row(table_id, row.clone())?;
                     }
-                    trigger_ctx.session.temp_map.insert("INSERTED".to_string(), ins_name.clone());
+                    trigger_ctx
+                        .session
+                        .temp_map
+                        .insert("INSERTED".to_string(), ins_name.clone());
                     ins_physical = Some((table_id, ins_name));
                 }
 
@@ -103,11 +109,14 @@ impl<'a> MutationExecutor<'a> {
                         foreign_keys: vec![],
                     };
                     self.catalog.register_table(del_table);
-                    self.storage.ensure_table(table_id);
+                    self.storage.ensure_table(table_id)?;
                     for row in deleted_rows {
                         self.storage.insert_row(table_id, row.clone())?;
                     }
-                    trigger_ctx.session.temp_map.insert("DELETED".to_string(), del_name.clone());
+                    trigger_ctx
+                        .session
+                        .temp_map
+                        .insert("DELETED".to_string(), del_name.clone());
                     del_physical = Some((table_id, del_name));
                 }
 
@@ -253,8 +262,20 @@ impl<'a> MutationExecutor<'a> {
 
             // Re-validate constraints on the target table
             validation::enforce_unique_on_insert(&table, self.storage, table.id, &stored_row)?;
-            validation::enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &stored_row)?;
-            validation::enforce_checks_on_row(&table, &stored_row, ctx, self.catalog, self.storage, self.clock)?;
+            validation::enforce_foreign_keys_on_insert(
+                &table,
+                self.catalog,
+                self.storage,
+                &stored_row,
+            )?;
+            validation::enforce_checks_on_row(
+                &table,
+                &stored_row,
+                ctx,
+                self.catalog,
+                self.storage,
+                self.clock,
+            )?;
 
             self.storage.insert_row(table.id, stored_row.clone())?;
             self.push_dirty_insert(ctx, &table.name, &stored_row);

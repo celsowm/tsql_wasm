@@ -1,12 +1,12 @@
-﻿use crate::ast::MergeStmt;
-use crate::error::DbError;
-use crate::executor::context::ExecutionContext;
-use crate::executor::query::QueryExecutor;
-use crate::executor::result::QueryResult;
 use super::super::ScriptExecutor;
 use super::merge_helpers::{
     merge_process_matched_phase, merge_process_not_matched_phase, merge_source_rows,
 };
+use crate::ast::MergeStmt;
+use crate::error::DbError;
+use crate::executor::context::ExecutionContext;
+use crate::executor::query::QueryExecutor;
+use crate::executor::result::QueryResult;
 
 impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_merge(
@@ -14,9 +14,10 @@ impl<'a> ScriptExecutor<'a> {
         stmt: MergeStmt,
         ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
-        let target_object = stmt.target.name_as_object().ok_or_else(|| {
-            DbError::Execution("MERGE target must be a named table".into())
-        })?;
+        let target_object = stmt
+            .target
+            .name_as_object()
+            .ok_or_else(|| DbError::Execution("MERGE target must be a named table".into()))?;
         if ctx.is_readonly_table_var(target_object.name.as_str()) {
             return Err(DbError::Execution(format!(
                 "table-valued parameter '{}' is READONLY",
@@ -82,7 +83,7 @@ impl<'a> ScriptExecutor<'a> {
         // Ensure all matched rows are updated in storage before NOT MATCHED
         self.storage.clear_table(target_table.id)?;
         if let Some(db) = &ctx.session.dirty_buffer {
-                db.lock().push_op(
+            db.lock().push_op(
                 ctx.session_id(),
                 target_table.name.clone(),
                 crate::executor::dirty_buffer::DirtyOp::Truncate,

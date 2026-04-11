@@ -541,9 +541,7 @@ fn parse_datetime_string(v: &str, dateformat: &str) -> Result<chrono::NaiveDateT
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%dT%H:%M:%S"))
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(v, "%m/%d/%Y %H:%M:%S"))
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(v, "%d/%m/%Y %H:%M:%S"))
-        .or_else(|_| {
-            parse_date_string(v, dateformat).map(|d| d.and_hms_opt(0, 0, 0).unwrap())
-        })
+        .or_else(|_| parse_date_string(v, dateformat).map(|d| d.and_hms_opt(0, 0, 0).unwrap()))
         .map_err(|_| ())
 }
 

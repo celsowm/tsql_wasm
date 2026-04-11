@@ -46,7 +46,8 @@ pub(crate) fn execute_sp_executesql(
             match find_param_def(&declared_params, &key) {
                 Some(def) => match &def.param_type {
                     RoutineParamType::Scalar(dt) => {
-                        let val = eval_expr(&arg.expr, &[], ctx, exec.catalog, exec.storage, exec.clock)?;
+                        let val =
+                            eval_expr(&arg.expr, &[], ctx, exec.catalog, exec.storage, exec.clock)?;
                         let ty = crate::executor::type_mapping::data_type_spec_to_runtime(dt);
                         let coerced = coerce_value_to_type_with_dateformat(
                             val,
@@ -88,7 +89,8 @@ pub(crate) fn execute_sp_executesql(
                     }
                 },
                 None => {
-                    let val = eval_expr(&arg.expr, &[], ctx, exec.catalog, exec.storage, exec.clock)?;
+                    let val =
+                        eval_expr(&arg.expr, &[], ctx, exec.catalog, exec.storage, exec.clock)?;
                     let ty = val.data_type().unwrap_or(crate::types::DataType::Int);
                     ctx.session.variables.insert(key.clone(), (ty, val.clone()));
                     ctx.register_declared_var(&key);
@@ -112,16 +114,14 @@ pub(crate) fn execute_sp_executesql(
         exec.leave_scope_and_cleanup(ctx)?;
         for (outer, val) in outs {
             if let Some((ty, out)) = ctx.session.variables.get_mut(&outer) {
-                *out = coerce_value_to_type_with_dateformat(
-                    val,
-                    ty,
-                    &ctx.options.dateformat,
-                )?;
+                *out = coerce_value_to_type_with_dateformat(val, ty, &ctx.options.dateformat)?;
             }
         }
         // Swallow control flow signals at procedure boundary
         match exec_result {
-            Ok(StmtOutcome::Return(_)) | Ok(StmtOutcome::Break) | Ok(StmtOutcome::Continue) => Ok(None),
+            Ok(StmtOutcome::Return(_)) | Ok(StmtOutcome::Break) | Ok(StmtOutcome::Continue) => {
+                Ok(None)
+            }
             Ok(StmtOutcome::Ok(r)) => Ok(r),
             Err(e) => Err(e),
         }

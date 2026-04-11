@@ -42,7 +42,9 @@ fn bind_table_rows(
     if let Some(cte) = ctx
         .row
         .ctes
-        .get(&crate::executor::string_norm::normalize_identifier(&bound.table.name))
+        .get(&crate::executor::string_norm::normalize_identifier(
+            &bound.table.name,
+        ))
     {
         return Ok(crate::executor::cte::cte_to_context_rows(cte, &bound.alias));
     }
@@ -136,8 +138,7 @@ fn apply_index_strategy(
             keyed
                 .into_iter()
                 .filter(|(lhs, _)| {
-                    matches!(op, BinaryOp::Eq)
-                        && compare_values(lhs, &rhs_val) == Ordering::Equal
+                    matches!(op, BinaryOp::Eq) && compare_values(lhs, &rhs_val) == Ordering::Equal
                 })
                 .map(|(_, row)| row)
                 .collect()

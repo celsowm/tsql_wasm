@@ -1,4 +1,4 @@
-﻿use std::cmp::Ordering;
+use std::cmp::Ordering;
 
 use crate::ast::{Expr, WhenClause};
 use crate::catalog::Catalog;
@@ -10,8 +10,8 @@ use super::context::ExecutionContext;
 use super::evaluator::eval_expr;
 use super::model::ContextTable;
 use super::operators::compare_bool;
-use super::query::QueryExecutor;
 use super::query::plan::RelationalQuery;
+use super::query::QueryExecutor;
 use super::result::QueryResult;
 use super::value_ops::truthy;
 use crate::storage::Storage;
@@ -35,7 +35,12 @@ pub(crate) fn eval_case(
     for clause in when_clauses {
         let match_found = if let Some(ref op_val) = operand_val {
             let when_val = eval_expr(&clause.condition, row, ctx, catalog, storage, clock)?;
-            compare_bool(op_val.clone(), when_val, |o| o == Ordering::Equal, ctx.metadata.ansi_nulls)
+            compare_bool(
+                op_val.clone(),
+                when_val,
+                |o| o == Ordering::Equal,
+                ctx.metadata.ansi_nulls,
+            )
         } else {
             let cond = eval_expr(&clause.condition, row, ctx, catalog, storage, clock)?;
             Value::Bit(truthy(&cond))
@@ -73,7 +78,13 @@ pub(crate) fn eval_in_list(
         if item_val.is_null() {
             return Ok(Value::Null);
         }
-        if compare_bool(val.clone(), item_val, |o| o == Ordering::Equal, ctx.metadata.ansi_nulls) == Value::Bit(true) {
+        if compare_bool(
+            val.clone(),
+            item_val,
+            |o| o == Ordering::Equal,
+            ctx.metadata.ansi_nulls,
+        ) == Value::Bit(true)
+        {
             found = true;
             break;
         }
@@ -100,12 +111,18 @@ pub(crate) fn eval_between(
     let low_val = eval_expr(low, row, ctx, catalog, storage, clock)?;
     let high_val = eval_expr(high, row, ctx, catalog, storage, clock)?;
 
-    let ge_low = compare_bool(val.clone(), low_val, |o| {
-        matches!(o, Ordering::Greater | Ordering::Equal)
-    }, ctx.metadata.ansi_nulls) == Value::Bit(true);
-    let le_high = compare_bool(val, high_val, |o| {
-        matches!(o, Ordering::Less | Ordering::Equal)
-    }, ctx.metadata.ansi_nulls) == Value::Bit(true);
+    let ge_low = compare_bool(
+        val.clone(),
+        low_val,
+        |o| matches!(o, Ordering::Greater | Ordering::Equal),
+        ctx.metadata.ansi_nulls,
+    ) == Value::Bit(true);
+    let le_high = compare_bool(
+        val,
+        high_val,
+        |o| matches!(o, Ordering::Less | Ordering::Equal),
+        ctx.metadata.ansi_nulls,
+    ) == Value::Bit(true);
 
     let result = ge_low && le_high;
     Ok(Value::Bit(if negated { !result } else { result }))
@@ -248,7 +265,12 @@ pub(crate) fn eval_in_subquery(
             continue;
         }
 
-        if compare_bool(val.clone(), subq_val.clone(), |o| o == Ordering::Equal, ctx.metadata.ansi_nulls) == Value::Bit(true)
+        if compare_bool(
+            val.clone(),
+            subq_val.clone(),
+            |o| o == Ordering::Equal,
+            ctx.metadata.ansi_nulls,
+        ) == Value::Bit(true)
         {
             found = true;
             break;

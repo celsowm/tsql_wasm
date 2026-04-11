@@ -1,7 +1,7 @@
 use crate::parser::ast::*;
-use crate::parser::token::Keyword;
+use crate::parser::error::{Expected, ParseResult};
 use crate::parser::state::Parser;
-use crate::parser::error::{ParseResult, Expected};
+use crate::parser::token::Keyword;
 
 fn is_statement_starter(tok: Option<&Token>) -> bool {
     match tok {
@@ -41,7 +41,7 @@ fn is_statement_starter(tok: Option<&Token>) -> bool {
 }
 
 // Re-export canonical implementations from control_flow.rs
-pub use super::control_flow::{parse_if, parse_begin_end, parse_try_catch};
+pub use super::control_flow::{parse_begin_end, parse_if, parse_try_catch};
 
 #[allow(clippy::while_let_loop)]
 pub fn parse_declare(parser: &mut Parser) -> ParseResult<Vec<DeclareVar>> {
@@ -61,12 +61,18 @@ pub fn parse_declare(parser: &mut Parser) -> ParseResult<Vec<DeclareVar>> {
                 } else {
                     None
                 };
-                vars.push(DeclareVar { name, data_type, initial_value });
+                vars.push(DeclareVar {
+                    name,
+                    data_type,
+                    initial_value,
+                });
             }
             _ => break,
         }
         match parser.peek() {
-            Some(Token::Comma) => { let _ = parser.next(); }
+            Some(Token::Comma) => {
+                let _ = parser.next();
+            }
             _ => break,
         }
     }
@@ -79,13 +85,16 @@ pub fn parse_set(parser: &mut Parser) -> ParseResult<Statement> {
             let variable = variable.clone();
             if let Some(Token::Operator(op)) = parser.next() {
                 if *op != "=" {
-                     return parser.backtrack(Expected::Description("="));
+                    return parser.backtrack(Expected::Description("="));
                 }
             } else {
                 return parser.backtrack(Expected::Description("="));
             }
             let expr = crate::parser::parse::expressions::parse_expr(parser)?;
-            Ok(Statement::Procedural(ProceduralStatement::Set { variable, expr }))
+            Ok(Statement::Procedural(ProceduralStatement::Set {
+                variable,
+                expr,
+            }))
         }
         _ => parser.backtrack(Expected::Description("variable")),
     }
@@ -94,10 +103,12 @@ pub fn parse_set(parser: &mut Parser) -> ParseResult<Statement> {
 pub fn parse_exec_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
     match parser.peek() {
         Some(Token::LParen) => {
-             let _ = parser.next();
-             let sql_expr = crate::parser::parse::expressions::parse_expr(parser)?;
-             parser.expect_rparen()?;
-             Ok(Statement::Procedural(ProceduralStatement::ExecDynamic { sql_expr }))
+            let _ = parser.next();
+            let sql_expr = crate::parser::parse::expressions::parse_expr(parser)?;
+            parser.expect_rparen()?;
+            Ok(Statement::Procedural(ProceduralStatement::ExecDynamic {
+                sql_expr,
+            }))
         }
         Some(Token::Identifier(_)) | Some(Token::Keyword(_)) | Some(Token::Variable(_)) => {
             let mut return_variable = None;
@@ -115,32 +126,40 @@ pub fn parse_exec_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
                 Some(Token::Variable(v)) => v.clone(),
                 _ => unreachable!(),
             };
-             
-             if id_str.eq_ignore_ascii_case("sp_executesql") {
-                 let _ = parser.next();
-                 let sql_expr = crate::parser::parse::expressions::parse_expr(parser)?;
-                 let mut params_def = None;
-                 if matches!(parser.peek(), Some(Token::Comma)) {
-                     let _ = parser.next();
-                     params_def = Some(crate::parser::parse::expressions::parse_expr(parser)?);
-                 }
-                 let mut args = Vec::new();
-                 while matches!(parser.peek(), Some(Token::Comma)) {
-                     let _ = parser.next();
-                     args.push(parse_exec_arg(parser)?);
-                 }
-                 return Ok(Statement::Procedural(ProceduralStatement::SpExecuteSql { sql_expr, params_def, args }));
-             }
 
-              let name = super::parse_multipart_name(parser)?;
-              let mut args = Vec::new();
-              if !parser.is_empty()
-                  && !matches!(parser.peek(), Some(Token::Semicolon) | Some(Token::Go))
-                  && !is_statement_starter(parser.peek())
-              {
-                  args = crate::parser::parse::expressions::parse_comma_list(parser, parse_exec_arg)?;
-              }
-              Ok(Statement::Procedural(ProceduralStatement::ExecProcedure { return_variable, name, args }))
+            if id_str.eq_ignore_ascii_case("sp_executesql") {
+                let _ = parser.next();
+                let sql_expr = crate::parser::parse::expressions::parse_expr(parser)?;
+                let mut params_def = None;
+                if matches!(parser.peek(), Some(Token::Comma)) {
+                    let _ = parser.next();
+                    params_def = Some(crate::parser::parse::expressions::parse_expr(parser)?);
+                }
+                let mut args = Vec::new();
+                while matches!(parser.peek(), Some(Token::Comma)) {
+                    let _ = parser.next();
+                    args.push(parse_exec_arg(parser)?);
+                }
+                return Ok(Statement::Procedural(ProceduralStatement::SpExecuteSql {
+                    sql_expr,
+                    params_def,
+                    args,
+                }));
+            }
+
+            let name = super::parse_multipart_name(parser)?;
+            let mut args = Vec::new();
+            if !parser.is_empty()
+                && !matches!(parser.peek(), Some(Token::Semicolon) | Some(Token::Go))
+                && !is_statement_starter(parser.peek())
+            {
+                args = crate::parser::parse::expressions::parse_comma_list(parser, parse_exec_arg)?;
+            }
+            Ok(Statement::Procedural(ProceduralStatement::ExecProcedure {
+                return_variable,
+                name,
+                args,
+            }))
         }
         _ => parser.backtrack(Expected::Description("procedure name or expression")),
     }
@@ -164,5 +183,9 @@ fn parse_exec_arg(parser: &mut Parser) -> ParseResult<ExecArg> {
             is_output = true;
         }
     }
-    Ok(ExecArg { name, expr, is_output })
+    Ok(ExecArg {
+        name,
+        expr,
+        is_output,
+    })
 }

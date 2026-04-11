@@ -1,7 +1,7 @@
+use super::{EngineCatalog, EngineStorage};
 use crate::error::DbError;
 use crate::executor::database::{CheckpointManager, CheckpointManagerService};
 use crate::executor::durability::RecoveryCheckpoint;
-use super::{EngineCatalog, EngineStorage};
 
 impl<C, S> CheckpointManager for CheckpointManagerService<C, S>
 where

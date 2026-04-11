@@ -1,9 +1,12 @@
 use crate::parser::ast::*;
-use crate::parser::token::Keyword;
+use crate::parser::error::{Expected, ParseResult};
 use crate::parser::state::Parser;
-use crate::parser::error::{ParseResult, Expected};
+use crate::parser::token::Keyword;
 
-pub use super::create::{parse_create_table, parse_create_view, parse_create_procedure, parse_create_function, parse_create_trigger};
+pub use super::create::{
+    parse_create_function, parse_create_procedure, parse_create_table, parse_create_trigger,
+    parse_create_view,
+};
 
 pub fn parse_create(parser: &mut Parser) -> ParseResult<CreateStmt> {
     if parser.at_keyword(Keyword::Table) {
@@ -12,7 +15,8 @@ pub fn parse_create(parser: &mut Parser) -> ParseResult<CreateStmt> {
     } else if parser.at_keyword(Keyword::View) {
         let _ = parser.next();
         parse_create_view(parser)
-    } else if matches!(parser.peek(), Some(Token::Keyword(kw)) if matches!(kw, Keyword::Procedure | Keyword::Proc)) {
+    } else if matches!(parser.peek(), Some(Token::Keyword(kw)) if matches!(kw, Keyword::Procedure | Keyword::Proc))
+    {
         let _ = parser.next();
         parse_create_procedure(parser)
     } else if parser.at_keyword(Keyword::Function) {
@@ -22,7 +26,9 @@ pub fn parse_create(parser: &mut Parser) -> ParseResult<CreateStmt> {
         let _ = parser.next();
         parse_create_trigger(parser)
     } else {
-        parser.backtrack(Expected::Description("TABLE, VIEW, PROCEDURE, FUNCTION, or TRIGGER"))
+        parser.backtrack(Expected::Description(
+            "TABLE, VIEW, PROCEDURE, FUNCTION, or TRIGGER",
+        ))
     }
 }
 
@@ -41,7 +47,7 @@ pub fn parse_column_def(parser: &mut Parser) -> ParseResult<ColumnDef> {
     } else {
         crate::parser::parse::expressions::parse_data_type(parser)?
     };
-    
+
     let mut is_nullable = None;
     let mut is_identity = false;
     let mut identity_spec = None;
@@ -56,7 +62,10 @@ pub fn parse_column_def(parser: &mut Parser) -> ParseResult<ColumnDef> {
 
     while let Some(Token::Keyword(k)) = parser.peek() {
         match *k {
-            Keyword::Null => { let _ = parser.next(); is_nullable = Some(true); }
+            Keyword::Null => {
+                let _ = parser.next();
+                is_nullable = Some(true);
+            }
             Keyword::Not => {
                 let _ = parser.next();
                 parser.expect_keyword(Keyword::Null)?;
@@ -66,9 +75,17 @@ pub fn parse_column_def(parser: &mut Parser) -> ParseResult<ColumnDef> {
                 let _ = parser.next();
                 if matches!(parser.peek(), Some(Token::LParen)) {
                     let _ = parser.next();
-                    let seed = if let Some(Token::Number { value: n, .. }) = parser.next() { *n as i64 } else { 1 };
+                    let seed = if let Some(Token::Number { value: n, .. }) = parser.next() {
+                        *n as i64
+                    } else {
+                        1
+                    };
                     parser.expect_comma()?;
-                    let inc = if let Some(Token::Number { value: n, .. }) = parser.next() { *n as i64 } else { 1 };
+                    let inc = if let Some(Token::Number { value: n, .. }) = parser.next() {
+                        *n as i64
+                    } else {
+                        1
+                    };
                     parser.expect_rparen()?;
                     identity_spec = Some((seed, inc));
                 }
@@ -120,13 +137,14 @@ pub fn parse_column_def(parser: &mut Parser) -> ParseResult<ColumnDef> {
                 let mut ref_columns = Vec::new();
                 if matches!(parser.peek(), Some(Token::LParen)) {
                     let _ = parser.next();
-                    ref_columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
-                        match p.next() {
-                            Some(Token::Identifier(id)) => Ok(id.clone()),
-                            Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
-                            _ => p.backtrack(Expected::Description("column name")),
-                        }
-                    })?;
+                    ref_columns =
+                        crate::parser::parse::expressions::parse_comma_list(parser, |p| {
+                            match p.next() {
+                                Some(Token::Identifier(id)) => Ok(id.clone()),
+                                Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
+                                _ => p.backtrack(Expected::Description("column name")),
+                            }
+                        })?;
                     parser.expect_rparen()?;
                 }
                 foreign_key = Some(ForeignKeyRef {
@@ -161,14 +179,23 @@ pub fn parse_column_def(parser: &mut Parser) -> ParseResult<ColumnDef> {
     })
 }
 
-pub fn parse_table_body(parser: &mut Parser) -> ParseResult<(Vec<ColumnDef>, Vec<TableConstraint>)> {
+pub fn parse_table_body(
+    parser: &mut Parser,
+) -> ParseResult<(Vec<ColumnDef>, Vec<TableConstraint>)> {
     let mut columns = Vec::new();
     let mut constraints = Vec::new();
 
     loop {
         let mut is_constraint = false;
         if let Some(Token::Keyword(kw)) = parser.peek() {
-            if matches!(kw, Keyword::Constraint | Keyword::Primary | Keyword::Unique | Keyword::Foreign | Keyword::Check) {
+            if matches!(
+                kw,
+                Keyword::Constraint
+                    | Keyword::Primary
+                    | Keyword::Unique
+                    | Keyword::Foreign
+                    | Keyword::Check
+            ) {
                 is_constraint = true;
             }
         }
@@ -209,38 +236,35 @@ pub fn parse_table_constraint(parser: &mut Parser) -> ParseResult<TableConstrain
         Keyword::Primary => {
             parser.expect_keyword(Keyword::Key)?;
             parser.expect_lparen()?;
-            let columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
-                match p.next() {
+            let columns =
+                crate::parser::parse::expressions::parse_comma_list(parser, |p| match p.next() {
                     Some(Token::Identifier(id)) => Ok(id.clone()),
                     Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
                     _ => p.backtrack(Expected::Description("column name")),
-                }
-            })?;
+                })?;
             parser.expect_rparen()?;
             Ok(TableConstraint::PrimaryKey { name, columns })
         }
         Keyword::Unique => {
             parser.expect_lparen()?;
-            let columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
-                match p.next() {
+            let columns =
+                crate::parser::parse::expressions::parse_comma_list(parser, |p| match p.next() {
                     Some(Token::Identifier(id)) => Ok(id.clone()),
                     Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
                     _ => p.backtrack(Expected::Description("column name")),
-                }
-            })?;
+                })?;
             parser.expect_rparen()?;
             Ok(TableConstraint::Unique { name, columns })
         }
         Keyword::Foreign => {
             parser.expect_keyword(Keyword::Key)?;
             parser.expect_lparen()?;
-            let columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
-                match p.next() {
+            let columns =
+                crate::parser::parse::expressions::parse_comma_list(parser, |p| match p.next() {
                     Some(Token::Identifier(id)) => Ok(id.clone()),
                     Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
                     _ => p.backtrack(Expected::Description("column name")),
-                }
-            })?;
+                })?;
             parser.expect_rparen()?;
             parser.expect_keyword(Keyword::References)?;
             let ref_table = super::parse_multipart_name(parser)?;
@@ -310,15 +334,18 @@ pub fn parse_create_index(parser: &mut Parser) -> ParseResult<Statement> {
     parser.expect_keyword(Keyword::On)?;
     let table = super::parse_multipart_name(parser)?;
     parser.expect_lparen()?;
-    let columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
-        match p.next() {
+    let columns =
+        crate::parser::parse::expressions::parse_comma_list(parser, |p| match p.next() {
             Some(Token::Identifier(id)) => Ok(id.clone()),
             Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
             _ => p.backtrack(Expected::Description("column name")),
-        }
-    })?;
+        })?;
     parser.expect_rparen()?;
-    Ok(Statement::Ddl(DdlStatement::CreateIndex { name, table, columns }))
+    Ok(Statement::Ddl(DdlStatement::CreateIndex {
+        name,
+        table,
+        columns,
+    }))
 }
 
 pub fn parse_create_type(parser: &mut Parser) -> ParseResult<Statement> {
@@ -375,13 +402,12 @@ pub fn parse_alter_table_add_constraint(parser: &mut Parser) -> ParseResult<Tabl
         let _ = parser.next();
         parser.expect_keyword(Keyword::Key)?;
         parser.expect_lparen()?;
-        let columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
-            match p.next() {
+        let columns =
+            crate::parser::parse::expressions::parse_comma_list(parser, |p| match p.next() {
                 Some(Token::Identifier(id)) => Ok(id.clone()),
                 Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
                 _ => p.backtrack(Expected::Description("column name")),
-            }
-        })?;
+            })?;
         parser.expect_rparen()?;
         TableConstraint::PrimaryKey {
             name: Some(constraint_name),
@@ -391,26 +417,24 @@ pub fn parse_alter_table_add_constraint(parser: &mut Parser) -> ParseResult<Tabl
         let _ = parser.next();
         parser.expect_keyword(Keyword::Key)?;
         parser.expect_lparen()?;
-        let columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
-            match p.next() {
+        let columns =
+            crate::parser::parse::expressions::parse_comma_list(parser, |p| match p.next() {
                 Some(Token::Identifier(id)) => Ok(id.clone()),
                 Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
                 _ => p.backtrack(Expected::Description("column name")),
-            }
-        })?;
+            })?;
         parser.expect_rparen()?;
         parser.expect_keyword(Keyword::References)?;
         let ref_table = super::parse_multipart_name(parser)?;
         let mut ref_columns = Vec::new();
         if matches!(parser.peek(), Some(Token::LParen)) {
             let _ = parser.next();
-            ref_columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
-                match p.next() {
+            ref_columns =
+                crate::parser::parse::expressions::parse_comma_list(parser, |p| match p.next() {
                     Some(Token::Identifier(id)) => Ok(id.clone()),
                     Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
                     _ => p.backtrack(Expected::Description("column name")),
-                }
-            })?;
+                })?;
             parser.expect_rparen()?;
         }
         let mut on_delete = None;
@@ -449,13 +473,12 @@ pub fn parse_alter_table_add_constraint(parser: &mut Parser) -> ParseResult<Tabl
     } else if parser.at_keyword(Keyword::Unique) {
         let _ = parser.next();
         parser.expect_lparen()?;
-        let columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
-            match p.next() {
+        let columns =
+            crate::parser::parse::expressions::parse_comma_list(parser, |p| match p.next() {
                 Some(Token::Identifier(id)) => Ok(id.clone()),
                 Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
                 _ => p.backtrack(Expected::Description("column name")),
-            }
-        })?;
+            })?;
         parser.expect_rparen()?;
         TableConstraint::Unique {
             name: Some(constraint_name),

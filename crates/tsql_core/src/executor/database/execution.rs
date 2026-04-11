@@ -10,8 +10,8 @@ use super::super::result::QueryResult;
 use super::super::session::{SessionRuntime, SharedState};
 use super::super::table_util::is_transaction_statement;
 use super::super::transaction_exec;
-use super::{EngineCatalog, EngineStorage};
 use super::StatementExecutor;
+use super::{EngineCatalog, EngineStorage};
 
 use super::dispatch::execute_non_transaction_statement;
 
@@ -198,14 +198,7 @@ where
         host_name.clone(),
     );
     ctx.options = options.clone();
-    (
-        ctx,
-        tx_manager,
-        journal,
-        workspace,
-        clock,
-        options,
-    )
+    (ctx, tx_manager, journal, workspace, clock, options)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -354,7 +347,7 @@ where
     let tx_active = tx_manager.active.is_some();
     let workspace = workspace.as_mut();
     drop(ctx);
-    cleanup_scope_tables(state, tx_active, workspace, dropped_physical);
+    cleanup_scope_tables(state, tx_active, workspace, dropped_physical)?;
 
     exec_res
 }
@@ -471,7 +464,8 @@ fn cleanup_scope_tables<C, S>(
     tx_active: bool,
     workspace: Option<&mut crate::executor::locks::TxWorkspace<C, S>>,
     dropped_physical: Vec<String>,
-) where
+) -> Result<(), DbError>
+where
     C: EngineCatalog,
     S: EngineStorage,
 {
@@ -493,22 +487,23 @@ fn cleanup_scope_tables<C, S>(
         let table_name = table.name.clone();
         let table_id = table.id;
         catalog.drop_table(&schema_name, &table_name)?;
-        storage.remove_table(table_id);
+        storage.remove_table(table_id)?;
         Ok(())
     }
 
     if tx_active {
         if let Some(workspace) = workspace {
             for physical in dropped_physical {
-                let _ =
-                    drop_physical_table(&mut workspace.catalog, &mut workspace.storage, &physical);
+                drop_physical_table(&mut workspace.catalog, &mut workspace.storage, &physical)?;
             }
         }
     } else {
         let mut storage_guard = state.storage.write();
         let (cat, stor) = storage_guard.get_mut_refs();
         for physical in dropped_physical {
-            let _ = drop_physical_table(cat, stor, &physical);
+            drop_physical_table(cat, stor, &physical)?;
         }
     }
+
+    Ok(())
 }

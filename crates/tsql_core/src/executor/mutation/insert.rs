@@ -1,4 +1,4 @@
-﻿use crate::ast::InsertStmt;
+use crate::ast::InsertStmt;
 use crate::catalog::TableDef;
 use crate::error::DbError;
 use crate::storage::StoredRow;
@@ -10,9 +10,9 @@ use super::super::model::single_row_context;
 use super::super::result::QueryResult;
 use super::super::string_norm::normalize_identifier;
 
-use super::MutationExecutor;
 use super::output::build_output_result;
 use super::validation::{apply_ansi_padding, enforce_string_length};
+use super::MutationExecutor;
 
 impl<'a> MutationExecutor<'a> {
     pub(crate) fn execute_insert_with_context(
@@ -53,10 +53,18 @@ impl<'a> MutationExecutor<'a> {
         } else {
             Some(ctx.options.rowcount as usize)
         };
-        let rows = self.collect_insert_rows(&table, &insert_columns, &stmt.source, ctx, rowcount_limit)?;
+        let rows =
+            self.collect_insert_rows(&table, &insert_columns, &stmt.source, ctx, rowcount_limit)?;
 
         if !instead_of_triggers.is_empty() {
-            self.execute_triggers(&table, crate::ast::TriggerEvent::Insert, true, &rows, &[], ctx)?;
+            self.execute_triggers(
+                &table,
+                crate::ast::TriggerEvent::Insert,
+                true,
+                &rows,
+                &[],
+                ctx,
+            )?;
 
             if let Some(output) = stmt.output {
                 let inserted: Vec<&crate::storage::StoredRow> = rows.iter().collect();
@@ -74,7 +82,8 @@ impl<'a> MutationExecutor<'a> {
             return Ok(None);
         }
 
-        let has_after_triggers = !self.find_triggers(&table, crate::ast::TriggerEvent::Insert)
+        let has_after_triggers = !self
+            .find_triggers(&table, crate::ast::TriggerEvent::Insert)
             .into_iter()
             .filter(|t| !t.is_instead_of)
             .collect::<Vec<_>>()
@@ -84,10 +93,18 @@ impl<'a> MutationExecutor<'a> {
         let inserted_rows_for_output =
             self.commit_insert_rows(&table, table_id, rows, ctx, collect_rows)?;
 
-        self.execute_triggers(&table, crate::ast::TriggerEvent::Insert, false, &inserted_rows_for_output, &[], ctx)?;
+        self.execute_triggers(
+            &table,
+            crate::ast::TriggerEvent::Insert,
+            false,
+            &inserted_rows_for_output,
+            &[],
+            ctx,
+        )?;
 
         if let Some(output) = stmt.output {
-            let inserted: Vec<&crate::storage::StoredRow> = inserted_rows_for_output.iter().collect();
+            let inserted: Vec<&crate::storage::StoredRow> =
+                inserted_rows_for_output.iter().collect();
             let result = build_output_result(&output, &table, &inserted, &[])?;
             if let Some(target) = stmt.output_into {
                 if let Some(result) = result.as_ref() {
@@ -103,7 +120,11 @@ impl<'a> MutationExecutor<'a> {
         Ok(None)
     }
 
-    fn get_insert_columns(&self, table: &TableDef, stmt_columns: &Option<Vec<String>>) -> Vec<String> {
+    fn get_insert_columns(
+        &self,
+        table: &TableDef,
+        stmt_columns: &Option<Vec<String>>,
+    ) -> Vec<String> {
         if let Some(cols) = stmt_columns.clone() {
             cols
         } else {

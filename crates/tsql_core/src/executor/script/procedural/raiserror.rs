@@ -1,8 +1,8 @@
-﻿use crate::ast::RaiserrorStmt;
+use super::super::ScriptExecutor;
+use crate::ast::RaiserrorStmt;
 use crate::error::DbError;
 use crate::executor::context::ExecutionContext;
 use crate::executor::evaluator::eval_expr;
-use super::super::ScriptExecutor;
 
 impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_raiserror(

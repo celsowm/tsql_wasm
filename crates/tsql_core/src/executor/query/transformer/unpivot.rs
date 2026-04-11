@@ -23,7 +23,11 @@ pub(crate) fn execute_unpivot(
     let mut fixed_cols = Vec::new();
     for ct in first_row {
         for (col_idx, col) in ct.table.columns.iter().enumerate() {
-            if !spec.column_list.iter().any(|c| c.eq_ignore_ascii_case(&col.name)) {
+            if !spec
+                .column_list
+                .iter()
+                .any(|c| c.eq_ignore_ascii_case(&col.name))
+            {
                 fixed_cols.push((ct.alias.clone(), col.clone(), col_idx));
             }
         }
@@ -78,7 +82,12 @@ pub(crate) fn execute_unpivot(
         for col_to_unpivot in &spec.column_list {
             let mut val = Value::Null;
             for ct in &row {
-                if let Some(pos) = ct.table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_to_unpivot)) {
+                if let Some(pos) = ct
+                    .table
+                    .columns
+                    .iter()
+                    .position(|c| c.name.eq_ignore_ascii_case(col_to_unpivot))
+                {
                     if let Some(r) = &ct.row {
                         val = r.values[pos].clone();
                         break;

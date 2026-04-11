@@ -11,9 +11,9 @@ use crate::executor::tooling::{ExecutionTrace, ExplainPlan, SessionOptions};
 use super::super::durability::{DurabilitySink, RecoveryCheckpoint, RecoveryReader};
 use super::super::session::{SharedState, SharedStorage};
 use super::{
-    EngineCatalog, EngineStorage,
-    CheckpointManager as CheckpointManagerTrait, RandomSeed as RandomSeedTrait,
-    SqlAnalyzer as SqlAnalyzerTrait, StatementExecutor as StatementExecutorTrait,
+    CheckpointManager as CheckpointManagerTrait, EngineCatalog, EngineStorage,
+    RandomSeed as RandomSeedTrait, SqlAnalyzer as SqlAnalyzerTrait,
+    StatementExecutor as StatementExecutorTrait,
 };
 
 mod checkpoint;

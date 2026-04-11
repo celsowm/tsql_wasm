@@ -1,13 +1,13 @@
 use crate::ast::{MergeSource, MergeStmt};
+use crate::catalog::Catalog;
 use crate::catalog::{ColumnDef, TableDef};
 use crate::error::DbError;
+use crate::executor::clock::Clock;
 use crate::executor::context::ExecutionContext;
 use crate::executor::model::{ContextTable, JoinedRow};
 use crate::executor::mutation::MergeOutputRow;
-use crate::executor::query::QueryExecutor;
 use crate::executor::query::plan::RelationalQuery;
-use crate::catalog::Catalog;
-use crate::executor::clock::Clock;
+use crate::executor::query::QueryExecutor;
 use crate::storage::{Storage, StoredRow};
 use crate::types::Value;
 
@@ -19,7 +19,9 @@ pub(crate) fn merge_source_alias(stmt: &MergeStmt) -> Result<String, DbError> {
                 .ok_or_else(|| DbError::Execution("MERGE source must be a named table".into()))?;
             Ok(t.alias.clone().unwrap_or_else(|| name.name.clone()))
         }
-        MergeSource::Subquery(_, alias) => Ok(alias.clone().unwrap_or_else(|| "source".to_string())),
+        MergeSource::Subquery(_, alias) => {
+            Ok(alias.clone().unwrap_or_else(|| "source".to_string()))
+        }
     }
 }
 
@@ -40,10 +42,9 @@ pub(crate) fn merge_source_rows(
             let source_table = executor
                 .catalog
                 .find_table(source_schema, &resolved)
-                .ok_or_else(|| DbError::Semantic(format!(
-                    "table '{}.{}' not found",
-                    source_schema, resolved
-                )))?
+                .ok_or_else(|| {
+                    DbError::Semantic(format!("table '{}.{}' not found", source_schema, resolved))
+                })?
                 .clone();
 
             let mut rows = Vec::new();
@@ -237,12 +238,7 @@ pub(crate) fn merge_apply_insert_action(
             .position(|c| c.name.eq_ignore_ascii_case(col_name))
             .ok_or_else(|| DbError::Semantic(format!("column '{}' not found", col_name)))?;
         let val = crate::executor::evaluator::eval_expr(
-            val_expr,
-            source_ctx,
-            ctx,
-            catalog,
-            storage,
-            clock,
+            val_expr, source_ctx, ctx, catalog, storage, clock,
         )?;
         final_values[col_idx] = val;
     }

@@ -5,13 +5,13 @@ use crate::error::DbError;
 
 use super::super::context::ExecutionContext;
 use super::super::query::QueryExecutor;
-use super::query_source::{build_mutation_query, resolve_table_for_mutation};
 use super::super::result::QueryResult;
+use super::query_source::{build_mutation_query, resolve_table_for_mutation};
 
-use super::MutationExecutor;
 use super::output::build_output_result;
 use super::shared::{rowcount_limit, visit_target_rows};
 use super::validation::enforce_foreign_keys_on_delete;
+use super::MutationExecutor;
 
 impl<'a> MutationExecutor<'a> {
     pub(crate) fn execute_delete_with_context(
@@ -25,12 +25,13 @@ impl<'a> MutationExecutor<'a> {
                 stmt.table.schema = Some("dbo".to_string());
             }
         }
-        let (table, resolved_name) = resolve_table_for_mutation(stmt.from.as_ref(), &stmt.table, |schema, name| {
-            self.catalog.find_table(schema, name).cloned().or_else(|| {
-                ctx.resolve_table_name(name)
-                    .and_then(|mapped| self.catalog.find_table("dbo", &mapped).cloned())
-            })
-        })?;
+        let (table, resolved_name) =
+            resolve_table_for_mutation(stmt.from.as_ref(), &stmt.table, |schema, name| {
+                self.catalog.find_table(schema, name).cloned().or_else(|| {
+                    ctx.resolve_table_name(name)
+                        .and_then(|mapped| self.catalog.find_table("dbo", &mapped).cloned())
+                })
+            })?;
 
         let table_id = table.id;
         let target_alias = stmt.table.name.clone();
@@ -103,7 +104,8 @@ impl<'a> MutationExecutor<'a> {
             return Ok(None);
         }
 
-        let has_after_triggers = !self.find_triggers(&table, crate::ast::TriggerEvent::Delete)
+        let has_after_triggers = !self
+            .find_triggers(&table, crate::ast::TriggerEvent::Delete)
             .into_iter()
             .filter(|t| !t.is_instead_of)
             .collect::<Vec<_>>()
@@ -136,10 +138,18 @@ impl<'a> MutationExecutor<'a> {
             self.push_dirty_delete(ctx, &table.name, idx);
         }
 
-        self.execute_triggers(&table, crate::ast::TriggerEvent::Delete, false, &[], &deleted_rows_for_output, ctx)?;
+        self.execute_triggers(
+            &table,
+            crate::ast::TriggerEvent::Delete,
+            false,
+            &[],
+            &deleted_rows_for_output,
+            ctx,
+        )?;
 
         if let Some(output) = stmt.output {
-            let output_rows: Vec<&crate::storage::StoredRow> = deleted_rows_for_output.iter().collect();
+            let output_rows: Vec<&crate::storage::StoredRow> =
+                deleted_rows_for_output.iter().collect();
             let result = build_output_result(&output, &table, &[], &output_rows)?;
             if let Some(target) = stmt.output_into {
                 if let Some(result) = result.as_ref() {

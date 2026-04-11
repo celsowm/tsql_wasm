@@ -1,23 +1,23 @@
 pub(crate) mod assignment;
 pub(crate) mod control_flow;
-pub(crate) mod exec_dynamic;
 pub(crate) mod cursor;
 pub(crate) mod definitions;
-pub(crate) mod shared;
-pub(crate) mod raiserror;
+pub(crate) mod exec_dynamic;
+pub(crate) mod print;
 pub(crate) mod procedure;
+pub(crate) mod raiserror;
+pub(crate) mod routine;
+pub(crate) mod shared;
 pub(crate) mod sp_executesql;
 pub(crate) mod try_catch;
-pub(crate) mod routine;
-pub(crate) mod print;
 pub(crate) mod variable;
 
-use crate::error::DbError;
-use crate::executor::context::ExecutionContext;
-use crate::ast::ProceduralStatement;
-use super::ScriptExecutor;
 use self::exec_dynamic::execute_exec_dynamic;
 use self::sp_executesql::execute_sp_executesql;
+use super::ScriptExecutor;
+use crate::ast::ProceduralStatement;
+use crate::error::DbError;
+use crate::executor::context::ExecutionContext;
 
 impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_procedural(
@@ -31,9 +31,9 @@ impl<'a> ScriptExecutor<'a> {
             ProceduralStatement::Declare(stmt) => {
                 self.execute_declare(stmt, ctx).map(StmtOutcome::Ok)
             }
-            ProceduralStatement::DeclareTableVar(stmt) => {
-                self.execute_declare_table_var(stmt, ctx).map(StmtOutcome::Ok)
-            }
+            ProceduralStatement::DeclareTableVar(stmt) => self
+                .execute_declare_table_var(stmt, ctx)
+                .map(StmtOutcome::Ok),
             ProceduralStatement::Set(stmt) => self.execute_set(stmt, ctx).map(StmtOutcome::Ok),
             ProceduralStatement::SetOption(_) => Err(DbError::Execution(
                 "SET option statements are handled at engine level".into(),
@@ -76,7 +76,10 @@ impl<'a> ScriptExecutor<'a> {
         }
     }
 
-    pub(crate) fn leave_scope_and_cleanup(&mut self, ctx: &mut ExecutionContext<'_>) -> Result<(), DbError> {
+    pub(crate) fn leave_scope_and_cleanup(
+        &mut self,
+        ctx: &mut ExecutionContext<'_>,
+    ) -> Result<(), DbError> {
         self.cleanup_scope_table_vars(ctx)
     }
 }

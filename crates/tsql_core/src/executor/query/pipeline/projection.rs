@@ -7,8 +7,8 @@ use crate::executor::query::plan::RelationalQuery;
 use crate::executor::result;
 use crate::executor::window::WindowExecutor;
 
-use super::analysis::PipelineState;
 use super::super::QueryExecutor;
+use super::analysis::PipelineState;
 
 pub(crate) fn execute_projection_stage(
     executor: &QueryExecutor<'_>,
@@ -31,7 +31,8 @@ pub(crate) fn execute_projection_stage(
             ctx,
         )
     } else if state.has_window {
-        let window_executor = WindowExecutor::new(executor.catalog, executor.storage, executor.clock);
+        let window_executor =
+            WindowExecutor::new(executor.catalog, executor.storage, executor.clock);
         window_executor.execute(&query.projection.items, source_rows, ctx)
     } else {
         crate::executor::query::projection::execute_flat_select(

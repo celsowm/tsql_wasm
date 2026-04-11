@@ -19,8 +19,13 @@ impl TypeRegistry for CatalogImpl {
             return Err(DbError::duplicate_type(&def.schema, &def.name));
         }
         let idx = self.table_types.len();
-        self.type_map
-            .insert((normalize_identifier(&def.schema), normalize_identifier(&def.name)), idx);
+        self.type_map.insert(
+            (
+                normalize_identifier(&def.schema),
+                normalize_identifier(&def.name),
+            ),
+            idx,
+        );
         self.table_types.push(def);
         Ok(())
     }

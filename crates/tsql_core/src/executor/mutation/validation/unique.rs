@@ -16,7 +16,7 @@ pub(crate) fn enforce_unique_on_insert(
             continue;
         }
         for existing in storage.scan_rows(table_id)? {
-            let existing = existing?; 
+            let existing = existing?;
             if existing.deleted {
                 continue;
             }

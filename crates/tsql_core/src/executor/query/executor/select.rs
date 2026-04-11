@@ -1,8 +1,8 @@
 use crate::error::DbError;
 use crate::executor::result::QueryResult;
 
-use super::super::from_tree;
 use super::super::finalize;
+use super::super::from_tree;
 use super::super::plan::RelationalQuery;
 use super::super::source;
 use super::super::QueryExecutor;

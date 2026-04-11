@@ -11,8 +11,12 @@ pub(crate) fn execute_apply_stage(
     ctx: &mut crate::executor::context::ExecutionContext,
 ) -> Result<FromEval, DbError> {
     for apply_clause in &query.applies {
-        source_eval.rows =
-            super::super::transformer::execute_apply(source_eval.rows, apply_clause, ctx, executor)?;
+        source_eval.rows = super::super::transformer::execute_apply(
+            source_eval.rows,
+            apply_clause,
+            ctx,
+            executor,
+        )?;
         source_eval.shape = source_eval.rows.first().cloned().unwrap_or_default();
     }
     Ok(source_eval)

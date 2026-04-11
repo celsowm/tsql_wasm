@@ -11,8 +11,8 @@ use super::super::result::QueryResult;
 use super::super::session::SessionManager;
 use super::super::tooling::{ExecutionTrace, ExplainPlan, SessionOptions};
 use super::persistence::DatabaseInner;
-use super::{EngineCatalog, EngineStorage};
 use super::{CheckpointManager, SqlAnalyzer, StatementExecutor};
+use super::{EngineCatalog, EngineStorage};
 
 pub struct EngineInner<C, S>
 where

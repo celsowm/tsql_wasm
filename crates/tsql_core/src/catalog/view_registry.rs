@@ -19,8 +19,13 @@ impl ViewRegistry for CatalogImpl {
             return Err(DbError::duplicate_view(&view.schema, &view.name));
         }
         let idx = self.views.len();
-        self.view_map
-            .insert((normalize_identifier(&view.schema), normalize_identifier(&view.name)), idx);
+        self.view_map.insert(
+            (
+                normalize_identifier(&view.schema),
+                normalize_identifier(&view.name),
+            ),
+            idx,
+        );
         self.views.push(view);
         Ok(())
     }

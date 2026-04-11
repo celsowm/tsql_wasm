@@ -1,9 +1,9 @@
-﻿use std::collections::HashMap;
+use std::collections::HashMap;
 
+use super::super::string_norm::normalize_identifier;
 use super::types::{LockMode, LockResource, SessionId, TableLockState};
 use super::workspace::TxWorkspace;
 use super::AcquiredLock;
-use super::super::string_norm::normalize_identifier;
 
 /// Manages table-level lock state.
 pub(crate) struct TableLockManager {

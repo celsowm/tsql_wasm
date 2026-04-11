@@ -38,14 +38,21 @@ impl<'a> ScriptExecutor<'a> {
             }
             return Ok(result);
         }
-        if stmt.name.name.eq_ignore_ascii_case("sp_MSIsContainedAGSession") {
+        if stmt
+            .name
+            .name
+            .eq_ignore_ascii_case("sp_MSIsContainedAGSession")
+        {
             self.assign_exec_return_value(&stmt.return_variable, Value::Int(0), ctx)?;
             return Ok(None);
         }
 
         let schema = stmt.name.schema_or_dbo().to_string();
         let Some(routine) = self.catalog.find_routine(&schema, &stmt.name.name).cloned() else {
-            return Err(DbError::object_not_found(format!("procedure '{}.{}'", schema, stmt.name.name)));
+            return Err(DbError::object_not_found(format!(
+                "procedure '{}.{}'",
+                schema, stmt.name.name
+            )));
         };
         let crate::catalog::RoutineDef {
             object_id,
@@ -56,7 +63,10 @@ impl<'a> ScriptExecutor<'a> {
             ..
         } = routine;
         let RoutineKind::Procedure { body } = kind else {
-            return Err(DbError::object_not_found(format!("'{}.{}' is not a procedure", schema, stmt.name.name)));
+            return Err(DbError::object_not_found(format!(
+                "'{}.{}' is not a procedure",
+                schema, stmt.name.name
+            )));
         };
         ctx.push_module(ModuleFrame {
             object_id,
@@ -85,7 +95,9 @@ impl<'a> ScriptExecutor<'a> {
                             &ty,
                             &ctx.options.dateformat,
                         )?;
-                        ctx.session.variables.insert(param.name.clone(), (ty, coerced));
+                        ctx.session
+                            .variables
+                            .insert(param.name.clone(), (ty, coerced));
                         ctx.register_declared_var(&param.name);
                         continue;
                     }
@@ -96,14 +108,17 @@ impl<'a> ScriptExecutor<'a> {
                 };
                 match &param.param_type {
                     RoutineParamType::Scalar(dt) => {
-                        let val = eval_expr(&arg.expr, &[], ctx, self.catalog, self.storage, self.clock)?;
+                        let val =
+                            eval_expr(&arg.expr, &[], ctx, self.catalog, self.storage, self.clock)?;
                         let ty = crate::executor::type_mapping::data_type_spec_to_runtime(dt);
                         let coerced = coerce_value_to_type_with_dateformat(
                             val,
                             &ty,
                             &ctx.options.dateformat,
                         )?;
-                        ctx.session.variables.insert(param.name.clone(), (ty, coerced));
+                        ctx.session
+                            .variables
+                            .insert(param.name.clone(), (ty, coerced));
                         ctx.register_declared_var(&param.name);
                         if param.is_output && arg.is_output {
                             if let crate::ast::Expr::Identifier(ref caller) = arg.expr {
@@ -151,11 +166,8 @@ impl<'a> ScriptExecutor<'a> {
             self.leave_scope_and_cleanup(ctx)?;
             for (caller_var, val) in out_values {
                 if let Some((ty, out_var)) = ctx.session.variables.get_mut(&caller_var) {
-                    *out_var = coerce_value_to_type_with_dateformat(
-                        val,
-                        ty,
-                        &ctx.options.dateformat,
-                    )?;
+                    *out_var =
+                        coerce_value_to_type_with_dateformat(val, ty, &ctx.options.dateformat)?;
                 }
             }
 
@@ -198,11 +210,7 @@ impl<'a> ScriptExecutor<'a> {
             return Ok(());
         };
         if let Some((ty, out_var)) = ctx.session.variables.get_mut(return_variable) {
-            *out_var = coerce_value_to_type_with_dateformat(
-                value,
-                ty,
-                &ctx.options.dateformat,
-            )?;
+            *out_var = coerce_value_to_type_with_dateformat(value, ty, &ctx.options.dateformat)?;
             return Ok(());
         }
         Err(DbError::invalid_identifier(return_variable))

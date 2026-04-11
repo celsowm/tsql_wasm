@@ -29,7 +29,11 @@ pub(crate) fn normalize_from_node(node: &FromNode) -> String {
     match node {
         FromNode::Table(table) => normalize_table_ref(table),
         FromNode::Aliased { source, alias } => {
-            format!("({}) AS {}", normalize_from_node(source), normalize_identifier(alias))
+            format!(
+                "({}) AS {}",
+                normalize_from_node(source),
+                normalize_identifier(alias)
+            )
         }
         FromNode::Join {
             left,

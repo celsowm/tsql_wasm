@@ -12,7 +12,9 @@ use super::super::result::QueryResult;
 use super::super::script::ScriptExecutor;
 use super::super::session::{SessionSnapshot, SharedState};
 use super::super::string_norm::normalize_identifier;
-use super::super::table_util::{collect_read_tables, collect_write_tables, is_transaction_statement};
+use super::super::table_util::{
+    collect_read_tables, collect_write_tables, is_transaction_statement,
+};
 use super::super::tooling::{apply_set_option, SessionOptions};
 use super::super::transaction::TransactionManager;
 use super::super::transaction_exec;
@@ -44,10 +46,7 @@ fn should_start_implicit_transaction(stmt: &Statement) -> bool {
     )
 }
 
-fn lookup_session_deadlock_priority<C, S>(
-    state: &SharedState<C, S>,
-    session_id: SessionId,
-) -> i32
+fn lookup_session_deadlock_priority<C, S>(state: &SharedState<C, S>, session_id: SessionId) -> i32
 where
     C: EngineCatalog,
     S: EngineStorage,
@@ -244,7 +243,7 @@ where
 
     let out = if read_uncommitted_dirty {
         let (mut dirty_catalog, mut dirty_storage) =
-            dirty_buffer::build_dirty_read_storage(state, session_id, workspace_slot);
+            dirty_buffer::build_dirty_read_storage(state, session_id, workspace_slot)?;
         let mut script = create_script_executor(&mut dirty_catalog, &mut dirty_storage, clock);
         script.execute(stmt.clone(), ctx)
     } else if read_committed_select {
@@ -375,7 +374,10 @@ where
             storage: stor,
             clock,
         };
-        let result = qe.execute_select(super::super::query::plan::RelationalQuery::from(select_stmt), ctx)?;
+        let result = qe.execute_select(
+            super::super::query::plan::RelationalQuery::from(select_stmt),
+            ctx,
+        )?;
         state.table_locks.lock().release_all_for_session(session_id);
         return Ok(StmtOutcome::Ok(Some(result)));
     }
@@ -404,7 +406,7 @@ where
     S: EngineStorage,
 {
     let (mut dirty_catalog, mut dirty_storage) =
-        dirty_buffer::build_dirty_read_storage(state, session_id, workspace_slot);
+        dirty_buffer::build_dirty_read_storage(state, session_id, workspace_slot)?;
     let mut script = create_script_executor(&mut dirty_catalog, &mut dirty_storage, clock);
     script.execute(stmt, ctx)
 }
@@ -428,7 +430,9 @@ where
     S: EngineStorage,
 {
     // Handle session-level statements early (SetOption, SetIdentityInsert)
-    if let Some(result) = handle_session_statement(state, session_id, &stmt, session_options, ctx, journal) {
+    if let Some(result) =
+        handle_session_statement(state, session_id, &stmt, session_options, ctx, journal)
+    {
         return result;
     }
 

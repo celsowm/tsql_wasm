@@ -1,4 +1,5 @@
 use crate::catalog::Catalog;
+use crate::error::DbError;
 use crate::storage::{Storage, StoredRow};
 use std::collections::HashMap;
 
@@ -65,7 +66,7 @@ pub(crate) fn build_dirty_read_storage<C, S>(
     state: &SharedState<C, S>,
     requesting_session_id: SessionId,
     requesting_workspace: &Option<super::locks::TxWorkspace<C, S>>,
-) -> (C, S)
+) -> Result<(C, S), DbError>
 where
     C: Catalog + Clone,
     S: Storage + Clone,
@@ -97,24 +98,23 @@ where
         for (table_name, ops) in session_ops {
             if let Some(def) = merged_catalog.find_table("dbo", table_name) {
                 let table_id = def.id;
-                merged_storage.ensure_table(table_id);
+                merged_storage.ensure_table(table_id)?;
                 for op in ops {
                     match op {
                         DirtyOp::Insert { row } => {
-                            let _ = merged_storage.insert_row(table_id, row.clone());
+                            merged_storage.insert_row(table_id, row.clone())?;
                         }
                         DirtyOp::Update { row_index, new_row } => {
-                            let _ =
-                                merged_storage.update_row(table_id, *row_index, new_row.clone());
+                            merged_storage.update_row(table_id, *row_index, new_row.clone())?;
                         }
                         DirtyOp::Delete { row_index } => {
-                            let _ = merged_storage.delete_row(table_id, *row_index);
+                            merged_storage.delete_row(table_id, *row_index)?;
                         }
                         DirtyOp::Truncate => {
-                            let _ = merged_storage.clear_table(table_id);
+                            merged_storage.clear_table(table_id)?;
                         }
                         DirtyOp::ReplaceTable { rows } => {
-                            let _ = merged_storage.replace_table(table_id, rows.clone());
+                            merged_storage.replace_table(table_id, rows.clone())?;
                         }
                     }
                 }
@@ -122,7 +122,7 @@ where
         }
     }
 
-    (merged_catalog, merged_storage)
+    Ok((merged_catalog, merged_storage))
 }
 
 fn merge_catalog<C: Catalog + Clone>(target: &mut C, source: &C) {

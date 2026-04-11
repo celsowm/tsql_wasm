@@ -200,7 +200,10 @@ fn derive_column_types(rows: &[Vec<Value>], num_cols: usize) -> Vec<crate::types
     let mut column_types = Vec::with_capacity(num_cols);
     if !rows.is_empty() {
         for val in &rows[0] {
-            column_types.push(val.data_type().unwrap_or(crate::types::DataType::VarChar { max_len: 4000 }));
+            column_types.push(
+                val.data_type()
+                    .unwrap_or(crate::types::DataType::VarChar { max_len: 4000 }),
+            );
         }
     } else {
         column_types = vec![crate::types::DataType::VarChar { max_len: 4000 }; num_cols];

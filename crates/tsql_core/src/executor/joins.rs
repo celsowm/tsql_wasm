@@ -51,7 +51,10 @@ pub fn apply_join(
     }
 }
 
-fn apply_cross_join(left_rows: Vec<JoinedRow>, right_rows: Vec<JoinedRow>) -> Result<Vec<JoinedRow>, DbError> {
+fn apply_cross_join(
+    left_rows: Vec<JoinedRow>,
+    right_rows: Vec<JoinedRow>,
+) -> Result<Vec<JoinedRow>, DbError> {
     let mut next_rows = Vec::new();
     for left_row in &left_rows {
         for right_row in &right_rows {

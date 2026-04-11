@@ -20,10 +20,10 @@ pub mod utils {
             Ok(t) => t,
             Err(_) => return vec![input.to_string()],
         };
-        
+
         let mut result = Vec::new();
         let mut depth: i32 = 0;
-        
+
         let mut current_part_tokens = Vec::new();
         for tok in tokens {
             match tok {
@@ -51,36 +51,41 @@ pub mod utils {
     }
 
     fn format_tokens(tokens: &[ast::Token]) -> String {
-        tokens.iter().map(|t| match t {
-            ast::Token::String(s) => format!("'{}'", s.replace("'", "''")),
-            ast::Token::Identifier(id) => format!("[{}]", id),
-            ast::Token::Variable(v) => v.to_string(),
-            ast::Token::Keyword(k) => k.to_string(),
-            ast::Token::Operator(op) => op.to_string(),
-            ast::Token::Number { value: n, .. } => n.to_string(),
-            ast::Token::LParen => "(".to_string(),
-            ast::Token::RParen => ")".to_string(),
-            ast::Token::Comma => ",".to_string(),
-            ast::Token::Dot => ".".to_string(),
-            ast::Token::Semicolon => ";".to_string(),
-            ast::Token::Star => "*".to_string(),
-            _ => "".to_string(),
-        }).collect::<Vec<_>>().join(" ")
+        tokens
+            .iter()
+            .map(|t| match t {
+                ast::Token::String(s) => format!("'{}'", s.replace("'", "''")),
+                ast::Token::Identifier(id) => format!("[{}]", id),
+                ast::Token::Variable(v) => v.to_string(),
+                ast::Token::Keyword(k) => k.to_string(),
+                ast::Token::Operator(op) => op.to_string(),
+                ast::Token::Number { value: n, .. } => n.to_string(),
+                ast::Token::LParen => "(".to_string(),
+                ast::Token::RParen => ")".to_string(),
+                ast::Token::Comma => ",".to_string(),
+                ast::Token::Dot => ".".to_string(),
+                ast::Token::Semicolon => ";".to_string(),
+                ast::Token::Star => "*".to_string(),
+                _ => "".to_string(),
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 }
 
 pub mod statements {
     pub mod procedural {
-        use crate::parser::{lexer, lower, parse as inner_parse, state::Parser};
         use crate::error::DbError;
+        use crate::parser::{lexer, lower, parse as inner_parse, state::Parser};
 
         pub fn parse_routine_params(input: &str) -> Result<Vec<crate::ast::RoutineParam>, DbError> {
             let mut sql_ref = input;
             let tokens = lexer::lex(&mut sql_ref, true)
                 .map_err(|e| DbError::Parse(format!("Lexer error: {:?}", e)))?;
             let mut parser = Parser::new(tokens);
-            let params = inner_parse::parse_comma_list(&mut parser, inner_parse::parse_routine_param)
-                .map_err(|e| DbError::Parse(e.to_string()))?;
+            let params =
+                inner_parse::parse_comma_list(&mut parser, inner_parse::parse_routine_param)
+                    .map_err(|e| DbError::Parse(e.to_string()))?;
             params.into_iter().map(lower::lower_routine_param).collect()
         }
     }
@@ -126,8 +131,7 @@ pub fn parse_batch_with_quoted_ident(
     let tokens = lexer::lex(&mut sql_ref, quoted_identifier)
         .map_err(|e| DbError::Parse(format!("Lexer error: {:?}", e)))?;
     let mut parser = Parser::new(tokens);
-    let stmts = inner_parse::parse_batch(&mut parser)
-        .map_err(|e| DbError::Parse(e.to_string()))?;
+    let stmts = inner_parse::parse_batch(&mut parser).map_err(|e| DbError::Parse(e.to_string()))?;
     lower::lower_batch(stmts)
 }
 

@@ -7,7 +7,10 @@ use super::context::ExecutionContext;
 use super::result::QueryResult;
 use super::schema::SchemaExecutor;
 use crate::ast::statements::StatementVisitor;
-use crate::ast::{DdlStatement, DmlStatement, DropTableStmt, ObjectName, ProceduralStatement, SessionStatement, Statement, TransactionStatement, CursorStatement, WithCteStmt};
+use crate::ast::{
+    CursorStatement, DdlStatement, DmlStatement, DropTableStmt, ObjectName, ProceduralStatement,
+    SessionStatement, Statement, TransactionStatement, WithCteStmt,
+};
 use crate::catalog::Catalog;
 use crate::error::{DbError, StmtOutcome, StmtResult};
 use crate::storage::Storage;
@@ -106,7 +109,8 @@ impl<'a> StatementVisitor<ExecutionContext<'_>> for ScriptExecutor<'a> {
             | TransactionStatement::Save(_) => Err(DbError::Execution(
                 "transaction control statements are only supported at top-level execution".into(),
             )),
-        }.map(StmtOutcome::Ok)
+        }
+        .map(StmtOutcome::Ok)
     }
 
     fn visit_cursor(
@@ -119,7 +123,8 @@ impl<'a> StatementVisitor<ExecutionContext<'_>> for ScriptExecutor<'a> {
             CursorStatement::FetchCursor(stmt) => self.execute_fetch_cursor(stmt, ctx),
             CursorStatement::CloseCursor(name) => self.execute_close_cursor(name, ctx),
             CursorStatement::DeallocateCursor(name) => self.execute_deallocate_cursor(name, ctx),
-        }.map(StmtOutcome::Ok)
+        }
+        .map(StmtOutcome::Ok)
     }
 
     /// Rejects session statements (`SET IDENTITY_INSERT`, `SET TRANSACTION ISOLATION LEVEL`,
@@ -138,26 +143,44 @@ impl<'a> StatementVisitor<ExecutionContext<'_>> for ScriptExecutor<'a> {
             SessionStatement::SetIdentityInsert(_) => Err(DbError::Execution(
                 "SET IDENTITY_INSERT is handled at engine level".into(),
             )),
-            SessionStatement::SetTransactionIsolationLevel(_)
-            | SessionStatement::SetOption(_) => Err(DbError::Execution(
-                "session option statements are handled at engine level".into(),
-            )),
-        }.map(StmtOutcome::Ok)
+            SessionStatement::SetTransactionIsolationLevel(_) | SessionStatement::SetOption(_) => {
+                Err(DbError::Execution(
+                    "session option statements are handled at engine level".into(),
+                ))
+            }
+        }
+        .map(StmtOutcome::Ok)
     }
 
-    fn visit_dml(&mut self, stmt: DmlStatement, ctx: &mut ExecutionContext<'_>) -> StmtResult<Option<QueryResult>> {
+    fn visit_dml(
+        &mut self,
+        stmt: DmlStatement,
+        ctx: &mut ExecutionContext<'_>,
+    ) -> StmtResult<Option<QueryResult>> {
         self.execute_dml(stmt, ctx)
     }
 
-    fn visit_ddl(&mut self, stmt: DdlStatement, ctx: &mut ExecutionContext<'_>) -> StmtResult<Option<QueryResult>> {
+    fn visit_ddl(
+        &mut self,
+        stmt: DdlStatement,
+        ctx: &mut ExecutionContext<'_>,
+    ) -> StmtResult<Option<QueryResult>> {
         self.execute_ddl(stmt, ctx).map(StmtOutcome::Ok)
     }
 
-    fn visit_procedural(&mut self, stmt: ProceduralStatement, ctx: &mut ExecutionContext<'_>) -> StmtResult<Option<QueryResult>> {
+    fn visit_procedural(
+        &mut self,
+        stmt: ProceduralStatement,
+        ctx: &mut ExecutionContext<'_>,
+    ) -> StmtResult<Option<QueryResult>> {
         self.execute_procedural(stmt, ctx)
     }
 
-    fn visit_with_cte(&mut self, stmt: WithCteStmt, ctx: &mut ExecutionContext<'_>) -> StmtResult<Option<QueryResult>> {
+    fn visit_with_cte(
+        &mut self,
+        stmt: WithCteStmt,
+        ctx: &mut ExecutionContext<'_>,
+    ) -> StmtResult<Option<QueryResult>> {
         self.execute_with_cte(stmt, ctx).map(StmtOutcome::Ok)
     }
 }

@@ -173,7 +173,9 @@ pub(crate) fn eval_object_id(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.is_empty() || args.len() > 2 {
-        return Err(DbError::Execution("OBJECT_ID expects 1 or 2 arguments".into()));
+        return Err(DbError::Execution(
+            "OBJECT_ID expects 1 or 2 arguments".into(),
+        ));
     }
 
     let val = eval_expr_to_value(&args[0], row, ctx, catalog, storage, clock)?;

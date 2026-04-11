@@ -49,7 +49,10 @@ impl RoutineRegistry for CatalogImpl {
             } else {
                 "procedure"
             };
-            return Err(DbError::object_not_found(format!("{} '{}.{}'", kind, schema, name)));
+            return Err(DbError::object_not_found(format!(
+                "{} '{}.{}'",
+                kind, schema, name
+            )));
         };
 
         let is_function = matches!(self.routines[idx].kind, RoutineKind::Function { .. });

@@ -5,16 +5,17 @@ use crate::error::DbError;
 
 use super::super::context::ExecutionContext;
 use super::super::query::QueryExecutor;
-use super::query_source::{build_mutation_query, resolve_table_for_mutation};
 use super::super::result::QueryResult;
+use super::query_source::{build_mutation_query, resolve_table_for_mutation};
 
-use super::MutationExecutor;
 use super::output::build_output_result;
 use super::shared::{rowcount_limit, visit_target_rows};
 use super::validation::{
     apply_assignments, enforce_checks_on_row, enforce_foreign_keys_on_delete,
-    enforce_foreign_keys_on_insert, enforce_foreign_keys_on_update, enforce_unique_on_update, validate_row_against_table,
+    enforce_foreign_keys_on_insert, enforce_foreign_keys_on_update, enforce_unique_on_update,
+    validate_row_against_table,
 };
+use super::MutationExecutor;
 
 impl<'a> MutationExecutor<'a> {
     pub(crate) fn execute_update_with_context(
@@ -28,12 +29,13 @@ impl<'a> MutationExecutor<'a> {
                 stmt.table.schema = Some("dbo".to_string());
             }
         }
-        let (table, resolved_name) = resolve_table_for_mutation(stmt.from.as_ref(), &stmt.table, |schema, name| {
-            self.catalog.find_table(schema, name).cloned().or_else(|| {
-                ctx.resolve_table_name(name)
-                    .and_then(|mapped| self.catalog.find_table("dbo", &mapped).cloned())
-            })
-        })?;
+        let (table, resolved_name) =
+            resolve_table_for_mutation(stmt.from.as_ref(), &stmt.table, |schema, name| {
+                self.catalog.find_table(schema, name).cloned().or_else(|| {
+                    ctx.resolve_table_name(name)
+                        .and_then(|mapped| self.catalog.find_table("dbo", &mapped).cloned())
+                })
+            })?;
 
         let table_id = table.id;
         let target_alias = stmt.table.name.clone();
@@ -120,7 +122,8 @@ impl<'a> MutationExecutor<'a> {
             return Ok(None);
         }
 
-        let has_after_triggers = !self.find_triggers(&table, crate::ast::TriggerEvent::Update)
+        let has_after_triggers = !self
+            .find_triggers(&table, crate::ast::TriggerEvent::Update)
             .into_iter()
             .filter(|t| !t.is_instead_of)
             .collect::<Vec<_>>()
@@ -150,7 +153,13 @@ impl<'a> MutationExecutor<'a> {
                     self.storage,
                     self.clock,
                 )?;
-                enforce_foreign_keys_on_update(&table, self.catalog, self.storage, stored_row, &new_row)?;
+                enforce_foreign_keys_on_update(
+                    &table,
+                    self.catalog,
+                    self.storage,
+                    stored_row,
+                    &new_row,
+                )?;
                 validate_row_against_table(&table, &new_row.values)?;
                 enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &new_row)?;
                 enforce_checks_on_row(
@@ -174,10 +183,18 @@ impl<'a> MutationExecutor<'a> {
             },
         )?;
 
-        self.execute_triggers(&table, crate::ast::TriggerEvent::Update, false, &inserted_rows_for_output, &deleted_rows_for_output, ctx)?;
+        self.execute_triggers(
+            &table,
+            crate::ast::TriggerEvent::Update,
+            false,
+            &inserted_rows_for_output,
+            &deleted_rows_for_output,
+            ctx,
+        )?;
 
         if let Some(output) = stmt.output {
-            let inserted: Vec<&crate::storage::StoredRow> = inserted_rows_for_output.iter().collect();
+            let inserted: Vec<&crate::storage::StoredRow> =
+                inserted_rows_for_output.iter().collect();
             let deleted: Vec<&crate::storage::StoredRow> = deleted_rows_for_output.iter().collect();
             let result = build_output_result(&output, &table, &inserted, &deleted)?;
             if let Some(target) = stmt.output_into {

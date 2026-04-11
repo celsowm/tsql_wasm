@@ -33,11 +33,7 @@ pub(crate) fn enforce_string_length(
     Ok(())
 }
 
-pub(crate) fn apply_ansi_padding(
-    value: &mut Value,
-    data_type: &DataType,
-    ansi_padding_on: bool,
-) {
+pub(crate) fn apply_ansi_padding(value: &mut Value, data_type: &DataType, ansi_padding_on: bool) {
     if ansi_padding_on {
         return;
     }

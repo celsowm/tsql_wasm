@@ -67,11 +67,7 @@ pub struct TxState<C, S, X> {
 }
 
 impl<C, S, X> TxState<C, S, X> {
-    pub fn new(
-        isolation_level: IsolationLevel,
-        snapshot_ts: u64,
-        begin_extra: X,
-    ) -> Self {
+    pub fn new(isolation_level: IsolationLevel, snapshot_ts: u64, begin_extra: X) -> Self {
         Self {
             isolation_level,
             savepoints: vec![],
@@ -119,11 +115,7 @@ where
         extra: X,
     ) -> Result<Option<String>, DbError> {
         if self.depth == 0 {
-            let tx = TxState::new(
-                self.session_isolation_level,
-                snapshot_ts,
-                extra,
-            );
+            let tx = TxState::new(self.session_isolation_level, snapshot_ts, extra);
             self.active = Some(tx);
             self.xact_state = 1;
         }

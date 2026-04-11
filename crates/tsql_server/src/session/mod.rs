@@ -461,7 +461,8 @@ impl TdsSession {
 
         if is_ssms_contained_auth_probe(sql) {
             if let Some(db_name) = extract_leading_use_database(sql) {
-                self.apply_use_database(session_id, &db_name, writer).await?;
+                self.apply_use_database(session_id, &db_name, writer)
+                    .await?;
             }
             // SSMS expects a scalar response for this probe; returning 0 keeps the flow compatible.
             let data = build_single_int_result("", 0);
@@ -472,7 +473,8 @@ impl TdsSession {
         }
 
         if let Some(db_name) = parse_simple_use_database(sql) {
-            self.apply_use_database(session_id, &db_name, writer).await?;
+            self.apply_use_database(session_id, &db_name, writer)
+                .await?;
             return Ok(true);
         }
 

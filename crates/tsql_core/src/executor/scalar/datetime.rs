@@ -396,7 +396,9 @@ pub(crate) fn eval_eomonth(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.is_empty() || args.len() > 2 {
-        return Err(DbError::Execution("EOMONTH expects 1 or 2 arguments".into()));
+        return Err(DbError::Execution(
+            "EOMONTH expects 1 or 2 arguments".into(),
+        ));
     }
     let date_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
     if date_val.is_null() {
@@ -424,7 +426,13 @@ pub(crate) fn eval_eomonth(
     let days = match m {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
         4 | 6 | 9 | 11 => 30,
-        2 => if is_leap { 29 } else { 28 },
+        2 => {
+            if is_leap {
+                29
+            } else {
+                28
+            }
+        }
         _ => 30,
     };
     let last_day = format!("{:04}-{:02}-{:02}T00:00:00", y, m, days);

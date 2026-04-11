@@ -7,7 +7,9 @@ mod property;
 mod r#type;
 
 pub(crate) use column::{eval_col_length, eval_col_name};
-pub(crate) use database::{eval_databasepropertyex, eval_db_id, eval_db_name, eval_original_db_name};
+pub(crate) use database::{
+    eval_databasepropertyex, eval_db_id, eval_db_name, eval_original_db_name,
+};
 pub(crate) use index::{eval_index_col, eval_indexkey_property, eval_indexproperty};
 pub(crate) use object::{
     eval_ident_current, eval_object_definition, eval_object_id, eval_object_name,

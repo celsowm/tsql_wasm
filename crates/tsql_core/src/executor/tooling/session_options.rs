@@ -62,7 +62,10 @@ pub struct SetOptionApply {
     pub warnings: Vec<String>,
 }
 
-pub fn apply_set_option(stmt: &SetOptionStmt, options: &mut SessionOptions) -> Result<SetOptionApply, DbError> {
+pub fn apply_set_option(
+    stmt: &SetOptionStmt,
+    options: &mut SessionOptions,
+) -> Result<SetOptionApply, DbError> {
     let mut warnings = Vec::new();
     match (&stmt.option, &stmt.value) {
         (SessionOption::AnsiNulls, SessionOptionValue::Bool(v)) => {
@@ -100,9 +103,10 @@ pub fn apply_set_option(stmt: &SetOptionStmt, options: &mut SessionOptions) -> R
         }
         (SessionOption::DateFirst, SessionOptionValue::Int(v)) => {
             if !(1..=7).contains(v) {
-                return Err(DbError::Execution(
-                    format!("The DATEFIRST value {} is outside the range of allowed values (1-7).", v)
-                ));
+                return Err(DbError::Execution(format!(
+                    "The DATEFIRST value {} is outside the range of allowed values (1-7).",
+                    v
+                )));
             }
             options.datefirst = *v as i32;
         }
@@ -123,7 +127,11 @@ pub fn apply_set_option(stmt: &SetOptionStmt, options: &mut SessionOptions) -> R
             options.rowcount = if *v <= 0 { 0 } else { *v as u64 };
         }
         (SessionOption::TextSize, SessionOptionValue::Int(v)) => {
-            options.textsize = if *v < 0 { 0 } else { (*v).min(i32::MAX as i64) as i32 };
+            options.textsize = if *v < 0 {
+                0
+            } else {
+                (*v).min(i32::MAX as i64) as i32
+            };
         }
         (SessionOption::QueryGovernorCostLimit, SessionOptionValue::Int(v)) => {
             options.query_governor_cost_limit = *v;
@@ -152,7 +160,10 @@ pub fn apply_set_option(stmt: &SetOptionStmt, options: &mut SessionOptions) -> R
             ));
         }
         _ => {
-            warnings.push("SET option value type mismatch; statement accepted with no state change".to_string());
+            warnings.push(
+                "SET option value type mismatch; statement accepted with no state change"
+                    .to_string(),
+            );
         }
     }
     Ok(SetOptionApply { warnings })
@@ -161,9 +172,7 @@ pub fn apply_set_option(stmt: &SetOptionStmt, options: &mut SessionOptions) -> R
 pub fn statement_option_warnings(stmt: &Statement) -> Vec<String> {
     if let Statement::Session(crate::ast::SessionStatement::SetOption(opt)) = stmt {
         match (&opt.option, &opt.value) {
-            (SessionOption::DateFirst, SessionOptionValue::Int(v))
-                if !(1..=7).contains(v) =>
-            {
+            (SessionOption::DateFirst, SessionOptionValue::Int(v)) if !(1..=7).contains(v) => {
                 return vec![format!(
                     "DATEFIRST {} is outside the supported range 1..7",
                     v
@@ -185,14 +194,46 @@ struct LanguageProfile {
 fn language_profile(name: &str) -> Option<LanguageProfile> {
     let lower = name.to_ascii_lowercase();
     match lower.as_str() {
-        "us_english" => Some(LanguageProfile { name: "us_english", datefirst: 7, dateformat: "mdy" }),
-        "english" => Some(LanguageProfile { name: "us_english", datefirst: 7, dateformat: "mdy" }),
-        "british" => Some(LanguageProfile { name: "british", datefirst: 1, dateformat: "dmy" }),
-        "french" => Some(LanguageProfile { name: "french", datefirst: 1, dateformat: "dmy" }),
-        "german" => Some(LanguageProfile { name: "german", datefirst: 1, dateformat: "dmy" }),
-        "italian" => Some(LanguageProfile { name: "italian", datefirst: 1, dateformat: "dmy" }),
-        "spanish" => Some(LanguageProfile { name: "spanish", datefirst: 1, dateformat: "dmy" }),
-        "portuguese" => Some(LanguageProfile { name: "portuguese", datefirst: 2, dateformat: "dmy" }),
+        "us_english" => Some(LanguageProfile {
+            name: "us_english",
+            datefirst: 7,
+            dateformat: "mdy",
+        }),
+        "english" => Some(LanguageProfile {
+            name: "us_english",
+            datefirst: 7,
+            dateformat: "mdy",
+        }),
+        "british" => Some(LanguageProfile {
+            name: "british",
+            datefirst: 1,
+            dateformat: "dmy",
+        }),
+        "french" => Some(LanguageProfile {
+            name: "french",
+            datefirst: 1,
+            dateformat: "dmy",
+        }),
+        "german" => Some(LanguageProfile {
+            name: "german",
+            datefirst: 1,
+            dateformat: "dmy",
+        }),
+        "italian" => Some(LanguageProfile {
+            name: "italian",
+            datefirst: 1,
+            dateformat: "dmy",
+        }),
+        "spanish" => Some(LanguageProfile {
+            name: "spanish",
+            datefirst: 1,
+            dateformat: "dmy",
+        }),
+        "portuguese" => Some(LanguageProfile {
+            name: "portuguese",
+            datefirst: 2,
+            dateformat: "dmy",
+        }),
         _ => None,
     }
 }

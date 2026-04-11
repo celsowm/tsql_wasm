@@ -225,7 +225,10 @@ impl<'a> GroupExecutor<'a> {
         let mut column_types = Vec::new();
         if !projected_rows.is_empty() {
             for val in &projected_rows[0] {
-                column_types.push(val.data_type().unwrap_or(crate::types::DataType::VarChar { max_len: 4000 }));
+                column_types.push(
+                    val.data_type()
+                        .unwrap_or(crate::types::DataType::VarChar { max_len: 4000 }),
+                );
             }
         } else {
             column_types = vec![crate::types::DataType::VarChar { max_len: 4000 }; columns.len()];

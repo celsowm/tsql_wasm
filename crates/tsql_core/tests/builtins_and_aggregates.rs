@@ -216,7 +216,10 @@ fn test_avg_aggregate() {
 #[test]
 fn test_avg_decimal_returns_scale_six() {
     let mut engine = Engine::new();
-    exec(&mut engine, "CREATE TABLE dbo.t (val DECIMAL(12,2) NOT NULL)");
+    exec(
+        &mut engine,
+        "CREATE TABLE dbo.t (val DECIMAL(12,2) NOT NULL)",
+    );
     exec(&mut engine, "INSERT INTO dbo.t (val) VALUES (85000.00)");
     exec(&mut engine, "INSERT INTO dbo.t (val) VALUES (88750.00)");
     let r = query(&mut engine, "SELECT AVG(val) AS avg_val FROM dbo.t");
@@ -240,7 +243,10 @@ fn test_round_decimal_literal_preserves_input_scale() {
 #[test]
 fn test_cast_datetime_string_to_date() {
     let mut engine = Engine::new();
-    let r = query(&mut engine, "SELECT CAST('2025-01-06 00:00:00' AS DATE) AS v");
+    let r = query(
+        &mut engine,
+        "SELECT CAST('2025-01-06 00:00:00' AS DATE) AS v",
+    );
     assert_eq!(
         r.rows[0][0],
         Value::Date(chrono::NaiveDate::from_ymd_opt(2025, 1, 6).unwrap())

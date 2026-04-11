@@ -1,7 +1,7 @@
-use super::super::expressions::Expr;
 use super::super::common::DataType;
 use super::super::common::TableRef;
-use super::query::{SelectStmt, JoinClause};
+use super::super::expressions::Expr;
+use super::query::{JoinClause, SelectStmt};
 use serde::{Deserialize, Serialize};
 
 #[allow(clippy::large_enum_variant)]
@@ -144,7 +144,10 @@ pub enum CursorStatement {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SessionStatement {
     SetTransactionIsolationLevel(IsolationLevel),
-    SetOption { option: SessionOption, value: SessionOptionValue },
+    SetOption {
+        option: SessionOption,
+        value: SessionOptionValue,
+    },
     SetIdentityInsert {
         table: Vec<String>,
         on: bool,
@@ -177,8 +180,13 @@ pub enum MergeWhen {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MergeAction {
-    Update { assignments: Vec<UpdateAssignment> },
-    Insert { columns: Vec<String>, values: Vec<Expr> },
+    Update {
+        assignments: Vec<UpdateAssignment>,
+    },
+    Insert {
+        columns: Vec<String>,
+        values: Vec<Expr>,
+    },
     Delete,
 }
 

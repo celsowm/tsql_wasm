@@ -89,7 +89,10 @@ pub(crate) fn resolve_identifier(
     match matches.len() {
         0 => Err(DbError::column_not_found(name)),
         1 => Ok(matches[0].1.clone()),
-        _ => Err(DbError::invalid_identifier(format!("ambiguous column '{}'", name))),
+        _ => Err(DbError::invalid_identifier(format!(
+            "ambiguous column '{}'",
+            name
+        ))),
     }
 }
 
@@ -99,7 +102,9 @@ pub(crate) fn resolve_qualified_identifier(
     ctx: &ExecutionContext,
 ) -> Result<Value, DbError> {
     if parts.len() != 2 {
-        return Err(DbError::invalid_identifier("only two-part identifiers are supported in this build"));
+        return Err(DbError::invalid_identifier(
+            "only two-part identifiers are supported in this build",
+        ));
     }
 
     let table_name = &parts[0];

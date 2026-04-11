@@ -1,4 +1,4 @@
-﻿use parking_lot::Mutex;
+use parking_lot::Mutex;
 
 pub trait RandomProvider: Send + Sync {
     fn next_f64(&self) -> f64;
@@ -19,7 +19,9 @@ impl SeededRandom {
 
     fn next_state(&self) -> u64 {
         let mut state = self.state.lock();
-        *state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        *state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         *state
     }
 }

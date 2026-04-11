@@ -36,8 +36,8 @@ pub trait Storage: std::fmt::Debug + Send + Sync {
     /// The table must already exist; returns an error otherwise.
     fn replace_table(&mut self, table_id: u32, rows: Vec<StoredRow>) -> Result<(), DbError>;
     fn clear_table(&mut self, table_id: u32) -> Result<(), DbError>;
-    fn remove_table(&mut self, table_id: u32);
-    fn ensure_table(&mut self, table_id: u32);
+    fn remove_table(&mut self, table_id: u32) -> Result<(), DbError>;
+    fn ensure_table(&mut self, table_id: u32) -> Result<(), DbError>;
 
     fn clone_boxed(&self) -> Box<dyn Storage>;
 }
@@ -55,9 +55,10 @@ pub struct InMemoryStorage {
 
 impl Storage for InMemoryStorage {
     fn scan_rows<'a>(&'a self, table_id: u32) -> Result<StorageRowStream<'a>, DbError> {
-        let rows = self.tables.get(&table_id).ok_or_else(|| {
-            DbError::Storage(format!("table {} not found in storage", table_id))
-        })?;
+        let rows = self
+            .tables
+            .get(&table_id)
+            .ok_or_else(|| DbError::Storage(format!("table {} not found in storage", table_id)))?;
 
         Ok(Box::new(rows.iter().cloned().map(Ok)))
     }
@@ -71,20 +72,30 @@ impl Storage for InMemoryStorage {
     }
 
     fn update_row(&mut self, table_id: u32, index: usize, row: StoredRow) -> Result<(), DbError> {
-        let table = self.tables.get_mut(&table_id)
+        let table = self
+            .tables
+            .get_mut(&table_id)
             .ok_or_else(|| DbError::Storage(format!("table {} not found", table_id)))?;
         if index >= table.len() {
-            return Err(DbError::Storage(format!("index {} out of bounds for table {}", index, table_id)));
+            return Err(DbError::Storage(format!(
+                "index {} out of bounds for table {}",
+                index, table_id
+            )));
         }
         table[index] = row;
         Ok(())
     }
 
     fn delete_row(&mut self, table_id: u32, index: usize) -> Result<(), DbError> {
-        let table = self.tables.get_mut(&table_id)
+        let table = self
+            .tables
+            .get_mut(&table_id)
             .ok_or_else(|| DbError::Storage(format!("table {} not found", table_id)))?;
         if index >= table.len() {
-            return Err(DbError::Storage(format!("index {} out of bounds for table {}", index, table_id)));
+            return Err(DbError::Storage(format!(
+                "index {} out of bounds for table {}",
+                index, table_id
+            )));
         }
         table[index].deleted = true;
         Ok(())
@@ -95,7 +106,10 @@ impl Storage for InMemoryStorage {
             e.insert(rows);
             Ok(())
         } else {
-            Err(DbError::Storage(format!("table {} not found in storage", table_id)))
+            Err(DbError::Storage(format!(
+                "table {} not found in storage",
+                table_id
+            )))
         }
     }
 
@@ -108,12 +122,14 @@ impl Storage for InMemoryStorage {
         }
     }
 
-    fn ensure_table(&mut self, table_id: u32) {
+    fn ensure_table(&mut self, table_id: u32) -> Result<(), DbError> {
         self.tables.entry(table_id).or_default();
+        Ok(())
     }
 
-    fn remove_table(&mut self, table_id: u32) {
+    fn remove_table(&mut self, table_id: u32) -> Result<(), DbError> {
         self.tables.remove(&table_id);
+        Ok(())
     }
 
     fn clone_boxed(&self) -> Box<dyn Storage> {
@@ -131,7 +147,9 @@ impl CheckpointableStorage for InMemoryStorage {
             self.tables = tables;
             Ok(())
         } else {
-            Err(DbError::Storage("invalid checkpoint data for InMemoryStorage".into()))
+            Err(DbError::Storage(
+                "invalid checkpoint data for InMemoryStorage".into(),
+            ))
         }
     }
 

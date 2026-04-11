@@ -107,22 +107,26 @@ fn execute_table_ref(
     ctx: &mut ExecutionContext,
 ) -> Result<FromEval, DbError> {
     let bound = super::binding::bind_table(executor, executor.catalog, table_ref.clone(), ctx)?;
-    let base_shape = vec![
-        ContextTable {
-            table: bound.table.clone(),
-            alias: bound.alias.clone(),
-            row: None,
-            storage_index: None,
-        }
-        .null_row(),
-    ];
+    let base_shape = vec![ContextTable {
+        table: bound.table.clone(),
+        alias: bound.alias.clone(),
+        row: None,
+        storage_index: None,
+    }
+    .null_row()];
     let strategy = choose_scan_strategy(&bound, None, &[], executor.catalog);
     let scan = PhysicalScan {
         bound,
         strategy,
         pushed_predicate: None,
     };
-    let mut rows = execute_scan(&scan, ctx, executor.catalog, executor.storage, executor.clock)?;
+    let mut rows = execute_scan(
+        &scan,
+        ctx,
+        executor.catalog,
+        executor.storage,
+        executor.clock,
+    )?;
 
     if let Some(pivot) = &table_ref.pivot {
         rows = transformer::execute_pivot(
@@ -197,7 +201,8 @@ fn apply_from_alias(source: FromEval, alias: &str) -> Result<FromEval, DbError> 
             if let Some(stored) = &ctx_table.row {
                 values.extend(stored.values.clone());
             } else {
-                values.extend((0..ctx_table.table.columns.len()).map(|_| crate::types::Value::Null));
+                values
+                    .extend((0..ctx_table.table.columns.len()).map(|_| crate::types::Value::Null));
             }
         }
         aliased_rows.push(vec![ContextTable {
@@ -211,15 +216,13 @@ fn apply_from_alias(source: FromEval, alias: &str) -> Result<FromEval, DbError> 
         }]);
     }
 
-    let shape = vec![
-        ContextTable {
-            table: alias_table,
-            alias: alias.to_string(),
-            row: None,
-            storage_index: None,
-        }
-        .null_row(),
-    ];
+    let shape = vec![ContextTable {
+        table: alias_table,
+        alias: alias.to_string(),
+        row: None,
+        storage_index: None,
+    }
+    .null_row()];
 
     Ok(FromEval {
         rows: aliased_rows,

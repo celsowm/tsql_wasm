@@ -36,7 +36,9 @@ pub(crate) fn eval_concat_ws(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.len() < 2 {
-        return Err(DbError::Execution("CONCAT_WS requires at least 2 arguments".into()));
+        return Err(DbError::Execution(
+            "CONCAT_WS requires at least 2 arguments".into(),
+        ));
     }
     let sep_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
     if sep_val.is_null() {
@@ -202,7 +204,11 @@ pub(crate) fn eval_stuff(
     let repl = replacement.to_string_value();
 
     let chars: Vec<char> = s.chars().collect();
-    let start_idx = if start_i <= 0 { 0 } else { (start_i - 1) as usize };
+    let start_idx = if start_i <= 0 {
+        0
+    } else {
+        (start_i - 1) as usize
+    };
     let delete_count = if length_i < 0 { 0 } else { length_i as usize };
     let end_idx = (start_idx + delete_count).min(chars.len());
 
@@ -327,7 +333,9 @@ pub(crate) fn eval_string_escape(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.len() != 2 {
-        return Err(DbError::Execution("STRING_ESCAPE expects 2 arguments".into()));
+        return Err(DbError::Execution(
+            "STRING_ESCAPE expects 2 arguments".into(),
+        ));
     }
     let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
     let type_val = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
@@ -378,7 +386,6 @@ pub(crate) fn eval_string_escape(
     }
 }
 
-
 fn format_integer<T: std::fmt::Display>(v: T, fmt: &str) -> String {
     match fmt {
         "N" | "n" => format_number_with_commas(&format!("{}", v)),
@@ -390,13 +397,25 @@ fn format_integer<T: std::fmt::Display>(v: T, fmt: &str) -> String {
 
 fn format_float_value(f: f64, fmt: &str) -> String {
     if fmt.starts_with('N') || fmt.starts_with('n') {
-        let decimals: usize = if fmt.len() > 1 { fmt[1..].parse().unwrap_or(2) } else { 2 };
+        let decimals: usize = if fmt.len() > 1 {
+            fmt[1..].parse().unwrap_or(2)
+        } else {
+            2
+        };
         format_number_with_commas(&format!("{:.*}", decimals, f))
     } else if fmt.starts_with('C') || fmt.starts_with('c') {
-        let decimals: usize = if fmt.len() > 1 { fmt[1..].parse().unwrap_or(2) } else { 2 };
+        let decimals: usize = if fmt.len() > 1 {
+            fmt[1..].parse().unwrap_or(2)
+        } else {
+            2
+        };
         format!("${:.*}", decimals, f)
     } else if fmt.starts_with('P') || fmt.starts_with('p') {
-        let decimals: usize = if fmt.len() > 1 { fmt[1..].parse().unwrap_or(2) } else { 2 };
+        let decimals: usize = if fmt.len() > 1 {
+            fmt[1..].parse().unwrap_or(2)
+        } else {
+            2
+        };
         format!("{:.*}%", decimals, f * 100.0)
     } else {
         format!("{}", f)
@@ -404,7 +423,11 @@ fn format_float_value(f: f64, fmt: &str) -> String {
 }
 
 fn format_number_with_commas(s: &str) -> String {
-    let (negative, abs) = if let Some(stripped) = s.strip_prefix('-') { (true, stripped) } else { (false, s) };
+    let (negative, abs) = if let Some(stripped) = s.strip_prefix('-') {
+        (true, stripped)
+    } else {
+        (false, s)
+    };
     let parts: Vec<&str> = abs.splitn(2, '.').collect();
     let int_part = parts[0];
     let frac_part = parts.get(1).copied();
@@ -412,12 +435,18 @@ fn format_number_with_commas(s: &str) -> String {
     let mut result = String::new();
     let chars: Vec<char> = int_part.chars().collect();
     for (i, c) in chars.iter().enumerate() {
-        if i > 0 && (chars.len() - i).is_multiple_of(3) { result.push(','); }
+        if i > 0 && (chars.len() - i).is_multiple_of(3) {
+            result.push(',');
+        }
         result.push(*c);
     }
     if let Some(frac) = frac_part {
         result.push('.');
         result.push_str(frac);
     }
-    if negative { format!("-{}", result) } else { result }
+    if negative {
+        format!("-{}", result)
+    } else {
+        result
+    }
 }

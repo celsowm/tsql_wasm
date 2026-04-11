@@ -2,8 +2,8 @@ use crate::ast::Expr;
 
 use crate::executor::aggregates::is_aggregate_function;
 use crate::executor::projection::{expand_projection_columns, resolve_projected_order_index};
-use crate::executor::window::has_window_function;
 use crate::executor::query::plan::RelationalQuery;
+use crate::executor::window::has_window_function;
 
 #[derive(Debug, Clone)]
 pub(crate) struct PipelineState {
@@ -46,7 +46,11 @@ impl PipelineState {
     }
 }
 
-fn requires_pre_sort(query: &RelationalQuery, projection_columns: &[String], has_aggregate: bool) -> bool {
+fn requires_pre_sort(
+    query: &RelationalQuery,
+    projection_columns: &[String],
+    has_aggregate: bool,
+) -> bool {
     !query.sort.order_by.is_empty()
         && !has_aggregate
         && query

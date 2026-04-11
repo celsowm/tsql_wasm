@@ -1,7 +1,7 @@
 use crate::parser::ast::*;
-use crate::parser::token::Keyword;
+use crate::parser::error::{Expected, ParseResult};
 use crate::parser::state::Parser;
-use crate::parser::error::{ParseResult, Expected};
+use crate::parser::token::Keyword;
 
 fn is_statement_starter(tok: Option<&Token>) -> bool {
     match tok {
@@ -45,7 +45,7 @@ pub fn parse_insert(parser: &mut Parser) -> ParseResult<InsertStmt> {
         let _ = parser.next();
     }
     let table = super::parse_multipart_name(parser)?;
-    
+
     let mut columns = Vec::new();
     if matches!(parser.peek(), Some(Token::LParen)) {
         let _ = parser.next();
@@ -53,7 +53,7 @@ pub fn parse_insert(parser: &mut Parser) -> ParseResult<InsertStmt> {
             if let Some(tok) = p.next() {
                 match tok {
                     Token::Identifier(id) => Ok(id.clone()),
-                                Token::Keyword(kw) => Ok(kw.as_ref().to_string()),
+                    Token::Keyword(kw) => Ok(kw.as_ref().to_string()),
                     _ => p.backtrack(Expected::Description("column name")),
                 }
             } else {
@@ -75,7 +75,13 @@ pub fn parse_insert(parser: &mut Parser) -> ParseResult<InsertStmt> {
     if matches!(parser.peek(), Some(Token::Keyword(Keyword::Default))) {
         let _ = parser.next();
         parser.expect_keyword(Keyword::Values)?;
-        return Ok(InsertStmt { table, columns, source: InsertSource::DefaultValues, output, output_into });
+        return Ok(InsertStmt {
+            table,
+            columns,
+            source: InsertSource::DefaultValues,
+            output,
+            output_into,
+        });
     }
 
     let k = match parser.next() {
@@ -85,33 +91,45 @@ pub fn parse_insert(parser: &mut Parser) -> ParseResult<InsertStmt> {
 
     let source = match k {
         Keyword::Values => {
-                let rows = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
-                    p.expect_lparen()?;
-                    let vals = crate::parser::parse::expressions::parse_comma_list(p, crate::parser::parse::expressions::parse_expr)?;
-                    p.expect_rparen()?;
-                    Ok(vals)
-                })?;
-             InsertSource::Values(rows)
+            let rows = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
+                p.expect_lparen()?;
+                let vals = crate::parser::parse::expressions::parse_comma_list(
+                    p,
+                    crate::parser::parse::expressions::parse_expr,
+                )?;
+                p.expect_rparen()?;
+                Ok(vals)
+            })?;
+            InsertSource::Values(rows)
         }
-        Keyword::Select => {
-             InsertSource::Select(Box::new(crate::parser::parse::statements::query::parse_select_body(parser)?))
-        }
+        Keyword::Select => InsertSource::Select(Box::new(
+            crate::parser::parse::statements::query::parse_select_body(parser)?,
+        )),
         Keyword::Exec | Keyword::Execute => {
-             let procedure = super::parse_multipart_name(parser)?;
-             let args = if !parser.is_empty()
-                 && !matches!(parser.peek(), Some(Token::Semicolon) | Some(Token::Go))
-                 && !is_statement_starter(parser.peek())
-             {
-                 crate::parser::parse::expressions::parse_comma_list(parser, crate::parser::parse::expressions::parse_expr)?
-             } else {
-                 Vec::new()
-             };
-             InsertSource::Exec { procedure, args }
-         }
+            let procedure = super::parse_multipart_name(parser)?;
+            let args = if !parser.is_empty()
+                && !matches!(parser.peek(), Some(Token::Semicolon) | Some(Token::Go))
+                && !is_statement_starter(parser.peek())
+            {
+                crate::parser::parse::expressions::parse_comma_list(
+                    parser,
+                    crate::parser::parse::expressions::parse_expr,
+                )?
+            } else {
+                Vec::new()
+            };
+            InsertSource::Exec { procedure, args }
+        }
         _ => return parser.backtrack(Expected::Description("VALUES, SELECT, or EXEC")),
     };
 
-    Ok(InsertStmt { table, columns, source, output, output_into })
+    Ok(InsertStmt {
+        table,
+        columns,
+        source,
+        output,
+        output_into,
+    })
 }
 
 pub fn parse_update(parser: &mut Parser) -> ParseResult<UpdateStmt> {
@@ -125,8 +143,9 @@ pub fn parse_update(parser: &mut Parser) -> ParseResult<UpdateStmt> {
 
     let table = crate::parser::parse::statements::query::parse_table_ref(parser)?;
     parser.expect_keyword(Keyword::Set)?;
-    let assignments = crate::parser::parse::expressions::parse_comma_list(parser, parse_update_assignment)?;
-    
+    let assignments =
+        crate::parser::parse::expressions::parse_comma_list(parser, parse_update_assignment)?;
+
     let mut output = None;
     let mut output_into = None;
     if matches!(parser.peek(), Some(Token::Keyword(Keyword::Output))) {
@@ -140,20 +159,32 @@ pub fn parse_update(parser: &mut Parser) -> ParseResult<UpdateStmt> {
     let mut joins = Vec::new();
     if let Some(Token::Keyword(Keyword::From)) = parser.peek() {
         let _ = parser.next();
-        from = Some(crate::parser::parse::expressions::parse_comma_list(parser, crate::parser::parse::statements::query::parse_table_ref)?);
+        from = Some(crate::parser::parse::expressions::parse_comma_list(
+            parser,
+            crate::parser::parse::statements::query::parse_table_ref,
+        )?);
     }
-    
+
     while let Some(join) = crate::parser::parse::statements::query::parse_join_clause(parser)? {
         joins.push(join);
     }
-    
+
     let mut selection = None;
     if let Some(Token::Keyword(Keyword::Where)) = parser.peek() {
         let _ = parser.next();
         selection = Some(crate::parser::parse::expressions::parse_expr(parser)?);
     }
-    
-    Ok(UpdateStmt { table, assignments, top, from, joins, selection, output, output_into })
+
+    Ok(UpdateStmt {
+        table,
+        assignments,
+        top,
+        from,
+        joins,
+        selection,
+        output,
+        output_into,
+    })
 }
 
 fn parse_update_assignment(parser: &mut Parser) -> ParseResult<UpdateAssignment> {
@@ -164,7 +195,7 @@ fn parse_update_assignment(parser: &mut Parser) -> ParseResult<UpdateAssignment>
         .ok_or_else(|| parser.error(Expected::Description("column name")))?;
     if let Some(Token::Operator(op)) = parser.next() {
         if *op != "=" {
-             return parser.backtrack(Expected::Description("="));
+            return parser.backtrack(Expected::Description("="));
         }
     } else {
         return parser.backtrack(Expected::Description("="));
@@ -208,11 +239,11 @@ pub fn parse_delete(parser: &mut Parser) -> ParseResult<DeleteStmt> {
             crate::parser::parse::statements::query::parse_table_ref,
         )?);
     }
-    
+
     while let Some(join) = crate::parser::parse::statements::query::parse_join_clause(parser)? {
         joins.push(join);
     }
-    
+
     let mut output = None;
     let mut output_into = None;
     if matches!(parser.peek(), Some(Token::Keyword(Keyword::Output))) {
@@ -227,11 +258,21 @@ pub fn parse_delete(parser: &mut Parser) -> ParseResult<DeleteStmt> {
         let _ = parser.next();
         selection = Some(crate::parser::parse::expressions::parse_expr(parser)?);
     }
-    
-    Ok(DeleteStmt { table, top, from, joins, selection, output, output_into })
+
+    Ok(DeleteStmt {
+        table,
+        top,
+        from,
+        joins,
+        selection,
+        output,
+        output_into,
+    })
 }
 
-pub fn parse_output_clause(parser: &mut Parser) -> ParseResult<(Vec<OutputColumn>, Option<Vec<String>>)> {
+pub fn parse_output_clause(
+    parser: &mut Parser,
+) -> ParseResult<(Vec<OutputColumn>, Option<Vec<String>>)> {
     let columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
         let source = match p.peek() {
             Some(Token::Keyword(Keyword::Inserted)) => {
@@ -276,7 +317,12 @@ pub fn parse_output_clause(parser: &mut Parser) -> ParseResult<(Vec<OutputColumn
         } else {
             None
         };
-        Ok(OutputColumn { source, column, alias, is_wildcard })
+        Ok(OutputColumn {
+            source,
+            column,
+            alias,
+            is_wildcard,
+        })
     })?;
     let mut output_into = None;
     if matches!(parser.peek(), Some(Token::Keyword(Keyword::Into))) {
@@ -314,7 +360,7 @@ pub fn parse_merge(parser: &mut Parser) -> ParseResult<MergeStmt> {
                 MergeWhen::NotMatched
             }
         } else {
-             return parser.backtrack(Expected::Description("MATCHED or NOT MATCHED"));
+            return parser.backtrack(Expected::Description("MATCHED or NOT MATCHED"));
         };
 
         let mut condition = None;
@@ -329,7 +375,10 @@ pub fn parse_merge(parser: &mut Parser) -> ParseResult<MergeStmt> {
             Some(Token::Keyword(Keyword::Update)) => {
                 let _ = parser.next();
                 parser.expect_keyword(Keyword::Set)?;
-                let assignments = crate::parser::parse::expressions::parse_comma_list(parser, parse_update_assignment)?;
+                let assignments = crate::parser::parse::expressions::parse_comma_list(
+                    parser,
+                    parse_update_assignment,
+                )?;
                 MergeAction::Update { assignments }
             }
             Some(Token::Keyword(Keyword::Delete)) => {
@@ -345,7 +394,7 @@ pub fn parse_merge(parser: &mut Parser) -> ParseResult<MergeStmt> {
                         if let Some(tok) = p.next() {
                             match tok {
                                 Token::Identifier(id) => Ok(id.clone()),
-                    Token::Keyword(kw) => Ok(kw.as_ref().to_string()),
+                                Token::Keyword(kw) => Ok(kw.as_ref().to_string()),
                                 _ => p.backtrack(Expected::Description("column name")),
                             }
                         } else {
@@ -356,14 +405,21 @@ pub fn parse_merge(parser: &mut Parser) -> ParseResult<MergeStmt> {
                 }
                 parser.expect_keyword(Keyword::Values)?;
                 parser.expect_lparen()?;
-                let values = crate::parser::parse::expressions::parse_comma_list(parser, crate::parser::parse::expressions::parse_expr)?;
+                let values = crate::parser::parse::expressions::parse_comma_list(
+                    parser,
+                    crate::parser::parse::expressions::parse_expr,
+                )?;
                 parser.expect_rparen()?;
                 MergeAction::Insert { columns, values }
             }
             _ => return parser.backtrack(Expected::Description("UPDATE, DELETE, or INSERT")),
         };
 
-        when_clauses.push(MergeWhenClause { when, condition, action });
+        when_clauses.push(MergeWhenClause {
+            when,
+            condition,
+            action,
+        });
     }
 
     let mut output = None;
@@ -375,6 +431,12 @@ pub fn parse_merge(parser: &mut Parser) -> ParseResult<MergeStmt> {
         output_into = out_into;
     }
 
-    Ok(MergeStmt { target, source, on_condition, when_clauses, output, output_into })
+    Ok(MergeStmt {
+        target,
+        source,
+        on_condition,
+        when_clauses,
+        output,
+        output_into,
+    })
 }
-

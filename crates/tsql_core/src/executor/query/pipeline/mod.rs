@@ -37,7 +37,8 @@ pub(crate) fn execute_rows_to_result(
     }
 
     if !query.sort.order_by.is_empty() && !state.needs_pre_sort {
-        final_rows = order::apply_result_ordering(executor, query, &result_columns, final_rows, ctx)?;
+        final_rows =
+            order::apply_result_ordering(executor, query, &result_columns, final_rows, ctx)?;
     }
 
     final_rows = pagination::apply_pagination(executor, query, final_rows, ctx)?;

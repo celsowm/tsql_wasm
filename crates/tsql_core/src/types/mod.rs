@@ -1,5 +1,5 @@
-﻿use serde::{Deserialize, Serialize};
-use chrono::{NaiveDate, NaiveTime, NaiveDateTime};
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -155,7 +155,9 @@ impl Value {
             Value::Binary(v) | Value::VarBinary(v) => JsonValue::String(format_binary(v)),
             Value::Date(v) => JsonValue::String(v.format("%Y-%m-%d").to_string()),
             Value::Time(v) => JsonValue::String(v.format("%H:%M:%S%.f").to_string()),
-            Value::DateTime(v) | Value::DateTime2(v) => JsonValue::String(v.format("%Y-%m-%d %H:%M:%S%.f").to_string()),
+            Value::DateTime(v) | Value::DateTime2(v) => {
+                JsonValue::String(v.format("%Y-%m-%d %H:%M:%S%.f").to_string())
+            }
             Value::UniqueIdentifier(v) => JsonValue::String(v.to_string()),
             Value::SqlVariant(v) => v.to_json(),
         }
@@ -219,13 +221,12 @@ impl Value {
             Value::Decimal(raw, scale) => format_decimal(*raw, *scale),
             Value::Money(v) => format_money(*v),
             Value::SmallMoney(v) => format_money(*v as i128),
-            Value::Char(v)
-            | Value::VarChar(v)
-            | Value::NChar(v)
-            | Value::NVarChar(v) => v.clone(),
+            Value::Char(v) | Value::VarChar(v) | Value::NChar(v) | Value::NVarChar(v) => v.clone(),
             Value::Date(v) => v.format("%Y-%m-%d").to_string(),
             Value::Time(v) => v.format("%H:%M:%S%.f").to_string(),
-            Value::DateTime(v) | Value::DateTime2(v) => v.format("%Y-%m-%d %H:%M:%S%.f").to_string(),
+            Value::DateTime(v) | Value::DateTime2(v) => {
+                v.format("%Y-%m-%d %H:%M:%S%.f").to_string()
+            }
             Value::UniqueIdentifier(v) => v.to_string(),
             Value::Binary(v) | Value::VarBinary(v) => format_binary(v),
             Value::SqlVariant(v) => v.to_string_value(),
@@ -272,7 +273,9 @@ impl Value {
             Value::Money(raw) => Some(*raw as f64 / 10000.0),
             Value::SmallMoney(raw) => Some(*raw as f64 / 10000.0),
             Value::Bit(v) => Some(if *v { 1.0 } else { 0.0 }),
-            Value::VarChar(s) | Value::NVarChar(s) | Value::Char(s) | Value::NChar(s) => s.parse::<f64>().ok(),
+            Value::VarChar(s) | Value::NVarChar(s) | Value::Char(s) | Value::NChar(s) => {
+                s.parse::<f64>().ok()
+            }
             Value::SqlVariant(v) => v.to_f64(),
             _ => None,
         }
@@ -330,7 +333,13 @@ pub fn format_decimal(raw: i128, scale: u8) -> String {
 
 pub fn format_float(f: f64) -> String {
     let s = format!("{}", f);
-    if s.contains('.') || s.contains('e') || s.contains('E') || s == "inf" || s == "-inf" || s == "nan" {
+    if s.contains('.')
+        || s.contains('e')
+        || s.contains('E')
+        || s == "inf"
+        || s == "-inf"
+        || s == "nan"
+    {
         // Strip trailing ".0" for whole numbers (e.g., "256.0" → "256")
         if let Some(dot_pos) = s.find('.') {
             let after_dot = &s[dot_pos + 1..];

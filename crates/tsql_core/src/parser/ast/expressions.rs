@@ -1,5 +1,5 @@
-use super::statements::query::{SelectStmt, OrderByExpr};
 use super::common::DataType;
+use super::statements::query::{OrderByExpr, SelectStmt};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

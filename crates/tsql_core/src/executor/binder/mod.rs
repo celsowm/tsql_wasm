@@ -89,11 +89,9 @@ pub fn bind_expr(
                 Value::BigInt(*v)
             },
         )),
-        Expr::FloatLiteral(s) => {
-            Ok(BoundExpr::Literal(
-                crate::executor::value_ops::parse_numeric_literal(s)?,
-            ))
-        }
+        Expr::FloatLiteral(s) => Ok(BoundExpr::Literal(
+            crate::executor::value_ops::parse_numeric_literal(s)?,
+        )),
         Expr::BinaryLiteral(b) => Ok(BoundExpr::Literal(Value::VarBinary(b.clone()))),
         Expr::String(s) => Ok(BoundExpr::Literal(Value::VarChar(s.clone()))),
         Expr::UnicodeString(s) => Ok(BoundExpr::Literal(Value::NVarChar(s.clone()))),

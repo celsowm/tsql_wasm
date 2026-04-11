@@ -189,7 +189,8 @@ impl<'a> RpcFrameParser<'a> {
                     Ok(Some(String::from_utf8_lossy(bytes).to_string()))
                 }
             }
-            0x63 | 0x23 => { // NTEXT or TEXT
+            0x63 | 0x23 => {
+                // NTEXT or TEXT
                 if self.reader.remaining() < 13 {
                     return Ok(None);
                 }

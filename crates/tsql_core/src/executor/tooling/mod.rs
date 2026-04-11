@@ -23,18 +23,20 @@ mod object_name;
 
 // -- Diagnostics & Analysis --
 pub mod explain;
-pub mod trace;
 pub mod slicing;
 mod table_usage;
+pub mod trace;
 
 // -- Session Configuration --
 pub mod session_options;
 
-pub use session_options::{SessionOptions, SetOptionApply, apply_set_option};
+pub use explain::{explain_statement, ExplainOperator, ExplainPlan};
+pub use formatting::{
+    format_routine_definition, format_trigger_definition, format_view_definition,
+};
 pub(crate) use object_name::{normalize_object_name, normalize_table_ref, select_from_name};
 pub(crate) use session_options::statement_option_warnings;
+pub use session_options::{apply_set_option, SessionOptions, SetOptionApply};
+pub use slicing::{split_sql_statements, SourceSpan, StatementSlice};
 pub(crate) use table_usage::{collect_read_tables, collect_write_tables};
-pub use explain::{ExplainPlan, ExplainOperator, explain_statement};
 pub use trace::{ExecutionTrace, TraceStatementEvent};
-pub use slicing::{StatementSlice, SourceSpan, split_sql_statements};
-pub use formatting::{format_routine_definition, format_trigger_definition, format_view_definition};

@@ -107,20 +107,29 @@ impl DbError {
     pub fn class(&self) -> ErrorClass {
         match self {
             DbError::Parse(_) => ErrorClass::Parse,
-            DbError::Semantic(_) | DbError::SchemaNotFound { .. }
-            | DbError::TableNotFound { .. } | DbError::ColumnNotFound { .. }
-            | DbError::ColumnNotFoundQualified { .. } | DbError::TypeMismatch { .. }
-            | DbError::IndexNotFound { .. } | DbError::PrimaryKeyNotFound { .. }
-            | DbError::ConstraintNotFound { .. } | DbError::DatabaseNotFound { .. }
-            | DbError::ObjectNotFound { .. } | DbError::DuplicateColumn { .. }
-            | DbError::DuplicateTable { .. } | DbError::InvalidIdentifier { .. }
-            | DbError::TriggerNotFound { .. } | DbError::DuplicateTrigger { .. }
-            | DbError::ViewNotFound { .. } | DbError::DuplicateView { .. }
-            | DbError::TypeNotFound { .. } | DbError::DuplicateType { .. }
+            DbError::Semantic(_)
+            | DbError::SchemaNotFound { .. }
+            | DbError::TableNotFound { .. }
+            | DbError::ColumnNotFound { .. }
+            | DbError::ColumnNotFoundQualified { .. }
+            | DbError::TypeMismatch { .. }
+            | DbError::IndexNotFound { .. }
+            | DbError::PrimaryKeyNotFound { .. }
+            | DbError::ConstraintNotFound { .. }
+            | DbError::DatabaseNotFound { .. }
+            | DbError::ObjectNotFound { .. }
+            | DbError::DuplicateColumn { .. }
+            | DbError::DuplicateTable { .. }
+            | DbError::InvalidIdentifier { .. }
+            | DbError::TriggerNotFound { .. }
+            | DbError::DuplicateTrigger { .. }
+            | DbError::ViewNotFound { .. }
+            | DbError::DuplicateView { .. }
+            | DbError::TypeNotFound { .. }
+            | DbError::DuplicateType { .. }
             | DbError::DuplicateSchema { .. }
-            | DbError::CursorNotDeclared { .. } | DbError::CursorHasNoQuery { .. } => {
-                ErrorClass::Semantic
-            }
+            | DbError::CursorNotDeclared { .. }
+            | DbError::CursorHasNoQuery { .. } => ErrorClass::Semantic,
             DbError::Execution(_) | DbError::Deadlock(_) | DbError::Custom { .. } => {
                 ErrorClass::Execution
             }
@@ -131,18 +140,29 @@ impl DbError {
     pub fn number(&self) -> i32 {
         match self {
             DbError::Parse(_) => 102,
-            DbError::Semantic(_) | DbError::SchemaNotFound { .. }
-            | DbError::TableNotFound { .. } | DbError::ColumnNotFound { .. }
-            | DbError::ColumnNotFoundQualified { .. } | DbError::TypeMismatch { .. }
-            | DbError::IndexNotFound { .. } | DbError::PrimaryKeyNotFound { .. }
-            | DbError::ConstraintNotFound { .. } | DbError::DatabaseNotFound { .. }
-            | DbError::ObjectNotFound { .. } | DbError::DuplicateColumn { .. }
-            | DbError::DuplicateTable { .. } | DbError::InvalidIdentifier { .. }
-            | DbError::TriggerNotFound { .. } | DbError::DuplicateTrigger { .. }
-            | DbError::ViewNotFound { .. } | DbError::DuplicateView { .. }
-            | DbError::TypeNotFound { .. } | DbError::DuplicateType { .. }
+            DbError::Semantic(_)
+            | DbError::SchemaNotFound { .. }
+            | DbError::TableNotFound { .. }
+            | DbError::ColumnNotFound { .. }
+            | DbError::ColumnNotFoundQualified { .. }
+            | DbError::TypeMismatch { .. }
+            | DbError::IndexNotFound { .. }
+            | DbError::PrimaryKeyNotFound { .. }
+            | DbError::ConstraintNotFound { .. }
+            | DbError::DatabaseNotFound { .. }
+            | DbError::ObjectNotFound { .. }
+            | DbError::DuplicateColumn { .. }
+            | DbError::DuplicateTable { .. }
+            | DbError::InvalidIdentifier { .. }
+            | DbError::TriggerNotFound { .. }
+            | DbError::DuplicateTrigger { .. }
+            | DbError::ViewNotFound { .. }
+            | DbError::DuplicateView { .. }
+            | DbError::TypeNotFound { .. }
+            | DbError::DuplicateType { .. }
             | DbError::DuplicateSchema { .. }
-            | DbError::CursorNotDeclared { .. } | DbError::CursorHasNoQuery { .. } => 207,
+            | DbError::CursorNotDeclared { .. }
+            | DbError::CursorHasNoQuery { .. } => 207,
             DbError::Execution(_) => 50000,
             DbError::Storage(_) => 50001,
             DbError::Deadlock(_) => 1205,
@@ -185,91 +205,147 @@ impl DbError {
 
     // -- Strongly-typed constructors --
     pub fn schema_not_found(schema: impl Into<String>) -> Self {
-        DbError::SchemaNotFound { schema: schema.into() }
+        DbError::SchemaNotFound {
+            schema: schema.into(),
+        }
     }
 
     pub fn table_not_found(schema: impl Into<String>, table: impl Into<String>) -> Self {
-        DbError::TableNotFound { schema: schema.into(), table: table.into() }
+        DbError::TableNotFound {
+            schema: schema.into(),
+            table: table.into(),
+        }
     }
 
     pub fn column_not_found(column: impl Into<String>) -> Self {
-        DbError::ColumnNotFound { column: column.into() }
+        DbError::ColumnNotFound {
+            column: column.into(),
+        }
     }
 
     pub fn column_not_found_qualified(table: impl Into<String>, column: impl Into<String>) -> Self {
-        DbError::ColumnNotFoundQualified { table: table.into(), column: column.into() }
+        DbError::ColumnNotFoundQualified {
+            table: table.into(),
+            column: column.into(),
+        }
     }
 
     pub fn type_mismatch(expected: impl Into<String>, found: impl Into<String>) -> Self {
-        DbError::TypeMismatch { expected: expected.into(), found: found.into() }
+        DbError::TypeMismatch {
+            expected: expected.into(),
+            found: found.into(),
+        }
     }
 
     pub fn index_not_found(table: impl Into<String>, index: impl Into<String>) -> Self {
-        DbError::IndexNotFound { table: table.into(), index: index.into() }
+        DbError::IndexNotFound {
+            table: table.into(),
+            index: index.into(),
+        }
     }
 
     pub fn primary_key_not_found(table: impl Into<String>) -> Self {
-        DbError::PrimaryKeyNotFound { table: table.into() }
+        DbError::PrimaryKeyNotFound {
+            table: table.into(),
+        }
     }
 
     pub fn constraint_not_found(table: impl Into<String>, constraint: impl Into<String>) -> Self {
-        DbError::ConstraintNotFound { table: table.into(), constraint: constraint.into() }
+        DbError::ConstraintNotFound {
+            table: table.into(),
+            constraint: constraint.into(),
+        }
     }
 
     pub fn database_not_found(database: impl Into<String>) -> Self {
-        DbError::DatabaseNotFound { database: database.into() }
+        DbError::DatabaseNotFound {
+            database: database.into(),
+        }
     }
 
     pub fn object_not_found(object: impl Into<String>) -> Self {
-        DbError::ObjectNotFound { object: object.into() }
+        DbError::ObjectNotFound {
+            object: object.into(),
+        }
     }
 
     pub fn duplicate_column(column: impl Into<String>) -> Self {
-        DbError::DuplicateColumn { column: column.into() }
+        DbError::DuplicateColumn {
+            column: column.into(),
+        }
     }
 
     pub fn duplicate_table(schema: impl Into<String>, table: impl Into<String>) -> Self {
-        DbError::DuplicateTable { schema: schema.into(), table: table.into() }
+        DbError::DuplicateTable {
+            schema: schema.into(),
+            table: table.into(),
+        }
     }
 
     pub fn invalid_identifier(identifier: impl Into<String>) -> Self {
-        DbError::InvalidIdentifier { identifier: identifier.into() }
+        DbError::InvalidIdentifier {
+            identifier: identifier.into(),
+        }
     }
 
     pub fn trigger_not_found(schema: impl Into<String>, trigger: impl Into<String>) -> Self {
-        DbError::TriggerNotFound { schema: schema.into(), trigger: trigger.into() }
+        DbError::TriggerNotFound {
+            schema: schema.into(),
+            trigger: trigger.into(),
+        }
     }
 
     pub fn duplicate_trigger(schema: impl Into<String>, trigger: impl Into<String>) -> Self {
-        DbError::DuplicateTrigger { schema: schema.into(), trigger: trigger.into() }
+        DbError::DuplicateTrigger {
+            schema: schema.into(),
+            trigger: trigger.into(),
+        }
     }
 
     pub fn view_not_found(schema: impl Into<String>, view: impl Into<String>) -> Self {
-        DbError::ViewNotFound { schema: schema.into(), view: view.into() }
+        DbError::ViewNotFound {
+            schema: schema.into(),
+            view: view.into(),
+        }
     }
 
     pub fn duplicate_view(schema: impl Into<String>, view: impl Into<String>) -> Self {
-        DbError::DuplicateView { schema: schema.into(), view: view.into() }
+        DbError::DuplicateView {
+            schema: schema.into(),
+            view: view.into(),
+        }
     }
 
     pub fn type_not_found(schema: impl Into<String>, type_name: impl Into<String>) -> Self {
-        DbError::TypeNotFound { schema: schema.into(), type_name: type_name.into() }
+        DbError::TypeNotFound {
+            schema: schema.into(),
+            type_name: type_name.into(),
+        }
     }
 
     pub fn duplicate_type(schema: impl Into<String>, type_name: impl Into<String>) -> Self {
-        DbError::DuplicateType { schema: schema.into(), type_name: type_name.into() }
+        DbError::DuplicateType {
+            schema: schema.into(),
+            type_name: type_name.into(),
+        }
     }
 
     pub fn duplicate_schema(schema: impl Into<String>) -> Self {
-        DbError::DuplicateSchema { schema: schema.into() }
+        DbError::DuplicateSchema {
+            schema: schema.into(),
+        }
     }
 
     pub fn cursor_not_declared(cursor: impl Into<String>) -> Self {
-        DbError::CursorNotDeclared { cursor: cursor.into() }
+        DbError::CursorNotDeclared {
+            cursor: cursor.into(),
+        }
     }
 
     pub fn cursor_has_no_query(cursor: impl Into<String>) -> Self {
-        DbError::CursorHasNoQuery { cursor: cursor.into() }
+        DbError::CursorHasNoQuery {
+            cursor: cursor.into(),
+        }
     }
 }
 

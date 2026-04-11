@@ -32,10 +32,17 @@ pub(super) fn bind_plain_table(
             };
 
             let first_row_len = rows.first().map(|r| r.len()).unwrap_or(0);
-            let col_count = if !columns.is_empty() { columns.len() } else { first_row_len };
+            let col_count = if !columns.is_empty() {
+                columns.len()
+            } else {
+                first_row_len
+            };
 
             for i in 0..col_count {
-                let name = columns.get(i).cloned().unwrap_or_else(|| format!("col{}", i + 1));
+                let name = columns
+                    .get(i)
+                    .cloned()
+                    .unwrap_or_else(|| format!("col{}", i + 1));
                 table_def.columns.push(ColumnDef {
                     id: (i + 1) as u32,
                     name,
@@ -86,7 +93,10 @@ pub(super) fn bind_plain_table(
 
     let mut tref = tref;
     if let Some(mapped) = ctx.resolve_table_name(
-        tref.factor.as_object_name().map(|o| o.name.as_str()).unwrap_or(""),
+        tref.factor
+            .as_object_name()
+            .map(|o| o.name.as_str())
+            .unwrap_or(""),
     ) {
         match &mut tref.factor {
             TableFactor::Named(o) => {
@@ -104,7 +114,11 @@ pub(super) fn bind_plain_table(
         .as_object_name()
         .map(|o| o.schema_or_dbo())
         .unwrap_or("dbo");
-    let name = tref.factor.as_object_name().map(|o| o.name.as_str()).unwrap_or("");
+    let name = tref
+        .factor
+        .as_object_name()
+        .map(|o| o.name.as_str())
+        .unwrap_or("");
 
     if let Some(cte) = resolve_cte_table(&ctx.row.ctes, schema, name) {
         return Ok(BoundTable {

@@ -4,7 +4,9 @@ use crate::catalog::Catalog;
 use crate::error::DbError;
 use crate::executor::context::ExecutionContext;
 use crate::executor::evaluator::eval_expr;
-use crate::executor::query::plan::{FilterPlan, PaginationPlan, ProjectionPlan, RelationalQuery, SortPlan};
+use crate::executor::query::plan::{
+    FilterPlan, PaginationPlan, ProjectionPlan, RelationalQuery, SortPlan,
+};
 use crate::executor::query::QueryExecutor;
 use crate::executor::result::QueryResult;
 use crate::executor::value_ops::coerce_value_to_type_with_dateformat;
@@ -34,14 +36,7 @@ impl<'a> ScriptExecutor<'a> {
         }
         if stmt.from.is_none() {
             for t in stmt.targets {
-                let val = eval_expr(
-                    &t.expr,
-                    &[],
-                    ctx,
-                    self.catalog,
-                    self.storage,
-                    self.clock,
-                )?;
+                let val = eval_expr(&t.expr, &[], ctx, self.catalog, self.storage, self.clock)?;
                 if let Some((ty, var)) = ctx.session.variables.get_mut(&t.variable) {
                     *var = coerce_value_to_type_with_dateformat(val, ty, &ctx.options.dateformat)?;
                 } else {

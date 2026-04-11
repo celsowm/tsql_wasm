@@ -111,8 +111,12 @@ impl IndexRegistry for CatalogImpl {
         }
 
         // For clustered index, use index_id = 1; for non-clustered, allocate new ID
-        let new_index_id = if is_clustered { 1 } else { self.alloc_index_id() };
-        
+        let new_index_id = if is_clustered {
+            1
+        } else {
+            self.alloc_index_id()
+        };
+
         self.indexes.push(IndexDef {
             id: new_index_id,
             schema_id: index_schema_id,

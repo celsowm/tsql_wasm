@@ -2,7 +2,10 @@ use crate::ast::{Expr, RoutineParam};
 use crate::catalog::{Catalog, TableDef, TableTypeDef};
 use crate::error::DbError;
 
-pub(crate) fn find_param_def<'a>(params: &'a [RoutineParam], name: &str) -> Option<&'a RoutineParam> {
+pub(crate) fn find_param_def<'a>(
+    params: &'a [RoutineParam],
+    name: &str,
+) -> Option<&'a RoutineParam> {
     params.iter().find(|p| p.name.eq_ignore_ascii_case(name))
 }
 

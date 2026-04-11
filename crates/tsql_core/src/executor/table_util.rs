@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
-use crate::ast::{DdlStatement, DmlStatement, FromNode, ObjectName, SelectStmt, Statement, TableRef};
+use crate::ast::{
+    DdlStatement, DmlStatement, FromNode, ObjectName, SelectStmt, Statement, TableRef,
+};
 
 use super::string_norm::normalize_identifier;
 
@@ -124,7 +126,8 @@ pub(crate) fn collect_write_tables(stmt: &Statement) -> HashSet<String> {
         Statement::Ddl(DdlStatement::DropIndex(s)) => {
             out.insert(normalize_identifier(&s.table.name));
         }
-        Statement::Ddl(DdlStatement::CreateSchema(_)) | Statement::Ddl(DdlStatement::DropSchema(_)) => {
+        Statement::Ddl(DdlStatement::CreateSchema(_))
+        | Statement::Ddl(DdlStatement::DropSchema(_)) => {
             out.insert("__GLOBAL__".to_string());
         }
         Statement::Ddl(DdlStatement::DropView(_))
@@ -164,6 +167,8 @@ pub(crate) fn is_transaction_statement(stmt: &Statement) -> bool {
     matches!(
         stmt,
         Statement::Transaction(_)
-            | Statement::Session(crate::ast::SessionStatement::SetTransactionIsolationLevel(_))
+            | Statement::Session(crate::ast::SessionStatement::SetTransactionIsolationLevel(
+                _
+            ))
     )
 }

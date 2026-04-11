@@ -12,5 +12,12 @@ pub(crate) fn bind_table(
     tref: crate::ast::TableRef,
     ctx: &mut ExecutionContext,
 ) -> Result<BoundTable, DbError> {
-    binder::bind_table(catalog, executor.storage, executor.clock, tref, ctx, executor)
+    binder::bind_table(
+        catalog,
+        executor.storage,
+        executor.clock,
+        tref,
+        ctx,
+        executor,
+    )
 }

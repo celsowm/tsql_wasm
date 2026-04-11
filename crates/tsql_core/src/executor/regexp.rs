@@ -23,8 +23,9 @@ pub fn eval_regexp_like(
     }
     let s = crate::executor::evaluator::eval_expr(&args[0], row, ctx, catalog, storage, clock)?
         .to_string_value();
-    let pattern = crate::executor::evaluator::eval_expr(&args[1], row, ctx, catalog, storage, clock)?
-        .to_string_value();
+    let pattern =
+        crate::executor::evaluator::eval_expr(&args[1], row, ctx, catalog, storage, clock)?
+            .to_string_value();
     let flags = if args.len() == 3 {
         Some(
             crate::executor::evaluator::eval_expr(&args[2], row, ctx, catalog, storage, clock)?
@@ -62,10 +63,12 @@ pub fn eval_regexp_replace(
     }
     let s = crate::executor::evaluator::eval_expr(&args[0], row, ctx, catalog, storage, clock)?
         .to_string_value();
-    let pattern = crate::executor::evaluator::eval_expr(&args[1], row, ctx, catalog, storage, clock)?
-        .to_string_value();
-    let replacement = crate::executor::evaluator::eval_expr(&args[2], row, ctx, catalog, storage, clock)?
-        .to_string_value();
+    let pattern =
+        crate::executor::evaluator::eval_expr(&args[1], row, ctx, catalog, storage, clock)?
+            .to_string_value();
+    let replacement =
+        crate::executor::evaluator::eval_expr(&args[2], row, ctx, catalog, storage, clock)?
+            .to_string_value();
     let flags = if args.len() == 4 {
         Some(
             crate::executor::evaluator::eval_expr(&args[3], row, ctx, catalog, storage, clock)?
@@ -124,8 +127,9 @@ pub fn eval_regexp_substr(
     }
     let s = crate::executor::evaluator::eval_expr(&args[0], row, ctx, catalog, storage, clock)?
         .to_string_value();
-    let pattern = crate::executor::evaluator::eval_expr(&args[1], row, ctx, catalog, storage, clock)?
-        .to_string_value();
+    let pattern =
+        crate::executor::evaluator::eval_expr(&args[1], row, ctx, catalog, storage, clock)?
+            .to_string_value();
     let pos = if args.len() >= 3 {
         crate::executor::evaluator::eval_expr(&args[2], row, ctx, catalog, storage, clock)?
             .to_integer_i64()
@@ -167,10 +171,7 @@ pub fn regexp_instr(
     }
 
     let substr = &s[start..];
-    let matches: Vec<(usize, usize)> = re
-        .find_iter(substr)
-        .map(|m| (m.start(), m.end()))
-        .collect();
+    let matches: Vec<(usize, usize)> = re.find_iter(substr).map(|m| (m.start(), m.end())).collect();
 
     if occurrence == 0 {
         return if matches.is_empty() {
@@ -214,8 +215,9 @@ pub fn eval_regexp_instr(
     }
     let s = crate::executor::evaluator::eval_expr(&args[0], row, ctx, catalog, storage, clock)?
         .to_string_value();
-    let pattern = crate::executor::evaluator::eval_expr(&args[1], row, ctx, catalog, storage, clock)?
-        .to_string_value();
+    let pattern =
+        crate::executor::evaluator::eval_expr(&args[1], row, ctx, catalog, storage, clock)?
+            .to_string_value();
     let pos = if args.len() >= 3 {
         crate::executor::evaluator::eval_expr(&args[2], row, ctx, catalog, storage, clock)?
             .to_integer_i64()
@@ -281,8 +283,9 @@ pub fn eval_regexp_count(
     }
     let s = crate::executor::evaluator::eval_expr(&args[0], row, ctx, catalog, storage, clock)?
         .to_string_value();
-    let pattern = crate::executor::evaluator::eval_expr(&args[1], row, ctx, catalog, storage, clock)?
-        .to_string_value();
+    let pattern =
+        crate::executor::evaluator::eval_expr(&args[1], row, ctx, catalog, storage, clock)?
+            .to_string_value();
     let pos = if args.len() >= 3 {
         crate::executor::evaluator::eval_expr(&args[2], row, ctx, catalog, storage, clock)?
             .to_integer_i64()

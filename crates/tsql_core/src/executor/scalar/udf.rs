@@ -61,20 +61,15 @@ pub(crate) fn eval_user_scalar_function(
             };
             let val = eval_expr(arg_expr, row, ctx, catalog, storage, clock)?;
             let ty = type_mapping::data_type_spec_to_runtime(dt);
-            let coerced = value_ops::coerce_value_to_type_with_dateformat(
-                val,
-                &ty,
-                &ctx.options.dateformat,
-            )?;
+            let coerced =
+                value_ops::coerce_value_to_type_with_dateformat(val, &ty, &ctx.options.dateformat)?;
             ctx.session
                 .variables
                 .insert(param.name.clone(), (ty, coerced));
             ctx.register_declared_var(&param.name);
         }
         let out = match body {
-            FunctionBody::ScalarReturn(expr) => {
-                eval_expr(expr, row, ctx, catalog, storage, clock)
-            }
+            FunctionBody::ScalarReturn(expr) => eval_expr(expr, row, ctx, catalog, storage, clock),
             FunctionBody::Scalar(stmts) => {
                 super::super::evaluator::eval_udf_body(stmts, ctx, catalog, storage, clock)
             }

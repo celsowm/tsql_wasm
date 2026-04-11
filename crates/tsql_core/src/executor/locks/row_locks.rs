@@ -1,7 +1,7 @@
-﻿use std::collections::HashMap;
+use std::collections::HashMap;
 
-use super::types::{LockMode, SessionId, TableLockState};
 use super::super::string_norm::normalize_identifier;
+use super::types::{LockMode, SessionId, TableLockState};
 
 /// Returned when a row lock acquisition triggers escalation.
 pub(crate) struct EscalationRequest {
@@ -55,10 +55,7 @@ impl RowLockManager {
     ) -> Option<EscalationRequest> {
         let normalized = normalize_identifier(table);
         let key = (normalized.clone(), row_id);
-        self.locks
-            .entry(key)
-            .or_default()
-            .acquire(session_id, mode);
+        self.locks.entry(key).or_default().acquire(session_id, mode);
 
         let count_key = (session_id, normalized.clone());
         let count = self.lock_counts.entry(count_key).or_insert(0);

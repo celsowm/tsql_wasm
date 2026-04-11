@@ -10,8 +10,8 @@ use crate::storage::StoredRow;
 use super::super::clock::Clock;
 use super::super::context::ExecutionContext;
 use super::super::model::BoundTable;
-use super::super::result::QueryResult;
 use super::super::query::QueryExecutor;
+use super::super::result::QueryResult;
 
 pub(crate) fn bind_table(
     catalog: &dyn Catalog,
@@ -22,20 +22,13 @@ pub(crate) fn bind_table(
     executor: &QueryExecutor<'_>,
 ) -> Result<BoundTable, DbError> {
     if let TableFactor::Derived(ref select) = tref.factor {
-        return bind_derived_subquery(
-            tref.alias.clone(),
-            *select.clone(),
-            ctx,
-            executor,
-        );
+        return bind_derived_subquery(tref.alias.clone(), *select.clone(), ctx, executor);
     }
 
     if let Some(bound_tvf) = tvf::bind_builtin_tvf(catalog, storage, clock, &tref, ctx)? {
         return Ok(bound_tvf);
     }
-    if let Some(bound_tvf) =
-        tvf::bind_inline_tvf(catalog, storage, clock, &tref, ctx, executor)?
-    {
+    if let Some(bound_tvf) = tvf::bind_inline_tvf(catalog, storage, clock, &tref, ctx, executor)? {
         return Ok(bound_tvf);
     }
     if let Some(bound_view) = views::bind_view(catalog, storage, clock, &tref, ctx, executor)? {
@@ -50,7 +43,8 @@ fn bind_derived_subquery(
     ctx: &mut ExecutionContext,
     executor: &QueryExecutor<'_>,
 ) -> Result<BoundTable, DbError> {
-    let alias = alias.ok_or_else(|| DbError::Semantic("subquery in FROM must have an alias".into()))?;
+    let alias =
+        alias.ok_or_else(|| DbError::Semantic("subquery in FROM must have an alias".into()))?;
     let result = executor.execute_select(select.into(), ctx)?;
     Ok(query_result_to_bound_table(alias.clone(), alias, result))
 }

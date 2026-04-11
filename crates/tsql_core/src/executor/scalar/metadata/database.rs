@@ -69,11 +69,13 @@ pub(crate) fn eval_databasepropertyex(
             Value::Int(if ctx.metadata.ansi_nulls { 1 } else { 0 })
         }
         "COMPATIBILITYLEVEL" => Value::Int(160),
-        "RECOVERY" | "RECOVERYMODEL" => Value::NVarChar(if db_name.eq_ignore_ascii_case("tempdb") {
-            "SIMPLE".to_string()
-        } else {
-            "FULL".to_string()
-        }),
+        "RECOVERY" | "RECOVERYMODEL" => {
+            Value::NVarChar(if db_name.eq_ignore_ascii_case("tempdb") {
+                "SIMPLE".to_string()
+            } else {
+                "FULL".to_string()
+            })
+        }
         "ISAUTOSHRINK" | "ISAUTO_SHRINK_ON" => Value::Int(0),
         "ISAUTOCLOSE" | "ISAUTO_CLOSE_ON" => Value::Int(0),
         "ISFULLTEXTENABLED" => Value::Int(0),

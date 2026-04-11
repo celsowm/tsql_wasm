@@ -62,40 +62,28 @@ pub(super) fn schema_name_by_id(catalog: &dyn Catalog, schema_id: u32) -> Option
         .map(|s| s.name.clone())
 }
 
-pub(super) fn table_by_object_id(
-    catalog: &dyn Catalog,
-    object_id: i32,
-) -> Option<&TableDef> {
+pub(super) fn table_by_object_id(catalog: &dyn Catalog, object_id: i32) -> Option<&TableDef> {
     catalog
         .get_tables()
         .iter()
         .find(|t| t.id as i32 == object_id)
 }
 
-pub(super) fn routine_by_object_id(
-    catalog: &dyn Catalog,
-    object_id: i32,
-) -> Option<&RoutineDef> {
+pub(super) fn routine_by_object_id(catalog: &dyn Catalog, object_id: i32) -> Option<&RoutineDef> {
     catalog
         .get_routines()
         .iter()
         .find(|r| r.object_id == object_id)
 }
 
-pub(super) fn view_by_object_id(
-    catalog: &dyn Catalog,
-    object_id: i32,
-) -> Option<&ViewDef> {
+pub(super) fn view_by_object_id(catalog: &dyn Catalog, object_id: i32) -> Option<&ViewDef> {
     catalog
         .get_views()
         .iter()
         .find(|v| v.object_id == object_id)
 }
 
-pub(super) fn trigger_by_object_id(
-    catalog: &dyn Catalog,
-    object_id: i32,
-) -> Option<&TriggerDef> {
+pub(super) fn trigger_by_object_id(catalog: &dyn Catalog, object_id: i32) -> Option<&TriggerDef> {
     catalog
         .get_triggers()
         .iter()

@@ -52,8 +52,9 @@ pub(crate) fn apply_assignments(
         if let Some(computed) = &col.computed_expr {
             let snapshot = row.clone();
             let joined = single_row_context(table, snapshot);
-            let value =
-                super::super::super::evaluator::eval_expr(computed, &joined, ctx, catalog, storage, clock)?;
+            let value = super::super::super::evaluator::eval_expr(
+                computed, &joined, ctx, catalog, storage, clock,
+            )?;
             let mut value = value;
             apply_ansi_padding(&mut value, &col.data_type, col.ansi_padding_on);
             enforce_string_length(&col.data_type, &value, &col.name)?;

@@ -2,18 +2,26 @@ pub mod expressions;
 pub mod statements;
 
 use crate::parser::ast::*;
+use crate::parser::error::{Expected, ParseResult};
 use crate::parser::parse::expressions::parse_expr;
 use crate::parser::state::Parser;
-use crate::parser::error::{ParseResult, Expected};
 use crate::parser::token::Keyword;
 
-pub use crate::parser::parse::expressions::{parse_data_type, parse_comma_list};
-pub use crate::parser::parse::statements::query::{parse_select, parse_multipart_name as multipart_name};
-pub use crate::parser::parse::statements::other::{parse_declare, parse_set, parse_if, parse_begin_end, parse_exec_dispatch, parse_try_catch};
-pub use crate::parser::parse::statements::dml::{parse_insert, parse_update, parse_delete, parse_merge};
-pub use crate::parser::parse::statements::ddl::{parse_create, parse_table_body, parse_create_index, parse_create_type, parse_create_schema};
-pub use crate::parser::parse::statements::drop::parse_drop;
+pub use crate::parser::parse::expressions::{parse_comma_list, parse_data_type};
 pub use crate::parser::parse::statements::alter::parse_alter;
+pub use crate::parser::parse::statements::ddl::{
+    parse_create, parse_create_index, parse_create_schema, parse_create_type, parse_table_body,
+};
+pub use crate::parser::parse::statements::dml::{
+    parse_delete, parse_insert, parse_merge, parse_update,
+};
+pub use crate::parser::parse::statements::drop::parse_drop;
+pub use crate::parser::parse::statements::other::{
+    parse_begin_end, parse_declare, parse_exec_dispatch, parse_if, parse_set, parse_try_catch,
+};
+pub use crate::parser::parse::statements::query::{
+    parse_multipart_name as multipart_name, parse_select,
+};
 
 pub fn parse_batch(parser: &mut Parser) -> ParseResult<Vec<Statement>> {
     let mut statements = Vec::new();
@@ -21,7 +29,9 @@ pub fn parse_batch(parser: &mut Parser) -> ParseResult<Vec<Statement>> {
         while matches!(parser.peek(), Some(Token::Semicolon)) {
             let _ = parser.next();
         }
-        if parser.is_empty() { break; }
+        if parser.is_empty() {
+            break;
+        }
         if matches!(parser.peek(), Some(Token::Go)) {
             let _ = parser.next();
             continue;
@@ -43,7 +53,10 @@ fn parse_statement_inner(parser: &mut Parser) -> ParseResult<Statement> {
         let _ = parser.next();
         let ctes = parse_comma_list(parser, parse_cte_def)?;
         let body = parse_statement(parser)?;
-        return Ok(Statement::WithCte { ctes, body: Box::new(body) });
+        return Ok(Statement::WithCte {
+            ctes,
+            body: Box::new(body),
+        });
     }
 
     match parser.peek() {
@@ -62,15 +75,21 @@ fn parse_statement_inner(parser: &mut Parser) -> ParseResult<Statement> {
             }
             Keyword::Insert => {
                 let _ = parser.next();
-                Ok(Statement::Dml(DmlStatement::Insert(Box::new(parse_insert(parser)?))))
+                Ok(Statement::Dml(DmlStatement::Insert(Box::new(
+                    parse_insert(parser)?,
+                ))))
             }
             Keyword::Update => {
                 let _ = parser.next();
-                Ok(Statement::Dml(DmlStatement::Update(Box::new(parse_update(parser)?))))
+                Ok(Statement::Dml(DmlStatement::Update(Box::new(
+                    parse_update(parser)?,
+                ))))
             }
             Keyword::Delete => {
                 let _ = parser.next();
-                Ok(Statement::Dml(DmlStatement::Delete(Box::new(parse_delete(parser)?))))
+                Ok(Statement::Dml(DmlStatement::Delete(Box::new(
+                    parse_delete(parser)?,
+                ))))
             }
             Keyword::Create => {
                 let _ = parser.next();
@@ -86,7 +105,9 @@ fn parse_statement_inner(parser: &mut Parser) -> ParseResult<Statement> {
                     let _ = parser.next();
                     return parse_create_schema(parser);
                 }
-                Ok(Statement::Ddl(DdlStatement::Create(Box::new(parse_create(parser)?))))
+                Ok(Statement::Ddl(DdlStatement::Create(Box::new(
+                    parse_create(parser)?,
+                ))))
             }
             Keyword::Drop => {
                 let _ = parser.next();
@@ -108,7 +129,9 @@ fn parse_statement_inner(parser: &mut Parser) -> ParseResult<Statement> {
             }
             Keyword::Merge => {
                 let _ = parser.next();
-                Ok(Statement::Dml(DmlStatement::Merge(Box::new(parse_merge(parser)?))))
+                Ok(Statement::Dml(DmlStatement::Merge(Box::new(parse_merge(
+                    parser,
+                )?))))
             }
             Keyword::Set => {
                 let _ = parser.next();
@@ -122,7 +145,10 @@ fn parse_statement_inner(parser: &mut Parser) -> ParseResult<Statement> {
                 let _ = parser.next();
                 let condition = parse_expr(parser)?;
                 let stmt = parse_statement(parser)?;
-                Ok(Statement::Procedural(ProceduralStatement::While { condition, stmt: Box::new(stmt) }))
+                Ok(Statement::Procedural(ProceduralStatement::While {
+                    condition,
+                    stmt: Box::new(stmt),
+                }))
             }
             Keyword::Exec | Keyword::Execute => {
                 let _ = parser.next();
@@ -130,7 +156,9 @@ fn parse_statement_inner(parser: &mut Parser) -> ParseResult<Statement> {
             }
             Keyword::Print => {
                 let _ = parser.next();
-                Ok(Statement::Procedural(ProceduralStatement::Print(parse_expr(parser)?)))
+                Ok(Statement::Procedural(ProceduralStatement::Print(
+                    parse_expr(parser)?,
+                )))
             }
             Keyword::RaiseError => {
                 let _ = parser.next();
@@ -141,7 +169,11 @@ fn parse_statement_inner(parser: &mut Parser) -> ParseResult<Statement> {
                 parser.expect_comma()?;
                 let state = parse_expr(parser)?;
                 parser.expect_rparen()?;
-                Ok(Statement::Procedural(ProceduralStatement::Raiserror { message, severity, state }))
+                Ok(Statement::Procedural(ProceduralStatement::Raiserror {
+                    message,
+                    severity,
+                    state,
+                }))
             }
             Keyword::Break => {
                 let _ = parser.next();
@@ -153,7 +185,9 @@ fn parse_statement_inner(parser: &mut Parser) -> ParseResult<Statement> {
             }
             Keyword::Return => {
                 let _ = parser.next();
-                let expr = if !parser.is_empty() && !matches!(parser.peek(), Some(Token::Semicolon) | Some(Token::Go)) {
+                let expr = if !parser.is_empty()
+                    && !matches!(parser.peek(), Some(Token::Semicolon) | Some(Token::Go))
+                {
                     Some(parse_expr(parser)?)
                 } else {
                     None
@@ -201,36 +235,63 @@ fn parse_statement_inner(parser: &mut Parser) -> ParseResult<Statement> {
 fn parse_declare_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
     if let Some(Token::Variable(var_name)) = parser.peek() {
         let var_name = var_name.clone();
-        if parser.peek_at(1).map(|t| matches!(t, Token::Keyword(Keyword::Table))).unwrap_or(false) {
+        if parser
+            .peek_at(1)
+            .map(|t| matches!(t, Token::Keyword(Keyword::Table)))
+            .unwrap_or(false)
+        {
             let _ = parser.next();
             let _ = parser.next();
             parser.expect_lparen()?;
             let (columns, constraints) = parse_table_body(parser)?;
             parser.expect_rparen()?;
-            return Ok(Statement::Procedural(ProceduralStatement::DeclareTableVar { name: var_name, columns, constraints }));
+            return Ok(Statement::Procedural(
+                ProceduralStatement::DeclareTableVar {
+                    name: var_name,
+                    columns,
+                    constraints,
+                },
+            ));
         }
     }
     if let Some(Token::Identifier(cursor_name)) = parser.peek() {
-        if parser.peek_at(1).map(|t| matches!(t, Token::Keyword(Keyword::Cursor))).unwrap_or(false) {
+        if parser
+            .peek_at(1)
+            .map(|t| matches!(t, Token::Keyword(Keyword::Cursor)))
+            .unwrap_or(false)
+        {
             let cursor_name = cursor_name.clone();
             let _ = parser.next();
             let _ = parser.next();
             parser.expect_keyword(Keyword::For)?;
             let query = parse_select(parser)?;
-            return Ok(Statement::Procedural(ProceduralStatement::DeclareCursor { name: cursor_name, query }));
+            return Ok(Statement::Procedural(ProceduralStatement::DeclareCursor {
+                name: cursor_name,
+                query,
+            }));
         }
     }
-    Ok(Statement::Procedural(ProceduralStatement::Declare(parse_declare(parser)?)))
+    Ok(Statement::Procedural(ProceduralStatement::Declare(
+        parse_declare(parser)?,
+    )))
 }
 
 fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
     if parser.at_keyword(Keyword::Transaction) {
         let _ = parser.next();
-        parser.expect_keyword(Keyword::Isolation)?; 
+        parser.expect_keyword(Keyword::Isolation)?;
         parser.expect_keyword(Keyword::Level)?;
         let mut level_keywords = Vec::new();
         while let Some(Token::Keyword(k)) = parser.peek() {
-            if matches!(k, Keyword::Read | Keyword::Uncommitted | Keyword::Committed | Keyword::Repeatable | Keyword::Serializable | Keyword::Snapshot) {
+            if matches!(
+                k,
+                Keyword::Read
+                    | Keyword::Uncommitted
+                    | Keyword::Committed
+                    | Keyword::Repeatable
+                    | Keyword::Serializable
+                    | Keyword::Snapshot
+            ) {
                 level_keywords.push(*k);
                 let _ = parser.next();
             } else {
@@ -238,14 +299,22 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
             }
         }
         let iso = match level_keywords.as_slice() {
-            [Keyword::Read, Keyword::Uncommitted] => crate::parser::ast::IsolationLevel::ReadUncommitted,
-            [Keyword::Read, Keyword::Committed] => crate::parser::ast::IsolationLevel::ReadCommitted,
-            [Keyword::Repeatable, Keyword::Read] => crate::parser::ast::IsolationLevel::RepeatableRead,
+            [Keyword::Read, Keyword::Uncommitted] => {
+                crate::parser::ast::IsolationLevel::ReadUncommitted
+            }
+            [Keyword::Read, Keyword::Committed] => {
+                crate::parser::ast::IsolationLevel::ReadCommitted
+            }
+            [Keyword::Repeatable, Keyword::Read] => {
+                crate::parser::ast::IsolationLevel::RepeatableRead
+            }
             [Keyword::Serializable] => crate::parser::ast::IsolationLevel::Serializable,
             [Keyword::Snapshot] => crate::parser::ast::IsolationLevel::Snapshot,
             _ => crate::parser::ast::IsolationLevel::ReadCommitted,
         };
-        return Ok(Statement::Session(SessionStatement::SetTransactionIsolationLevel(iso)));
+        return Ok(Statement::Session(
+            SessionStatement::SetTransactionIsolationLevel(iso),
+        ));
     }
     if matches_set_name(parser.peek(), "IDENTITY_INSERT") || parser.at_keyword(Keyword::Identity) {
         let _ = parser.next();
@@ -258,7 +327,10 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
             Some(Token::Keyword(k)) if *k == Keyword::Off => false,
             _ => return parser.backtrack(Expected::Description("ON or OFF")),
         };
-        return Ok(Statement::Session(SessionStatement::SetIdentityInsert { table, on }));
+        return Ok(Statement::Session(SessionStatement::SetIdentityInsert {
+            table,
+            on,
+        }));
     }
 
     fn matches_set_name(tok: Option<&Token>, expected: &str) -> bool {
@@ -269,7 +341,10 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
         }
     }
 
-    fn parse_bool_setting(parser: &mut Parser, option: crate::parser::ast::SessionOption) -> ParseResult<Statement> {
+    fn parse_bool_setting(
+        parser: &mut Parser,
+        option: crate::parser::ast::SessionOption,
+    ) -> ParseResult<Statement> {
         let _ = parser.next();
         let val = match parser.next() {
             Some(Token::Keyword(k)) if *k == Keyword::On => true,
@@ -284,7 +359,10 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
         }))
     }
 
-    fn parse_text_setting(parser: &mut Parser, option: crate::parser::ast::SessionOption) -> ParseResult<Statement> {
+    fn parse_text_setting(
+        parser: &mut Parser,
+        option: crate::parser::ast::SessionOption,
+    ) -> ParseResult<Statement> {
         let _ = parser.next();
         let text = match parser.next() {
             Some(Token::String(s)) => s.clone(),
@@ -408,20 +486,29 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
         return parse_bool_setting(parser, crate::parser::ast::SessionOption::ArithAbort);
     }
     if matches_set_name(parser.peek(), "CONCAT_NULL_YIELDS_NULL") {
-        return parse_bool_setting(parser, crate::parser::ast::SessionOption::ConcatNullYieldsNull);
+        return parse_bool_setting(
+            parser,
+            crate::parser::ast::SessionOption::ConcatNullYieldsNull,
+        );
     }
     if matches_set_name(parser.peek(), "CURSOR_CLOSE_ON_COMMIT") {
-        return parse_bool_setting(parser, crate::parser::ast::SessionOption::CursorCloseOnCommit);
+        return parse_bool_setting(
+            parser,
+            crate::parser::ast::SessionOption::CursorCloseOnCommit,
+        );
     }
     if matches_set_name(parser.peek(), "IMPLICIT_TRANSACTIONS") {
-        return parse_bool_setting(parser, crate::parser::ast::SessionOption::ImplicitTransactions);
+        return parse_bool_setting(
+            parser,
+            crate::parser::ast::SessionOption::ImplicitTransactions,
+        );
     }
     if matches_set_name(parser.peek(), "DATEFIRST") {
-            let _ = parser.next();
-            let val = parse_signed_int(parser)?;
-            return Ok(Statement::Session(SessionStatement::SetOption {
-                option: crate::parser::ast::SessionOption::DateFirst,
-                value: crate::parser::ast::SessionOptionValue::Int(val),
+        let _ = parser.next();
+        let val = parse_signed_int(parser)?;
+        return Ok(Statement::Session(SessionStatement::SetOption {
+            option: crate::parser::ast::SessionOption::DateFirst,
+            value: crate::parser::ast::SessionOptionValue::Int(val),
         }));
     }
     if matches_set_name(parser.peek(), "LANGUAGE") {
@@ -431,35 +518,35 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
         return parse_text_setting(parser, crate::parser::ast::SessionOption::DateFormat);
     }
     if matches_set_name(parser.peek(), "LOCK_TIMEOUT") {
-            let _ = parser.next();
-            let val = parse_signed_int(parser)?;
-            return Ok(Statement::Session(SessionStatement::SetOption {
-                option: crate::parser::ast::SessionOption::LockTimeout,
-                value: crate::parser::ast::SessionOptionValue::Int(val)
+        let _ = parser.next();
+        let val = parse_signed_int(parser)?;
+        return Ok(Statement::Session(SessionStatement::SetOption {
+            option: crate::parser::ast::SessionOption::LockTimeout,
+            value: crate::parser::ast::SessionOptionValue::Int(val),
         }));
     }
     if matches_set_name(parser.peek(), "ROWCOUNT") {
-            let _ = parser.next();
-            let val = parse_signed_int(parser)?;
-            return Ok(Statement::Session(SessionStatement::SetOption {
-                option: crate::parser::ast::SessionOption::RowCount,
-                value: crate::parser::ast::SessionOptionValue::Int(val),
+        let _ = parser.next();
+        let val = parse_signed_int(parser)?;
+        return Ok(Statement::Session(SessionStatement::SetOption {
+            option: crate::parser::ast::SessionOption::RowCount,
+            value: crate::parser::ast::SessionOptionValue::Int(val),
         }));
     }
     if matches_set_name(parser.peek(), "TEXTSIZE") {
-            let _ = parser.next();
-            let val = parse_signed_int(parser)?;
-            return Ok(Statement::Session(SessionStatement::SetOption {
-                option: crate::parser::ast::SessionOption::TextSize,
-                value: crate::parser::ast::SessionOptionValue::Int(val),
+        let _ = parser.next();
+        let val = parse_signed_int(parser)?;
+        return Ok(Statement::Session(SessionStatement::SetOption {
+            option: crate::parser::ast::SessionOption::TextSize,
+            value: crate::parser::ast::SessionOptionValue::Int(val),
         }));
     }
     if matches_set_name(parser.peek(), "QUERY_GOVERNOR_COST_LIMIT") {
-            let _ = parser.next();
-            let val = parse_signed_int(parser)?;
-            return Ok(Statement::Session(SessionStatement::SetOption {
-                option: crate::parser::ast::SessionOption::QueryGovernorCostLimit,
-                value: crate::parser::ast::SessionOptionValue::Int(val),
+        let _ = parser.next();
+        let val = parse_signed_int(parser)?;
+        return Ok(Statement::Session(SessionStatement::SetOption {
+            option: crate::parser::ast::SessionOption::QueryGovernorCostLimit,
+            value: crate::parser::ast::SessionOptionValue::Int(val),
         }));
     }
     if matches_set_name(parser.peek(), "DEADLOCK_PRIORITY") {
@@ -480,9 +567,10 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
             Some(Token::Number { .. }) | Some(Token::Operator(_)) => {
                 crate::parser::ast::SessionOptionValue::Int(parse_signed_int(parser)?)
             }
-            Some(Token::Identifier(id)) if id.eq_ignore_ascii_case("LOW")
-                || id.eq_ignore_ascii_case("NORMAL")
-                || id.eq_ignore_ascii_case("HIGH") =>
+            Some(Token::Identifier(id))
+                if id.eq_ignore_ascii_case("LOW")
+                    || id.eq_ignore_ascii_case("NORMAL")
+                    || id.eq_ignore_ascii_case("HIGH") =>
             {
                 let value = id.clone();
                 let _ = parser.next();
@@ -559,7 +647,11 @@ fn parse_cte_def(parser: &mut Parser) -> ParseResult<CteDef> {
     let query = parse_select(parser)?;
     parser.expect_rparen()?;
 
-    Ok(CteDef { name, columns, query })
+    Ok(CteDef {
+        name,
+        columns,
+        query,
+    })
 }
 
 pub fn parse_routine_param(parser: &mut Parser) -> ParseResult<RoutineParam> {
@@ -570,7 +662,8 @@ pub fn parse_routine_param(parser: &mut Parser) -> ParseResult<RoutineParam> {
     };
     let data_type = parse_data_type(parser)?;
     let mut is_output = false;
-    if matches!(parser.peek(), Some(Token::Keyword(k)) if matches!(k, Keyword::Output | Keyword::Out)) {
+    if matches!(parser.peek(), Some(Token::Keyword(k)) if matches!(k, Keyword::Output | Keyword::Out))
+    {
         let _ = parser.next();
         is_output = true;
     }
@@ -593,13 +686,24 @@ pub fn parse_routine_param(parser: &mut Parser) -> ParseResult<RoutineParam> {
             default = Some(parse_expr(parser)?);
         }
     }
-    Ok(RoutineParam { name, data_type, is_output, is_readonly, default })
+    Ok(RoutineParam {
+        name,
+        data_type,
+        is_output,
+        is_readonly,
+        default,
+    })
 }
 
 fn try_select_assign(select: &SelectStmt) -> Option<Vec<SelectAssignTarget>> {
     let mut assigns = Vec::new();
     for item in &select.projection {
-        if let Expr::Binary { left, op: BinaryOp::Eq, right } = &item.expr {
+        if let Expr::Binary {
+            left,
+            op: BinaryOp::Eq,
+            right,
+        } = &item.expr
+        {
             if let Expr::Variable(v) = &**left {
                 assigns.push(SelectAssignTarget {
                     variable: v.clone(),
@@ -610,6 +714,8 @@ fn try_select_assign(select: &SelectStmt) -> Option<Vec<SelectAssignTarget>> {
         }
         return None;
     }
-    if assigns.is_empty() { return None; }
+    if assigns.is_empty() {
+        return None;
+    }
     Some(assigns)
 }

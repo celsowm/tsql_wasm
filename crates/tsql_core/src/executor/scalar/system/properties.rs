@@ -39,19 +39,15 @@ pub(crate) fn eval_serverproperty(
         "PRODUCTMINORVERSION" => Value::NVarChar("0".to_string()),
         "PRODUCTBUILD" => Value::NVarChar("1000".to_string()),
         "PRODUCTBUILDTYPE" => Value::NVarChar("RTM".to_string()),
-        "MACHINENAME" | "COMPUTERNAMEPHYSICALNETBIOS" => {
-            Value::NVarChar("localhost".to_string())
-        }
+        "MACHINENAME" | "COMPUTERNAMEPHYSICALNETBIOS" => Value::NVarChar("localhost".to_string()),
         "SERVERNAME" => Value::NVarChar("localhost".to_string()),
-        "INSTANCENAME" | "INSTANCEDEFAULTDATAPATH" | "INSTANCEDEFAULTLOGPATH"
+        "INSTANCENAME"
+        | "INSTANCEDEFAULTDATAPATH"
+        | "INSTANCEDEFAULTLOGPATH"
         | "INSTANCEDEFAULTBACKUPPATH" => Value::Null,
-        "COLLATION" | "SQLCOLLATION" => {
-            Value::NVarChar("SQL_Latin1_General_CP1_CI_AS".to_string())
-        }
+        "COLLATION" | "SQLCOLLATION" => Value::NVarChar("SQL_Latin1_General_CP1_CI_AS".to_string()),
         "SQLCHARSETNAME" => Value::NVarChar("iso_1".to_string()),
-        "SQLSORTORDERNAME" => {
-            Value::NVarChar("nocase_iso".to_string())
-        }
+        "SQLSORTORDERNAME" => Value::NVarChar("nocase_iso".to_string()),
         "ISINTEGRATEDSECURITYONLY" => Value::Int(0),
         "ISSINGLEUSER" => Value::Int(0),
         "ISXTPSUPPORTED" => Value::Int(0),
@@ -69,8 +65,9 @@ pub(crate) fn eval_serverproperty(
         }
         "RESOURCEVERSION" => Value::NVarChar("16.0.1000.6".to_string()),
         "FILESTREAMCONFIGUREDLEVEL" | "FILESTREAMLEVEL" => Value::Int(0),
-        "FILESTREAMSHAREDFOLDER" | "FILESTREAMEFFECTIVELEVEL"
-        | "FILESTREAMSHARENAME" => Value::Null,
+        "FILESTREAMSHAREDFOLDER" | "FILESTREAMEFFECTIVELEVEL" | "FILESTREAMSHARENAME" => {
+            Value::Null
+        }
         "PROCESSORUSAGE" => Value::Int(0),
         "PATHSEPARATOR" => Value::NVarChar("\\".to_string()),
         "SERVERMANAGEMENTISINSTALLED" => Value::Int(0),

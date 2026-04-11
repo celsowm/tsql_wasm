@@ -184,9 +184,7 @@ fn parse_datetime_string(v: &str, dateformat: &str) -> Result<NaiveDateTime, ()>
         .or_else(|_| NaiveDateTime::parse_from_str(v, "%Y-%m-%dT%H:%M:%S"))
         .or_else(|_| NaiveDateTime::parse_from_str(v, "%m/%d/%Y %H:%M:%S"))
         .or_else(|_| NaiveDateTime::parse_from_str(v, "%d/%m/%Y %H:%M:%S"))
-        .or_else(|_| {
-            parse_date_string(v, dateformat).map(|d| d.and_hms_opt(0, 0, 0).unwrap())
-        })
+        .or_else(|_| parse_date_string(v, dateformat).map(|d| d.and_hms_opt(0, 0, 0).unwrap()))
         .map_err(|_| ())
 }
 
@@ -210,9 +208,7 @@ pub fn normalize_datetime_string(s: &str) -> String {
 
 #[allow(dead_code)]
 fn parse_dt_parts(dt: &str) -> (i32, i32, i32, i32, i32, i32) {
-    let parts: Vec<&str> = dt
-        .split(['-', '/', ':'])
-        .collect();
+    let parts: Vec<&str> = dt.split(['-', '/', ':']).collect();
     let y = parts
         .first()
         .and_then(|s| s.trim().parse().ok())

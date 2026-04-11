@@ -1,7 +1,7 @@
 use crate::parser::ast::*;
-use crate::parser::token::Keyword;
+use crate::parser::error::{Expected, ParseResult};
 use crate::parser::state::Parser;
-use crate::parser::error::{ParseResult, Expected};
+use crate::parser::token::Keyword;
 
 pub fn parse_drop(parser: &mut Parser) -> ParseResult<Statement> {
     if parser.at_keyword(Keyword::Table) {
@@ -12,7 +12,8 @@ pub fn parse_drop(parser: &mut Parser) -> ParseResult<Statement> {
         let _ = parser.next();
         let name = super::parse_multipart_name(parser)?;
         Ok(Statement::Ddl(DdlStatement::DropView(name)))
-    } else if matches!(parser.peek(), Some(Token::Keyword(kw)) if matches!(kw, Keyword::Procedure | Keyword::Proc)) {
+    } else if matches!(parser.peek(), Some(Token::Keyword(kw)) if matches!(kw, Keyword::Procedure | Keyword::Proc))
+    {
         let _ = parser.next();
         let name = super::parse_multipart_name(parser)?;
         Ok(Statement::Ddl(DdlStatement::DropProcedure(name)))
@@ -29,9 +30,9 @@ pub fn parse_drop(parser: &mut Parser) -> ParseResult<Statement> {
     } else if parser.at_keyword(Keyword::Schema) {
         let _ = parser.next();
         let name = match parser.next() {
-             Some(Token::Identifier(id)) => id.clone(),
-             Some(Token::Keyword(k)) => k.as_ref().to_string(),
-             _ => return parser.backtrack(Expected::Description("identifier or keyword")),
+            Some(Token::Identifier(id)) => id.clone(),
+            Some(Token::Keyword(k)) => k.as_ref().to_string(),
+            _ => return parser.backtrack(Expected::Description("identifier or keyword")),
         };
         Ok(Statement::Ddl(DdlStatement::DropSchema(name)))
     } else if parser.at_keyword(Keyword::Function) {
@@ -46,4 +47,3 @@ pub fn parse_drop(parser: &mut Parser) -> ParseResult<Statement> {
         parser.backtrack(Expected::Description("drop target"))
     }
 }
-

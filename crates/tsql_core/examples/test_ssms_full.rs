@@ -20,8 +20,11 @@ ORDER BY [Database_Name] ASC
 
     println!("=== Test 1: Direct execution ===");
     println!("Executing query:\n{}\n", sql);
-    
-    match db.executor().execute_session_batch_sql_multi(session_id, sql) {
+
+    match db
+        .executor()
+        .execute_session_batch_sql_multi(session_id, sql)
+    {
         Ok(results) => {
             println!("Number of result sets: {}", results.len());
             for (i, result_opt) in results.iter().enumerate() {
@@ -43,12 +46,18 @@ ORDER BY [Database_Name] ASC
 
     // Now test with DECLARE preamble (simulating sp_executesql)
     println!("\n=== Test 2: With DECLARE preamble (simulating RPC) ===");
-    
-    let full_sql = format!(r#"
-{}
-"#, sql);
 
-    match db.executor().execute_session_batch_sql_multi(session_id, &full_sql) {
+    let full_sql = format!(
+        r#"
+{}
+"#,
+        sql
+    );
+
+    match db
+        .executor()
+        .execute_session_batch_sql_multi(session_id, &full_sql)
+    {
         Ok(results) => {
             println!("Number of result sets: {}", results.len());
             for (i, result_opt) in results.iter().enumerate() {

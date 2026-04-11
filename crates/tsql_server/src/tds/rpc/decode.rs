@@ -106,7 +106,10 @@ pub(super) fn read_typed_value(r: &mut PacketReader, type_id: u8) -> io::Result<
             }
             let bytes = r.read_bytes(actual_len)?;
             let s = decode_utf16le(bytes);
-            Ok(scalar("NTEXT".into(), format!("N'{}'", s.replace('\'', "''"))))
+            Ok(scalar(
+                "NTEXT".into(),
+                format!("N'{}'", s.replace('\'', "''")),
+            ))
         }
         // TEXTTYPE
         0x23 => {
@@ -121,7 +124,10 @@ pub(super) fn read_typed_value(r: &mut PacketReader, type_id: u8) -> io::Result<
             }
             let bytes = r.read_bytes(actual_len)?;
             let s = String::from_utf8_lossy(bytes).to_string();
-            Ok(scalar("TEXT".into(), format!("'{}'", s.replace('\'', "''"))))
+            Ok(scalar(
+                "TEXT".into(),
+                format!("'{}'", s.replace('\'', "''")),
+            ))
         }
         // DECIMALNTYPE / NUMERICNTYPE
         0x6A | 0x6C => {

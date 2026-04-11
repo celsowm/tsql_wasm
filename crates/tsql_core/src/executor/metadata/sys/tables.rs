@@ -312,9 +312,9 @@ impl VirtualTable for SysTables {
                     Value::Bit(false),
                     Value::Int(0),
                     Value::Bit(false),
-                    Value::TinyInt(0),                         // durability (SCHEMA_AND_DATA)
+                    Value::TinyInt(0), // durability (SCHEMA_AND_DATA)
                     Value::VarChar("SCHEMA_AND_DATA".to_string()), // durability_desc
-                    Value::Null,                               // history_table_id
+                    Value::Null,       // history_table_id
                 ],
                 deleted: false,
             })
@@ -442,7 +442,8 @@ impl VirtualTable for SysForeignKeyColumns {
         for table in catalog.get_tables() {
             for fk in &table.foreign_keys {
                 let ref_schema = fk.referenced_table.schema_or_dbo();
-                let Some(ref_table) = catalog.find_table(ref_schema, &fk.referenced_table.name) else {
+                let Some(ref_table) = catalog.find_table(ref_schema, &fk.referenced_table.name)
+                else {
                     continue;
                 };
                 for (i, parent_col_name) in fk.columns.iter().enumerate() {
@@ -547,7 +548,10 @@ impl VirtualTable for SysEdgeConstraints {
 
 impl VirtualTable for SysAssemblyModules {
     fn definition(&self) -> crate::catalog::TableDef {
-        virtual_table_def("assembly_modules", vec![("object_id", DataType::Int, false)])
+        virtual_table_def(
+            "assembly_modules",
+            vec![("object_id", DataType::Int, false)],
+        )
     }
 
     fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
@@ -747,7 +751,11 @@ impl VirtualTable for SysTypes {
                     Some(Value::Int(v)) => *v,
                     _ => 0,
                 };
-                let name = row.values.get(1).cloned().unwrap_or(Value::VarChar(String::new()));
+                let name = row
+                    .values
+                    .get(1)
+                    .cloned()
+                    .unwrap_or(Value::VarChar(String::new()));
                 let max_length = row.values.get(2).cloned().unwrap_or(Value::SmallInt(0));
                 let precision = row.values.get(3).cloned().unwrap_or(Value::TinyInt(0));
                 let scale = row.values.get(4).cloned().unwrap_or(Value::TinyInt(0));

@@ -1,10 +1,10 @@
+use super::ScriptExecutor;
 use crate::ast::{AlterTableStmt, CreateTableStmt, DropTableStmt, TruncateTableStmt};
 use crate::error::DbError;
 use crate::executor::context::ExecutionContext;
-use crate::executor::result::QueryResult;
 use crate::executor::mutation::MutationExecutor;
+use crate::executor::result::QueryResult;
 use crate::executor::string_norm::normalize_identifier;
-use super::ScriptExecutor;
 
 impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_ddl(
@@ -78,7 +78,8 @@ impl<'a> ScriptExecutor<'a> {
         if stmt.name.name.starts_with('#') {
             let logical = stmt.name.name.clone();
             let physical = format!("__temp_{}", logical.trim_start_matches('#'));
-            ctx.session.temp_map
+            ctx.session
+                .temp_map
                 .insert(normalize_identifier(&logical), physical.clone());
             stmt.name.schema = Some("dbo".to_string());
             stmt.name.name = physical;

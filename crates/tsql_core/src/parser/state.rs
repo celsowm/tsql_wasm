@@ -1,5 +1,5 @@
 use crate::parser::ast::Token;
-use crate::parser::error::{ParseError, ParseResult, Expected};
+use crate::parser::error::{Expected, ParseError, ParseResult};
 use crate::parser::token::Keyword;
 
 pub struct Parser {

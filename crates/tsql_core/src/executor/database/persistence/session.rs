@@ -1,13 +1,13 @@
 use parking_lot::Mutex;
 use std::collections::HashSet;
 
+use super::{EngineCatalog, EngineStorage};
 use crate::error::DbError;
 use crate::executor::database::SessionManagerService;
 use crate::executor::journal::Journal;
 use crate::executor::locks::SessionId;
 use crate::executor::session::{SessionManager, SessionRuntime};
 use crate::executor::string_norm::normalize_identifier;
-use super::{EngineCatalog, EngineStorage};
 
 impl<C, S> SessionManager for SessionManagerService<C, S>
 where
@@ -66,7 +66,7 @@ where
 
                 let schema_name = table.schema_name.clone();
                 let _ = storage.catalog.drop_table(&schema_name, &table_name);
-                storage.storage.remove_table(table.id);
+                storage.storage.remove_table(table.id)?;
                 storage.table_versions.remove(&format!(
                     "{}.{}",
                     normalize_identifier(&schema_name),

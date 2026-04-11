@@ -1,7 +1,7 @@
 use crate::parser::ast::*;
-use crate::parser::token::Keyword;
+use crate::parser::error::{Expected, ParseResult};
 use crate::parser::state::Parser;
-use crate::parser::error::{ParseResult, Expected};
+use crate::parser::token::Keyword;
 
 pub fn parse_select(parser: &mut Parser) -> ParseResult<SelectStmt> {
     parser.expect_keyword(Keyword::Select)?;
@@ -34,7 +34,7 @@ pub fn parse_select_body(parser: &mut Parser) -> ParseResult<SelectStmt> {
         };
 
         let right = parse_single_select(parser)?;
-        
+
         let mut target = &mut current;
         while let Some(ref mut op) = target.set_op {
             target = &mut op.right;
@@ -60,7 +60,9 @@ pub fn parse_single_select_body(parser: &mut Parser) -> ParseResult<SelectStmt> 
     let mut top = None;
     if let Some(Token::Keyword(Keyword::Top)) = parser.peek() {
         let _ = parser.next();
-        top = Some(TopSpec { value: crate::parser::parse::expressions::parse_primary(parser)? });
+        top = Some(TopSpec {
+            value: crate::parser::parse::expressions::parse_primary(parser)?,
+        });
     }
 
     let projection = parse_projection(parser)?;
@@ -81,7 +83,8 @@ pub fn parse_single_select_body(parser: &mut Parser) -> ParseResult<SelectStmt> 
         };
         if is_from {
             let _ = parser.next();
-            let tables = crate::parser::parse::expressions::parse_comma_list(parser, parse_table_ref)?;
+            let tables =
+                crate::parser::parse::expressions::parse_comma_list(parser, parse_table_ref)?;
             let mut iter = tables.into_iter();
             from = iter.next();
             for table in iter {
@@ -141,7 +144,10 @@ pub fn parse_single_select_body(parser: &mut Parser) -> ParseResult<SelectStmt> 
         if matches!(parser.peek(), Some(Token::Keyword(Keyword::By))) {
             let _ = parser.next();
         }
-        group_by = crate::parser::parse::expressions::parse_comma_list(parser, crate::parser::parse::expressions::parse_expr)?;
+        group_by = crate::parser::parse::expressions::parse_comma_list(
+            parser,
+            crate::parser::parse::expressions::parse_expr,
+        )?;
     }
 
     let mut having = None;
@@ -156,7 +162,8 @@ pub fn parse_single_select_body(parser: &mut Parser) -> ParseResult<SelectStmt> 
         if matches!(parser.peek(), Some(Token::Keyword(Keyword::By))) {
             let _ = parser.next();
         }
-        order_by = crate::parser::parse::expressions::parse_comma_list(parser, parse_order_by_expr)?;
+        order_by =
+            crate::parser::parse::expressions::parse_comma_list(parser, parse_order_by_expr)?;
     }
 
     let mut offset = None;
@@ -201,7 +208,18 @@ fn parse_projection(parser: &mut Parser) -> ParseResult<Vec<SelectItem>> {
             continue;
         }
         if let Some(Token::Keyword(k)) = parser.peek() {
-            if matches!(k, Keyword::From | Keyword::Into | Keyword::Where | Keyword::Group | Keyword::Order | Keyword::Having | Keyword::Union | Keyword::Intersect | Keyword::Except) {
+            if matches!(
+                k,
+                Keyword::From
+                    | Keyword::Into
+                    | Keyword::Where
+                    | Keyword::Group
+                    | Keyword::Order
+                    | Keyword::Having
+                    | Keyword::Union
+                    | Keyword::Intersect
+                    | Keyword::Except
+            ) {
                 break;
             }
         }
@@ -248,11 +266,7 @@ pub fn parse_table_ref(parser: &mut Parser) -> ParseResult<TableRef> {
                 let subquery = Box::new(parse_select(parser)?);
                 parser.expect_rparen()?;
                 let alias = parse_required_alias(parser)?;
-                (
-                    TableFactor::Derived(subquery),
-                    Some(alias),
-                    Vec::new(),
-                )
+                (TableFactor::Derived(subquery), Some(alias), Vec::new())
             } else {
                 let base = parse_table_ref(parser)?;
                 let mut joins = Vec::new();
@@ -320,11 +334,7 @@ pub fn parse_table_ref(parser: &mut Parser) -> ParseResult<TableRef> {
                     parser.restore(saved);
                 }
             }
-            (
-                TableFactor::Named(parse_object_name(name)),
-                alias,
-                hints,
-            )
+            (TableFactor::Named(parse_object_name(name)), alias, hints)
         }
         _ => return parser.backtrack(Expected::Description("table reference")),
     };
@@ -362,13 +372,14 @@ pub fn parse_table_ref(parser: &mut Parser) -> ParseResult<TableRef> {
                 };
                 parser.expect_keyword(Keyword::In)?;
                 parser.expect_lparen()?;
-                let pivot_values = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
-                    match p.next() {
-                        Some(Token::Identifier(id)) => Ok(id.clone()),
-                        Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
-                        _ => p.backtrack(Expected::Description("identifier")),
-                    }
-                })?;
+                let pivot_values =
+                    crate::parser::parse::expressions::parse_comma_list(parser, |p| {
+                        match p.next() {
+                            Some(Token::Identifier(id)) => Ok(id.clone()),
+                            Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
+                            _ => p.backtrack(Expected::Description("identifier")),
+                        }
+                    })?;
                 parser.expect_rparen()?;
                 parser.expect_rparen()?;
                 let alias = parse_required_alias(parser)?;
@@ -396,13 +407,14 @@ pub fn parse_table_ref(parser: &mut Parser) -> ParseResult<TableRef> {
                 };
                 parser.expect_keyword(Keyword::In)?;
                 parser.expect_lparen()?;
-                let column_list = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
-                    match p.next() {
-                        Some(Token::Identifier(id)) => Ok(id.clone()),
-                        Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
-                        _ => p.backtrack(Expected::Description("identifier")),
-                    }
-                })?;
+                let column_list =
+                    crate::parser::parse::expressions::parse_comma_list(parser, |p| {
+                        match p.next() {
+                            Some(Token::Identifier(id)) => Ok(id.clone()),
+                            Some(Token::Keyword(kw)) => Ok(kw.as_ref().to_string()),
+                            _ => p.backtrack(Expected::Description("identifier")),
+                        }
+                    })?;
                 parser.expect_rparen()?;
                 parser.expect_rparen()?;
                 let alias = parse_required_alias(parser)?;
@@ -425,8 +437,10 @@ pub fn parse_join_clause(parser: &mut Parser) -> ParseResult<Option<JoinClause>>
         return Ok(None);
     };
 
-    if matches!(k, Keyword::Cross | Keyword::Left | Keyword::Right | Keyword::Full)
-        && matches!(parser.peek_at(1), Some(Token::Keyword(Keyword::Apply)))
+    if matches!(
+        k,
+        Keyword::Cross | Keyword::Left | Keyword::Right | Keyword::Full
+    ) && matches!(parser.peek_at(1), Some(Token::Keyword(Keyword::Apply)))
     {
         return Ok(None);
     }
@@ -462,7 +476,11 @@ pub fn parse_join_clause(parser: &mut Parser) -> ParseResult<Option<JoinClause>>
     } else {
         None
     };
-    Ok(Some(JoinClause { join_type, table, on }))
+    Ok(Some(JoinClause {
+        join_type,
+        table,
+        on,
+    }))
 }
 
 fn parse_optional_alias(parser: &mut Parser) -> Option<String> {
@@ -480,7 +498,9 @@ fn parse_optional_alias(parser: &mut Parser) -> Option<String> {
                 }
             }
         }
-        Some(Token::Keyword(k)) if !crate::parser::parse::expressions::is_stop_keyword(k.as_sql()) => {
+        Some(Token::Keyword(k))
+            if !crate::parser::parse::expressions::is_stop_keyword(k.as_sql()) =>
+        {
             match parser.next() {
                 Some(Token::Identifier(alias)) => Some(alias.clone()),
                 Some(Token::Keyword(kw)) => Some(kw.as_ref().to_string()),
@@ -491,7 +511,9 @@ fn parse_optional_alias(parser: &mut Parser) -> Option<String> {
                 }
             }
         }
-        Some(Token::Identifier(alias)) if !crate::parser::parse::expressions::is_stop_keyword(alias) => {
+        Some(Token::Identifier(alias))
+            if !crate::parser::parse::expressions::is_stop_keyword(alias) =>
+        {
             let alias = alias.clone();
             let _ = parser.next();
             Some(alias)
@@ -531,17 +553,17 @@ pub fn parse_select_item(parser: &mut Parser) -> ParseResult<SelectItem> {
             None
         }
     } else if let Some(Token::Identifier(alias)) = parser.peek() {
-         if !crate::parser::parse::expressions::is_stop_keyword(alias) {
-             let alias = alias.clone();
-             let _ = parser.next();
-             Some(alias)
-         } else {
-             None
-         }
+        if !crate::parser::parse::expressions::is_stop_keyword(alias) {
+            let alias = alias.clone();
+            let _ = parser.next();
+            Some(alias)
+        } else {
+            None
+        }
     } else if let Some(Token::String(alias)) = parser.peek() {
-         let alias = alias.clone();
-         let _ = parser.next();
-         Some(alias)
+        let alias = alias.clone();
+        let _ = parser.next();
+        Some(alias)
     } else {
         None
     };
@@ -589,8 +611,14 @@ pub fn parse_multipart_name(parser: &mut Parser) -> ParseResult<Vec<String>> {
 
 pub fn parse_object_name(mut parts: Vec<String>) -> ObjectName {
     match parts.len() {
-        0 => ObjectName { schema: None, name: "".to_string() },
-        1 => ObjectName { schema: None, name: parts.remove(0) },
+        0 => ObjectName {
+            schema: None,
+            name: "".to_string(),
+        },
+        1 => ObjectName {
+            schema: None,
+            name: parts.remove(0),
+        },
         _ => {
             let name = parts.pop().unwrap_or_default();
             let schema = Some(parts.pop().unwrap_or_default());

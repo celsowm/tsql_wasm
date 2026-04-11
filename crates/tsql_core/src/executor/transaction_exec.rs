@@ -4,9 +4,9 @@ use crate::ast::{DdlStatement, DmlStatement, SessionStatement, Statement, Transa
 use crate::error::DbError;
 
 use super::conflict::detect_conflicts;
+use super::database::{EngineCatalog, EngineStorage};
 use super::journal::{Journal, JournalEvent, WriteKind};
 use super::locks::{SessionId, TxWorkspace};
-use super::database::{EngineCatalog, EngineStorage};
 use super::session::SharedState;
 use super::table_util::{collect_read_tables, collect_write_tables};
 use super::transaction::{TransactionManager, WriteIntentKind};
@@ -170,16 +170,18 @@ where
                     if let Some(ref active_tx) = tx_manager.active {
                         let keep = active_tx.write_set.len();
                         if workspace.write_tables.len() > keep {
-                            let mut names: Vec<_> = workspace.write_tables.iter().cloned().collect();
+                            let mut names: Vec<_> =
+                                workspace.write_tables.iter().cloned().collect();
                             names.sort();
                             names.truncate(keep);
                             workspace.write_tables = names.into_iter().collect();
                         }
                         let keep_depth = active_tx.savepoints.len();
-                        state
-                            .table_locks
-                            .lock()
-                            .release_workspace_locks(session_id, workspace_slot, keep_depth);
+                        state.table_locks.lock().release_workspace_locks(
+                            session_id,
+                            workspace_slot,
+                            keep_depth,
+                        );
                     }
                 }
             }
@@ -287,16 +289,35 @@ pub(crate) fn register_write_intent<C, S>(
     }
 
     let (kind, table) = match stmt {
-        Statement::Dml(DmlStatement::Insert(s)) => (WriteIntentKind::Insert, Some(s.table.name.clone())),
-        Statement::Dml(DmlStatement::Update(s)) => (WriteIntentKind::Update, Some(s.table.name.clone())),
-        Statement::Dml(DmlStatement::Delete(s)) => (WriteIntentKind::Delete, Some(s.table.name.clone())),
-        Statement::Ddl(DdlStatement::CreateTable(s)) => (WriteIntentKind::Ddl, Some(s.name.name.clone())),
-        Statement::Ddl(DdlStatement::DropTable(s)) => (WriteIntentKind::Ddl, Some(s.name.name.clone())),
-        Statement::Ddl(DdlStatement::AlterTable(s)) => (WriteIntentKind::Ddl, Some(s.table.name.clone())),
-        Statement::Ddl(DdlStatement::TruncateTable(s)) => (WriteIntentKind::Ddl, Some(s.name.name.clone())),
-        Statement::Ddl(DdlStatement::CreateIndex(s)) => (WriteIntentKind::Ddl, Some(s.table.name.clone())),
-        Statement::Ddl(DdlStatement::DropIndex(s)) => (WriteIntentKind::Ddl, Some(s.table.name.clone())),
-        Statement::Ddl(DdlStatement::CreateSchema(_)) | Statement::Ddl(DdlStatement::DropSchema(_)) => (WriteIntentKind::Ddl, None),
+        Statement::Dml(DmlStatement::Insert(s)) => {
+            (WriteIntentKind::Insert, Some(s.table.name.clone()))
+        }
+        Statement::Dml(DmlStatement::Update(s)) => {
+            (WriteIntentKind::Update, Some(s.table.name.clone()))
+        }
+        Statement::Dml(DmlStatement::Delete(s)) => {
+            (WriteIntentKind::Delete, Some(s.table.name.clone()))
+        }
+        Statement::Ddl(DdlStatement::CreateTable(s)) => {
+            (WriteIntentKind::Ddl, Some(s.name.name.clone()))
+        }
+        Statement::Ddl(DdlStatement::DropTable(s)) => {
+            (WriteIntentKind::Ddl, Some(s.name.name.clone()))
+        }
+        Statement::Ddl(DdlStatement::AlterTable(s)) => {
+            (WriteIntentKind::Ddl, Some(s.table.name.clone()))
+        }
+        Statement::Ddl(DdlStatement::TruncateTable(s)) => {
+            (WriteIntentKind::Ddl, Some(s.name.name.clone()))
+        }
+        Statement::Ddl(DdlStatement::CreateIndex(s)) => {
+            (WriteIntentKind::Ddl, Some(s.table.name.clone()))
+        }
+        Statement::Ddl(DdlStatement::DropIndex(s)) => {
+            (WriteIntentKind::Ddl, Some(s.table.name.clone()))
+        }
+        Statement::Ddl(DdlStatement::CreateSchema(_))
+        | Statement::Ddl(DdlStatement::DropSchema(_)) => (WriteIntentKind::Ddl, None),
         _ => return,
     };
 

@@ -2,10 +2,10 @@ use crate::catalog::{ColumnDef, TableDef};
 use crate::error::DbError;
 use crate::storage::StoredRow;
 
+use super::super::QueryExecutor;
 use crate::executor::context::ExecutionContext;
 use crate::executor::model::{ContextTable, JoinedRow};
 use crate::executor::result::QueryResult;
-use super::super::QueryExecutor;
 
 pub(crate) fn execute_apply(
     rows: Vec<JoinedRow>,
@@ -35,21 +35,21 @@ pub(crate) fn execute_apply(
                 result_rows.push(combined);
             }
         } else {
-                let apply_table = build_virtual_table(&apply.alias, &sub_result);
-                for (idx, sub_row_values) in sub_result.rows.iter().enumerate() {
-                    let mut combined = left_row.clone();
-                    combined.push(ContextTable {
-                        table: apply_table.clone(),
-                        alias: apply.alias.clone(),
-                        row: Some(StoredRow {
-                            values: sub_row_values.clone(),
-                            deleted: false,
-                        }),
-                        storage_index: Some(idx),
-                    });
-                    result_rows.push(combined);
-                }
+            let apply_table = build_virtual_table(&apply.alias, &sub_result);
+            for (idx, sub_row_values) in sub_result.rows.iter().enumerate() {
+                let mut combined = left_row.clone();
+                combined.push(ContextTable {
+                    table: apply_table.clone(),
+                    alias: apply.alias.clone(),
+                    row: Some(StoredRow {
+                        values: sub_row_values.clone(),
+                        deleted: false,
+                    }),
+                    storage_index: Some(idx),
+                });
+                result_rows.push(combined);
             }
+        }
     }
 
     Ok(result_rows)

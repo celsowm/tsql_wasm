@@ -1,4 +1,4 @@
-﻿use crate::ast::InsertSource;
+use crate::ast::InsertSource;
 use crate::catalog::TableDef;
 use crate::error::{DbError, StmtOutcome};
 use crate::executor::query::plan::RelationalQuery;
@@ -20,7 +20,9 @@ impl<'a> MutationExecutor<'a> {
         rowcount_limit: Option<usize>,
     ) -> Result<Vec<StoredRow>, DbError> {
         match source {
-            InsertSource::DefaultValues => Ok(vec![self.build_insert_row(table, &[], vec![], ctx)?]),
+            InsertSource::DefaultValues => {
+                Ok(vec![self.build_insert_row(table, &[], vec![], ctx)?])
+            }
             InsertSource::Values(values) => self.collect_insert_rows_from_values(
                 table,
                 insert_columns,
@@ -53,9 +55,14 @@ impl<'a> MutationExecutor<'a> {
                 let query_result = match outcome {
                     StmtOutcome::Ok(Some(r)) => r,
                     StmtOutcome::Ok(None) => {
-                        return Err(DbError::Execution("INSERT EXEC source returned no result".into()))
+                        return Err(DbError::Execution(
+                            "INSERT EXEC source returned no result".into(),
+                        ))
                     }
-                    other => { other.into_result()?; unreachable!() },
+                    other => {
+                        other.into_result()?;
+                        unreachable!()
+                    }
                 };
                 self.collect_insert_rows_from_query_result(
                     table,

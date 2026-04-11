@@ -65,14 +65,7 @@ pub fn split_sql_statements(sql: &str) -> Vec<StatementSlice> {
             {
                 block_depth = block_depth.saturating_sub(1);
             } else if ch == ';' && paren_depth == 0 && block_depth == 0 {
-                push_slice(
-                    &mut out,
-                    &mut buf,
-                    start_line,
-                    start_col,
-                    line,
-                    col,
-                );
+                push_slice(&mut out, &mut buf, start_line, start_col, line, col);
                 advance_pos(ch, &mut line, &mut col);
                 idx += 1;
                 continue;
@@ -82,16 +75,11 @@ pub fn split_sql_statements(sql: &str) -> Vec<StatementSlice> {
                     .collect::<String>()
                     .to_uppercase()
                     == "GO"
-                && (idx + 2 == chars.len() || chars[idx + 2].is_whitespace() || chars[idx + 2] == ';')
+                && (idx + 2 == chars.len()
+                    || chars[idx + 2].is_whitespace()
+                    || chars[idx + 2] == ';')
             {
-                push_slice(
-                    &mut out,
-                    &mut buf,
-                    start_line,
-                    start_col,
-                    line,
-                    col,
-                );
+                push_slice(&mut out, &mut buf, start_line, start_col, line, col);
                 idx += 2;
                 col += 2;
                 continue;
@@ -114,14 +102,7 @@ pub fn split_sql_statements(sql: &str) -> Vec<StatementSlice> {
     }
 
     if !buf.trim().is_empty() {
-        push_slice(
-            &mut out,
-            &mut buf,
-            start_line,
-            start_col,
-            line,
-            col,
-        );
+        push_slice(&mut out, &mut buf, start_line, start_col, line, col);
     }
 
     out

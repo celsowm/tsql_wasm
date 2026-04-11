@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
-use tsql_core::{Database, StatementExecutor};
 use tsql_core::types::Value;
+use tsql_core::{Database, StatementExecutor};
 use tsql_server::playground;
 
 #[derive(Debug, Deserialize)]
@@ -132,7 +132,11 @@ fn assert_seeded_table_presence(case: &ContractCase, result_sets: &[tsql_core::Q
 fn run_scope(scope: &str) {
     let suite = load_contract_suite();
     let cases: Vec<&ContractCase> = suite.cases.iter().filter(|c| c.scope == scope).collect();
-    assert!(!cases.is_empty(), "no fixture cases found for scope '{}'", scope);
+    assert!(
+        !cases.is_empty(),
+        "no fixture cases found for scope '{}'",
+        scope
+    );
 
     let db = Database::new();
     playground::seed_playground(&db).expect("failed to seed playground");

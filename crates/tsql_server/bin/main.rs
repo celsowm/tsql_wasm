@@ -152,7 +152,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     log::info!("Database: {}", config.database);
     log::info!(
         "Session pool: min={}, max={}, idle_timeout={}s",
-        config.pool_min_size, config.pool_max_size, config.pool_idle_timeout_secs
+        config.pool_min_size,
+        config.pool_max_size,
+        config.pool_idle_timeout_secs
     );
 
     // Create database and seed playground if enabled
@@ -185,9 +187,9 @@ fn init_logger() {
 
     impl Write for AsyncPipeWriter {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            self.sender
-                .send(buf.to_vec())
-                .map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "logger worker stopped"))?;
+            self.sender.send(buf.to_vec()).map_err(|_| {
+                std::io::Error::new(std::io::ErrorKind::BrokenPipe, "logger worker stopped")
+            })?;
             Ok(buf.len())
         }
 
@@ -211,7 +213,10 @@ fn init_logger() {
     });
 
     let mut builder =
-        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug"));    builder.target(env_logger::Target::Pipe(Box::new(AsyncPipeWriter { sender: tx })));
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug"));
+    builder.target(env_logger::Target::Pipe(Box::new(AsyncPipeWriter {
+        sender: tx,
+    })));
     builder.format(|buf, record| {
         let ts = buf.timestamp_millis();
         writeln!(

@@ -13,7 +13,10 @@ pub(crate) fn enforce_foreign_keys_on_delete(
 ) -> Result<(), DbError> {
     for other_table in catalog.get_tables() {
         for fk in &other_table.foreign_keys {
-            if fk.referenced_table.schema_or_dbo().eq_ignore_ascii_case(table.schema_or_dbo())
+            if fk
+                .referenced_table
+                .schema_or_dbo()
+                .eq_ignore_ascii_case(table.schema_or_dbo())
                 && fk.referenced_table.name.eq_ignore_ascii_case(&table.name)
             {
                 let mut rows_to_update: Vec<(usize, StoredRow)> = Vec::new();
@@ -26,18 +29,28 @@ pub(crate) fn enforce_foreign_keys_on_delete(
                     let mut matches = true;
                     let mut all_null = true;
                     for (i, ref_col_name) in fk.referenced_columns.iter().enumerate() {
-                        let ref_col_idx = table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(ref_col_name))
+                        let ref_col_idx = table
+                            .columns
+                            .iter()
+                            .position(|c| c.name.eq_ignore_ascii_case(ref_col_name))
                             .ok_or_else(|| DbError::column_not_found(ref_col_name))?;
 
                         let col_name = &fk.columns[i];
-                        let col_idx = other_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
+                        let col_idx = other_table
+                            .columns
+                            .iter()
+                            .position(|c| c.name.eq_ignore_ascii_case(col_name))
                             .ok_or_else(|| DbError::column_not_found(col_name))?;
 
                         if !other_row.values[col_idx].is_null() {
                             all_null = false;
                         }
 
-                        if compare_values(&other_row.values[col_idx], &deleted_row.values[ref_col_idx]) != std::cmp::Ordering::Equal {
+                        if compare_values(
+                            &other_row.values[col_idx],
+                            &deleted_row.values[ref_col_idx],
+                        ) != std::cmp::Ordering::Equal
+                        {
                             matches = false;
                             break;
                         }
@@ -53,7 +66,10 @@ pub(crate) fn enforce_foreign_keys_on_delete(
                             crate::ast::ReferentialAction::SetNull => {
                                 let mut new_row = other_row.clone();
                                 for col_name in fk.columns.iter() {
-                                    let col_idx = other_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
+                                    let col_idx = other_table
+                                        .columns
+                                        .iter()
+                                        .position(|c| c.name.eq_ignore_ascii_case(col_name))
                                         .ok_or_else(|| DbError::column_not_found(col_name))?;
                                     new_row.values[col_idx] = Value::Null;
                                 }
@@ -62,7 +78,10 @@ pub(crate) fn enforce_foreign_keys_on_delete(
                             crate::ast::ReferentialAction::SetDefault => {
                                 let mut new_row = other_row.clone();
                                 for col_name in fk.columns.iter() {
-                                    let col_idx = other_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
+                                    let col_idx = other_table
+                                        .columns
+                                        .iter()
+                                        .position(|c| c.name.eq_ignore_ascii_case(col_name))
                                         .ok_or_else(|| DbError::column_not_found(col_name))?;
                                     if let Some(_default) = &other_table.columns[col_idx].default {
                                         new_row.values[col_idx] = Value::Null;
@@ -98,7 +117,10 @@ pub(crate) fn enforce_foreign_keys_on_update(
 ) -> Result<(), DbError> {
     for other_table in catalog.get_tables() {
         for fk in &other_table.foreign_keys {
-            if fk.referenced_table.schema_or_dbo().eq_ignore_ascii_case(table.schema_or_dbo())
+            if fk
+                .referenced_table
+                .schema_or_dbo()
+                .eq_ignore_ascii_case(table.schema_or_dbo())
                 && fk.referenced_table.name.eq_ignore_ascii_case(&table.name)
             {
                 let mut rows_to_update: Vec<(usize, StoredRow)> = Vec::new();
@@ -113,21 +135,31 @@ pub(crate) fn enforce_foreign_keys_on_update(
                     let mut all_null_old = true;
 
                     for (i, ref_col_name) in fk.referenced_columns.iter().enumerate() {
-                        let ref_col_idx = table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(ref_col_name))
+                        let ref_col_idx = table
+                            .columns
+                            .iter()
+                            .position(|c| c.name.eq_ignore_ascii_case(ref_col_name))
                             .ok_or_else(|| DbError::column_not_found(ref_col_name))?;
 
                         let col_name = &fk.columns[i];
-                        let col_idx = other_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
+                        let col_idx = other_table
+                            .columns
+                            .iter()
+                            .position(|c| c.name.eq_ignore_ascii_case(col_name))
                             .ok_or_else(|| DbError::column_not_found(col_name))?;
 
                         if !other_row.values[col_idx].is_null() {
                             all_null_old = false;
                         }
 
-                        if compare_values(&other_row.values[col_idx], &old_row.values[ref_col_idx]) != std::cmp::Ordering::Equal {
+                        if compare_values(&other_row.values[col_idx], &old_row.values[ref_col_idx])
+                            != std::cmp::Ordering::Equal
+                        {
                             matches_old = false;
                         }
-                        if compare_values(&other_row.values[col_idx], &new_row.values[ref_col_idx]) != std::cmp::Ordering::Equal {
+                        if compare_values(&other_row.values[col_idx], &new_row.values[ref_col_idx])
+                            != std::cmp::Ordering::Equal
+                        {
                             matches_new = false;
                         }
                     }
@@ -137,19 +169,29 @@ pub(crate) fn enforce_foreign_keys_on_update(
                             crate::ast::ReferentialAction::Cascade => {
                                 let mut updated_row = other_row.clone();
                                 for (i, ref_col_name) in fk.referenced_columns.iter().enumerate() {
-                                    let ref_col_idx = table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(ref_col_name))
+                                    let ref_col_idx = table
+                                        .columns
+                                        .iter()
+                                        .position(|c| c.name.eq_ignore_ascii_case(ref_col_name))
                                         .ok_or_else(|| DbError::column_not_found(ref_col_name))?;
                                     let col_name = &fk.columns[i];
-                                    let col_idx = other_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
+                                    let col_idx = other_table
+                                        .columns
+                                        .iter()
+                                        .position(|c| c.name.eq_ignore_ascii_case(col_name))
                                         .ok_or_else(|| DbError::column_not_found(col_name))?;
-                                    updated_row.values[col_idx] = new_row.values[ref_col_idx].clone();
+                                    updated_row.values[col_idx] =
+                                        new_row.values[ref_col_idx].clone();
                                 }
                                 rows_to_update.push((idx, updated_row));
                             }
                             crate::ast::ReferentialAction::SetNull => {
                                 let mut updated_row = other_row.clone();
                                 for col_name in fk.columns.iter() {
-                                    let col_idx = other_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
+                                    let col_idx = other_table
+                                        .columns
+                                        .iter()
+                                        .position(|c| c.name.eq_ignore_ascii_case(col_name))
                                         .ok_or_else(|| DbError::column_not_found(col_name))?;
                                     updated_row.values[col_idx] = Value::Null;
                                 }
@@ -158,7 +200,10 @@ pub(crate) fn enforce_foreign_keys_on_update(
                             crate::ast::ReferentialAction::SetDefault => {
                                 let mut updated_row = other_row.clone();
                                 for col_name in fk.columns.iter() {
-                                    let col_idx = other_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
+                                    let col_idx = other_table
+                                        .columns
+                                        .iter()
+                                        .position(|c| c.name.eq_ignore_ascii_case(col_name))
                                         .ok_or_else(|| DbError::column_not_found(col_name))?;
                                     if let Some(_default) = &other_table.columns[col_idx].default {
                                         updated_row.values[col_idx] = Value::Null;
@@ -195,7 +240,10 @@ pub(crate) fn enforce_foreign_keys_on_insert(
         let mut row_values = Vec::new();
         let mut all_null = true;
         for col_name in &fk.columns {
-            let col_idx = table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name))
+            let col_idx = table
+                .columns
+                .iter()
+                .position(|c| c.name.eq_ignore_ascii_case(col_name))
                 .ok_or_else(|| DbError::column_not_found(col_name))?;
             let val = &row.values[col_idx];
             if !val.is_null() {
@@ -210,8 +258,12 @@ pub(crate) fn enforce_foreign_keys_on_insert(
 
         let ref_schema = fk.referenced_table.schema_or_dbo();
         let ref_name = &fk.referenced_table.name;
-        let ref_table = catalog.find_table(ref_schema, ref_name)
-            .ok_or_else(|| DbError::Execution(format!("referenced table '{}.{}' not found", ref_schema, ref_name)))?;
+        let ref_table = catalog.find_table(ref_schema, ref_name).ok_or_else(|| {
+            DbError::Execution(format!(
+                "referenced table '{}.{}' not found",
+                ref_schema, ref_name
+            ))
+        })?;
 
         let mut found = false;
 
@@ -222,10 +274,15 @@ pub(crate) fn enforce_foreign_keys_on_insert(
             }
             let mut matches = true;
             for (i, ref_col_name) in fk.referenced_columns.iter().enumerate() {
-                let ref_col_idx = ref_table.columns.iter().position(|c| c.name.eq_ignore_ascii_case(ref_col_name))
+                let ref_col_idx = ref_table
+                    .columns
+                    .iter()
+                    .position(|c| c.name.eq_ignore_ascii_case(ref_col_name))
                     .ok_or_else(|| DbError::column_not_found(ref_col_name))?;
 
-                if compare_values(&row_values[i], &ref_row.values[ref_col_idx]) != std::cmp::Ordering::Equal {
+                if compare_values(&row_values[i], &ref_row.values[ref_col_idx])
+                    != std::cmp::Ordering::Equal
+                {
                     matches = false;
                     break;
                 }

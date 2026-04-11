@@ -41,7 +41,9 @@ pub fn eval_edit_distance(
     clock: &dyn crate::executor::clock::Clock,
 ) -> Result<Value, DbError> {
     if args.len() != 2 {
-        return Err(DbError::Execution("EDIT_DISTANCE expects 2 arguments".into()));
+        return Err(DbError::Execution(
+            "EDIT_DISTANCE expects 2 arguments".into(),
+        ));
     }
     let s1 = crate::executor::evaluator::eval_expr(&args[0], row, ctx, catalog, storage, clock)?
         .to_string_value();
@@ -67,7 +69,9 @@ pub fn eval_edit_distance_similarity(
         .to_string_value();
     let s2 = crate::executor::evaluator::eval_expr(&args[1], row, ctx, catalog, storage, clock)?
         .to_string_value();
-    Ok(decimal_from_unit_interval(edit_distance_similarity(&s1, &s2)))
+    Ok(decimal_from_unit_interval(edit_distance_similarity(
+        &s1, &s2,
+    )))
 }
 
 pub fn edit_distance_similarity(s1: &str, s2: &str) -> f64 {
@@ -133,7 +137,9 @@ pub fn eval_jaro_winkler_similarity(
         .to_string_value();
     let s2 = crate::executor::evaluator::eval_expr(&args[1], row, ctx, catalog, storage, clock)?
         .to_string_value();
-    Ok(decimal_from_unit_interval(jaro_winkler_similarity(&s1, &s2)))
+    Ok(decimal_from_unit_interval(jaro_winkler_similarity(
+        &s1, &s2,
+    )))
 }
 
 fn decimal_from_unit_interval(value: f64) -> Value {
