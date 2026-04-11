@@ -2,6 +2,7 @@
 use crate::error::DbError;
 use crate::executor::context::ExecutionContext;
 use crate::executor::query::QueryExecutor;
+use crate::executor::query::plan::RelationalQuery;
 use crate::executor::result::QueryResult;
 use crate::executor::value_ops::coerce_value_to_type_with_dateformat;
 use crate::catalog::Catalog;
@@ -25,7 +26,7 @@ impl<'a> ScriptExecutor<'a> {
             storage: self.storage as &dyn Storage,
             clock: self.clock,
         }
-        .execute_select(query, ctx)?;
+        .execute_select(RelationalQuery::from(query), ctx)?;
         cursor.query_result = result;
         cursor.current_row = -1;
         ctx.session.cursors.insert(name, cursor);

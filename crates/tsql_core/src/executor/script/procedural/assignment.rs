@@ -3,6 +3,7 @@ use crate::error::DbError;
 use crate::executor::context::ExecutionContext;
 use crate::executor::evaluator::eval_expr;
 use crate::executor::query::QueryExecutor;
+use crate::executor::query::plan::RelationalQuery;
 use crate::executor::result::QueryResult;
 use crate::executor::value_ops::coerce_value_to_type_with_dateformat;
 use crate::catalog::Catalog;
@@ -75,7 +76,7 @@ impl<'a> ScriptExecutor<'a> {
             storage: self.storage as &dyn Storage,
             clock: self.clock,
         }
-        .execute_select(q, ctx)?;
+        .execute_select(RelationalQuery::from(q), ctx)?;
         if let Some(last) = result.rows.last() {
             for (idx, t) in stmt.targets.iter().enumerate() {
                 if let Some((ty, var)) = ctx.session.variables.get_mut(&t.variable) {

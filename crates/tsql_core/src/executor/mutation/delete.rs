@@ -1,10 +1,11 @@
 use std::collections::HashSet;
 
-use crate::ast::{DeleteStmt, FromNode, SelectItem, SelectStmt, TableFactor};
+use crate::ast::{DeleteStmt, FromNode, SelectItem, TableFactor};
 use crate::error::DbError;
 
 use super::super::context::ExecutionContext;
 use super::super::query::QueryExecutor;
+use super::super::query::plan::RelationalQuery;
 use super::super::result::QueryResult;
 
 use super::MutationExecutor;
@@ -101,22 +102,28 @@ impl<'a> MutationExecutor<'a> {
                 .collect::<Vec<_>>()
         };
 
-        let query_stmt = SelectStmt {
+        let query = RelationalQuery {
             from_clause: build_from_node_for_delete(stmt.from.as_ref(), &stmt.table),
             applies: stmt.from.as_ref().map(|f| f.applies.clone()).unwrap_or_default(),
-            projection: vec![SelectItem {
-                expr: crate::ast::Expr::Wildcard,
-                alias: None,
-            }],
+            projection: super::super::query::plan::ProjectionPlan {
+                items: vec![SelectItem {
+                    expr: crate::ast::Expr::Wildcard,
+                    alias: None,
+                }],
+                distinct: false,
+            },
             into_table: None,
-            distinct: false,
-            top: stmt.top.clone(),
-            selection: stmt.selection.clone(),
-            group_by: vec![],
-            having: None,
-            order_by: vec![],
-            offset: None,
-            fetch: None,
+            filter: super::super::query::plan::FilterPlan {
+                selection: stmt.selection.clone(),
+                group_by: vec![],
+                having: None,
+            },
+            sort: super::super::query::plan::SortPlan { order_by: vec![] },
+            pagination: super::super::query::plan::PaginationPlan {
+                top: stmt.top.clone(),
+                offset: None,
+                fetch: None,
+            },
         };
 
         let query_executor = QueryExecutor {
@@ -125,7 +132,7 @@ impl<'a> MutationExecutor<'a> {
             clock: self.clock,
         };
 
-        let joined_rows = query_executor.execute_to_joined_rows(query_stmt, ctx)?;
+        let joined_rows = query_executor.execute_to_joined_rows(query, ctx)?;
 
         if !instead_of_triggers.is_empty() {
             let mut deleted_rows = Vec::new();

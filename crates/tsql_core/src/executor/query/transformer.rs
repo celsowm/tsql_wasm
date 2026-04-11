@@ -1,4 +1,4 @@
-﻿use crate::ast::{ApplyType, BinaryOp, SelectStmt};
+use crate::ast::{ApplyType, BinaryOp};
 use crate::catalog::{Catalog, TableDef, ColumnDef};
 use crate::error::DbError;
 use crate::storage::{Storage, StoredRow};
@@ -7,9 +7,10 @@ use crate::types::Value;
 use super::super::clock::Clock;
 use super::super::context::ExecutionContext;
 use super::super::model::{JoinedRow, ContextTable};
-use super::super::planner::{PhysicalPivot, PhysicalUnpivot};
+use super::super::physical::{PhysicalPivot, PhysicalUnpivot};
 use super::super::string_norm::normalize_identifier;
 use super::super::result::QueryResult;
+use super::plan::RelationalQuery;
 
 pub(crate) fn execute_pivot(
     _catalog: &dyn Catalog,
@@ -381,14 +382,14 @@ pub(crate) fn execute_apply(
     rows: Vec<JoinedRow>,
     apply: &crate::ast::ApplyClause,
     ctx: &mut ExecutionContext,
-    query_executor_proxy: impl Fn(SelectStmt, &mut ExecutionContext) -> Result<QueryResult, DbError>,
+    query_executor_proxy: impl Fn(RelationalQuery, &mut ExecutionContext) -> Result<QueryResult, DbError>,
 ) -> Result<Vec<JoinedRow>, DbError> {
     let mut result_rows = Vec::new();
 
     for left_row in &rows {
         // Push left row context so the subquery can reference outer columns
         ctx.push_apply_row(left_row.clone());
-        let sub_result = query_executor_proxy(apply.subquery.clone(), ctx)?;
+        let sub_result = query_executor_proxy(apply.subquery.clone().into(), ctx)?;
         ctx.pop_apply_row();
 
         if sub_result.rows.is_empty() {
@@ -479,3 +480,5 @@ pub(crate) fn execute_apply(
 
     Ok(result_rows)
 }
+
+

@@ -1,94 +1,22 @@
 use crate::ast::RoutineParamType;
-use crate::ast::{SelectStmt, TableFactor, TableRef};
+use crate::ast::TableFactor;
+use crate::ast::TableRef;
 use crate::catalog::{Catalog, ColumnDef, RoutineKind, TableDef};
 use crate::error::DbError;
 use crate::parser::parse_expr_subquery_aware;
 use crate::storage::{Storage, StoredRow};
 use crate::types::Value;
 
-use super::super::clock::Clock;
-use super::super::context::{ExecutionContext, ModuleFrame, ModuleKind};
-use super::super::evaluator::eval_expr;
-use super::super::model::BoundTable;
-use super::super::query_planner::bind_table as planner_bind_table;
-use super::super::result::QueryResult;
+use crate::executor::clock::Clock;
+use crate::executor::context::{ExecutionContext, ModuleFrame, ModuleKind};
+use crate::executor::evaluator::eval_expr;
+use crate::executor::model::BoundTable;
+use crate::executor::result::QueryResult;
+use crate::executor::{type_mapping, value_ops};
+use super::super::plan::RelationalQuery;
+use super::query_result_to_bound_table;
 
-pub(crate) fn bind_table(
-    catalog: &dyn Catalog,
-    storage: &dyn Storage,
-    clock: &dyn Clock,
-    tref: TableRef,
-    ctx: &mut ExecutionContext,
-    query_executor_proxy: impl Fn(SelectStmt, &mut ExecutionContext) -> Result<QueryResult, DbError>,
-) -> Result<BoundTable, DbError> {
-    if let TableFactor::Derived(ref select) = tref.factor {
-        let alias = tref
-            .alias
-            .clone()
-            .ok_or_else(|| DbError::Semantic("subquery in FROM must have an alias".into()))?;
-        let result = query_executor_proxy(*select.clone(), ctx)?;
-
-        let table_def = TableDef {
-            id: 0,
-            schema_id: 1,
-            schema_name: "dbo".to_string(),
-            name: alias.clone(),
-            columns: result
-                .columns
-                .iter()
-                .enumerate()
-                .map(|(i, cname)| ColumnDef {
-                    id: (i + 1) as u32,
-                    name: cname.clone(),
-                    data_type: result.column_types[i].clone(),
-                    nullable: true,
-                    primary_key: false,
-                    unique: false,
-                    identity: None,
-                    default: None,
-                    default_constraint_name: None,
-                    check: None,
-                    check_constraint_name: None,
-                    computed_expr: None,
-                    ansi_padding_on: true,
-                })
-                .collect(),
-            check_constraints: vec![],
-            foreign_keys: vec![],
-        };
-
-        let rows = result
-            .rows
-            .into_iter()
-            .map(|values| StoredRow {
-                values,
-                deleted: false,
-            })
-            .collect();
-
-        return Ok(BoundTable {
-            alias,
-            table: table_def,
-            virtual_rows: Some(rows),
-        });
-    }
-
-    if let Some(bound_tvf) = bind_builtin_tvf(catalog, storage, clock, &tref, ctx)? {
-        return Ok(bound_tvf);
-    }
-    if let Some(bound_tvf) =
-        bind_inline_tvf(catalog, storage, clock, &tref, ctx, &query_executor_proxy)?
-    {
-        return Ok(bound_tvf);
-    }
-    if let Some(bound_view) = bind_view(catalog, storage, clock, &tref, ctx, &query_executor_proxy)?
-    {
-        return Ok(bound_view);
-    }
-    planner_bind_table(tref, catalog, ctx)
-}
-
-fn bind_builtin_tvf(
+pub(super) fn bind_builtin_tvf(
     catalog: &dyn Catalog,
     storage: &dyn Storage,
     clock: &dyn Clock,
@@ -230,82 +158,13 @@ fn bind_builtin_tvf(
     }))
 }
 
-fn bind_view(
-    catalog: &dyn Catalog,
-    _storage: &dyn Storage,
-    _clock: &dyn Clock,
-    tref: &TableRef,
-    ctx: &mut ExecutionContext,
-    query_executor_proxy: &impl Fn(SelectStmt, &mut ExecutionContext) -> Result<QueryResult, DbError>,
-) -> Result<Option<BoundTable>, DbError> {
-    let schema = tref.factor.as_object_name().map(|o| o.schema_or_dbo()).unwrap_or("dbo");
-    let name = match &tref.factor {
-        TableFactor::Named(o) => &o.name,
-        TableFactor::Derived(_) => return Ok(None),
-        TableFactor::Values { .. } => return Ok(None),
-    };
-
-    let Some(view) = catalog.find_view(schema, name).cloned() else {
-        return Ok(None);
-    };
-
-    let view_query = match view.query {
-        crate::ast::Statement::Dml(crate::ast::DmlStatement::Select(s)) => s,
-        _ => return Err(DbError::Execution("view query must be SELECT".into())),
-    };
-
-    let result = query_executor_proxy(view_query, ctx)?;
-
-    let table_def = TableDef {
-        id: 0,
-        schema_id: 1,
-        schema_name: schema.to_string(),
-        name: name.clone(),
-        columns: result
-            .columns
-            .iter()
-            .enumerate()
-            .map(|(i, cname)| ColumnDef {
-                id: (i + 1) as u32,
-                name: cname.clone(),
-                data_type: result.column_types[i].clone(),
-                nullable: true,
-                primary_key: false,
-                unique: false,
-                identity: None,
-                default: None,
-                default_constraint_name: None,
-                check: None,
-                check_constraint_name: None,
-                computed_expr: None,
-                ansi_padding_on: true,
-            })
-            .collect(),
-        check_constraints: vec![],
-        foreign_keys: vec![],
-    };
-    let rows = result
-        .rows
-        .into_iter()
-        .map(|values| StoredRow {
-            values,
-            deleted: false,
-        })
-        .collect::<Vec<_>>();
-    Ok(Some(BoundTable {
-        alias: tref.alias.clone().unwrap_or_else(|| name.clone()),
-        table: table_def,
-        virtual_rows: Some(rows),
-    }))
-}
-
-fn bind_inline_tvf(
+pub(super) fn bind_inline_tvf(
     catalog: &dyn Catalog,
     storage: &dyn Storage,
     clock: &dyn Clock,
     tref: &TableRef,
     ctx: &mut ExecutionContext,
-    query_executor_proxy: &impl Fn(SelectStmt, &mut ExecutionContext) -> Result<QueryResult, DbError>,
+    query_executor_proxy: &impl Fn(RelationalQuery, &mut ExecutionContext) -> Result<QueryResult, DbError>,
 ) -> Result<Option<BoundTable>, DbError> {
     let name = match &tref.factor {
         TableFactor::Named(o) => &o.name,
@@ -367,8 +226,8 @@ fn bind_inline_tvf(
             };
             let expr = parse_expr_subquery_aware(arg_raw)?;
             let val = eval_expr(&expr, &[], ctx, catalog, storage, clock)?;
-            let ty = super::super::type_mapping::data_type_spec_to_runtime(dt);
-            let coerced = super::super::value_ops::coerce_value_to_type_with_dateformat(
+            let ty = type_mapping::data_type_spec_to_runtime(dt);
+            let coerced = value_ops::coerce_value_to_type_with_dateformat(
                 val,
                 &ty,
                 &ctx.options.dateformat,
@@ -377,7 +236,7 @@ fn bind_inline_tvf(
             ctx.register_declared_var(&param.name);
         }
 
-        let result = query_executor_proxy(query, ctx)?;
+        let result = query_executor_proxy(query.into(), ctx)?;
         ctx.leave_scope();
         Ok(result)
     })();
@@ -387,50 +246,14 @@ fn bind_inline_tvf(
     ctx.pop_module();
     let result = result?;
 
-    let table_def = TableDef {
-        id: 0,
-        schema_id: 1,
-        schema_name: "dbo".to_string(),
-        name: fname.to_string(),
-        columns: result
-            .columns
-            .iter()
-            .enumerate()
-            .map(|(i, cname)| ColumnDef {
-                id: (i + 1) as u32,
-                name: cname.clone(),
-                data_type: result.column_types[i].clone(),
-                nullable: true,
-                primary_key: false,
-                unique: false,
-                identity: None,
-                default: None,
-                default_constraint_name: None,
-                check: None,
-                check_constraint_name: None,
-                computed_expr: None,
-                ansi_padding_on: true,
-            })
-            .collect(),
-        check_constraints: vec![],
-        foreign_keys: vec![],
-    };
-    let rows = result
-        .rows
-        .into_iter()
-        .map(|values| StoredRow {
-            values,
-            deleted: false,
-        })
-        .collect::<Vec<_>>();
-    Ok(Some(BoundTable {
-        alias: tref.alias.clone().unwrap_or_else(|| fname.to_string()),
-        table: table_def,
-        virtual_rows: Some(rows),
-    }))
+    Ok(Some(query_result_to_bound_table(
+        tref.alias.clone().unwrap_or_else(|| fname.to_string()),
+        fname.to_string(),
+        result,
+    )))
 }
 
-pub(crate) fn split_csv_top_level_local(input: &str) -> Vec<String> {
+pub(super) fn split_csv_top_level_local(input: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut buf = String::new();
     let mut depth = 0usize;

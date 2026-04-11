@@ -409,7 +409,7 @@ where
             storage: stor,
             clock,
         };
-        let result = qe.execute_select(select_stmt, ctx)?;
+        let result = qe.execute_select(super::super::query::plan::RelationalQuery::from(select_stmt), ctx)?;
         state.table_locks.lock().release_all_for_session(session_id);
         return Ok(StmtOutcome::Ok(Some(result)));
     }

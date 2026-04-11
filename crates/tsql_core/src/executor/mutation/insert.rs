@@ -7,6 +7,7 @@ use crate::types::{DataType, Value};
 use super::super::context::ExecutionContext;
 use super::super::evaluator::eval_expr_to_type_constant;
 use super::super::model::single_row_context;
+use super::super::query::plan::RelationalQuery;
 use super::super::result::QueryResult;
 use super::super::string_norm::normalize_identifier;
 
@@ -68,7 +69,7 @@ impl<'a> MutationExecutor<'a> {
                         storage: self.storage,
                         clock: self.clock,
                     }
-                    .execute_select(*select_stmt.clone(), ctx)?;
+                    .execute_select(RelationalQuery::from(*select_stmt.clone()), ctx)?;
 
                     let insert_columns = self.get_insert_columns(&table, &stmt.columns);
                     let mut rows = Vec::new();
@@ -178,7 +179,7 @@ impl<'a> MutationExecutor<'a> {
                     storage: self.storage,
                     clock: self.clock,
                 }
-                .execute_select(*select_stmt, ctx)?;
+                .execute_select(RelationalQuery::from(*select_stmt), ctx)?;
 
                 let insert_columns = self.get_insert_columns(&table, &stmt.columns);
 

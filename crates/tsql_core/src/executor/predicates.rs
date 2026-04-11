@@ -11,6 +11,7 @@ use super::evaluator::eval_expr;
 use super::model::ContextTable;
 use super::operators::compare_bool;
 use super::query::QueryExecutor;
+use super::query::plan::RelationalQuery;
 use super::result::QueryResult;
 use super::value_ops::truthy;
 use crate::storage::Storage;
@@ -270,5 +271,5 @@ fn execute_subquery_select(
         clock,
     };
 
-    qe.execute_select(stmt.clone(), &mut sub_ctx)
+    qe.execute_select(RelationalQuery::from(stmt.clone()), &mut sub_ctx)
 }

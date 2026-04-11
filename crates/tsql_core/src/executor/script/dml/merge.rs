@@ -5,6 +5,7 @@ use crate::types::Value;
 use crate::executor::context::ExecutionContext;
 use crate::executor::evaluator::eval_expr;
 use crate::executor::query::QueryExecutor;
+use crate::executor::query::plan::RelationalQuery;
 use crate::executor::result::QueryResult;
 use super::super::ScriptExecutor;
 
@@ -85,7 +86,7 @@ impl<'a> ScriptExecutor<'a> {
                     storage: self.storage,
                     clock: self.clock,
                 };
-                let result = qe.execute_select(select_stmt.clone(), ctx)?;
+                let result = qe.execute_select(RelationalQuery::from(select_stmt.clone()), ctx)?;
                 result.rows
             }
         };

@@ -1,0 +1,104 @@
+mod tvf;
+mod values;
+mod views;
+
+use crate::ast::{SelectStmt, TableFactor, TableRef};
+use crate::catalog::{Catalog, ColumnDef, TableDef};
+use crate::error::DbError;
+use crate::storage::StoredRow;
+
+use super::super::clock::Clock;
+use super::super::context::ExecutionContext;
+use super::super::model::BoundTable;
+use super::super::result::QueryResult;
+use super::plan::RelationalQuery;
+
+pub(crate) fn bind_table(
+    catalog: &dyn Catalog,
+    storage: &dyn crate::storage::Storage,
+    clock: &dyn Clock,
+    tref: TableRef,
+    ctx: &mut ExecutionContext,
+    query_executor_proxy: impl Fn(RelationalQuery, &mut ExecutionContext) -> Result<QueryResult, DbError>,
+) -> Result<BoundTable, DbError> {
+    if let TableFactor::Derived(ref select) = tref.factor {
+        return bind_derived_subquery(
+            tref.alias.clone(),
+            *select.clone(),
+            ctx,
+            query_executor_proxy,
+        );
+    }
+
+    if let Some(bound_tvf) = tvf::bind_builtin_tvf(catalog, storage, clock, &tref, ctx)? {
+        return Ok(bound_tvf);
+    }
+    if let Some(bound_tvf) =
+        tvf::bind_inline_tvf(catalog, storage, clock, &tref, ctx, &query_executor_proxy)?
+    {
+        return Ok(bound_tvf);
+    }
+    if let Some(bound_view) = views::bind_view(catalog, storage, clock, &tref, ctx, &query_executor_proxy)? {
+        return Ok(bound_view);
+    }
+    values::bind_plain_table(tref, catalog, ctx)
+}
+
+fn bind_derived_subquery(
+    alias: Option<String>,
+    select: SelectStmt,
+    ctx: &mut ExecutionContext,
+    query_executor_proxy: impl Fn(RelationalQuery, &mut ExecutionContext) -> Result<QueryResult, DbError>,
+) -> Result<BoundTable, DbError> {
+    let alias = alias.ok_or_else(|| DbError::Semantic("subquery in FROM must have an alias".into()))?;
+    let result = query_executor_proxy(select.into(), ctx)?;
+    Ok(query_result_to_bound_table(alias.clone(), alias, result))
+}
+
+pub(super) fn query_result_to_bound_table(
+    alias: String,
+    table_name: String,
+    result: QueryResult,
+) -> BoundTable {
+    let table_def = TableDef {
+        id: 0,
+        schema_id: 1,
+        schema_name: "dbo".to_string(),
+        name: table_name,
+        columns: result
+            .columns
+            .iter()
+            .enumerate()
+            .map(|(i, cname)| ColumnDef {
+                id: (i + 1) as u32,
+                name: cname.clone(),
+                data_type: result.column_types[i].clone(),
+                nullable: true,
+                primary_key: false,
+                unique: false,
+                identity: None,
+                default: None,
+                default_constraint_name: None,
+                check: None,
+                check_constraint_name: None,
+                computed_expr: None,
+                ansi_padding_on: true,
+            })
+            .collect(),
+        check_constraints: vec![],
+        foreign_keys: vec![],
+    };
+    let rows = result
+        .rows
+        .into_iter()
+        .map(|values| StoredRow {
+            values,
+            deleted: false,
+        })
+        .collect::<Vec<_>>();
+    BoundTable {
+        alias,
+        table: table_def,
+        virtual_rows: Some(rows),
+    }
+}

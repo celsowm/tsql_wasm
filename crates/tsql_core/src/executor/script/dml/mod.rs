@@ -8,6 +8,7 @@ use crate::error::DbError;
 use crate::executor::context::ExecutionContext;
 use crate::executor::mutation::MutationExecutor;
 use crate::executor::query::QueryExecutor;
+use crate::executor::query::plan::RelationalQuery;
 use crate::executor::result::QueryResult;
 use crate::storage::{Storage, StoredRow};
 
@@ -82,7 +83,7 @@ impl<'a> ScriptExecutor<'a> {
             storage: self.storage as &dyn Storage,
             clock: self.clock,
         }
-        .execute_select(stmt, ctx)?;
+        .execute_select(RelationalQuery::from(stmt), ctx)?;
 
         if let Some(target) = into_table {
             let schema_name = target.schema_or_dbo();
