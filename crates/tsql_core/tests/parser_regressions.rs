@@ -39,3 +39,15 @@ fn test_values_subquery_cross_apply() {
     assert_eq!(r.rows[1][0], Value::Int(2));
     assert_eq!(r.rows[1][1], Value::VarChar("bar".to_string()));
 }
+
+#[test]
+fn test_nested_parentheses_with_and_after_inner_group() {
+    let sql = "
+        SELECT 1
+        FROM sys.types AS baset
+        WHERE (baset.system_type_id = 1)
+           OR ((baset.system_type_id = 2) AND (baset.user_type_id = 2) AND (baset.is_user_defined = 0))
+    ";
+    let parsed = parse_sql(sql);
+    assert!(parsed.is_ok(), "parse failed: {:?}", parsed.err());
+}

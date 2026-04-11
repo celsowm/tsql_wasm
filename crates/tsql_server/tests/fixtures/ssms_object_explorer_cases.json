@@ -262,6 +262,24 @@
       ]
     },
     {
+      "name": "tables_list_with_dropped_ledger_filter",
+      "scope": "tables",
+      "sql": "SELECT tbl.name AS [Name], SCHEMA_NAME(tbl.schema_id) AS [Schema], CAST(ISNULL(tbl.ledger_type, 0) AS int) AS [LedgerType], CAST(ISNULL(tbl.is_dropped_ledger_table, 0) AS bit) AS [IsDroppedLedgerTable] FROM sys.tables AS tbl LEFT OUTER JOIN sys.tables AS historyTable ON historyTable.object_id = tbl.history_table_id WHERE CAST(ISNULL(tbl.ledger_type, 0) AS int) = 2 AND CAST(ISNULL(tbl.is_dropped_ledger_table, 0) AS bit) = 0",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "Name",
+            "Schema",
+            "LedgerType",
+            "IsDroppedLedgerTable"
+          ],
+          "min_rows": 0
+        }
+      ]
+    },
+    {
       "name": "tables_and_views_list_from_sys_objects",
       "scope": "tables",
       "sql": "SELECT s.name AS schema_name, o.name, o.type, o.type_desc, o.is_ms_shipped FROM sys.objects o INNER JOIN sys.schemas s ON s.schema_id = o.schema_id WHERE o.type_desc IN ('USER_TABLE', 'VIEW') AND o.is_ms_shipped = 0 ORDER BY s.name, o.name",
@@ -277,6 +295,70 @@
             "is_ms_shipped"
           ],
           "min_rows": 11
+        }
+      ]
+    },
+    {
+      "name": "table_columns_from_ssms_like_query",
+      "scope": "tables",
+      "sql": "SELECT clmns.name AS [Name], CAST(ISNULL(cik.index_column_id, 0) AS bit) AS [InPrimaryKey], CAST(ISNULL((select TOP 1 1 from sys.foreign_key_columns AS colfk where colfk.parent_column_id = clmns.column_id and colfk.parent_object_id = clmns.object_id), 0) AS bit) AS [IsForeignKey], usrt.name AS [DataType], ISNULL(baset.name, N'') AS [SystemType], CAST(CASE WHEN baset.name IN (N'nchar', N'nvarchar') AND clmns.max_length <> -1 THEN clmns.max_length/2 ELSE clmns.max_length END AS int) AS [Length], CAST(clmns.precision AS int) AS [NumericPrecision], CAST(clmns.scale AS int) AS [NumericScale], clmns.is_nullable AS [Nullable], clmns.is_computed AS [Computed], ISNULL(s2clmns.name, N'') AS [XmlSchemaNamespaceSchema], ISNULL(xscclmns.name, N'') AS [XmlSchemaNamespace], ISNULL((case clmns.is_xml_document when 1 then 2 else 1 end), 0) AS [XmlDocumentConstraint], CAST(clmns.is_sparse AS bit) AS [IsSparse], CAST(clmns.is_column_set AS bit) AS [IsColumnSet], clmns.column_id AS [ID], CAST(clmns.is_dropped_ledger_column AS bit) AS [IsDroppedLedgerColumn] FROM sys.tables AS tbl INNER JOIN sys.all_columns AS clmns ON clmns.object_id = tbl.object_id LEFT OUTER JOIN sys.indexes AS ik ON ik.object_id = clmns.object_id and 1 = ik.is_primary_key LEFT OUTER JOIN sys.index_columns AS cik ON cik.index_id = ik.index_id and cik.column_id = clmns.column_id and cik.object_id = clmns.object_id and 0 = cik.is_included_column LEFT OUTER JOIN sys.types AS usrt ON usrt.user_type_id = clmns.user_type_id LEFT OUTER JOIN sys.types AS baset ON (baset.user_type_id = clmns.system_type_id and baset.user_type_id = baset.system_type_id) or ((baset.system_type_id = clmns.system_type_id) and (baset.user_type_id = clmns.user_type_id) and (baset.is_user_defined = 0) and (baset.is_assembly_type = 1)) LEFT OUTER JOIN sys.xml_schema_collections AS xscclmns ON xscclmns.xml_collection_id = clmns.xml_collection_id LEFT OUTER JOIN sys.schemas AS s2clmns ON s2clmns.schema_id = xscclmns.schema_id WHERE (CAST(clmns.is_dropped_ledger_column AS bit) = 0) and ((tbl.name = N'Customers' and SCHEMA_NAME(tbl.schema_id) = N'dbo')) ORDER BY [ID] ASC",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "Name",
+            "InPrimaryKey",
+            "IsForeignKey",
+            "DataType",
+            "SystemType",
+            "Length",
+            "NumericPrecision",
+            "NumericScale",
+            "Nullable",
+            "Computed",
+            "XmlSchemaNamespaceSchema",
+            "XmlSchemaNamespace",
+            "XmlDocumentConstraint",
+            "IsSparse",
+            "IsColumnSet",
+            "ID",
+            "IsDroppedLedgerColumn"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "name": "table_indexes_from_ssms_like_query",
+      "scope": "tables",
+      "sql": "SELECT i.name AS [Name], i.is_primary_key + 2 * i.is_unique_constraint AS [IndexKeyType], CAST(CASE i.type WHEN 1 THEN 0 WHEN 4 THEN 4 WHEN 3 THEN CASE xi.xml_index_type WHEN 0 THEN 2 WHEN 1 THEN 3 WHEN 2 THEN 7 WHEN 3 THEN 8 END WHEN 4 THEN 4 WHEN 6 THEN 5 WHEN 7 THEN 6 WHEN 5 THEN 9 ELSE 1 END AS tinyint) AS [IndexType], CAST(CASE WHEN ((SELECT o.type FROM sys.objects o WHERE o.object_id = i.object_id) = 'U') THEN CASE WHEN ((SELECT tbl.is_memory_optimized FROM sys.tables tbl WHERE tbl.object_id = i.object_id) = 1) THEN 1 ELSE 0 END ELSE CASE WHEN ((SELECT tt.is_memory_optimized FROM sys.table_types tt WHERE tt.type_table_object_id = i.object_id) = 1) THEN 1 ELSE 0 END END AS bit) AS [IsMemoryOptimized] FROM sys.tables AS tbl INNER JOIN sys.indexes AS i ON (i.index_id > 0 and i.is_hypothetical = 0) AND (i.object_id = tbl.object_id) LEFT OUTER JOIN sys.xml_indexes AS xi ON xi.object_id = i.object_id AND xi.index_id = i.index_id WHERE (i.is_primary_key + 2 * i.is_unique_constraint = 1 and CAST(CASE WHEN ((SELECT o.type FROM sys.objects o WHERE o.object_id = i.object_id) = 'U') THEN CASE WHEN ((SELECT tbl.is_memory_optimized FROM sys.tables tbl WHERE tbl.object_id = i.object_id) = 1) THEN 1 ELSE 0 END ELSE CASE WHEN ((SELECT tt.is_memory_optimized FROM sys.table_types tt WHERE tt.type_table_object_id = i.object_id) = 1) THEN 1 ELSE 0 END END AS bit) = 1) and ((tbl.name = N'Customers' and SCHEMA_NAME(tbl.schema_id) = N'dbo')) ORDER BY [Name] ASC",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "Name",
+            "IndexKeyType",
+            "IndexType",
+            "IsMemoryOptimized"
+          ],
+          "min_rows": 0
+        }
+      ]
+    },
+    {
+      "name": "table_foreign_keys_from_ssms_like_query",
+      "scope": "tables",
+      "sql": "SELECT cstr.name AS [Name] FROM sys.tables AS tbl INNER JOIN sys.foreign_keys AS cstr ON cstr.parent_object_id = tbl.object_id LEFT OUTER JOIN sys.indexes AS ki ON ki.index_id = cstr.key_index_id and ki.object_id = cstr.referenced_object_id WHERE (CAST(CASE WHEN ((SELECT o.type FROM sys.objects o WHERE o.object_id = ki.object_id) = 'U') THEN CASE WHEN ((SELECT tbl.is_memory_optimized FROM sys.tables tbl WHERE tbl.object_id = ki.object_id) = 1) THEN 1 ELSE 0 END ELSE CASE WHEN ((SELECT tt.is_memory_optimized FROM sys.table_types tt WHERE tt.type_table_object_id = ki.object_id) = 1) THEN 1 ELSE 0 END END AS bit) = 0) and ((tbl.name = N'Customers' and SCHEMA_NAME(tbl.schema_id) = N'dbo')) ORDER BY [Name] ASC",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "Name"
+          ],
+          "min_rows": 0
         }
       ]
     }

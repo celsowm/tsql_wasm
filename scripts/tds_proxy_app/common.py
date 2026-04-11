@@ -396,9 +396,9 @@ class PacketLogger:
         )
         start = min((upper.find(tok) for tok in keywords if upper.find(tok) != -1), default=-1)
         if start != -1:
-            return text[start : start + 600]
+            return text[start : start + 4000]
         if len(payload) < 256:
-            return text[:240]
+            return text[:4000]
         return ""
 
     def _extract_ascii_summary(self, payload: bytes) -> str:
@@ -578,6 +578,8 @@ class PacketLogger:
         return tokens
 
     def _skip_type_info(self, payload: bytes, pos: int, tds_type: int) -> int:
+        if tds_type < 128:
+            return pos
         if tds_type in (INTNTYPE, BITNTYPE, FLTNTYPE, MONEYNTYPE, DATENTYPE, TIMENTYPE, DATETIME2NTYPE, DATETIMNTYPE, GUIDTYPE):
             if pos >= len(payload):
                 return len(payload)

@@ -653,7 +653,7 @@ fn format_sql_for_log(sql: &str) -> String {
     {
         sql.to_string()
     } else {
-        truncate_for_log(sql, 1200)
+        truncate_for_log(sql, 4000)
     };
 
     if std::env::var("TSQL_LOG_SQL_HIGHLIGHT")
@@ -671,10 +671,7 @@ fn format_sql_for_log(sql: &str) -> String {
 }
 
 fn log_sql_execution(connection_id: u64, sql: &str) {
-    if !std::env::var("TSQL_LOG_EXECUTING_SQL")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
-    {
+    if false {
         return;
     }
 

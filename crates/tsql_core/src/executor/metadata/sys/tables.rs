@@ -13,6 +13,17 @@ pub(crate) struct SysColumns;
 pub(crate) struct SysAllColumns;
 pub(crate) struct SysDataSpaces;
 pub(crate) struct SysExtendedProperties;
+pub(crate) struct SysIndexColumns;
+pub(crate) struct SysForeignKeyColumns;
+pub(crate) struct SysXmlSchemaCollections;
+pub(crate) struct SysXmlIndexes;
+pub(crate) struct SysTableTypes;
+pub(crate) struct SysEdgeConstraints;
+pub(crate) struct SysAssemblyModules;
+pub(crate) struct SysTriggers;
+pub(crate) struct SysSqlModules;
+pub(crate) struct SysSystemSqlModules;
+pub(crate) struct SysStats;
 pub(crate) struct SysTypes;
 pub(crate) struct SysServerPrincipals;
 
@@ -264,6 +275,7 @@ impl VirtualTable for SysTables {
                 ("is_node", DataType::Bit, false),
                 ("is_edge", DataType::Bit, false),
                 ("ledger_type", DataType::Int, true),
+                ("is_dropped_ledger_table", DataType::Bit, false),
                 ("durability", DataType::TinyInt, false),
                 ("durability_desc", DataType::VarChar { max_len: 60 }, false),
                 ("history_table_id", DataType::Int, true),
@@ -299,6 +311,7 @@ impl VirtualTable for SysTables {
                     Value::Bit(false),
                     Value::Bit(false),
                     Value::Int(0),
+                    Value::Bit(false),
                     Value::TinyInt(0),                         // durability (SCHEMA_AND_DATA)
                     Value::VarChar("SCHEMA_AND_DATA".to_string()), // durability_desc
                     Value::Null,                               // history_table_id
@@ -377,14 +390,273 @@ impl VirtualTable for SysExtendedProperties {
     }
 }
 
+impl VirtualTable for SysIndexColumns {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "index_columns",
+            vec![
+                ("object_id", DataType::Int, false),
+                ("index_id", DataType::Int, false),
+                ("index_column_id", DataType::Int, false),
+                ("column_id", DataType::Int, false),
+                ("is_included_column", DataType::Bit, false),
+            ],
+        )
+    }
+
+    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+        let mut rows = Vec::new();
+        for idx in catalog.get_indexes() {
+            for (ordinal, col_id) in idx.column_ids.iter().enumerate() {
+                rows.push(StoredRow {
+                    values: vec![
+                        Value::Int(idx.table_id as i32),
+                        Value::Int(idx.id as i32),
+                        Value::Int((ordinal + 1) as i32),
+                        Value::Int(*col_id as i32),
+                        Value::Bit(false),
+                    ],
+                    deleted: false,
+                });
+            }
+        }
+        rows
+    }
+}
+
+impl VirtualTable for SysForeignKeyColumns {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "foreign_key_columns",
+            vec![
+                ("parent_object_id", DataType::Int, false),
+                ("parent_column_id", DataType::Int, false),
+                ("referenced_object_id", DataType::Int, false),
+                ("referenced_column_id", DataType::Int, false),
+            ],
+        )
+    }
+
+    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+        let mut rows = Vec::new();
+        for table in catalog.get_tables() {
+            for fk in &table.foreign_keys {
+                let ref_schema = fk.referenced_table.schema_or_dbo();
+                let Some(ref_table) = catalog.find_table(ref_schema, &fk.referenced_table.name) else {
+                    continue;
+                };
+                for (i, parent_col_name) in fk.columns.iter().enumerate() {
+                    let Some(parent_col) = table
+                        .columns
+                        .iter()
+                        .find(|c| c.name.eq_ignore_ascii_case(parent_col_name))
+                    else {
+                        continue;
+                    };
+                    let ref_col_name = fk.referenced_columns.get(i).unwrap_or(parent_col_name);
+                    let Some(ref_col) = ref_table
+                        .columns
+                        .iter()
+                        .find(|c| c.name.eq_ignore_ascii_case(ref_col_name))
+                    else {
+                        continue;
+                    };
+                    rows.push(StoredRow {
+                        values: vec![
+                            Value::Int(table.id as i32),
+                            Value::Int(parent_col.id as i32),
+                            Value::Int(ref_table.id as i32),
+                            Value::Int(ref_col.id as i32),
+                        ],
+                        deleted: false,
+                    });
+                }
+            }
+        }
+        rows
+    }
+}
+
+impl VirtualTable for SysXmlSchemaCollections {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "xml_schema_collections",
+            vec![
+                ("xml_collection_id", DataType::Int, false),
+                ("schema_id", DataType::Int, false),
+                ("name", DataType::VarChar { max_len: 128 }, false),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+        Vec::new()
+    }
+}
+
+impl VirtualTable for SysXmlIndexes {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "xml_indexes",
+            vec![
+                ("object_id", DataType::Int, false),
+                ("index_id", DataType::Int, false),
+                ("xml_index_type", DataType::TinyInt, false),
+                ("secondary_type", DataType::VarChar { max_len: 1 }, true),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+        Vec::new()
+    }
+}
+
+impl VirtualTable for SysTableTypes {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "table_types",
+            vec![
+                ("type_table_object_id", DataType::Int, false),
+                ("is_memory_optimized", DataType::Bit, false),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+        Vec::new()
+    }
+}
+
+impl VirtualTable for SysEdgeConstraints {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "edge_constraints",
+            vec![
+                ("name", DataType::VarChar { max_len: 128 }, false),
+                ("parent_object_id", DataType::Int, false),
+                ("create_date", DataType::DateTime, false),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+        Vec::new()
+    }
+}
+
+impl VirtualTable for SysAssemblyModules {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def("assembly_modules", vec![("object_id", DataType::Int, false)])
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+        Vec::new()
+    }
+}
+
+impl VirtualTable for SysTriggers {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "triggers",
+            vec![
+                ("object_id", DataType::Int, false),
+                ("is_disabled", DataType::Bit, false),
+            ],
+        )
+    }
+
+    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+        catalog
+            .get_triggers()
+            .iter()
+            .map(|t| StoredRow {
+                values: vec![Value::Int(t.object_id), Value::Bit(false)],
+                deleted: false,
+            })
+            .collect()
+    }
+}
+
+impl VirtualTable for SysSqlModules {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "sql_modules",
+            vec![
+                ("object_id", DataType::Int, false),
+                ("definition", DataType::VarChar { max_len: 8000 }, true),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+        Vec::new()
+    }
+}
+
+impl VirtualTable for SysSystemSqlModules {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "system_sql_modules",
+            vec![
+                ("object_id", DataType::Int, false),
+                ("definition", DataType::VarChar { max_len: 8000 }, true),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+        Vec::new()
+    }
+}
+
+impl VirtualTable for SysStats {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "stats",
+            vec![
+                ("object_id", DataType::Int, false),
+                ("name", DataType::VarChar { max_len: 128 }, false),
+                ("auto_created", DataType::Bit, false),
+                ("has_filter", DataType::Bit, false),
+            ],
+        )
+    }
+
+    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+        catalog
+            .get_indexes()
+            .iter()
+            .map(|idx| StoredRow {
+                values: vec![
+                    Value::Int(idx.table_id as i32),
+                    Value::VarChar(idx.name.clone()),
+                    Value::Bit(false),
+                    Value::Bit(false),
+                ],
+                deleted: false,
+            })
+            .collect()
+    }
+}
+
 fn column_table_def(name: &str, include_sparse: bool) -> crate::catalog::TableDef {
     let mut cols = vec![
         ("object_id", DataType::Int, false),
         ("column_id", DataType::Int, false),
         ("name", DataType::VarChar { max_len: 128 }, false),
         ("user_type_id", DataType::Int, false),
+        ("system_type_id", DataType::Int, false),
         ("max_length", DataType::SmallInt, false),
+        ("precision", DataType::TinyInt, false),
+        ("scale", DataType::TinyInt, false),
         ("is_nullable", DataType::Bit, false),
+        ("is_computed", DataType::Bit, false),
+        ("is_xml_document", DataType::Bit, false),
+        ("is_column_set", DataType::Bit, false),
+        ("xml_collection_id", DataType::Int, true),
+        ("default_object_id", DataType::Int, false),
+        ("is_dropped_ledger_column", DataType::Bit, false),
     ];
     if include_sparse {
         cols.push(("is_sparse", DataType::Bit, false));
@@ -393,16 +665,46 @@ fn column_table_def(name: &str, include_sparse: bool) -> crate::catalog::TableDe
 }
 
 fn column_rows(catalog: &dyn Catalog, include_sparse: bool) -> Vec<StoredRow> {
+    fn precision_scale(dt: &DataType) -> (u8, u8) {
+        match dt {
+            DataType::Bit => (1, 0),
+            DataType::TinyInt => (3, 0),
+            DataType::SmallInt => (5, 0),
+            DataType::Int => (10, 0),
+            DataType::BigInt => (19, 0),
+            DataType::Float => (53, 0),
+            DataType::Decimal { precision, scale } => (*precision, *scale),
+            DataType::Money => (19, 4),
+            DataType::SmallMoney => (10, 4),
+            _ => (0, 0),
+        }
+    }
+
     let mut rows = Vec::new();
     for t in catalog.get_tables() {
         for c in &t.columns {
+            let (precision, scale) = precision_scale(&c.data_type);
             let mut values = vec![
                 Value::Int(t.id as i32),
                 Value::Int(c.id as i32),
                 Value::VarChar(c.name.clone()),
                 Value::Int(system_type_id(&c.data_type)),
+                Value::Int(system_type_id(&c.data_type)),
                 Value::SmallInt(type_max_length(&c.data_type)),
+                Value::TinyInt(precision),
+                Value::TinyInt(scale),
                 Value::Bit(c.nullable),
+                Value::Bit(c.computed_expr.is_some()),
+                Value::Bit(false),
+                Value::Bit(false),
+                Value::Null,
+                Value::Int(if c.default.is_some() {
+                    let table_bucket = (t.id % 100_000) as i32;
+                    3_000_000 + table_bucket * 1_000 + c.id as i32
+                } else {
+                    0
+                }),
+                Value::Bit(false),
             ];
             if include_sparse {
                 values.push(Value::Bit(false));
@@ -422,16 +724,44 @@ impl VirtualTable for SysTypes {
             "types",
             vec![
                 ("user_type_id", DataType::Int, false),
+                ("system_type_id", DataType::Int, false),
                 ("name", DataType::VarChar { max_len: 128 }, false),
                 ("max_length", DataType::SmallInt, false),
                 ("precision", DataType::TinyInt, false),
                 ("scale", DataType::TinyInt, false),
+                ("is_user_defined", DataType::Bit, false),
+                ("is_assembly_type", DataType::Bit, false),
             ],
         )
     }
 
     fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
         builtin_types_rows()
+            .into_iter()
+            .map(|row| {
+                let id = match row.values.first() {
+                    Some(Value::Int(v)) => *v,
+                    _ => 0,
+                };
+                let name = row.values.get(1).cloned().unwrap_or(Value::VarChar(String::new()));
+                let max_length = row.values.get(2).cloned().unwrap_or(Value::SmallInt(0));
+                let precision = row.values.get(3).cloned().unwrap_or(Value::TinyInt(0));
+                let scale = row.values.get(4).cloned().unwrap_or(Value::TinyInt(0));
+                StoredRow {
+                    values: vec![
+                        Value::Int(id),
+                        Value::Int(id),
+                        name,
+                        max_length,
+                        precision,
+                        scale,
+                        Value::Bit(false),
+                        Value::Bit(false),
+                    ],
+                    deleted: false,
+                }
+            })
+            .collect()
     }
 }
 

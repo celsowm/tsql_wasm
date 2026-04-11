@@ -4,7 +4,7 @@ use crate::types::{DataType, Value};
 
 use crate::executor::context::ExecutionContext;
 use crate::executor::evaluator::eval_expr;
-use crate::executor::model::ContextTable;
+use crate::executor::model::{ContextTable, JoinedRow};
 
 pub use bind_expr::BoundExpr;
 
@@ -38,7 +38,7 @@ pub fn bind_expr(
                 }),
                 None => {
                     if column_exists_in_apply_stack(&ctx.row.apply_stack, name)
-                        || column_exists_in_outer_row(ctx.row.outer_row.as_deref(), name)
+                        || column_exists_in_outer_row(&ctx.row.outer_stack, name)
                     {
                         Ok(BoundExpr::Dynamic(expr.clone()))
                     } else {
@@ -65,7 +65,7 @@ pub fn bind_expr(
                         table_name,
                         column_name,
                     ) || qualified_exists_in_outer_row(
-                        ctx.row.outer_row.as_deref(),
+                        &ctx.row.outer_stack,
                         table_name,
                         column_name,
                     ) {
@@ -317,8 +317,8 @@ fn column_exists_in_apply_stack(apply_stack: &[Vec<ContextTable>], name: &str) -
     false
 }
 
-fn column_exists_in_outer_row(outer_row: Option<&[ContextTable]>, name: &str) -> bool {
-    if let Some(row) = outer_row {
+fn column_exists_in_outer_row(outer_stack: &[JoinedRow], name: &str) -> bool {
+    for row in outer_stack.iter().rev() {
         for binding in row {
             for col in &binding.table.columns {
                 if col.name.eq_ignore_ascii_case(name) {
@@ -352,11 +352,11 @@ fn qualified_exists_in_apply_stack(
 }
 
 fn qualified_exists_in_outer_row(
-    outer_row: Option<&[ContextTable]>,
+    outer_stack: &[JoinedRow],
     table_name: &str,
     column_name: &str,
 ) -> bool {
-    if let Some(row) = outer_row {
+    for row in outer_stack.iter().rev() {
         for binding in row {
             if binding.alias.eq_ignore_ascii_case(table_name)
                 || binding.table.name.eq_ignore_ascii_case(table_name)

@@ -169,8 +169,25 @@ impl<'a> SchemaExecutor<'a> {
             apply_table_constraint(&mut table, tc)?;
         }
 
-        self.catalog.register_table(table);
+        self.catalog.register_table(table.clone());
         self.storage.ensure_table(table_id);
+        
+        // Create clustered indexes for PRIMARY KEYs
+        for col in &table.columns {
+            if col.primary_key {
+                let index_name = format!("PK__{}__{}", table.name, col.name);
+                self.catalog.create_index_with_options(
+                    "dbo",
+                    &index_name,
+                    &table.schema_name,
+                    &table.name,
+                    &[col.name.clone()],
+                    true,  // is_clustered
+                    col.unique,  // is_unique
+                ).map_err(|e| DbError::Execution(format!("Failed to create primary key index: {}", e)))?;
+            }
+        }
+        
         Ok(())
     }
 

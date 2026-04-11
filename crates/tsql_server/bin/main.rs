@@ -211,8 +211,7 @@ fn init_logger() {
     });
 
     let mut builder =
-        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
-    builder.target(env_logger::Target::Pipe(Box::new(AsyncPipeWriter { sender: tx })));
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug"));    builder.target(env_logger::Target::Pipe(Box::new(AsyncPipeWriter { sender: tx })));
     builder.format(|buf, record| {
         let ts = buf.timestamp_millis();
         writeln!(

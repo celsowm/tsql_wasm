@@ -202,6 +202,16 @@ pub trait IndexRegistry {
         columns: &[String],
         // Using TableRegistry to find tables instead of passing them
     ) -> Result<(), DbError>;
+    fn create_index_with_options(
+        &mut self,
+        schema: &str,
+        name: &str,
+        table_schema: &str,
+        table_name: &str,
+        columns: &[String],
+        is_clustered: bool,
+        is_unique: bool,
+    ) -> Result<(), DbError>;
     fn drop_index(
         &mut self,
         schema: &str,

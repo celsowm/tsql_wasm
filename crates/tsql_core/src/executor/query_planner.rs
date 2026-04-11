@@ -348,12 +348,11 @@ pub fn bind_table(
 
     let table = catalog
         .find_table(schema, name)
-        .ok_or_else(|| DbError::table_not_found(schema, name))?
-        .clone();
+        .ok_or_else(|| DbError::table_not_found(schema, name))?;
 
     Ok(BoundTable {
         alias: tref.alias.clone().unwrap_or_else(|| table.name.clone()),
-        table,
+        table: table.clone(),
         virtual_rows: None,
     })
 }

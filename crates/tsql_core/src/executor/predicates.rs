@@ -8,7 +8,7 @@ use crate::types::Value;
 use super::clock::Clock;
 use super::context::ExecutionContext;
 use super::evaluator::eval_expr;
-use super::model::{ContextTable, JoinedRow};
+use super::model::ContextTable;
 use super::operators::compare_bool;
 use super::query::QueryExecutor;
 use super::result::QueryResult;
@@ -175,8 +175,7 @@ pub(crate) fn eval_scalar_subquery(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    let outer_row: JoinedRow = ctx.outer_row().clone().unwrap_or_else(|| row.to_vec());
-    let mut sub_ctx = ctx.with_outer_row(outer_row);
+    let mut sub_ctx = ctx.with_outer_row(row.to_vec());
     let query_result = execute_subquery_select(stmt, &mut sub_ctx, catalog, storage, clock)?;
 
     if query_result.rows.is_empty() {
@@ -201,8 +200,7 @@ pub(crate) fn eval_exists(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    let outer_row: JoinedRow = ctx.outer_row().clone().unwrap_or_else(|| row.to_vec());
-    let mut sub_ctx = ctx.with_outer_row(outer_row);
+    let mut sub_ctx = ctx.with_outer_row(row.to_vec());
     let query_result = execute_subquery_select(stmt, &mut sub_ctx, catalog, storage, clock)?;
     let exists = !query_result.rows.is_empty();
     Ok(Value::Bit(if negated { !exists } else { exists }))
@@ -223,8 +221,7 @@ pub(crate) fn eval_in_subquery(
         return Ok(Value::Null);
     }
 
-    let outer_row: JoinedRow = ctx.outer_row().clone().unwrap_or_else(|| row.to_vec());
-    let mut sub_ctx = ctx.with_outer_row(outer_row);
+    let mut sub_ctx = ctx.with_outer_row(row.to_vec());
     let query_result = execute_subquery_select(stmt, &mut sub_ctx, catalog, storage, clock)?;
 
     if query_result.rows.is_empty() {

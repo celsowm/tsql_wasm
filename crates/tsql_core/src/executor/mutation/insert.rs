@@ -35,8 +35,8 @@ impl<'a> MutationExecutor<'a> {
         let table = self
             .catalog
             .find_table(&schema, &table_name)
-            .ok_or_else(|| DbError::table_not_found(&schema, &table_name))?
-            .clone();
+            .ok_or_else(|| DbError::table_not_found(&schema, &table_name))?;
+        let table = table.clone();
 
         let table_id = table.id;
 

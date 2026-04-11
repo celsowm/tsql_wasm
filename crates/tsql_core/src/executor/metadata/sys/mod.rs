@@ -32,6 +32,28 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(tables::SysDataSpaces))
     } else if name.eq_ignore_ascii_case("extended_properties") {
         Some(Box::new(tables::SysExtendedProperties))
+    } else if name.eq_ignore_ascii_case("index_columns") {
+        Some(Box::new(tables::SysIndexColumns))
+    } else if name.eq_ignore_ascii_case("foreign_key_columns") {
+        Some(Box::new(tables::SysForeignKeyColumns))
+    } else if name.eq_ignore_ascii_case("xml_schema_collections") {
+        Some(Box::new(tables::SysXmlSchemaCollections))
+    } else if name.eq_ignore_ascii_case("xml_indexes") {
+        Some(Box::new(tables::SysXmlIndexes))
+    } else if name.eq_ignore_ascii_case("table_types") {
+        Some(Box::new(tables::SysTableTypes))
+    } else if name.eq_ignore_ascii_case("edge_constraints") {
+        Some(Box::new(tables::SysEdgeConstraints))
+    } else if name.eq_ignore_ascii_case("assembly_modules") {
+        Some(Box::new(tables::SysAssemblyModules))
+    } else if name.eq_ignore_ascii_case("triggers") {
+        Some(Box::new(tables::SysTriggers))
+    } else if name.eq_ignore_ascii_case("sql_modules") {
+        Some(Box::new(tables::SysSqlModules))
+    } else if name.eq_ignore_ascii_case("system_sql_modules") {
+        Some(Box::new(tables::SysSystemSqlModules))
+    } else if name.eq_ignore_ascii_case("stats") {
+        Some(Box::new(tables::SysStats))
     } else if name.eq_ignore_ascii_case("types") {
         Some(Box::new(tables::SysTypes))
     } else if name.eq_ignore_ascii_case("indexes") {

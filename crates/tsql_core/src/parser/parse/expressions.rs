@@ -302,19 +302,13 @@ pub fn parse_primary(parser: &mut Parser) -> ParseResult<Expr> {
             Ok(Expr::Identifier(name))
         }
         Some(Token::LParen) => {
-            let mut open_parens = 0usize;
-            while matches!(parser.peek(), Some(Token::LParen)) {
-                let _ = parser.next();
-                open_parens += 1;
-            }
+            let _ = parser.next();
             let expr = if parser.at_keyword(Keyword::Select) {
                 Expr::Subquery(Box::new(crate::parser::parse::statements::query::parse_select(parser)?))
             } else {
                 parse_expr(parser)?
             };
-            for _ in 0..open_parens {
-                parser.expect_rparen()?;
-            }
+            parser.expect_rparen()?;
             Ok(expr)
         }
         Some(Token::Star) => {

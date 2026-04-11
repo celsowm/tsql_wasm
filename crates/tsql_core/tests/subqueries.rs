@@ -367,3 +367,31 @@ fn test_avg_is_numeric() {
         _ => panic!("Expected int, got {:?}", result.rows[0][0]),
     }
 }
+
+#[test]
+fn test_nested_correlated_subqueries() {
+    let mut engine = setup_engine();
+    // Level 0: departments d
+    // Level 1: employees e (correlated with d)
+    // Level 2: employees e2 (correlated with d)
+    let result = query(
+        &mut engine,
+        "SELECT d.name FROM departments d
+         WHERE EXISTS (
+             SELECT 1 FROM employees e
+             WHERE e.department_id = d.id
+             AND e.salary > (
+                 SELECT MIN(e2.salary) FROM employees e2
+                 WHERE e2.department_id = d.id
+             )
+         )
+         ORDER BY d.name",
+    );
+    // Engineering has Alice (100k) and Bob (90k). Min is 90k. Alice > 90k. So Engineering matches.
+    // Sales has Charlie (80k) and Diana (85k). Min is 80k. Diana > 80k. So Sales matches.
+    // Marketing has only Eve (70k). Min is 70k. Nothing > 70k. So Marketing does NOT match.
+    // HR has no employees. So HR does NOT match.
+    assert_eq!(result.rows.len(), 2);
+    assert_eq!(col_str(&result.rows[0], 0), "Engineering");
+    assert_eq!(col_str(&result.rows[1], 0), "Sales");
+}

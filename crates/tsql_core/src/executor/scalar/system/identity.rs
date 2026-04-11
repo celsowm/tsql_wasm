@@ -234,7 +234,7 @@ pub(crate) fn eval_has_perms_by_name(
         }
     } else if is_database_context {
         match perm.as_str() {
-            "CONNECT" | "ANY" => true,
+            "CONNECT" | "ANY" | "VIEW DATABASE STATE" | "VIEW DEFINITION" => true,
             _ => securable_name.eq_ignore_ascii_case("master"),
         }
     } else {

@@ -86,7 +86,7 @@ impl WindowContext {
 
 #[derive(Debug, Clone)]
 pub struct RowContext {
-    pub(crate) outer_row: Option<JoinedRow>,
+    pub(crate) outer_stack: Vec<JoinedRow>,
     pub(crate) apply_stack: Vec<JoinedRow>,
     pub(crate) current_group: Option<super::model::Group>,
     pub(crate) window_context: Option<WindowContext>,
@@ -410,7 +410,7 @@ impl<'a> ExecutionContext<'a> {
                 last_error: None,
             },
             row: RowContext {
-                outer_row: None,
+                outer_stack: vec![],
                 apply_stack: vec![],
                 current_group: None,
                 window_context: None,
@@ -481,7 +481,7 @@ impl<'a> ExecutionContext<'a> {
                 last_error: None,
             },
             row: RowContext {
-                outer_row: None,
+                outer_stack: vec![],
                 apply_stack: vec![],
                 current_group: None,
                 window_context: None,
@@ -528,12 +528,16 @@ impl<'a> ExecutionContext<'a> {
         &mut self.frame.trigger_depth
     }
     #[inline]
-    pub fn outer_row(&self) -> &Option<JoinedRow> {
-        &self.row.outer_row
+    pub fn outer_row(&self) -> Option<&JoinedRow> {
+        self.row.outer_stack.last()
     }
     #[inline]
-    pub fn outer_row_mut(&mut self) -> &mut Option<JoinedRow> {
-        &mut self.row.outer_row
+    pub fn outer_row_mut(&mut self) -> Option<&mut JoinedRow> {
+        self.row.outer_stack.last_mut()
+    }
+    #[inline]
+    pub fn outer_stack(&self) -> &[JoinedRow] {
+        &self.row.outer_stack
     }
     #[inline]
     pub fn current_group(&self) -> &Option<super::model::Group> {
@@ -613,7 +617,7 @@ impl<'a> ExecutionContext<'a> {
 
     pub fn with_outer_row(&mut self, row: JoinedRow) -> ExecutionContext<'_> {
         let mut sub = self.subquery();
-        sub.row.outer_row = Some(row);
+        sub.row.outer_stack.push(row);
         sub
     }
 

@@ -21,6 +21,8 @@ impl VirtualTable for SysIndexes {
                 ("is_primary_key", DataType::Bit, false),
                 ("is_unique_constraint", DataType::Bit, false),
                 ("is_hypothetical", DataType::Bit, false),
+                ("is_disabled", DataType::Bit, false),
+                ("has_filter", DataType::Bit, false),
             ],
         )
     }
@@ -42,6 +44,8 @@ impl VirtualTable for SysIndexes {
                     }),
                     Value::Bit(idx.is_unique),
                     Value::Int(1),
+                    Value::Bit(false),
+                    Value::Bit(false),
                     Value::Bit(false),
                     Value::Bit(false),
                     Value::Bit(false),

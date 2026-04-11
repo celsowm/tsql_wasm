@@ -56,6 +56,8 @@ impl VirtualTable for SysForeignKeys {
                 ("modify_date", DataType::DateTime, false),
                 ("is_ms_shipped", DataType::Bit, false),
                 ("is_disabled", DataType::Bit, false),
+                ("referenced_object_id", DataType::Int, false),
+                ("key_index_id", DataType::Int, false),
                 ("delete_referential_action", DataType::TinyInt, false),
                 (
                     "delete_referential_action_desc",
@@ -80,6 +82,11 @@ impl VirtualTable for SysForeignKeys {
             for fk in &table.foreign_keys {
                 object_id += 1;
                 let parent_id = table.id as i32;
+                let ref_schema = fk.referenced_table.schema_or_dbo();
+                let referenced_object_id = catalog
+                    .find_table(ref_schema, &fk.referenced_table.name)
+                    .map(|t| t.id as i32)
+                    .unwrap_or(0);
 
                 rows.push(StoredRow {
                     values: vec![
@@ -102,6 +109,8 @@ impl VirtualTable for SysForeignKeys {
                         ),
                         Value::Bit(false),
                         Value::Bit(false),
+                        Value::Int(referenced_object_id),
+                        Value::Int(0),
                         Value::TinyInt(0),
                         Value::VarChar("NO_ACTION".to_string()),
                         Value::TinyInt(0),
@@ -183,6 +192,7 @@ impl VirtualTable for SysDefaultConstraints {
                 ("parent_object_id", DataType::Int, false),
                 ("type", DataType::Char { len: 2 }, false),
                 ("type_desc", DataType::VarChar { max_len: 60 }, false),
+                ("create_date", DataType::DateTime, false),
                 ("parent_column_id", DataType::Int, false),
                 ("definition", DataType::VarChar { max_len: 8000 }, false),
             ],
@@ -191,7 +201,6 @@ impl VirtualTable for SysDefaultConstraints {
 
     fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
         let mut rows = Vec::new();
-        let mut object_id = 3_000_000i32;
 
         for table in catalog.get_tables() {
             for col in &table.columns {
@@ -204,17 +213,25 @@ impl VirtualTable for SysDefaultConstraints {
                     rows.push(StoredRow {
                         values: vec![
                             Value::VarChar(name),
-                            Value::Int(object_id),
+                            Value::Int({
+                                let table_bucket = (table.id % 100_000) as i32;
+                                3_000_000 + table_bucket * 1_000 + col.id as i32
+                            }),
                             Value::Int(table.schema_id as i32),
                             Value::Int(table.id as i32),
                             Value::Char("D ".to_string()),
                             Value::VarChar("DEFAULT_CONSTRAINT".to_string()),
+                            Value::DateTime(
+                                chrono::NaiveDate::from_ymd_opt(1970, 1, 1)
+                                    .unwrap()
+                                    .and_hms_opt(0, 0, 0)
+                                    .unwrap(),
+                            ),
                             Value::Int(col.id as i32),
                             Value::VarChar(format!("({})", format_expr(default_expr))),
                         ],
                         deleted: false,
                     });
-                    object_id += 1;
                 }
             }
         }

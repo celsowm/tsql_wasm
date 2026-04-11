@@ -64,7 +64,7 @@ pub(crate) fn resolve_identifier(
     }
 
     if matches.is_empty() {
-        if let Some(ref outer_row) = ctx.row.outer_row {
+        for outer_row in ctx.row.outer_stack.iter().rev() {
             for binding in outer_row.iter() {
                 if let Some(col_idx) = binding
                     .table
@@ -79,6 +79,9 @@ pub(crate) fn resolve_identifier(
                         .unwrap_or(Value::Null);
                     matches.push((0, value));
                 }
+            }
+            if !matches.is_empty() {
+                break;
             }
         }
     }
@@ -134,7 +137,7 @@ pub(crate) fn resolve_qualified_identifier(
         }
     }
 
-    if let Some(ref outer_row) = ctx.row.outer_row {
+    for outer_row in ctx.row.outer_stack.iter().rev() {
         if let Some(val) = search_row(outer_row) {
             return Ok(val);
         }

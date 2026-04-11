@@ -83,7 +83,6 @@ impl<'a> MutationExecutor<'a> {
                         self.storage.insert_row(table_id, row.clone())?;
                     }
                     trigger_ctx.session.temp_map.insert("INSERTED".to_string(), ins_name.clone());
-                    trigger_ctx.session.temp_map.insert("INSERTED".to_string(), ins_name.clone());
                     ins_physical = Some((table_id, ins_name));
                 }
 
@@ -105,7 +104,6 @@ impl<'a> MutationExecutor<'a> {
                     for row in deleted_rows {
                         self.storage.insert_row(table_id, row.clone())?;
                     }
-                    trigger_ctx.session.temp_map.insert("DELETED".to_string(), del_name.clone());
                     trigger_ctx.session.temp_map.insert("DELETED".to_string(), del_name.clone());
                     del_physical = Some((table_id, del_name));
                 }
