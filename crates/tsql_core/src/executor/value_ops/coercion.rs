@@ -3,6 +3,7 @@ use crate::types::{DataType, Value};
 use std::fmt::Debug;
 use uuid::Uuid;
 
+use super::formatting::parse_datetime_string;
 use super::super::value_helpers::{pad_binary_right, pad_right, rescale_raw};
 
 pub fn coerce_value_to_type(value: Value, ty: &DataType) -> Result<Value, DbError> {
@@ -360,23 +361,23 @@ fn coerce_string(v: &str, ty: &DataType, dateformat: &str) -> Result<Value, DbEr
         DataType::TinyInt => v
             .parse::<u8>()
             .map(Value::TinyInt)
-            .map_err(|_| DbError::Execution(format!("cannot convert '{}' to TINYINT", v))),
+            .map_err(|_| DbError::conversion_failed("varchar", v, "tinyint")),
         DataType::SmallInt => v
             .parse::<i16>()
             .map(Value::SmallInt)
-            .map_err(|_| DbError::Execution(format!("cannot convert '{}' to SMALLINT", v))),
+            .map_err(|_| DbError::conversion_failed("varchar", v, "smallint")),
         DataType::Int => v
             .parse::<i32>()
             .map(Value::Int)
-            .map_err(|_| DbError::Execution(format!("cannot convert '{}' to INT", v))),
+            .map_err(|_| DbError::conversion_failed("varchar", v, "int")),
         DataType::BigInt => v
             .parse::<i64>()
             .map(Value::BigInt)
-            .map_err(|_| DbError::Execution(format!("cannot convert '{}' to BIGINT", v))),
+            .map_err(|_| DbError::conversion_failed("varchar", v, "bigint")),
         DataType::Float => v
             .parse::<f64>()
             .map(|f| Value::Float(f.to_bits()))
-            .map_err(|_| DbError::Execution(format!("cannot convert '{}' to FLOAT", v))),
+            .map_err(|_| DbError::conversion_failed("varchar", v, "float")),
         DataType::Decimal { scale, .. } => parse_decimal_string(v, *scale),
         DataType::Money => parse_money_string(v),
         DataType::SmallMoney => {
@@ -536,52 +537,6 @@ fn parse_date_string(v: &str, dateformat: &str) -> Result<chrono::NaiveDate, ()>
     chrono::NaiveDate::parse_from_str(v, "%d/%m/%Y").map_err(|_| ())
 }
 
-fn parse_datetime_string(v: &str, dateformat: &str) -> Result<chrono::NaiveDateTime, ()> {
-    chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%d %H:%M:%S")
-        .or_else(|_| chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%dT%H:%M:%S"))
-        .or_else(|_| chrono::NaiveDateTime::parse_from_str(v, "%m/%d/%Y %H:%M:%S"))
-        .or_else(|_| chrono::NaiveDateTime::parse_from_str(v, "%d/%m/%Y %H:%M:%S"))
-        .or_else(|_| parse_date_string(v, dateformat).map(|d| d.and_hms_opt(0, 0, 0).unwrap()))
-        .map_err(|_| ())
-}
-
-#[allow(dead_code)]
-fn coerce_date_time_string(v: &str, ty: &DataType) -> Result<Value, DbError> {
-    match ty {
-        DataType::Char { .. } | DataType::VarChar { .. } => Ok(Value::VarChar(v.to_string())),
-        DataType::NChar { .. } | DataType::NVarChar { .. } => Ok(Value::NVarChar(v.to_string())),
-        DataType::Date => {
-            let parsed = chrono::NaiveDate::parse_from_str(v, "%Y-%m-%d")
-                .or_else(|_| chrono::NaiveDate::parse_from_str(v, "%m/%d/%Y"));
-            match parsed {
-                Ok(d) => Ok(Value::Date(d)),
-                Err(_) => Err(DbError::Execution(format!("invalid date: {}", v))),
-            }
-        }
-        DataType::Time => {
-            let parsed = chrono::NaiveTime::parse_from_str(v, "%H:%M:%S")
-                .or_else(|_| chrono::NaiveTime::parse_from_str(v, "%H:%M:%S%.f"));
-            match parsed {
-                Ok(t) => Ok(Value::Time(t)),
-                Err(_) => Err(DbError::Execution(format!("invalid time: {}", v))),
-            }
-        }
-        DataType::DateTime | DataType::DateTime2 => {
-            let parsed = chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%d %H:%M:%S")
-                .or_else(|_| chrono::NaiveDateTime::parse_from_str(v, "%Y-%m-%dT%H:%M:%S"));
-            match parsed {
-                Ok(dt) => Ok(Value::DateTime(dt)),
-                Err(_) => Err(DbError::Execution(format!("invalid datetime: {}", v))),
-            }
-        }
-        DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::VarChar(v.to_string())))),
-        _ => Err(DbError::Execution(format!(
-            "cannot convert datetime-like value to {:?}",
-            ty
-        ))),
-    }
-}
-
 fn coerce_binary(data: &[u8], ty: &DataType) -> Result<Value, DbError> {
     match ty {
         DataType::Bit
@@ -638,22 +593,6 @@ fn parse_binary_to_i64(data: &[u8]) -> Result<i64, DbError> {
     }
 
     Ok(n as i64)
-}
-
-#[allow(dead_code)]
-fn coerce_uuid(v: &str, ty: &DataType) -> Result<Value, DbError> {
-    let uuid = Uuid::parse_str(v)
-        .map_err(|_| DbError::Execution(format!("invalid UNIQUEIDENTIFIER: {}", v)))?;
-    match ty {
-        DataType::UniqueIdentifier => Ok(Value::UniqueIdentifier(uuid)),
-        DataType::Char { .. } | DataType::VarChar { .. } => Ok(Value::VarChar(v.to_string())),
-        DataType::NChar { .. } | DataType::NVarChar { .. } => Ok(Value::NVarChar(v.to_string())),
-        DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::UniqueIdentifier(uuid)))),
-        _ => Err(DbError::Execution(format!(
-            "cannot convert UNIQUEIDENTIFIER to {:?}",
-            ty
-        ))),
-    }
 }
 
 fn coerce_uuid_value(v: Uuid, ty: &DataType) -> Result<Value, DbError> {

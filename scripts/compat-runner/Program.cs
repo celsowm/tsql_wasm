@@ -283,6 +283,13 @@ var queries = new string[]
     "DECLARE @x INT = 10; IF @x > 5 SELECT 'Greater' as r ELSE SELECT 'Smaller' as r",
 
     "SELECT DB_NAME() as current_db",
+
+    // -- Error cases for parity testing --
+    "SELECT * FROM NonExistentTable",
+    "SELECT CustomerId, FakeColumn FROM dbo.Customers",
+    "SELECT 1/0",
+    "SELECT CAST('not_a_number' AS INT)",
+    "SELECT FROM WHERE;",
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -320,9 +327,14 @@ static string ExecuteAzure(string connStr, string sql)
         rows.Sort(StringComparer.Ordinal);
         return string.Join("\n", rows);
     }
+    catch (SqlException ex)
+    {
+        // Format: ERROR:Number:Class:State:Message
+        return $"ERROR:{ex.Number}:{ex.Class}:{ex.State}:{ex.Message}";
+    }
     catch (Exception ex)
     {
-        return $"ERROR: {ex.Message}";
+        return $"ERROR:0:0:0:{ex.Message}";
     }
 }
 
@@ -342,14 +354,17 @@ static string ExecuteLocal(string bin, string sql)
         var stderr = proc.StandardError.ReadToEnd().Trim();
         proc.WaitForExit(10_000);
 
-        if (proc.ExitCode != 0 || stderr.StartsWith("ERROR"))
-            return $"ERROR: {stderr}";
+        if (stderr.StartsWith("ERROR:"))
+            return stderr;
+
+        if (proc.ExitCode != 0)
+            return $"ERROR:0:0:0:{stderr}";
 
         return stdout;
     }
     catch (Exception ex)
     {
-        return $"ERROR: {ex.Message}";
+        return $"ERROR:0:0:0:{ex.Message}";
     }
 }
 
@@ -401,13 +416,7 @@ foreach (var sql in queries)
     var azResult = ExecuteAzure(azureConnStr, sql);
     var locResult = ExecuteLocal(compatBin, sql);
 
-    if (azResult.StartsWith("ERROR:") && locResult.StartsWith("ERROR:"))
-    {
-        Console.ForegroundColor = ConsoleColor.Yellow;
-        Console.WriteLine(" [SKIP]");
-        skipped++;
-    }
-    else if (azResult == locResult)
+    if (azResult == locResult)
     {
         Console.ForegroundColor = ConsoleColor.Green;
         Console.WriteLine(" [PASS]");
@@ -421,7 +430,7 @@ foreach (var sql in queries)
         failures.Add((sql, azResult, locResult));
     }
     Console.ResetColor();
-}
+    }
 
 // ── Summary ─────────────────────────────────────────────────────────
 Console.ForegroundColor = ConsoleColor.Cyan;

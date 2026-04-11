@@ -10,25 +10,25 @@ pub enum ErrorClass {
 
 #[derive(Debug, Clone, Error)]
 pub enum DbError {
-    #[error("parse error: {0}")]
+    #[error("Incorrect syntax near '{0}'.")]
     Parse(String),
 
-    #[error("semantic error: {0}")]
+    #[error("{0}")]
     Semantic(String),
 
-    #[error("execution error: {0}")]
+    #[error("{0}")]
     Execution(String),
 
-    #[error("storage error: {0}")]
+    #[error("{0}")]
     Storage(String),
 
-    #[error("deadlock: {0}")]
+    #[error("Transaction (Process ID 0) was deadlocked on resources with another process and has been chosen as the deadlock victim. Rerun the transaction.")]
     Deadlock(String),
 
     /// A custom error with an explicit SQL Server–style class and number.
     /// Allows callers to raise domain-specific errors (e.g. timeout, permission)
     /// without modifying the DbError enum itself.
-    #[error("error {class}/{number}: {message}")]
+    #[error("{message}")]
     Custom {
         class: u8,
         number: i32,
@@ -36,71 +36,81 @@ pub enum DbError {
     },
 
     // -- Strongly-typed semantic errors --
-    #[error("schema '{schema}' not found")]
+    #[error("Invalid schema name '{schema}'.")]
     SchemaNotFound { schema: String },
 
-    #[error("table '{schema}.{table}' not found")]
+    #[error("Invalid object name '{table}'.")]
     TableNotFound { schema: String, table: String },
 
-    #[error("column '{column}' not found")]
+    #[error("Invalid column name '{column}'.")]
     ColumnNotFound { column: String },
 
-    #[error("column '{column}' not found in table '{table}'")]
+    #[error("Invalid column name '{column}'.")]
     ColumnNotFoundQualified { table: String, column: String },
 
-    #[error("type mismatch: expected {expected}, found {found}")]
+    #[error("Type mismatch: expected {expected}, found {found}")]
     TypeMismatch { expected: String, found: String },
 
-    #[error("index '{index}' not found on table '{table}'")]
+    #[error("Index '{index}' not found on table '{table}'.")]
     IndexNotFound { table: String, index: String },
 
-    #[error("primary key not found on table '{table}'")]
+    #[error("Primary key not found on table '{table}'.")]
     PrimaryKeyNotFound { table: String },
 
-    #[error("constraint '{constraint}' not found on table '{table}'")]
+    #[error("Constraint '{constraint}' not found on table '{table}'.")]
     ConstraintNotFound { table: String, constraint: String },
 
-    #[error("database '{database}' not found")]
+    #[error("Database '{database}' does not exist. Make sure that the name is entered correctly and try again.")]
     DatabaseNotFound { database: String },
 
-    #[error("object '{object}' not found")]
+    #[error("Invalid object name '{object}'.")]
     ObjectNotFound { object: String },
 
-    #[error("column '{column}' already exists in table")]
+    #[error("Column names in each table must be unique. Column name '{column}' in table is specified more than once.")]
     DuplicateColumn { column: String },
 
-    #[error("table '{table}' already exists in schema '{schema}'")]
+    #[error("There is already an object named '{table}' in the database.")]
     DuplicateTable { schema: String, table: String },
 
-    #[error("invalid identifier: '{identifier}'")]
+    #[error("The identifier '{identifier}' is too long. Maximum length is 128.")]
     InvalidIdentifier { identifier: String },
 
-    #[error("trigger '{trigger}' not found in schema '{schema}'")]
+    #[error("Invalid object name '{schema}.{trigger}'.")]
     TriggerNotFound { schema: String, trigger: String },
 
-    #[error("trigger '{trigger}' already exists in schema '{schema}'")]
+    #[error("There is already an object named '{trigger}' in the database.")]
     DuplicateTrigger { schema: String, trigger: String },
 
-    #[error("view '{schema}.{view}' not found")]
+    #[error("Invalid object name '{schema}.{view}'.")]
     ViewNotFound { schema: String, view: String },
 
-    #[error("view '{view}' already exists in schema '{schema}'")]
+    #[error("There is already an object named '{view}' in the database.")]
     DuplicateView { schema: String, view: String },
 
-    #[error("type '{schema}.{type_name}' not found")]
+    #[error("Type '{schema}.{type_name}' not found.")]
     TypeNotFound { schema: String, type_name: String },
 
-    #[error("type '{type_name}' already exists in schema '{schema}'")]
+    #[error("There is already an object named '{type_name}' in the database.")]
     DuplicateType { schema: String, type_name: String },
 
-    #[error("schema '{schema}' already exists")]
+    #[error("There is already a schema named '{schema}' in the database.")]
     DuplicateSchema { schema: String },
 
-    #[error("cursor '{cursor}' not declared")]
+    #[error("The cursor '{cursor}' does not exist.")]
     CursorNotDeclared { cursor: String },
 
-    #[error("cursor '{cursor}' has no query")]
+    #[error("The cursor '{cursor}' has no query.")]
     CursorHasNoQuery { cursor: String },
+
+    #[error("Divide by zero error encountered.")]
+    DivideByZero,
+
+    #[error("Conversion failed when converting the {from_type} value '{value}' to data type {to_type}.")]
+    ConversionFailed {
+        from_type: String,
+        value: String,
+        to_type: String,
+    },
 }
 
 impl DbError {
@@ -130,45 +140,52 @@ impl DbError {
             | DbError::DuplicateSchema { .. }
             | DbError::CursorNotDeclared { .. }
             | DbError::CursorHasNoQuery { .. } => ErrorClass::Semantic,
-            DbError::Execution(_) | DbError::Deadlock(_) | DbError::Custom { .. } => {
-                ErrorClass::Execution
-            }
+            DbError::Execution(_)
+            | DbError::Deadlock(_)
+            | DbError::Custom { .. }
+            | DbError::DivideByZero
+            | DbError::ConversionFailed { .. } => ErrorClass::Execution,
             DbError::Storage(_) => ErrorClass::Storage,
+        }
+    }
+
+    pub fn class_severity(&self) -> u8 {
+        match self.class() {
+            ErrorClass::Parse => 15,
+            ErrorClass::Semantic => 16,
+            ErrorClass::Execution => 16,
+            ErrorClass::Storage => 17,
         }
     }
 
     pub fn number(&self) -> i32 {
         match self {
             DbError::Parse(_) => 102,
-            DbError::Semantic(_)
-            | DbError::SchemaNotFound { .. }
+            DbError::SchemaNotFound { .. }
             | DbError::TableNotFound { .. }
-            | DbError::ColumnNotFound { .. }
-            | DbError::ColumnNotFoundQualified { .. }
-            | DbError::TypeMismatch { .. }
-            | DbError::IndexNotFound { .. }
-            | DbError::PrimaryKeyNotFound { .. }
-            | DbError::ConstraintNotFound { .. }
-            | DbError::DatabaseNotFound { .. }
             | DbError::ObjectNotFound { .. }
-            | DbError::DuplicateColumn { .. }
-            | DbError::DuplicateTable { .. }
-            | DbError::InvalidIdentifier { .. }
             | DbError::TriggerNotFound { .. }
+            | DbError::ViewNotFound { .. } => 208, // Invalid object name
+            DbError::ColumnNotFound { .. } | DbError::ColumnNotFoundQualified { .. } => 207, // Invalid column name
+            DbError::DatabaseNotFound { .. } => 911,
+            DbError::DuplicateTable { .. }
             | DbError::DuplicateTrigger { .. }
-            | DbError::ViewNotFound { .. }
             | DbError::DuplicateView { .. }
-            | DbError::TypeNotFound { .. }
             | DbError::DuplicateType { .. }
-            | DbError::DuplicateSchema { .. }
-            | DbError::CursorNotDeclared { .. }
-            | DbError::CursorHasNoQuery { .. } => 207,
+            | DbError::DuplicateSchema { .. } => 2714, // There is already an object named...
+            DbError::DuplicateColumn { .. } => 2705,
+            DbError::Deadlock(_) => 1205,
+            DbError::CursorNotDeclared { .. } => 16916,
+            DbError::DivideByZero => 8134,
+            DbError::ConversionFailed { .. } => 245,
+            DbError::Semantic(_) => 50000,
             DbError::Execution(_) => 50000,
             DbError::Storage(_) => 50001,
-            DbError::Deadlock(_) => 1205,
             DbError::Custom { number, .. } => *number,
+            _ => 50000,
         }
     }
+
 
     pub fn code(&self) -> &'static str {
         match self {
@@ -196,6 +213,8 @@ impl DbError {
             DbError::DuplicateSchema { .. } => "TSQL_DUPLICATE_SCHEMA",
             DbError::CursorNotDeclared { .. } => "TSQL_CURSOR_NOT_DECLARED",
             DbError::CursorHasNoQuery { .. } => "TSQL_CURSOR_HAS_NO_QUERY",
+            DbError::DivideByZero => "TSQL_DIVIDE_BY_ZERO",
+            DbError::ConversionFailed { .. } => "TSQL_CONVERSION_FAILED",
             DbError::Execution(_) => "TSQL_EXECUTION_ERROR",
             DbError::Storage(_) => "TSQL_STORAGE_ERROR",
             DbError::Deadlock(_) => "TSQL_DEADLOCK_ERROR",
@@ -345,6 +364,22 @@ impl DbError {
     pub fn cursor_has_no_query(cursor: impl Into<String>) -> Self {
         DbError::CursorHasNoQuery {
             cursor: cursor.into(),
+        }
+    }
+
+    pub fn divide_by_zero() -> Self {
+        DbError::DivideByZero
+    }
+
+    pub fn conversion_failed(
+        from_type: impl Into<String>,
+        value: impl Into<String>,
+        to_type: impl Into<String>,
+    ) -> Self {
+        DbError::ConversionFailed {
+            from_type: from_type.into(),
+            value: value.into(),
+            to_type: to_type.into(),
         }
     }
 }

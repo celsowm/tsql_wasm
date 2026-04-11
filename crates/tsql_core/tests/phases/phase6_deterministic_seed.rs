@@ -1,8 +1,7 @@
 use tsql_core::types::Value;
 use tsql_core::{parse_sql, Database, Engine};
 
-#[allow(dead_code)]
-fn exec(engine: &mut Engine, sql: &str) {
+pub fn exec(engine: &mut Engine, sql: &str) {
     engine.execute(parse_sql(sql).expect("parse")).expect("exec");
 }
 

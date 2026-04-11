@@ -9,8 +9,6 @@ use crate::executor::window::has_window_function;
 pub(crate) struct PipelineState {
     pub(crate) has_aggregate: bool,
     pub(crate) has_window: bool,
-    #[allow(dead_code)]
-    pub(crate) projection_columns: Vec<String>,
     pub(crate) needs_pre_sort: bool,
 }
 
@@ -40,7 +38,6 @@ impl PipelineState {
         Self {
             has_aggregate,
             has_window,
-            projection_columns,
             needs_pre_sort,
         }
     }

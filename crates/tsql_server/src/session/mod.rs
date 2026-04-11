@@ -6,7 +6,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
 use tsql_core::types::{DataType, Value};
-use tsql_core::{Database, SessionId, StatementExecutor};
+use tsql_core::{error::DbError, Database, SessionId, StatementExecutor};
 
 use super::pool::{CheckoutError, SessionPool};
 mod compat;
@@ -224,7 +224,8 @@ impl TdsSession {
                     self.connection_id,
                     login.username
                 );
-                let err_resp = build_error_response("Login failed for user.");
+                let err = DbError::Execution("Login failed for user.".to_string());
+                let err_resp = build_error_response(&err);
                 packet::write_packet(&mut writer, TABULAR_RESULT, &err_resp.data)
                     .await
                     .map_err(|e| e.to_string())?;
@@ -252,7 +253,8 @@ impl TdsSession {
         let session_id = match self.session_pool.checkout(&self.db) {
             Ok(sid) => sid,
             Err(CheckoutError::Exhausted) => {
-                let err_resp = build_error_response("session pool exhausted");
+                let err = DbError::Execution("session pool exhausted".to_string());
+                let err_resp = build_error_response(&err);
                 packet::write_packet(&mut writer, TABULAR_RESULT, &err_resp.data)
                     .await
                     .map_err(|e| e.to_string())?;
@@ -321,16 +323,18 @@ impl TdsSession {
                     log_packet(self.connection_id, "packet", &header, &data);
                     match header.packet_type {
                         SQL_BATCH => {
-                            if let Err(e) = self.handle_sql_batch(&data, &mut writer).await {
-                                log::error!("[conn={}] SQL batch error: {}", self.connection_id, e);
-                                let err_resp = build_error_response(&e);
-                                let _ = packet::write_packet(
-                                    &mut writer,
-                                    TABULAR_RESULT,
-                                    &err_resp.data,
-                                )
-                                .await;
-                                // Don't break — keep connection alive for subsequent batches
+                            match self.handle_sql_batch(&data, &mut writer).await {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    log::error!("[conn={}] SQL batch error: {}", self.connection_id, e);
+                                    let err_resp = build_error_response(&e);
+                                    let _ = packet::write_packet(
+                                        &mut writer,
+                                        TABULAR_RESULT,
+                                        &err_resp.data,
+                                    )
+                                    .await;
+                                }
                             }
                         }
                         RPC => match parse_rpc(&data) {
@@ -341,17 +345,18 @@ impl TdsSession {
                                 } else {
                                     format!("{}{}", preamble, rpc.sql)
                                 };
-                                if let Err(e) = self.execute_sql(full_sql.trim(), &mut writer).await
-                                {
-                                    log::error!("RPC SQL error: {}", e);
-                                    let err_resp = build_error_response(&e);
-                                    let _ = packet::write_packet(
-                                        &mut writer,
-                                        TABULAR_RESULT,
-                                        &err_resp.data,
-                                    )
-                                    .await;
-                                    // Don't break — keep connection alive
+                                match self.execute_sql(full_sql.trim(), &mut writer).await {
+                                    Ok(_) => {}
+                                    Err(e) => {
+                                        log::error!("RPC SQL error: {}", e);
+                                        let err_resp = build_error_response(&e);
+                                        let _ = packet::write_packet(
+                                            &mut writer,
+                                            TABULAR_RESULT,
+                                            &err_resp.data,
+                                        )
+                                        .await;
+                                    }
                                 }
                             }
                             Ok(None) => {
@@ -370,8 +375,8 @@ impl TdsSession {
                                         .await;
                             }
                             Err(e) => {
-                                let err_resp =
-                                    build_error_response(&format!("RPC parse error: {}", e));
+                                let err = tsql_core::error::DbError::Parse(e.to_string());
+                                let err_resp = build_error_response(&err);
                                 let _ = packet::write_packet(
                                     &mut writer,
                                     TABULAR_RESULT,
@@ -419,14 +424,15 @@ impl TdsSession {
         &mut self,
         data: &[u8],
         writer: &mut W,
-    ) -> Result<bool, String> {
+    ) -> Result<bool, tsql_core::error::DbError> {
         let sql = match parse_sql_batch(data) {
             Ok(s) => s,
             Err(e) => {
-                let err_resp = build_error_response(&format!("Failed to parse SQL batch: {}", e));
+                let err = tsql_core::error::DbError::Parse(e.to_string());
+                let err_resp = build_error_response(&err);
                 packet::write_packet(writer, TABULAR_RESULT, &err_resp.data)
                     .await
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| tsql_core::error::DbError::Execution(e.to_string()))?;
                 return Ok(true);
             }
         };
@@ -445,19 +451,19 @@ impl TdsSession {
         &mut self,
         sql: &str,
         writer: &mut W,
-    ) -> Result<bool, String> {
+    ) -> Result<bool, tsql_core::error::DbError> {
         if sql.is_empty() {
             let mut b = PacketBuilder::new();
             tokens::write_done(&mut b, tokens::DONE_FINAL, 1, 0);
             packet::write_packet(writer, TABULAR_RESULT, b.as_bytes())
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| tsql_core::error::DbError::Execution(e.to_string()))?;
             return Ok(true);
         }
 
         let session_id = self
             .session_id
-            .ok_or_else(|| "session not initialized".to_string())?;
+            .ok_or_else(|| tsql_core::error::DbError::Execution("session not initialized".to_string()))?;
 
         if is_ssms_contained_auth_probe(sql) {
             if let Some(db_name) = extract_leading_use_database(sql) {
@@ -468,7 +474,7 @@ impl TdsSession {
             let data = build_single_int_result("", 0);
             packet::write_packet(writer, TABULAR_RESULT, &data)
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| tsql_core::error::DbError::Execution(e.to_string()))?;
             return Ok(true);
         }
 
@@ -611,7 +617,7 @@ impl TdsSession {
 
                 packet::write_packet(writer, TABULAR_RESULT, b.as_bytes())
                     .await
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| tsql_core::error::DbError::Execution(e.to_string()))?;
             }
             Err(e) => {
                 log::warn!(
@@ -620,10 +626,10 @@ impl TdsSession {
                     format_sql_for_log(sql),
                     e
                 );
-                let err_resp = build_error_response(&format!("{}", e));
+                let err_resp = build_error_response(&e);
                 packet::write_packet(writer, TABULAR_RESULT, &err_resp.data)
                     .await
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| tsql_core::error::DbError::Execution(e.to_string()))?;
             }
         }
 
@@ -635,7 +641,7 @@ impl TdsSession {
         session_id: SessionId,
         db_name: &str,
         writer: &mut W,
-    ) -> Result<(), String> {
+    ) -> Result<(), tsql_core::error::DbError> {
         let old_db = self.database.clone();
         self.database = db_name.to_string();
         if let Err(e) = self
@@ -653,7 +659,7 @@ impl TdsSession {
         let data = build_use_database_response(&self.database, &old_db);
         packet::write_packet(writer, TABULAR_RESULT, &data)
             .await
-            .map_err(|e| e.to_string())
+            .map_err(|e| tsql_core::error::DbError::Execution(e.to_string()))
     }
 }
 

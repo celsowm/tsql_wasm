@@ -20,7 +20,7 @@ pub(crate) fn execute_flat_select(
     ctx: &mut ExecutionContext,
 ) -> Result<QueryResult, DbError> {
     let columns = expand_projection_columns(&projection, rows.first());
-    let projected_rows = project_flat_rows(catalog, storage, clock, &projection, &rows, ctx);
+    let projected_rows = project_flat_rows(catalog, storage, clock, &projection, &rows, ctx)?;
 
     let expr_types = expand_projection_types(&projection, rows.first());
     let row_types = derive_types_from_rows(&projected_rows, columns.len());
@@ -51,7 +51,7 @@ pub(crate) fn project_flat_rows(
     projection: &[SelectItem],
     rows: &[JoinedRow],
     ctx: &mut ExecutionContext,
-) -> Vec<Vec<Value>> {
+) -> Result<Vec<Vec<Value>>, DbError> {
     rows.iter()
         .map(|row| {
             let mut out = Vec::new();
@@ -70,30 +70,12 @@ pub(crate) fn project_flat_rows(
                         );
                     }
                     expr => {
-                        let val = eval_expr(expr, row, ctx, catalog, storage, clock);
-                        match val {
-                            Ok(v) => out.push(v),
-                            Err(_) => {
-                                // If qualified fails, try unqualified if it's a simple identifier
-                                if let Expr::QualifiedIdentifier(parts) = expr {
-                                    if parts.len() == 2 {
-                                        let fallback = Expr::Identifier(parts[1].clone());
-                                        out.push(
-                                            eval_expr(&fallback, row, ctx, catalog, storage, clock)
-                                                .unwrap_or(Value::Null),
-                                        );
-                                    } else {
-                                        out.push(Value::Null);
-                                    }
-                                } else {
-                                    out.push(Value::Null);
-                                }
-                            }
-                        }
+                        let val = eval_expr(expr, row, ctx, catalog, storage, clock)?;
+                        out.push(val);
                     }
                 }
             }
-            out
+            Ok(out)
         })
         .collect()
 }

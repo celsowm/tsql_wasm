@@ -1,5 +1,4 @@
 pub(crate) mod aggregates;
-pub(crate) mod binder;
 pub mod clock;
 pub mod conflict;
 pub mod context;

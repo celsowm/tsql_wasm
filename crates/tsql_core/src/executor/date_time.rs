@@ -47,21 +47,6 @@ pub(crate) fn date_to_days(y: i32, m: i32, d: i32) -> i64 {
     era * 146097 + doe - 719468
 }
 
-#[allow(dead_code)]
-pub(crate) fn days_to_date(days: i64) -> (i32, i32, i32) {
-    let z = days + 719468;
-    let era = z.div_euclid(146097);
-    let doe = z.rem_euclid(146097);
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = (doy - (153 * mp + 2) / 5 + 1) as i32;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as i32;
-    let y = if m <= 2 { y + 1 } else { y } as i32;
-    (y, m, d)
-}
-
 pub(crate) fn day_of_week_from_date(y: i32, m: i32, d: i32) -> i32 {
     let days = date_to_days(y, m, d);
     (((days + 719471) % 7 + 7) % 7) as i32

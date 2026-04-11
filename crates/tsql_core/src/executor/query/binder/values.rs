@@ -101,9 +101,6 @@ pub(super) fn bind_plain_table(
         match &mut tref.factor {
             TableFactor::Named(o) => {
                 o.name = mapped;
-                if o.schema.is_none() {
-                    o.schema = Some("dbo".to_string());
-                }
             }
             TableFactor::Derived(_) => {}
             TableFactor::Values { .. } => {}

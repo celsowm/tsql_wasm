@@ -179,104 +179,11 @@ fn parse_date_string(v: &str, dateformat: &str) -> Result<NaiveDate, ()> {
         .map_err(|_| ())
 }
 
-fn parse_datetime_string(v: &str, dateformat: &str) -> Result<NaiveDateTime, ()> {
+pub(crate) fn parse_datetime_string(v: &str, dateformat: &str) -> Result<NaiveDateTime, ()> {
     NaiveDateTime::parse_from_str(v, "%Y-%m-%d %H:%M:%S")
         .or_else(|_| NaiveDateTime::parse_from_str(v, "%Y-%m-%dT%H:%M:%S"))
         .or_else(|_| NaiveDateTime::parse_from_str(v, "%m/%d/%Y %H:%M:%S"))
         .or_else(|_| NaiveDateTime::parse_from_str(v, "%d/%m/%Y %H:%M:%S"))
         .or_else(|_| parse_date_string(v, dateformat).map(|d| d.and_hms_opt(0, 0, 0).unwrap()))
         .map_err(|_| ())
-}
-
-#[allow(dead_code)]
-pub fn normalize_datetime_string(s: &str) -> String {
-    let date_time: Vec<&str> = s.splitn(2, |c: char| c.is_ascii_whitespace()).collect();
-    let date_part = date_time[0];
-    let time_part = date_time.get(1).unwrap_or(&"");
-    let date_parts: Vec<&str> = date_part.split(['-', '/']).collect();
-    if date_parts.len() >= 3 {
-        let y = date_parts[0].trim();
-        let m = date_parts[1].trim();
-        let d = date_parts[2].trim();
-        if time_part.is_empty() {
-            return format!("{}-{}-{}", y, m, d);
-        }
-        return format!("{}-{}-{} {}", y, m, d, time_part.trim());
-    }
-    s.to_string()
-}
-
-#[allow(dead_code)]
-fn parse_dt_parts(dt: &str) -> (i32, i32, i32, i32, i32, i32) {
-    let parts: Vec<&str> = dt.split(['-', '/', ':']).collect();
-    let y = parts
-        .first()
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(0);
-    let mo = parts
-        .get(1)
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(1);
-    let d_and_t = parts.get(2).unwrap_or(&"1");
-    let (d, rest) = if let Some(pos) = d_and_t.find(|c: char| c.is_ascii_whitespace()) {
-        (&d_and_t[..pos], d_and_t[pos..].trim())
-    } else {
-        (*d_and_t, "")
-    };
-    let d = d.parse().unwrap_or(1);
-    let (h, mi, s) = if !rest.is_empty() {
-        let tparts: Vec<&str> = rest.split(':').collect();
-        (
-            tparts
-                .first()
-                .and_then(|s| s.trim().parse().ok())
-                .unwrap_or(0),
-            tparts
-                .get(1)
-                .and_then(|s| s.trim().parse().ok())
-                .unwrap_or(0),
-            tparts
-                .get(2)
-                .and_then(|s| s.trim().parse::<f64>().ok().map(|f| f as i32))
-                .unwrap_or(0),
-        )
-    } else {
-        (0, 0, 0)
-    };
-    (y, mo, d, h, mi, s)
-}
-
-#[allow(dead_code)]
-fn month_abbr(m: i32) -> &'static str {
-    match m {
-        1 => "Jan",
-        2 => "Feb",
-        3 => "Mar",
-        4 => "Apr",
-        5 => "May",
-        6 => "Jun",
-        7 => "Jul",
-        8 => "Aug",
-        9 => "Sep",
-        10 => "Oct",
-        11 => "Nov",
-        12 => "Dec",
-        _ => "???",
-    }
-}
-
-#[allow(dead_code)]
-fn pad2(n: i32) -> String {
-    format!("{:0>2}", n)
-}
-
-#[allow(dead_code)]
-fn to_12hour(h: i32) -> (i32, &'static str) {
-    let ampm = if h >= 12 { "PM" } else { "AM" };
-    let h12 = match h {
-        0 => 12,
-        n if n > 12 => n - 12,
-        _ => h,
-    };
-    (h12, ampm)
 }

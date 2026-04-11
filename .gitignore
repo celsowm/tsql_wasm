@@ -6,6 +6,8 @@ target/
 # .NET build artifacts
 **/bin/
 **/obj/
+# Allow bin directories in Rust crates that contain source code
+!crates/**/bin/
 
 # TLS certs (generated at runtime)
 *.pem

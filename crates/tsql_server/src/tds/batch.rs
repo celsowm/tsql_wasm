@@ -1,6 +1,7 @@
 use super::packet::{PacketBuilder, PacketReader};
 use super::type_mapping::infer_column_types;
 use std::io;
+use tsql_core::error::DbError;
 
 pub fn parse_sql_batch(data: &[u8]) -> io::Result<String> {
     let mut reader = PacketReader::new(data);
@@ -67,15 +68,15 @@ pub fn build_batch_response(
     BatchResult { data: b.into_vec() }
 }
 
-pub fn build_error_response(message: &str) -> BatchResult {
+pub fn build_error_response(err: &DbError) -> BatchResult {
     let mut b = PacketBuilder::with_capacity(512);
 
     super::tokens::write_error(
         &mut b,
-        10000, // generic error number
-        1,     // state
-        15,    // class (severity)
-        message,
+        err.number(),
+        1,                       // state
+        err.class_severity(),    // class (severity)
+        &err.to_string(),        // message
         "tsql_server",
         "",
         0,

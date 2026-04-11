@@ -1,15 +1,15 @@
 use std::collections::HashMap;
-use crate::error::DbError;
-use crate::executor::model::{JoinedRow, ContextTable, BoundTable};
-use crate::executor::context::ExecutionContext;
+
+use crate::ast::{Expr, JoinType};
 use crate::catalog::Catalog;
-use crate::storage::Storage;
+use crate::error::DbError;
 use crate::executor::clock::Clock;
-use crate::ast::{Expr, SelectItem, JoinType};
-use crate::executor::evaluator::{eval_expr, eval_predicate};
-use crate::types::Value;
-use crate::executor::projection::{expand_wildcard_values, expand_qualified_wildcard_values};
+use crate::executor::context::ExecutionContext;
 use crate::executor::joins::eval_key;
+use crate::executor::model::{BoundTable, ContextTable, JoinedRow};
+use crate::executor::evaluator::eval_predicate;
+use crate::storage::Storage;
+use crate::types::Value;
 
 pub trait RowIterator {
     fn next_row(
@@ -309,47 +309,4 @@ impl RowIterator for TableScanIterator {
         self.next_index = 0;
         Ok(())
     }
-}
-
-pub fn project_flat_row(
-    catalog: &dyn Catalog,
-    storage: &dyn Storage,
-    clock: &dyn Clock,
-    projection: &[SelectItem],
-    row: &JoinedRow,
-    ctx: &mut ExecutionContext,
-) -> Vec<Value> {
-    let mut out = Vec::new();
-    for item in projection {
-        match &item.expr {
-            Expr::Wildcard => out.extend(expand_wildcard_values(row)),
-            Expr::QualifiedWildcard(parts) => {
-                if let Some(table_name) = parts.last() {
-                    out.extend(expand_qualified_wildcard_values(row, table_name));
-                }
-            }
-            expr => {
-                let val = eval_expr(expr, row, ctx, catalog, storage, clock);
-                match val {
-                    Ok(v) => out.push(v),
-                    Err(_) => {
-                        if let Expr::QualifiedIdentifier(parts) = expr {
-                            if parts.len() == 2 {
-                                let fallback = Expr::Identifier(parts[1].clone());
-                                out.push(
-                                    eval_expr(&fallback, row, ctx, catalog, storage, clock)
-                                        .unwrap_or(Value::Null),
-                                );
-                            } else {
-                                out.push(Value::Null);
-                            }
-                        } else {
-                            out.push(Value::Null);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    out
 }
