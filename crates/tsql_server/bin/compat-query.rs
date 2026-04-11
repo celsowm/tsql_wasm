@@ -80,11 +80,40 @@ fn execute_query(sql: &str) -> QueryEnvelope {
 
 fn to_envelope_result_set(result: &QueryResult) -> ResultSetEnvelope {
     let columns = result.columns.clone();
-    let column_types = result
-        .column_types
-        .iter()
-        .map(format_compat_type)
-        .collect::<Vec<_>>();
+    let mut column_types = Vec::new();
+    let mut column_precisions = Vec::new();
+    let mut column_scales = Vec::new();
+    let mut column_lengths = Vec::new();
+
+    for ct in &result.column_types {
+        column_types.push(format_compat_type(ct));
+        match ct {
+            DataType::Decimal { precision, scale } => {
+                column_precisions.push(Some(*precision));
+                column_scales.push(Some(*scale));
+                column_lengths.push(None);
+            }
+            DataType::Char { len } | DataType::NChar { len } | DataType::Binary { len } => {
+                column_precisions.push(None);
+                column_scales.push(None);
+                column_lengths.push(Some(*len as i32));
+            }
+            DataType::VarChar { max_len }
+            | DataType::NVarChar { max_len }
+            | DataType::VarBinary { max_len } => {
+                column_precisions.push(None);
+                column_scales.push(None);
+                let len = if *max_len == 0 { -1 } else { *max_len as i32 };
+                column_lengths.push(Some(len));
+            }
+            _ => {
+                column_precisions.push(None);
+                column_scales.push(None);
+                column_lengths.push(None);
+            }
+        }
+    }
+
     let mut rows = result
         .rows
         .iter()
@@ -95,6 +124,9 @@ fn to_envelope_result_set(result: &QueryResult) -> ResultSetEnvelope {
     ResultSetEnvelope {
         columns,
         column_types,
+        column_precisions,
+        column_scales,
+        column_lengths,
         rows,
         row_count: result.rows.len(),
     }
@@ -173,6 +205,9 @@ struct ErrorEnvelope {
 struct ResultSetEnvelope {
     columns: Vec<String>,
     column_types: Vec<String>,
+    column_precisions: Vec<Option<u8>>,
+    column_scales: Vec<Option<u8>>,
+    column_lengths: Vec<Option<i32>>,
     rows: Vec<Vec<String>>,
     row_count: usize,
 }

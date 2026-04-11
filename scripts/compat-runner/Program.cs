@@ -314,10 +314,24 @@ static QueryEnvelope ExecuteAzure(string connStr, string sql)
 
             var columns = new string[reader.FieldCount];
             var columnTypes = new string[reader.FieldCount];
+            var columnPrecisions = new byte?[reader.FieldCount];
+            var columnScales = new byte?[reader.FieldCount];
+            var columnLengths = new int?[reader.FieldCount];
+
+            var schemaTable = reader.GetSchemaTable();
+
             for (int i = 0; i < reader.FieldCount; i++)
             {
                 columns[i] = reader.GetName(i);
                 columnTypes[i] = NormalizeTypeName(reader.GetDataTypeName(i));
+
+                if (schemaTable != null)
+                {
+                    var row = schemaTable.Rows[i];
+                    columnPrecisions[i] = row["NumericPrecision"] != DBNull.Value ? (byte?)Convert.ToByte(row["NumericPrecision"]) : null;
+                    columnScales[i] = row["NumericScale"] != DBNull.Value ? (byte?)Convert.ToByte(row["NumericScale"]) : null;
+                    columnLengths[i] = row["ColumnSize"] != DBNull.Value ? (int?)Convert.ToInt32(row["ColumnSize"]) : null;
+                }
             }
 
             var rows = new List<string[]>();
@@ -332,7 +346,14 @@ static QueryEnvelope ExecuteAzure(string connStr, string sql)
             }
 
             rows.Sort(CompareRows);
-            resultSets.Add(new ResultSetEnvelope(columns, columnTypes, rows.ToArray(), rows.Count));
+            resultSets.Add(new ResultSetEnvelope(
+                columns,
+                columnTypes,
+                columnPrecisions,
+                columnScales,
+                columnLengths,
+                rows.ToArray(),
+                rows.Count));
         } while (reader.NextResult());
 
         return new QueryEnvelope(true, null, resultSets.ToArray());
@@ -546,6 +567,21 @@ static bool CompareResponses(
                 $"result set {setIdx} column types mismatch: Azure={FormatVector(a.ColumnTypes)}, Local={FormatVector(l.ColumnTypes)}"
             );
 
+        if (!a.ColumnPrecisions.SequenceEqual(l.ColumnPrecisions))
+            diffs.Add(
+                $"result set {setIdx} column precisions mismatch: Azure={FormatVector(a.ColumnPrecisions.Select(p => p?.ToString() ?? \"null\"))}, Local={FormatVector(l.ColumnPrecisions.Select(p => p?.ToString() ?? \"null\"))}"
+            );
+
+        if (!a.ColumnScales.SequenceEqual(l.ColumnScales))
+            diffs.Add(
+                $"result set {setIdx} column scales mismatch: Azure={FormatVector(a.ColumnScales.Select(p => p?.ToString() ?? \"null\"))}, Local={FormatVector(l.ColumnScales.Select(p => p?.ToString() ?? \"null\"))}"
+            );
+
+        if (!a.ColumnLengths.SequenceEqual(l.ColumnLengths))
+            diffs.Add(
+                $"result set {setIdx} column lengths mismatch: Azure={FormatVector(a.ColumnLengths.Select(p => p?.ToString() ?? \"null\"))}, Local={FormatVector(l.ColumnLengths.Select(p => p?.ToString() ?? \"null\"))}"
+            );
+
         if (a.RowCount != l.RowCount)
             diffs.Add($"result set {setIdx} row count mismatch: Azure={a.RowCount}, Local={l.RowCount}");
 
@@ -675,6 +711,9 @@ record ErrorEnvelope(int Number, int Class, int State, string Code, string Messa
 record ResultSetEnvelope(
     string[] Columns,
     string[] ColumnTypes,
+    byte?[] ColumnPrecisions,
+    byte?[] ColumnScales,
+    int?[] ColumnLengths,
     string[][] Rows,
     int RowCount
 );
