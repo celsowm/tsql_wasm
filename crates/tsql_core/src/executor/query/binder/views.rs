@@ -6,7 +6,7 @@ use crate::storage::Storage;
 use crate::executor::clock::Clock;
 use crate::executor::context::ExecutionContext;
 use crate::executor::model::BoundTable;
-use super::super::plan::RelationalQuery;
+use super::super::QueryExecutor;
 use super::query_result_to_bound_table;
 
 pub(super) fn bind_view(
@@ -15,7 +15,7 @@ pub(super) fn bind_view(
     _clock: &dyn Clock,
     tref: &TableRef,
     ctx: &mut ExecutionContext,
-    query_executor_proxy: &impl Fn(RelationalQuery, &mut ExecutionContext) -> Result<crate::executor::result::QueryResult, DbError>,
+    executor: &QueryExecutor<'_>,
 ) -> Result<Option<BoundTable>, DbError> {
     let schema = tref.factor.as_object_name().map(|o| o.schema_or_dbo()).unwrap_or("dbo");
     let name = match &tref.factor {
@@ -33,7 +33,7 @@ pub(super) fn bind_view(
         _ => return Err(DbError::Execution("view query must be SELECT".into())),
     };
 
-    let result = query_executor_proxy(view_query.into(), ctx)?;
+    let result = executor.execute_select(view_query.into(), ctx)?;
     Ok(Some(query_result_to_bound_table(
         tref.alias.clone().unwrap_or_else(|| name.clone()),
         name.clone(),

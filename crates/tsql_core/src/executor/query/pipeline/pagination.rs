@@ -3,6 +3,7 @@ use crate::error::DbError;
 use crate::executor::context::ExecutionContext;
 use crate::executor::projection::eval_top_n;
 use crate::executor::query::plan::RelationalQuery;
+use super::pagination_value::value_to_usize;
 
 use super::super::QueryExecutor;
 
@@ -57,14 +58,4 @@ pub(crate) fn apply_pagination(
     }
 
     Ok(final_rows)
-}
-
-fn value_to_usize(value: crate::types::Value) -> usize {
-    match value {
-        crate::types::Value::Int(n) => n.max(0) as usize,
-        crate::types::Value::BigInt(n) => n.max(0) as usize,
-        crate::types::Value::SmallInt(n) => n.max(0) as usize,
-        crate::types::Value::TinyInt(n) => n as usize,
-        _ => 0,
-    }
 }

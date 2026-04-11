@@ -106,7 +106,7 @@ fn execute_table_ref(
     table_ref: crate::ast::TableRef,
     ctx: &mut ExecutionContext,
 ) -> Result<FromEval, DbError> {
-    let bound = executor.bind_table(table_ref.clone(), executor.catalog, ctx)?;
+    let bound = super::binding::bind_table(executor, executor.catalog, table_ref.clone(), ctx)?;
     let base_shape = vec![ContextTable {
         table: bound.table.clone(),
         alias: bound.alias.clone(),

@@ -5,6 +5,28 @@ use crate::executor::result::QueryResult;
 use super::super::ScriptExecutor;
 
 impl<'a> ScriptExecutor<'a> {
+    pub(crate) fn execute_break(
+        &mut self,
+        ctx: &ExecutionContext<'_>,
+    ) -> crate::error::StmtResult<Option<QueryResult>> {
+        if ctx.loop_depth() > 0 {
+            Ok(StmtOutcome::Break)
+        } else {
+            Err(crate::error::DbError::Execution("BREAK outside of WHILE".into()))
+        }
+    }
+
+    pub(crate) fn execute_continue(
+        &mut self,
+        ctx: &ExecutionContext<'_>,
+    ) -> crate::error::StmtResult<Option<QueryResult>> {
+        if ctx.loop_depth() > 0 {
+            Ok(StmtOutcome::Continue)
+        } else {
+            Err(crate::error::DbError::Execution("CONTINUE outside of WHILE".into()))
+        }
+    }
+
     pub(crate) fn execute_if(
         &mut self,
         stmt: IfStmt,

@@ -1,4 +1,5 @@
 pub(crate) mod merge;
+mod merge_helpers;
 pub(crate) mod cte;
 
 use super::ScriptExecutor;

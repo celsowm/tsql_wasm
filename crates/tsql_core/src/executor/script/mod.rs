@@ -76,13 +76,12 @@ impl<'a> ScriptExecutor<'a> {
         table_name: &str,
         row: &crate::storage::StoredRow,
     ) {
-        if let Some(db) = &ctx.session.dirty_buffer {
-            db.lock().push_op(
-                ctx.session_id(),
-                table_name.to_string(),
-                super::dirty_buffer::DirtyOp::Insert { row: row.clone() },
-            );
-        }
+        super::dirty_buffer::push_dirty_op(
+            &ctx.session.dirty_buffer,
+            ctx.session_id(),
+            table_name.to_string(),
+            super::dirty_buffer::DirtyOp::Insert { row: row.clone() },
+        );
     }
 
     fn schema<'b>(&'b mut self, ctx: &'b ExecutionContext<'_>) -> SchemaExecutor<'b> {

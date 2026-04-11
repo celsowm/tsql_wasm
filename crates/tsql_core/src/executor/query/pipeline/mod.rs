@@ -1,7 +1,10 @@
 mod analysis;
+mod distinct;
 mod order;
+mod order_validation;
 mod pagination;
-mod stages;
+mod pagination_value;
+mod projection;
 
 use crate::error::DbError;
 
@@ -24,13 +27,13 @@ pub(crate) fn execute_rows_to_result(
         order::apply_source_ordering(executor, query, &mut source_rows, ctx)?;
     }
 
-    let result = stages::project_rows(executor, query, source_rows, ctx, &state)?;
+    let result = projection::execute_projection_stage(executor, query, source_rows, ctx, &state)?;
     let result_columns = result.columns.clone();
     let result_column_types = result.column_types.clone();
     let mut final_rows = result.rows;
 
     if query.projection.distinct {
-        final_rows = stages::deduplicate_rows(final_rows);
+        final_rows = distinct::deduplicate_rows(final_rows);
     }
 
     if !query.sort.order_by.is_empty() && !state.needs_pre_sort {

@@ -3,7 +3,6 @@ use crate::error::DbError;
 use crate::executor::context::ExecutionContext;
 use crate::executor::grouping::GroupExecutor;
 use crate::executor::model::JoinedRow;
-use crate::executor::projection::deduplicate_projected_rows;
 use crate::executor::query::plan::RelationalQuery;
 use crate::executor::result;
 use crate::executor::window::WindowExecutor;
@@ -11,7 +10,7 @@ use crate::executor::window::WindowExecutor;
 use super::analysis::PipelineState;
 use super::super::QueryExecutor;
 
-pub(crate) fn project_rows(
+pub(crate) fn execute_projection_stage(
     executor: &QueryExecutor<'_>,
     query: &RelationalQuery,
     source_rows: Vec<JoinedRow>,
@@ -44,8 +43,4 @@ pub(crate) fn project_rows(
             ctx,
         )
     }
-}
-
-pub(crate) fn deduplicate_rows(rows: Vec<Vec<crate::types::Value>>) -> Vec<Vec<crate::types::Value>> {
-    deduplicate_projected_rows(rows)
 }

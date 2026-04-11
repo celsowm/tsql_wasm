@@ -48,6 +48,17 @@ impl DirtyBuffer {
     }
 }
 
+pub(crate) fn push_dirty_op(
+    dirty_buffer: &Option<std::sync::Arc<parking_lot::Mutex<DirtyBuffer>>>,
+    session_id: SessionId,
+    table_name: String,
+    op: DirtyOp,
+) {
+    if let Some(db) = dirty_buffer {
+        db.lock().push_op(session_id, table_name, op);
+    }
+}
+
 /// Build a dirty-read view of storage and catalog by overlaying uncommitted
 /// writes from the shared dirty_buffer onto the committed shared state.
 pub(crate) fn build_dirty_read_storage<C, S>(

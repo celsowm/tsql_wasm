@@ -11,9 +11,8 @@ use crate::executor::clock::Clock;
 use crate::executor::context::{ExecutionContext, ModuleFrame, ModuleKind};
 use crate::executor::evaluator::eval_expr;
 use crate::executor::model::BoundTable;
-use crate::executor::result::QueryResult;
 use crate::executor::{type_mapping, value_ops};
-use super::super::plan::RelationalQuery;
+use super::super::QueryExecutor;
 use super::query_result_to_bound_table;
 
 pub(super) fn bind_builtin_tvf(
@@ -164,7 +163,7 @@ pub(super) fn bind_inline_tvf(
     clock: &dyn Clock,
     tref: &TableRef,
     ctx: &mut ExecutionContext,
-    query_executor_proxy: &impl Fn(RelationalQuery, &mut ExecutionContext) -> Result<QueryResult, DbError>,
+    executor: &QueryExecutor<'_>,
 ) -> Result<Option<BoundTable>, DbError> {
     let name = match &tref.factor {
         TableFactor::Named(o) => &o.name,
@@ -236,7 +235,7 @@ pub(super) fn bind_inline_tvf(
             ctx.register_declared_var(&param.name);
         }
 
-        let result = query_executor_proxy(query.into(), ctx)?;
+        let result = executor.execute_select(query.into(), ctx)?;
         ctx.leave_scope();
         Ok(result)
     })();

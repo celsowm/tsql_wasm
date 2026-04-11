@@ -10,6 +10,22 @@ use crate::storage::Storage;
 use super::super::ScriptExecutor;
 
 impl<'a> ScriptExecutor<'a> {
+    pub(crate) fn execute_declare_cursor(
+        &mut self,
+        stmt: crate::ast::DeclareCursorStmt,
+        ctx: &mut ExecutionContext<'_>,
+    ) -> Result<crate::error::StmtOutcome<Option<QueryResult>>, DbError> {
+        ctx.session.cursors.insert(
+            stmt.name.clone(),
+            crate::executor::model::Cursor {
+                query: Some(stmt.query),
+                query_result: QueryResult::default(),
+                current_row: -1,
+            },
+        );
+        Ok(crate::error::StmtOutcome::Ok(None))
+    }
+
     pub(crate) fn execute_open_cursor(
         &mut self,
         name: String,

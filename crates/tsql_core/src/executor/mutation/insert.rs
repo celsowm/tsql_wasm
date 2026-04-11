@@ -1,22 +1,18 @@
-﻿use crate::ast::{InsertSource, InsertStmt};
-use crate::catalog::{Catalog, TableDef};
-use crate::error::{DbError, StmtOutcome};
+﻿use crate::ast::InsertStmt;
+use crate::catalog::TableDef;
+use crate::error::DbError;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
 use super::super::context::ExecutionContext;
 use super::super::evaluator::eval_expr_to_type_constant;
 use super::super::model::single_row_context;
-use super::super::query::plan::RelationalQuery;
 use super::super::result::QueryResult;
 use super::super::string_norm::normalize_identifier;
 
 use super::MutationExecutor;
 use super::output::build_output_result;
-use super::validation::{
-    apply_ansi_padding, enforce_checks_on_row, enforce_foreign_keys_on_insert,
-    enforce_string_length, enforce_unique_on_insert,
-};
+use super::validation::{apply_ansi_padding, enforce_string_length};
 
 impl<'a> MutationExecutor<'a> {
     pub(crate) fn execute_insert_with_context(
@@ -51,90 +47,19 @@ impl<'a> MutationExecutor<'a> {
                 .collect::<Vec<_>>()
         };
 
+        let insert_columns = self.get_insert_columns(&table, &stmt.columns);
+        let rowcount_limit = if ctx.options.rowcount == 0 {
+            None
+        } else {
+            Some(ctx.options.rowcount as usize)
+        };
+        let rows = self.collect_insert_rows(&table, &insert_columns, &stmt.source, ctx, rowcount_limit)?;
+
         if !instead_of_triggers.is_empty() {
-            let rowcount_limit = if ctx.options.rowcount == 0 {
-                None
-            } else {
-                Some(ctx.options.rowcount as usize)
-            };
-            let mut inserted_count = 0usize;
-            let inserted_rows = match &stmt.source {
-                InsertSource::DefaultValues => {
-                    let row = self.build_insert_row(&table, &[], vec![], ctx)?;
-                    vec![row]
-                }
-                InsertSource::Select(select_stmt) => {
-                    let query_result = super::super::query::QueryExecutor {
-                        catalog: self.catalog as &dyn Catalog,
-                        storage: self.storage,
-                        clock: self.clock,
-                    }
-                    .execute_select(RelationalQuery::from(*select_stmt.clone()), ctx)?;
-
-                    let insert_columns = self.get_insert_columns(&table, &stmt.columns);
-                    let mut rows = Vec::new();
-                    for row_values in query_result.rows {
-                        if let Some(limit) = rowcount_limit {
-                            if inserted_count >= limit {
-                                break;
-                            }
-                        }
-                        let row = self.build_row_from_values(&table, &insert_columns, row_values, ctx)?;
-                        rows.push(row);
-                        inserted_count += 1;
-                    }
-                    rows
-                }
-                InsertSource::Values(values) => {
-                    let insert_columns = self.get_insert_columns(&table, &stmt.columns);
-                    let mut rows = Vec::new();
-                    for value_row in values {
-                        if let Some(limit) = rowcount_limit {
-                            if inserted_count >= limit {
-                                break;
-                            }
-                        }
-                        let row = self.build_insert_row(&table, &insert_columns, value_row.clone(), ctx)?;
-                        rows.push(row);
-                        inserted_count += 1;
-                    }
-                    rows
-                }
-                InsertSource::Exec(exec_stmt) => {
-                    let outcome = super::super::script::ScriptExecutor {
-                        catalog: self.catalog,
-                        storage: self.storage,
-                        clock: self.clock,
-                    }
-                    .execute(*exec_stmt.clone(), ctx)?;
-                    let query_result = match outcome {
-                        StmtOutcome::Ok(Some(r)) => r,
-                        StmtOutcome::Ok(None) => {
-                            return Err(DbError::Execution("INSERT EXEC source returned no result".into()))
-                        }
-                        other => return other.into_result(),
-                    };
-
-                    let insert_columns = self.get_insert_columns(&table, &stmt.columns);
-                    let mut rows = Vec::new();
-                    for row_values in query_result.rows {
-                        if let Some(limit) = rowcount_limit {
-                            if inserted_count >= limit {
-                                break;
-                            }
-                        }
-                        let row = self.build_row_from_values(&table, &insert_columns, row_values, ctx)?;
-                        rows.push(row);
-                        inserted_count += 1;
-                    }
-                    rows
-                }
-            };
-
-            self.execute_triggers(&table, crate::ast::TriggerEvent::Insert, true, &inserted_rows, &[], ctx)?;
+            self.execute_triggers(&table, crate::ast::TriggerEvent::Insert, true, &rows, &[], ctx)?;
 
             if let Some(output) = stmt.output {
-                let inserted: Vec<&crate::storage::StoredRow> = inserted_rows.iter().collect();
+                let inserted: Vec<&crate::storage::StoredRow> = rows.iter().collect();
                 let result = build_output_result(&output, &table, &inserted, &[])?;
                 if let Some(target) = stmt.output_into {
                     if let Some(result) = result.as_ref() {
@@ -156,123 +81,8 @@ impl<'a> MutationExecutor<'a> {
             .is_empty();
 
         let collect_rows = stmt.output.is_some() || has_after_triggers;
-        let mut inserted_rows_for_output = Vec::new();
-        let rowcount_limit = if ctx.options.rowcount == 0 {
-            None
-        } else {
-            Some(ctx.options.rowcount as usize)
-        };
-        let mut inserted_count = 0usize;
-
-        match stmt.source {
-            InsertSource::DefaultValues => {
-                let row = self.build_insert_row(&table, &[], vec![], ctx)?;
-                self.storage.insert_row(table_id, row.clone())?;
-                self.push_dirty_insert(ctx, &table.name, &row);
-                if collect_rows {
-                    inserted_rows_for_output.push(row);
-                }
-            }
-            InsertSource::Select(select_stmt) => {
-                let query_result = super::super::query::QueryExecutor {
-                    catalog: self.catalog as &dyn Catalog,
-                    storage: self.storage,
-                    clock: self.clock,
-                }
-                .execute_select(RelationalQuery::from(*select_stmt), ctx)?;
-
-                let insert_columns = self.get_insert_columns(&table, &stmt.columns);
-
-                if insert_columns.len() != query_result.columns.len() {
-                    return Err(DbError::Execution(format!(
-                        "insert column count ({}) does not match select column count ({})",
-                        insert_columns.len(),
-                        query_result.columns.len()
-                    )));
-                }
-
-                for row_values in query_result.rows {
-                    if let Some(limit) = rowcount_limit {
-                        if inserted_count >= limit {
-                            break;
-                        }
-                    }
-                    let temp_row = self.build_row_from_values(&table, &insert_columns, row_values, ctx)?;
-                    enforce_unique_on_insert(&table, self.storage, table_id, &temp_row)?;
-                    enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &temp_row)?;
-                    enforce_checks_on_row(&table, &temp_row, ctx, self.catalog, self.storage, self.clock)?;
-                    self.storage.insert_row(table_id, temp_row.clone())?;
-                    self.push_dirty_insert(ctx, &table.name, &temp_row);
-                    inserted_count += 1;
-                    if collect_rows {
-                        inserted_rows_for_output.push(temp_row);
-                    }
-                }
-            }
-            InsertSource::Values(values) => {
-                let insert_columns = self.get_insert_columns(&table, &stmt.columns);
-
-                for value_row in values {
-                    if let Some(limit) = rowcount_limit {
-                        if inserted_count >= limit {
-                            break;
-                        }
-                    }
-                    let row = self.build_insert_row(&table, &insert_columns, value_row, ctx)?;
-                    enforce_unique_on_insert(&table, self.storage, table_id, &row)?;
-                    enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &row)?;
-                    enforce_checks_on_row(&table, &row, ctx, self.catalog, self.storage, self.clock)?;
-                    self.storage.insert_row(table_id, row.clone())?;
-                    self.push_dirty_insert(ctx, &table.name, &row);
-                    inserted_count += 1;
-                    if collect_rows {
-                        inserted_rows_for_output.push(row);
-                    }
-                }
-            }
-            InsertSource::Exec(exec_stmt) => {
-                let outcome = super::super::script::ScriptExecutor {
-                    catalog: self.catalog,
-                    storage: self.storage,
-                    clock: self.clock,
-                }
-                .execute(*exec_stmt, ctx)?;
-                let query_result = match outcome {
-                    StmtOutcome::Ok(Some(r)) => r,
-                    StmtOutcome::Ok(None) => {
-                        return Err(DbError::Execution("INSERT EXEC source returned no result".into()))
-                    }
-                    other => return other.into_result(),
-                };
-
-                let insert_columns = self.get_insert_columns(&table, &stmt.columns);
-                if insert_columns.len() != query_result.columns.len() {
-                    return Err(DbError::Execution(format!(
-                        "insert column count ({}) does not match exec column count ({})",
-                        insert_columns.len(),
-                        query_result.columns.len()
-                    )));
-                }
-
-                for row_values in query_result.rows {
-                    if let Some(limit) = rowcount_limit {
-                        if inserted_count >= limit {
-                            break;
-                        }
-                    }
-                    let temp_row = self.build_row_from_values(&table, &insert_columns, row_values, ctx)?;
-                    enforce_unique_on_insert(&table, self.storage, table_id, &temp_row)?;
-                    enforce_foreign_keys_on_insert(&table, self.catalog, self.storage, &temp_row)?;
-                    enforce_checks_on_row(&table, &temp_row, ctx, self.catalog, self.storage, self.clock)?;
-                    self.storage.insert_row(table_id, temp_row.clone())?;
-                    self.push_dirty_insert(ctx, &table.name, &temp_row);
-                    inserted_count += 1;
-                    if collect_rows {
-                        inserted_rows_for_output.push(temp_row);
-                    }
-                }
-            }
-        }
+        let inserted_rows_for_output =
+            self.commit_insert_rows(&table, table_id, rows, ctx, collect_rows)?;
 
         self.execute_triggers(&table, crate::ast::TriggerEvent::Insert, false, &inserted_rows_for_output, &[], ctx)?;
 
@@ -306,7 +116,7 @@ impl<'a> MutationExecutor<'a> {
         }
     }
 
-    fn build_row_from_values(
+    pub(crate) fn build_row_from_values(
         &mut self,
         table: &TableDef,
         insert_columns: &[String],

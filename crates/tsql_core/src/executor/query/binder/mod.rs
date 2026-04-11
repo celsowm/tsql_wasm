@@ -11,7 +11,7 @@ use super::super::clock::Clock;
 use super::super::context::ExecutionContext;
 use super::super::model::BoundTable;
 use super::super::result::QueryResult;
-use super::plan::RelationalQuery;
+use super::super::query::QueryExecutor;
 
 pub(crate) fn bind_table(
     catalog: &dyn Catalog,
@@ -19,14 +19,14 @@ pub(crate) fn bind_table(
     clock: &dyn Clock,
     tref: TableRef,
     ctx: &mut ExecutionContext,
-    query_executor_proxy: impl Fn(RelationalQuery, &mut ExecutionContext) -> Result<QueryResult, DbError>,
+    executor: &QueryExecutor<'_>,
 ) -> Result<BoundTable, DbError> {
     if let TableFactor::Derived(ref select) = tref.factor {
         return bind_derived_subquery(
             tref.alias.clone(),
             *select.clone(),
             ctx,
-            query_executor_proxy,
+            executor,
         );
     }
 
@@ -34,11 +34,11 @@ pub(crate) fn bind_table(
         return Ok(bound_tvf);
     }
     if let Some(bound_tvf) =
-        tvf::bind_inline_tvf(catalog, storage, clock, &tref, ctx, &query_executor_proxy)?
+        tvf::bind_inline_tvf(catalog, storage, clock, &tref, ctx, executor)?
     {
         return Ok(bound_tvf);
     }
-    if let Some(bound_view) = views::bind_view(catalog, storage, clock, &tref, ctx, &query_executor_proxy)? {
+    if let Some(bound_view) = views::bind_view(catalog, storage, clock, &tref, ctx, executor)? {
         return Ok(bound_view);
     }
     values::bind_plain_table(tref, catalog, ctx)
@@ -48,10 +48,10 @@ fn bind_derived_subquery(
     alias: Option<String>,
     select: SelectStmt,
     ctx: &mut ExecutionContext,
-    query_executor_proxy: impl Fn(RelationalQuery, &mut ExecutionContext) -> Result<QueryResult, DbError>,
+    executor: &QueryExecutor<'_>,
 ) -> Result<BoundTable, DbError> {
     let alias = alias.ok_or_else(|| DbError::Semantic("subquery in FROM must have an alias".into()))?;
-    let result = query_executor_proxy(select.into(), ctx)?;
+    let result = executor.execute_select(select.into(), ctx)?;
     Ok(query_result_to_bound_table(alias.clone(), alias, result))
 }
 

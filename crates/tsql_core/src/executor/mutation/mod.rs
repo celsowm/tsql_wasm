@@ -1,5 +1,8 @@
 mod delete;
+mod insert_source;
 mod insert;
+pub(crate) mod query_source;
+mod shared;
 pub(crate) mod output;
 mod update;
 pub(crate) mod validation;
@@ -149,13 +152,12 @@ impl<'a> MutationExecutor<'a> {
         table_name: &str,
         row: &crate::storage::StoredRow,
     ) {
-        if let Some(db) = &ctx.session.dirty_buffer {
-                    db.lock().push_op(
-                        ctx.session_id(),
-                        table_name.to_string(),
-                        super::dirty_buffer::DirtyOp::Insert { row: row.clone() },
-                    );
-                }
+        super::dirty_buffer::push_dirty_op(
+            &ctx.session.dirty_buffer,
+            ctx.session_id(),
+            table_name.to_string(),
+            super::dirty_buffer::DirtyOp::Insert { row: row.clone() },
+        );
     }
 
     pub(crate) fn push_dirty_update(
@@ -165,16 +167,15 @@ impl<'a> MutationExecutor<'a> {
         row_index: usize,
         new_row: &crate::storage::StoredRow,
     ) {
-        if let Some(db) = &ctx.session.dirty_buffer {
-                    db.lock().push_op(
-                        ctx.session_id(),
-                        table_name.to_string(),
-                        super::dirty_buffer::DirtyOp::Update {
-                    row_index,
-                    new_row: new_row.clone(),
-                },
-            );
-        }
+        super::dirty_buffer::push_dirty_op(
+            &ctx.session.dirty_buffer,
+            ctx.session_id(),
+            table_name.to_string(),
+            super::dirty_buffer::DirtyOp::Update {
+                row_index,
+                new_row: new_row.clone(),
+            },
+        );
     }
 
     pub(crate) fn push_dirty_delete(
@@ -183,13 +184,12 @@ impl<'a> MutationExecutor<'a> {
         table_name: &str,
         row_index: usize,
     ) {
-        if let Some(db) = &ctx.session.dirty_buffer {
-                    db.lock().push_op(
-                        ctx.session_id(),
-                        table_name.to_string(),
-                        super::dirty_buffer::DirtyOp::Delete { row_index },
-            );
-        }
+        super::dirty_buffer::push_dirty_op(
+            &ctx.session.dirty_buffer,
+            ctx.session_id(),
+            table_name.to_string(),
+            super::dirty_buffer::DirtyOp::Delete { row_index },
+        );
     }
 
     pub(crate) fn push_dirty_truncate(
@@ -197,13 +197,12 @@ impl<'a> MutationExecutor<'a> {
         ctx: &mut super::context::ExecutionContext<'_>,
         table_name: &str,
     ) {
-        if let Some(db) = &ctx.session.dirty_buffer {
-                    db.lock().push_op(
-                        ctx.session_id(),
-                        table_name.to_string(),
-                        super::dirty_buffer::DirtyOp::Truncate,
-            );
-        }
+        super::dirty_buffer::push_dirty_op(
+            &ctx.session.dirty_buffer,
+            ctx.session_id(),
+            table_name.to_string(),
+            super::dirty_buffer::DirtyOp::Truncate,
+        );
     }
 
     pub(crate) fn push_dirty_replace(
@@ -212,13 +211,12 @@ impl<'a> MutationExecutor<'a> {
         table_name: &str,
         rows: Vec<crate::storage::StoredRow>,
     ) {
-        if let Some(db) = &ctx.session.dirty_buffer {
-                    db.lock().push_op(
-                        ctx.session_id(),
-                        table_name.to_string(),
-                        super::dirty_buffer::DirtyOp::ReplaceTable { rows },
-            );
-        }
+        super::dirty_buffer::push_dirty_op(
+            &ctx.session.dirty_buffer,
+            ctx.session_id(),
+            table_name.to_string(),
+            super::dirty_buffer::DirtyOp::ReplaceTable { rows },
+        );
     }
 
     pub(crate) fn insert_output_into(
