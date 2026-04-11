@@ -76,11 +76,12 @@ impl VirtualTable for SysForeignKeys {
 
     fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
         let mut rows = Vec::new();
-        let mut object_id = 0;
+        let mut fk_idx = 0;
 
         for table in catalog.get_tables() {
             for fk in &table.foreign_keys {
-                object_id += 1;
+                let object_id = 4_000_000 + fk_idx;
+                fk_idx += 1;
                 let parent_id = table.id as i32;
                 let ref_schema = fk.referenced_table.schema_or_dbo();
                 let referenced_object_id = catalog
