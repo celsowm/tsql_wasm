@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
 use crate::ast::Expr;
 use crate::catalog::Catalog;
@@ -162,6 +163,7 @@ impl<'a> GroupExecutor<'a> {
         if group_by.is_empty() {
             return Ok(vec![Group { key: vec![], rows }]);
         }
+        let mut map: HashMap<Vec<Value>, usize> = HashMap::new();
         let mut groups: Vec<Group> = Vec::new();
         for row in rows {
             let mut key = Vec::new();
@@ -176,9 +178,11 @@ impl<'a> GroupExecutor<'a> {
                 )?);
             }
 
-            if let Some(group) = groups.iter_mut().find(|g| g.key == key) {
-                group.rows.push(row);
+            if let Some(&idx) = map.get(&key) {
+                groups[idx].rows.push(row);
             } else {
+                let idx = groups.len();
+                map.insert(key.clone(), idx);
                 groups.push(Group {
                     key,
                     rows: vec![row],

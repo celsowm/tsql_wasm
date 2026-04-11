@@ -153,40 +153,41 @@ pub(crate) fn eval_like(
 }
 
 fn like_match(s: &str, pattern: &str) -> bool {
-    let s_chars: Vec<char> = s.to_ascii_uppercase().chars().collect();
-    let p_chars: Vec<char> = pattern.to_ascii_uppercase().chars().collect();
-    like_match_impl(&s_chars, 0, &p_chars, 0)
-}
+    let s: Vec<char> = s.to_ascii_uppercase().chars().collect();
+    let p: Vec<char> = pattern.to_ascii_uppercase().chars().collect();
+    let sn = s.len();
+    let pn = p.len();
 
-fn like_match_impl(s: &[char], si: usize, p: &[char], pi: usize) -> bool {
-    if pi >= p.len() {
-        return si >= s.len();
+    // dp[j] = whether s[0..i] matches p[0..j]
+    let mut dp = vec![false; pn + 1];
+    dp[0] = true;
+    // leading '%' can match empty string
+    for j in 0..pn {
+        if p[j] == '%' {
+            dp[j + 1] = dp[j];
+        } else {
+            break;
+        }
     }
-    match p[pi] {
-        '%' => {
-            if pi + 1 >= p.len() {
-                return true;
-            }
-            for skip in 0..=(s.len() - si) {
-                if like_match_impl(s, si + skip, p, pi + 1) {
-                    return true;
+
+    for i in 0..sn {
+        let mut prev = dp[0]; // dp_prev[0] (previous row, col 0)
+        dp[0] = false;
+        for j in 0..pn {
+            let tmp = dp[j + 1]; // save dp_prev[j+1] before overwrite
+            dp[j + 1] = match p[j] {
+                '%' => {
+                    // dp_prev[j+1] (skip char in s) || dp[j] (skip '%' in pattern)
+                    tmp || dp[j]
                 }
-            }
-            false
-        }
-        '_' => {
-            if si >= s.len() {
-                return false;
-            }
-            like_match_impl(s, si + 1, p, pi + 1)
-        }
-        _ => {
-            if si >= s.len() || s[si] != p[pi] {
-                return false;
-            }
-            like_match_impl(s, si + 1, p, pi + 1)
+                '_' => prev, // dp_prev[j]: both advance by one
+                c => prev && s[i] == c,
+            };
+            prev = tmp;
         }
     }
+
+    dp[pn]
 }
 
 pub(crate) fn eval_scalar_subquery(
@@ -291,6 +292,30 @@ fn execute_subquery_select(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<QueryResult, DbError> {
+    if is_uncorrelated(stmt) {
+        let key = format!("{:?}", stmt);
+        {
+            let cache = ctx.subquery_cache.lock();
+            if let Some(cached) = cache.get(&key) {
+                return Ok(cached.clone());
+            }
+        }
+
+        let mut sub_ctx = ctx.subquery();
+        let qe = QueryExecutor {
+            catalog,
+            storage,
+            clock,
+        };
+        let result = qe.execute_select(RelationalQuery::from(stmt.clone()), &mut sub_ctx)?;
+        
+        {
+            let mut cache = ctx.subquery_cache.lock();
+            cache.insert(key, result.clone());
+        }
+        return Ok(result);
+    }
+
     let mut sub_ctx = ctx.subquery();
     let qe = QueryExecutor {
         catalog,
@@ -299,4 +324,33 @@ fn execute_subquery_select(
     };
 
     qe.execute_select(RelationalQuery::from(stmt.clone()), &mut sub_ctx)
+}
+
+fn is_uncorrelated(stmt: &crate::ast::SelectStmt) -> bool {
+    // If it has NO FromNode, it's uncorrelated if selection/projection are uncorrelated.
+    if stmt.from_clause.is_none() {
+        return stmt.projection.iter().all(|i| is_expr_uncorrelated(&i.expr))
+            && stmt.selection.as_ref().map_or(true, is_expr_uncorrelated);
+    }
+    // For now, only literals are considered uncorrelated.
+    false
+}
+
+fn is_expr_uncorrelated(expr: &Expr) -> bool {
+    match expr {
+        Expr::Integer(_)
+        | Expr::FloatLiteral(_)
+        | Expr::BinaryLiteral(_)
+        | Expr::String(_)
+        | Expr::UnicodeString(_)
+        | Expr::Null => true,
+        Expr::Binary { left, right, .. } => is_expr_uncorrelated(left) && is_expr_uncorrelated(right),
+        Expr::Unary { expr, .. } => is_expr_uncorrelated(expr),
+        Expr::Cast { expr, .. }
+        | Expr::TryCast { expr, .. }
+        | Expr::Convert { expr, .. }
+        | Expr::TryConvert { expr, .. } => is_expr_uncorrelated(expr),
+        Expr::FunctionCall { args, .. } => args.iter().all(is_expr_uncorrelated),
+        _ => false,
+    }
 }

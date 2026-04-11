@@ -13,7 +13,7 @@ pub(crate) fn execute_from_stage(
         from_tree::execute_from_clause(executor, from_clause, ctx)
     } else {
         Ok(FromEval {
-            rows: vec![vec![]],
+            iter: Box::new(from_tree::ScanIterator::new(vec![vec![]])),
             shape: vec![],
         })
     }

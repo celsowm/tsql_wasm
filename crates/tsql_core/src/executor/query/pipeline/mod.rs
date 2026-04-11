@@ -1,5 +1,6 @@
 mod analysis;
 mod distinct;
+pub mod iterator;
 mod order;
 mod order_validation;
 mod pagination;

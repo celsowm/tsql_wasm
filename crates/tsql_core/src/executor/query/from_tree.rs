@@ -1,21 +1,38 @@
 use crate::ast::FromNode;
-use crate::catalog::{ColumnDef, TableDef};
+use crate::catalog::{Catalog, ColumnDef, TableDef};
 use crate::error::DbError;
-use crate::storage::StoredRow;
+use crate::storage::{Storage, StoredRow};
+use crate::executor::clock::Clock;
+use std::collections::HashMap;
 
 use super::super::context::ExecutionContext;
-use super::super::joins::apply_join;
 use super::super::model::{ContextTable, JoinedRow};
 use super::super::physical::{PhysicalPivot, PhysicalScan, PhysicalUnpivot};
 use super::plan::RelationalQuery;
 use super::scan::{choose_scan_strategy, execute_scan};
 use super::transformer;
+pub(crate) use super::pipeline::iterator::{RowIterator, ScanIterator, FilterIterator, NestedLoopJoinIterator, HashJoinIterator, TableScanIterator};
 use super::QueryExecutor;
 
-#[derive(Debug, Clone)]
 pub(crate) struct FromEval {
-    pub(crate) rows: Vec<JoinedRow>,
+    pub(crate) iter: Box<dyn RowIterator>,
     pub(crate) shape: Vec<ContextTable>,
+}
+
+impl FromEval {
+    pub fn materialize(
+        &mut self,
+        ctx: &mut ExecutionContext,
+        catalog: &dyn Catalog,
+        storage: &dyn Storage,
+        clock: &dyn Clock,
+    ) -> Result<Vec<JoinedRow>, DbError> {
+        let mut rows = Vec::new();
+        while let Some(row) = self.iter.next_row(ctx, catalog, storage, clock)? {
+            rows.push(row);
+        }
+        Ok(rows)
+    }
 }
 
 pub(crate) fn execute_from_clause(
@@ -27,7 +44,7 @@ pub(crate) fn execute_from_clause(
         FromNode::Table(table_ref) => execute_table_ref(executor, table_ref, ctx),
         FromNode::Aliased { source, alias } => {
             let source_eval = execute_from_clause(executor, *source, ctx)?;
-            apply_from_alias(source_eval, &alias)
+            apply_from_alias(executor, source_eval, &alias, ctx)
         }
         FromNode::Join {
             left,
@@ -37,21 +54,50 @@ pub(crate) fn execute_from_clause(
         } => {
             let left_eval = execute_from_clause(executor, *left, ctx)?;
             let right_eval = execute_from_clause(executor, *right, ctx)?;
-            let rows = apply_join(
-                left_eval.rows,
-                &left_eval.shape,
-                right_eval.rows,
-                &right_eval.shape,
-                join_type,
-                on.as_ref(),
-                ctx,
-                executor.catalog,
-                executor.storage,
-                executor.clock,
-            )?;
-            let mut shape = left_eval.shape;
-            shape.extend(right_eval.shape);
-            Ok(FromEval { rows, shape })
+            
+            let mut shape = left_eval.shape.clone();
+            shape.extend(right_eval.shape.clone());
+
+            // Try Hash Join for equi-joins
+            if let Some(on_expr) = &on {
+                if let Some((left_keys, right_keys)) = crate::executor::joins::find_equi_join_conditions(on_expr, &left_eval.shape, &right_eval.shape) {
+                    return Ok(FromEval {
+                        iter: Box::new(HashJoinIterator {
+                            left: left_eval.iter,
+                            right: right_eval.iter,
+                            left_keys,
+                            right_keys,
+                            join_type,
+                            left_shape: left_eval.shape,
+                            right_shape: right_eval.shape,
+                            build_done: false,
+                            right_materialized: Vec::new(),
+                            hash_map: HashMap::new(),
+                            right_matched: Vec::new(),
+                            current_left: None,
+                            current_matches: Vec::new(),
+                            current_match_idx: 0,
+                            finishing_right: false,
+                            finishing_idx: 0,
+                        }),
+                        shape
+                    });
+                }
+            }
+
+            // Fallback to Nested Loop Join
+            Ok(FromEval {
+                iter: Box::new(NestedLoopJoinIterator {
+                    left: left_eval.iter,
+                    right: right_eval.iter,
+                    current_left: None,
+                    join_type,
+                    on,
+                    right_shape: right_eval.shape,
+                    matched_current_left: false,
+                }),
+                shape
+            })
         }
     }
 }
@@ -107,6 +153,86 @@ fn execute_table_ref(
     ctx: &mut ExecutionContext,
 ) -> Result<FromEval, DbError> {
     let bound = super::binding::bind_table(executor, executor.catalog, table_ref.clone(), ctx)?;
+    
+    // Check if it's a CTE
+    if let Some(cte) = ctx
+        .row
+        .ctes
+        .get(&crate::executor::string_norm::normalize_identifier(
+            &bound.table.name,
+        ))
+    {
+        let rows = crate::executor::cte::cte_to_context_rows(cte, &bound.alias);
+        let shape = rows.first().cloned().unwrap_or_else(|| {
+             vec![ContextTable {
+                table: bound.table.clone(),
+                alias: bound.alias.clone(),
+                row: None,
+                storage_index: None,
+            }.null_row()]
+        });
+        return Ok(FromEval {
+            iter: Box::new(ScanIterator::new(rows)),
+            shape,
+        });
+    }
+
+    // Check if it's virtual rows (VALUES or metadata virtual tables)
+    if let Some(rows) = &bound.virtual_rows {
+        let ctx_rows: Vec<JoinedRow> = rows
+            .iter()
+            .enumerate()
+            .map(|(i, row)| {
+                vec![ContextTable {
+                    table: bound.table.clone(),
+                    alias: bound.alias.clone(),
+                    row: Some(row.clone()),
+                    storage_index: Some(i),
+                }]
+            })
+            .collect();
+        let shape = ctx_rows.first().cloned().unwrap_or_else(|| {
+             vec![ContextTable {
+                table: bound.table.clone(),
+                alias: bound.alias.clone(),
+                row: None,
+                storage_index: None,
+            }.null_row()]
+        });
+        return Ok(FromEval {
+            iter: Box::new(ScanIterator::new(ctx_rows)),
+            shape,
+        });
+    }
+
+    let strategy = choose_scan_strategy(&bound, None, &[], executor.catalog);
+    
+    // Only use truly lazy TableScanIterator if it's a simple TableScan strategy
+    // and we don't have complex PIVOT/UNPIVOT (which still materialize for now)
+    if matches!(strategy, crate::executor::physical::ScanStrategy::TableScan) 
+       && table_ref.pivot.is_none() 
+       && table_ref.unpivot.is_none() 
+    {
+        let table_iter = TableScanIterator {
+            bound: bound.clone(),
+            next_index: 0,
+        };
+        
+        let shape = vec![ContextTable {
+            table: bound.table.clone(),
+            alias: bound.alias.clone(),
+            row: None,
+            storage_index: None,
+        }
+        .null_row()];
+
+        return Ok(FromEval {
+            iter: Box::new(table_iter),
+            shape,
+        });
+    }
+
+    // Fallback to materialized execute_scan for complex cases (IndexSeek, Pivot, etc.)
     let base_shape = vec![ContextTable {
         table: bound.table.clone(),
         alias: bound.alias.clone(),
@@ -114,7 +240,6 @@ fn execute_table_ref(
         storage_index: None,
     }
     .null_row()];
-    let strategy = choose_scan_strategy(&bound, None, &[], executor.catalog);
     let scan = PhysicalScan {
         bound,
         strategy,
@@ -160,10 +285,18 @@ fn execute_table_ref(
     }
 
     let shape = rows.first().cloned().unwrap_or(base_shape);
-    Ok(FromEval { rows, shape })
+    Ok(FromEval {
+        iter: Box::new(ScanIterator::new(rows)),
+        shape,
+    })
 }
 
-fn apply_from_alias(source: FromEval, alias: &str) -> Result<FromEval, DbError> {
+fn apply_from_alias(
+    executor: &QueryExecutor<'_>,
+    mut source: FromEval,
+    alias: &str,
+    ctx: &mut ExecutionContext,
+) -> Result<FromEval, DbError> {
     let mut columns = Vec::new();
     for ctx_table in &source.shape {
         for col in &ctx_table.table.columns {
@@ -194,8 +327,9 @@ fn apply_from_alias(source: FromEval, alias: &str) -> Result<FromEval, DbError> 
         foreign_keys: vec![],
     };
 
-    let mut aliased_rows = Vec::with_capacity(source.rows.len());
-    for row in source.rows {
+    let source_rows = source.materialize(ctx, executor.catalog, executor.storage, executor.clock)?;
+    let mut aliased_rows = Vec::with_capacity(source_rows.len());
+    for row in source_rows {
         let mut values = Vec::new();
         for ctx_table in &row {
             if let Some(stored) = &ctx_table.row {
@@ -225,7 +359,7 @@ fn apply_from_alias(source: FromEval, alias: &str) -> Result<FromEval, DbError> 
     .null_row()];
 
     Ok(FromEval {
-        rows: aliased_rows,
+        iter: Box::new(ScanIterator::new(aliased_rows)),
         shape,
     })
 }

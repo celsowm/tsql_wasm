@@ -37,6 +37,7 @@ impl<'a> QueryExecutor<'a> {
         query: RelationalQuery,
         ctx: &mut ExecutionContext,
     ) -> Result<Vec<JoinedRow>, DbError> {
-        source::execute_source(self, &query, ctx).map(|eval| eval.rows)
+        let mut source_eval = source::execute_source(self, &query, ctx)?;
+        source_eval.materialize(ctx, self.catalog, self.storage, self.clock)
     }
 }

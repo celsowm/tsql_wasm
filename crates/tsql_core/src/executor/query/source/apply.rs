@@ -10,14 +10,22 @@ pub(crate) fn execute_apply_stage(
     mut source_eval: FromEval,
     ctx: &mut crate::executor::context::ExecutionContext,
 ) -> Result<FromEval, DbError> {
+    if query.applies.is_empty() {
+        return Ok(source_eval);
+    }
+
+    let mut rows = source_eval.materialize(ctx, executor.catalog, executor.storage, executor.clock)?;
     for apply_clause in &query.applies {
-        source_eval.rows = super::super::transformer::execute_apply(
-            source_eval.rows,
+        rows = super::super::transformer::execute_apply(
+            rows,
             apply_clause,
             ctx,
             executor,
         )?;
-        source_eval.shape = source_eval.rows.first().cloned().unwrap_or_default();
     }
-    Ok(source_eval)
+    let shape = rows.first().cloned().unwrap_or_default();
+    Ok(FromEval {
+        iter: Box::new(super::super::from_tree::ScanIterator::new(rows)),
+        shape,
+    })
 }

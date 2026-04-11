@@ -24,6 +24,8 @@ pub enum StorageCheckpointData {
 pub trait Storage: std::fmt::Debug + Send + Sync {
     fn scan_rows<'a>(&'a self, table_id: u32) -> Result<StorageRowStream<'a>, DbError>;
 
+    fn get_row(&self, table_id: u32, index: usize) -> Result<Option<StoredRow>, DbError>;
+
     /// Compatibility shim for callers that still need a fully materialized table snapshot.
     fn get_rows(&self, table_id: u32) -> Result<Vec<StoredRow>, DbError> {
         self.scan_rows(table_id)?.collect()
@@ -61,6 +63,14 @@ impl Storage for InMemoryStorage {
             .ok_or_else(|| DbError::Storage(format!("table {} not found in storage", table_id)))?;
 
         Ok(Box::new(rows.iter().cloned().map(Ok)))
+    }
+
+    fn get_row(&self, table_id: u32, index: usize) -> Result<Option<StoredRow>, DbError> {
+        let rows = self
+            .tables
+            .get(&table_id)
+            .ok_or_else(|| DbError::Storage(format!("table {} not found", table_id)))?;
+        Ok(rows.get(index).cloned())
     }
 
     fn insert_row(&mut self, table_id: u32, row: StoredRow) -> Result<(), DbError> {

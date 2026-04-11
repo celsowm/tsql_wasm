@@ -149,6 +149,23 @@ impl Storage for RedbStorage {
         })))
     }
 
+    fn get_row(&self, table_id: u32, index: usize) -> Result<Option<StoredRow>, DbError> {
+        let db = self.db()?;
+        let read_txn = db
+            .begin_read()
+            .map_err(|e| Self::storage_err("failed to begin read txn", e))?;
+        let table = read_txn
+            .open_table(ROWS_TABLE)
+            .map_err(|e| Self::storage_err("failed to open table", e))?;
+        let result = table
+            .get((table_id, index as u64))
+            .map_err(|e| Self::storage_err("failed to get row", e))?;
+        match result {
+            Some(value) => Ok(Some(Self::deserialize_row(value.value())?)),
+            None => Ok(None),
+        }
+    }
+
     fn insert_row(&mut self, table_id: u32, row: StoredRow) -> Result<(), DbError> {
         let db = self.db()?;
         Self::with_write_txn(db, |write_txn| {

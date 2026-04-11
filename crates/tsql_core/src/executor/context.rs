@@ -1,4 +1,6 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use parking_lot::Mutex;
 
 use super::cte::CteStorage;
 use super::model::{Cursor, JoinedRow};
@@ -99,6 +101,7 @@ pub struct ExecutionContext<'a> {
     pub(crate) options: super::tooling::SessionOptions,
     pub(crate) frame: FrameState,
     pub(crate) row: RowContext,
+    pub(crate) subquery_cache: Arc<Mutex<HashMap<String, super::result::QueryResult>>>,
 }
 
 impl<'a> SessionStateRefs<'a> {
@@ -416,6 +419,7 @@ impl<'a> ExecutionContext<'a> {
                 window_context: None,
                 ctes: CteStorage::new(),
             },
+            subquery_cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -488,6 +492,7 @@ impl<'a> ExecutionContext<'a> {
                 window_context: None,
                 ctes: CteStorage::new(),
             },
+            subquery_cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -613,6 +618,7 @@ impl<'a> ExecutionContext<'a> {
             options: self.options.clone(),
             frame: self.frame.fork(),
             row: self.row.fork(),
+            subquery_cache: self.subquery_cache.clone(),
         }
     }
 

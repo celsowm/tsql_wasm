@@ -1,184 +1,110 @@
-use crate::ast::{Expr, JoinType};
+use crate::ast::{BinaryOp, Expr};
 use crate::catalog::Catalog;
 use crate::error::DbError;
 use crate::storage::Storage;
+use crate::types::Value;
 
 use super::clock::Clock;
 use super::context::ExecutionContext;
-use super::evaluator::eval_predicate;
-use super::model::{ContextTable, JoinedRow};
+use super::evaluator::eval_expr;
+use super::model::ContextTable;
 
-#[allow(clippy::too_many_arguments)]
-pub fn apply_join(
-    left_rows: Vec<JoinedRow>,
-    left_shape: &[ContextTable],
-    right_rows: Vec<JoinedRow>,
-    right_shape: &[ContextTable],
-    join_type: JoinType,
-    on: Option<&Expr>,
-    ctx: &mut ExecutionContext,
-    catalog: &dyn Catalog,
-    storage: &dyn Storage,
-    clock: &dyn Clock,
-) -> Result<Vec<JoinedRow>, DbError> {
-    match join_type {
-        JoinType::Cross => apply_cross_join(left_rows, right_rows),
-        JoinType::Inner | JoinType::Left => apply_join_left(
-            left_rows,
-            right_rows,
-            right_shape,
-            join_type,
-            on,
-            ctx,
-            catalog,
-            storage,
-            clock,
-        ),
-        JoinType::Right => apply_join_right(
-            left_rows, left_shape, right_rows, on, ctx, catalog, storage, clock,
-        ),
-        JoinType::Full => apply_join_full(
-            left_rows,
-            left_shape,
-            right_rows,
-            right_shape,
-            on,
-            ctx,
-            catalog,
-            storage,
-            clock,
-        ),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JoinSide {
+    Left,
+    Right,
+    Both,
+    None,
+}
+
+fn combine_sides(s1: JoinSide, s2: JoinSide) -> JoinSide {
+    match (s1, s2) {
+        (JoinSide::None, other) | (other, JoinSide::None) => other,
+        (JoinSide::Left, JoinSide::Left) => JoinSide::Left,
+        (JoinSide::Right, JoinSide::Right) => JoinSide::Right,
+        _ => JoinSide::Both,
     }
 }
 
-fn apply_cross_join(
-    left_rows: Vec<JoinedRow>,
-    right_rows: Vec<JoinedRow>,
-) -> Result<Vec<JoinedRow>, DbError> {
-    let mut next_rows = Vec::new();
-    for left_row in &left_rows {
-        for right_row in &right_rows {
-            let mut candidate = left_row.clone();
-            candidate.extend(right_row.clone());
-            next_rows.push(candidate);
-        }
-    }
-    Ok(next_rows)
-}
-
-#[allow(clippy::too_many_arguments)]
-fn apply_join_left(
-    left_rows: Vec<JoinedRow>,
-    right_rows: Vec<JoinedRow>,
-    right_shape: &[ContextTable],
-    join_type: JoinType,
-    on: Option<&Expr>,
-    ctx: &mut ExecutionContext,
-    catalog: &dyn Catalog,
-    storage: &dyn Storage,
-    clock: &dyn Clock,
-) -> Result<Vec<JoinedRow>, DbError> {
-    let on_expr = on.ok_or_else(|| DbError::Parse("JOIN requires ON clause".into()))?;
-    let mut next_rows = Vec::new();
-
-    for left_row in left_rows {
-        let mut matched = false;
-        for right_row in &right_rows {
-            let mut candidate = left_row.clone();
-            candidate.extend(right_row.clone());
-            if eval_predicate(on_expr, &candidate, ctx, catalog, storage, clock)? {
-                matched = true;
-                next_rows.push(candidate);
+fn get_expr_side(expr: &Expr, left_shape: &[ContextTable], right_shape: &[ContextTable]) -> JoinSide {
+    match expr {
+        Expr::Identifier(name) => {
+            let in_left = left_shape.iter().any(|b| b.table.columns.iter().any(|c| c.name.eq_ignore_ascii_case(name)));
+            let in_right = right_shape.iter().any(|b| b.table.columns.iter().any(|c| c.name.eq_ignore_ascii_case(name)));
+            match (in_left, in_right) {
+                (true, false) => JoinSide::Left,
+                (false, true) => JoinSide::Right,
+                (true, true) => JoinSide::Both,
+                (false, false) => JoinSide::None,
             }
         }
-
-        if !matched && join_type == JoinType::Left {
-            let mut candidate = left_row.clone();
-            candidate.extend(right_shape.iter().map(ContextTable::null_row));
-            next_rows.push(candidate);
-        }
-    }
-
-    Ok(next_rows)
-}
-
-#[allow(clippy::too_many_arguments)]
-fn apply_join_right(
-    left_rows: Vec<JoinedRow>,
-    left_shape: &[ContextTable],
-    right_rows: Vec<JoinedRow>,
-    on: Option<&Expr>,
-    ctx: &mut ExecutionContext,
-    catalog: &dyn Catalog,
-    storage: &dyn Storage,
-    clock: &dyn Clock,
-) -> Result<Vec<JoinedRow>, DbError> {
-    let on_expr = on.ok_or_else(|| DbError::Parse("JOIN requires ON clause".into()))?;
-    let mut next_rows = Vec::new();
-
-    for right_row in &right_rows {
-        let mut matched = false;
-        for left_row in &left_rows {
-            let mut candidate = left_row.clone();
-            candidate.extend(right_row.clone());
-            if eval_predicate(on_expr, &candidate, ctx, catalog, storage, clock)? {
-                matched = true;
-                next_rows.push(candidate);
+        Expr::QualifiedIdentifier(parts) => {
+            if parts.len() != 2 { return JoinSide::None; }
+            let table_name = &parts[0];
+            let in_left = left_shape.iter().any(|b| b.alias.eq_ignore_ascii_case(table_name) || b.table.name.eq_ignore_ascii_case(table_name));
+            let in_right = right_shape.iter().any(|b| b.alias.eq_ignore_ascii_case(table_name) || b.table.name.eq_ignore_ascii_case(table_name));
+            match (in_left, in_right) {
+                (true, false) => JoinSide::Left,
+                (false, true) => JoinSide::Right,
+                (true, true) => JoinSide::Both,
+                (false, false) => JoinSide::None,
             }
         }
-
-        if !matched {
-            let mut candidate: JoinedRow = left_shape.iter().map(ContextTable::null_row).collect();
-            candidate.extend(right_row.clone());
-            next_rows.push(candidate);
+        Expr::Binary { left, right, .. } => {
+            let l_side = get_expr_side(left, left_shape, right_shape);
+            let r_side = get_expr_side(right, left_shape, right_shape);
+            combine_sides(l_side, r_side)
         }
+        Expr::Unary { expr, .. } => get_expr_side(expr, left_shape, right_shape),
+        Expr::Cast { expr, .. } | Expr::TryCast { expr, .. } | Expr::Convert { expr, .. } | Expr::TryConvert { expr, .. } => get_expr_side(expr, left_shape, right_shape),
+        Expr::FunctionCall { args, .. } => {
+            let mut side = JoinSide::None;
+            for arg in args {
+                side = combine_sides(side, get_expr_side(arg, left_shape, right_shape));
+            }
+            side
+        }
+        _ => JoinSide::None,
     }
-
-    Ok(next_rows)
 }
 
-#[allow(clippy::too_many_arguments)]
-fn apply_join_full(
-    left_rows: Vec<JoinedRow>,
+pub(crate) fn find_equi_join_conditions(
+    on: &Expr,
     left_shape: &[ContextTable],
-    right_rows: Vec<JoinedRow>,
     right_shape: &[ContextTable],
-    on: Option<&Expr>,
+) -> Option<(Vec<Expr>, Vec<Expr>)> {
+    match on {
+        Expr::Binary { left, op: BinaryOp::And, right } => {
+            let (mut l1, mut r1) = find_equi_join_conditions(left, left_shape, right_shape)?;
+            let (l2, r2) = find_equi_join_conditions(right, left_shape, right_shape)?;
+            l1.extend(l2);
+            r1.extend(r2);
+            Some((l1, r1))
+        }
+        Expr::Binary { left, op: BinaryOp::Eq, right } => {
+            let l_side = get_expr_side(left, left_shape, right_shape);
+            let r_side = get_expr_side(right, left_shape, right_shape);
+            match (l_side, r_side) {
+                (JoinSide::Left, JoinSide::Right) => Some((vec![(**left).clone()], vec![(**right).clone()])),
+                (JoinSide::Right, JoinSide::Left) => Some((vec![(**right).clone()], vec![(**left).clone()])),
+                _ => None
+            }
+        }
+        _ => None
+    }
+}
+
+pub(crate) fn eval_key(
+    exprs: &[Expr],
+    row: &[ContextTable],
     ctx: &mut ExecutionContext,
     catalog: &dyn Catalog,
     storage: &dyn Storage,
     clock: &dyn Clock,
-) -> Result<Vec<JoinedRow>, DbError> {
-    let on_expr = on.ok_or_else(|| DbError::Parse("JOIN requires ON clause".into()))?;
-    let mut next_rows = Vec::new();
-    let mut matched_right: Vec<bool> = vec![false; right_rows.len()];
-
-    for left_row in &left_rows {
-        let mut matched = false;
-        for (ri, right_row) in right_rows.iter().enumerate() {
-            let mut candidate = left_row.clone();
-            candidate.extend(right_row.clone());
-            if eval_predicate(on_expr, &candidate, ctx, catalog, storage, clock)? {
-                matched = true;
-                matched_right[ri] = true;
-                next_rows.push(candidate);
-            }
-        }
-
-        if !matched {
-            let mut candidate = left_row.clone();
-            candidate.extend(right_shape.iter().map(ContextTable::null_row));
-            next_rows.push(candidate);
-        }
+) -> Result<Vec<Value>, DbError> {
+    let mut key = Vec::with_capacity(exprs.len());
+    for expr in exprs {
+        key.push(eval_expr(expr, row, ctx, catalog, storage, clock)?);
     }
-
-    for (ri, matched) in matched_right.iter().enumerate() {
-        if !matched {
-            let mut candidate: JoinedRow = left_shape.iter().map(ContextTable::null_row).collect();
-            candidate.extend(right_rows[ri].clone());
-            next_rows.push(candidate);
-        }
-    }
-
-    Ok(next_rows)
+    Ok(key)
 }

@@ -14,6 +14,7 @@ pub(crate) fn execute_select_internal(
     ctx: &mut ExecutionContext,
 ) -> Result<QueryResult, DbError> {
     from_tree::enforce_query_governor_cost_limit(query, ctx)?;
-    let source_eval = source::execute_source(executor, query, ctx)?;
-    finalize::finalize_rows(executor, query, source_eval.rows, ctx)
+    let mut source_eval = source::execute_source(executor, query, ctx)?;
+    let rows = source_eval.materialize(ctx, executor.catalog, executor.storage, executor.clock)?;
+    finalize::finalize_rows(executor, query, rows, ctx)
 }
