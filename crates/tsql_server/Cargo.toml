@@ -17,6 +17,8 @@ env_logger = "0.11"
 parking_lot = "0.12"
 regex = "1"
 once_cell = "1"
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 tsql_server_test_support = { path = "../tsql_server_test_support" }

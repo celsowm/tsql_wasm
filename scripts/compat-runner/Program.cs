@@ -293,7 +293,7 @@ var queries = new string[]
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────
-static string ExecuteAzure(string connStr, string sql)
+static QueryEnvelope ExecuteAzure(string connStr, string sql)
 {
     try
     {
@@ -303,42 +303,59 @@ static string ExecuteAzure(string connStr, string sql)
         cmd.CommandText = sql;
         cmd.CommandTimeout = 10;
         using var reader = cmd.ExecuteReader();
-        var rows = new List<string>();
-        while (reader.Read())
+        var resultSets = new List<ResultSetEnvelope>();
+
+        do
         {
-            var cols = new List<string>();
+            if (reader.FieldCount <= 0)
+            {
+                continue;
+            }
+
+            var columns = new string[reader.FieldCount];
+            var columnTypes = new string[reader.FieldCount];
             for (int i = 0; i < reader.FieldCount; i++)
             {
-                if (reader.IsDBNull(i))
-                    cols.Add("NULL");
-                else
-                {
-                    var val = reader.GetValue(i);
-                    if (val is DateTime dt)
-                        cols.Add(dt.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture).Trim());
-                    else if (val is IFormattable fmt)
-                        cols.Add(fmt.ToString(null, CultureInfo.InvariantCulture)!.Trim());
-                    else
-                        cols.Add(val.ToString()!.Trim());
-                }
+                columns[i] = reader.GetName(i);
+                columnTypes[i] = NormalizeTypeName(reader.GetDataTypeName(i));
             }
-            rows.Add(string.Join("|", cols));
-        }
-        rows.Sort(StringComparer.Ordinal);
-        return string.Join("\n", rows);
+
+            var rows = new List<string[]>();
+            while (reader.Read())
+            {
+                var cols = new string[reader.FieldCount];
+                for (int i = 0; i < reader.FieldCount; i++)
+                {
+                    cols[i] = FormatAzureValue(reader.GetValue(i));
+                }
+                rows.Add(cols);
+            }
+
+            rows.Sort(CompareRows);
+            resultSets.Add(new ResultSetEnvelope(columns, columnTypes, rows.ToArray(), rows.Count));
+        } while (reader.NextResult());
+
+        return new QueryEnvelope(true, null, resultSets.ToArray());
     }
     catch (SqlException ex)
     {
-        // Format: ERROR:Number:Class:State:Message
-        return $"ERROR:{ex.Number}:{ex.Class}:{ex.State}:{ex.Message}";
+        return new QueryEnvelope(
+            false,
+            new ErrorEnvelope(ex.Number, ex.Class, ex.State, "SqlException", ex.Message),
+            Array.Empty<ResultSetEnvelope>()
+        );
     }
     catch (Exception ex)
     {
-        return $"ERROR:0:0:0:{ex.Message}";
+        return new QueryEnvelope(
+            false,
+            new ErrorEnvelope(0, 0, 0, ex.GetType().Name, ex.Message),
+            Array.Empty<ResultSetEnvelope>()
+        );
     }
 }
 
-static string ExecuteLocal(string bin, string sql)
+static QueryEnvelope ExecuteLocal(string bin, string sql)
 {
     try
     {
@@ -350,22 +367,200 @@ static string ExecuteLocal(string bin, string sql)
             CreateNoWindow = true,
         };
         using var proc = Process.Start(psi)!;
-        var stdout = proc.StandardOutput.ReadToEnd().Trim();
-        var stderr = proc.StandardError.ReadToEnd().Trim();
+        var stdout = proc.StandardOutput.ReadToEnd();
+        var stderr = proc.StandardError.ReadToEnd();
         proc.WaitForExit(10_000);
 
-        if (stderr.StartsWith("ERROR:"))
-            return stderr;
+        var parsed = TryParseQueryEnvelope(stdout);
+        if (parsed is not null)
+            return parsed;
+
+        if (proc.ExitCode != 0 && !string.IsNullOrWhiteSpace(stderr))
+        {
+            var error = TryParseErrorLine(stderr.Trim());
+            if (error is not null)
+                return error;
+        }
 
         if (proc.ExitCode != 0)
-            return $"ERROR:0:0:0:{stderr}";
+        {
+            return new QueryEnvelope(
+                false,
+                new ErrorEnvelope(0, 0, 0, "ProcessExit", stderr.Trim()),
+                Array.Empty<ResultSetEnvelope>()
+            );
+        }
 
-        return stdout;
+        return new QueryEnvelope(true, null, Array.Empty<ResultSetEnvelope>());
     }
     catch (Exception ex)
     {
-        return $"ERROR:0:0:0:{ex.Message}";
+        return new QueryEnvelope(
+            false,
+            new ErrorEnvelope(0, 0, 0, ex.GetType().Name, ex.Message),
+            Array.Empty<ResultSetEnvelope>()
+        );
     }
+}
+
+static QueryEnvelope? TryParseQueryEnvelope(string payload)
+{
+    var trimmed = payload.Trim();
+    if (string.IsNullOrWhiteSpace(trimmed))
+        return null;
+
+    try
+    {
+        return JsonSerializer.Deserialize<QueryEnvelope>(
+            trimmed,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+        );
+    }
+    catch
+    {
+        return null;
+    }
+}
+
+static QueryEnvelope? TryParseErrorLine(string line)
+{
+    if (!line.StartsWith("ERROR:", StringComparison.Ordinal))
+        return null;
+
+    var parts = line.Split(':', 5);
+    if (parts.Length < 5)
+        return null;
+
+    _ = int.TryParse(parts[1], out var number);
+    _ = int.TryParse(parts[2], out var classValue);
+    _ = int.TryParse(parts[3], out var state);
+
+    return new QueryEnvelope(
+        false,
+        new ErrorEnvelope(number, classValue, state, "ProcessError", parts[4]),
+        Array.Empty<ResultSetEnvelope>()
+    );
+}
+
+static string FormatAzureValue(object? value)
+{
+    if (value is null || value is DBNull)
+        return "NULL";
+
+    if (value is DateTime dt)
+        return dt.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture).Trim();
+
+    if (value is DateTimeOffset dto)
+        return dto.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture).Trim();
+
+    if (value is IFormattable fmt)
+        return fmt.ToString(null, CultureInfo.InvariantCulture)!.Trim();
+
+    return value.ToString()!.Trim();
+}
+
+static string NormalizeTypeName(string typeName)
+{
+    return typeName.Trim().ToLowerInvariant();
+}
+
+static string NormalizeText(string text)
+{
+    return string.Join(" ", text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+}
+
+static string NormalizeRow(string[] row)
+{
+    return string.Join("\u001F", row);
+}
+
+static string FormatVector(IEnumerable<string> values)
+{
+    return "[" + string.Join(", ", values.Select(v => $"'{v}'")) + "]";
+}
+
+static int CompareRows(string[] left, string[] right)
+{
+    return StringComparer.Ordinal.Compare(NormalizeRow(left), NormalizeRow(right));
+}
+
+static bool CompareResponses(
+    QueryEnvelope azure,
+    QueryEnvelope local,
+    out List<string> diffs
+)
+{
+    diffs = new List<string>();
+
+    if (azure.Ok != local.Ok)
+    {
+        diffs.Add($"status mismatch: Azure Ok={azure.Ok}, Local Ok={local.Ok}");
+        return false;
+    }
+
+    if (!azure.Ok)
+    {
+        if (azure.Error is null || local.Error is null)
+        {
+            diffs.Add("one side returned an error envelope and the other did not");
+            return false;
+        }
+
+        if (azure.Error.Number != local.Error.Number)
+            diffs.Add($"error number mismatch: Azure={azure.Error.Number}, Local={local.Error.Number}");
+        if (azure.Error.Class != local.Error.Class)
+            diffs.Add($"error class mismatch: Azure={azure.Error.Class}, Local={local.Error.Class}");
+        if (azure.Error.State != local.Error.State)
+            diffs.Add($"error state mismatch: Azure={azure.Error.State}, Local={local.Error.State}");
+
+        var azureMessage = NormalizeText(azure.Error.Message);
+        var localMessage = NormalizeText(local.Error.Message);
+        if (!string.Equals(azureMessage, localMessage, StringComparison.Ordinal))
+        {
+            diffs.Add($"error message mismatch:\n    Azure: {azure.Error.Message}\n    Local: {local.Error.Message}");
+        }
+
+        return diffs.Count == 0;
+    }
+
+    if (azure.ResultSets.Length != local.ResultSets.Length)
+    {
+        diffs.Add(
+            $"result-set count mismatch: Azure={azure.ResultSets.Length}, Local={local.ResultSets.Length}"
+        );
+    }
+
+    var maxSets = Math.Min(azure.ResultSets.Length, local.ResultSets.Length);
+    for (int setIdx = 0; setIdx < maxSets; setIdx++)
+    {
+        var a = azure.ResultSets[setIdx];
+        var l = local.ResultSets[setIdx];
+
+        if (!a.Columns.SequenceEqual(l.Columns, StringComparer.Ordinal))
+            diffs.Add(
+                $"result set {setIdx} columns mismatch: Azure={FormatVector(a.Columns)}, Local={FormatVector(l.Columns)}"
+            );
+
+        if (!a.ColumnTypes.SequenceEqual(l.ColumnTypes, StringComparer.OrdinalIgnoreCase))
+            diffs.Add(
+                $"result set {setIdx} column types mismatch: Azure={FormatVector(a.ColumnTypes)}, Local={FormatVector(l.ColumnTypes)}"
+            );
+
+        if (a.RowCount != l.RowCount)
+            diffs.Add($"result set {setIdx} row count mismatch: Azure={a.RowCount}, Local={l.RowCount}");
+
+        var aRows = a.Rows.Select(NormalizeRow).OrderBy(x => x, StringComparer.Ordinal).ToArray();
+        var lRows = l.Rows.Select(NormalizeRow).OrderBy(x => x, StringComparer.Ordinal).ToArray();
+
+        if (!aRows.SequenceEqual(lRows, StringComparer.Ordinal))
+        {
+            diffs.Add(
+                $"result set {setIdx} row values mismatch: Azure={FormatVector(aRows)}, Local={FormatVector(lRows)}"
+            );
+        }
+    }
+
+    return diffs.Count == 0;
 }
 
 // ── Seed Azure SQL Edge ─────────────────────────────────────────────
@@ -405,7 +600,7 @@ Console.WriteLine($"=============================================");
 Console.ResetColor();
 
 int passed = 0, failed = 0, skipped = 0;
-var failures = new List<(string sql, string azure, string local)>();
+var failures = new List<(string sql, QueryEnvelope azure, QueryEnvelope local, List<string> diffs)>();
 
 foreach (var sql in queries)
 {
@@ -416,7 +611,7 @@ foreach (var sql in queries)
     var azResult = ExecuteAzure(azureConnStr, sql);
     var locResult = ExecuteLocal(compatBin, sql);
 
-    if (azResult == locResult)
+    if (CompareResponses(azResult, locResult, out var diffs))
     {
         Console.ForegroundColor = ConsoleColor.Green;
         Console.WriteLine(" [PASS]");
@@ -427,7 +622,7 @@ foreach (var sql in queries)
         Console.ForegroundColor = ConsoleColor.Red;
         Console.WriteLine(" [FAIL]");
         failed++;
-        failures.Add((sql, azResult, locResult));
+        failures.Add((sql, azResult, locResult, diffs));
     }
     Console.ResetColor();
     }
@@ -444,16 +639,44 @@ if (failures.Count > 0)
     Console.ForegroundColor = ConsoleColor.Red;
     Console.WriteLine("\nFAILURE DETAILS:");
     Console.WriteLine("────────────────────────────────────────────────────────");
-    foreach (var (sql, azure, local) in failures)
+    foreach (var (sql, azure, local, diffs) in failures)
     {
         Console.ForegroundColor = ConsoleColor.Yellow;
         Console.WriteLine($"\n  SQL:   {sql}");
-        Console.ForegroundColor = ConsoleColor.Magenta;
-        Console.WriteLine($"  Azure: {azure}");
-        Console.ForegroundColor = ConsoleColor.DarkCyan;
-        Console.WriteLine($"  Local: {local}");
+        foreach (var diff in diffs)
+        {
+            Console.ForegroundColor = ConsoleColor.Magenta;
+            Console.WriteLine($"  DIFF: {diff}");
+        }
+
+        if (!azure.Ok)
+        {
+            Console.ForegroundColor = ConsoleColor.DarkYellow;
+            Console.WriteLine(
+                $"  Azure error: {azure.Error!.Number}:{azure.Error.Class}:{azure.Error.State} {azure.Error.Message}"
+            );
+        }
+        if (!local.Ok)
+        {
+            Console.ForegroundColor = ConsoleColor.DarkCyan;
+            Console.WriteLine(
+                $"  Local error: {local.Error!.Number}:{local.Error.Class}:{local.Error.State} {local.Error.Message}"
+            );
+        }
     }
     Console.ResetColor();
 }
 
 return failed > 0 ? 1 : 0;
+
+// ── Response types ──────────────────────────────────────────────────
+record ErrorEnvelope(int Number, int Class, int State, string Code, string Message);
+
+record ResultSetEnvelope(
+    string[] Columns,
+    string[] ColumnTypes,
+    string[][] Rows,
+    int RowCount
+);
+
+record QueryEnvelope(bool Ok, ErrorEnvelope? Error, ResultSetEnvelope[] ResultSets);

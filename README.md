@@ -465,6 +465,11 @@ Compatibility is validated in two layers:
 - `scripts/test-compat.ps1`: semantic/result parity checks between Azure SQL Edge and `compat-query` (engine-focused).
 - `cargo test -p tsql_server ssms_object_explorer_`: SSMS Object Explorer contract replay (metadata/bootstrap/table-enumeration focused).
 
+See also:
+- [docs/roadmap.md](docs/roadmap.md)
+- [docs/compatibility-matrix.md](docs/compatibility-matrix.md)
+- [docs/compatibility-backlog.md](docs/compatibility-backlog.md)
+
 ---
 
 ## Current Limitations
@@ -475,6 +480,7 @@ Compatibility is validated in two layers:
 - Catalog coverage is still a subset of SQL Server metadata
 
 See [`docs/roadmap.md`](docs/roadmap.md) for the full compatibility roadmap.
+See [`docs/compatibility-matrix.md`](docs/compatibility-matrix.md) for the current scoreboard and [`docs/compatibility-backlog.md`](docs/compatibility-backlog.md) for the prioritized follow-up work.
 
 ---
 
