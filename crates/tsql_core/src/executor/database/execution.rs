@@ -1,6 +1,3 @@
-use serde::de::DeserializeOwned;
-use serde::Serialize;
-
 use crate::ast::Statement;
 use crate::catalog::Catalog;
 use crate::error::DbError;
@@ -13,33 +10,42 @@ use super::super::result::QueryResult;
 use super::super::session::{SessionRuntime, SharedState};
 use super::super::table_util::is_transaction_statement;
 use super::super::transaction_exec;
+use super::{EngineCatalog, EngineStorage};
 use super::StatementExecutor;
 
 use super::dispatch::execute_non_transaction_statement;
 
+fn with_session<C, S, R, F>(
+    state: &SharedState<C, S>,
+    session_id: SessionId,
+    f: F,
+) -> Result<R, DbError>
+where
+    C: EngineCatalog,
+    S: EngineStorage,
+    F: FnOnce(&mut SessionRuntime<C, S>) -> Result<R, DbError>,
+{
+    let session_mutex = state
+        .sessions
+        .get(&session_id)
+        .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
+    let mut session = session_mutex.lock();
+    f(&mut session)
+}
+
 impl<C, S> StatementExecutor for super::StatementExecutorService<C, S>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     fn execute_session(
         &self,
         session_id: SessionId,
         stmt: Statement,
     ) -> Result<Option<QueryResult>, DbError> {
-        let session_mutex = self
-            .state
-            .sessions
-            .get(&session_id)
-            .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
-        let mut session = session_mutex.lock();
-        execute_single_statement(&self.state, session_id, &mut session, stmt)
+        with_session(&self.state, session_id, |session| {
+            execute_single_statement(&self.state, session_id, session, stmt)
+        })
     }
 
     fn execute_session_batch(
@@ -47,13 +53,9 @@ where
         session_id: SessionId,
         stmts: Vec<Statement>,
     ) -> Result<Option<QueryResult>, DbError> {
-        let session_mutex = self
-            .state
-            .sessions
-            .get(&session_id)
-            .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
-        let mut session = session_mutex.lock();
-        execute_batch_statements(&self.state, session_id, &mut session, stmts)
+        with_session(&self.state, session_id, |session| {
+            execute_batch_statements(&self.state, session_id, session, stmts)
+        })
     }
 
     fn execute_session_batch_sql(
@@ -61,17 +63,14 @@ where
         session_id: SessionId,
         sql: &str,
     ) -> Result<Option<QueryResult>, DbError> {
-        let quoted_ident = {
-            let session_mutex =
-                self.state.sessions.get(&session_id).ok_or_else(|| {
-                    DbError::Execution(format!("session {} not found", session_id))
-                })?;
-            let session = session_mutex.lock();
-            session.options.quoted_identifier
-        };
+        let quoted_ident = with_session(&self.state, session_id, |session| {
+            Ok(session.options.quoted_identifier)
+        })?;
 
         let stmts = parse_batch_with_quoted_ident(sql, quoted_ident)?;
-        self.execute_session_batch(session_id, stmts)
+        with_session(&self.state, session_id, |session| {
+            execute_batch_statements(&self.state, session_id, session, stmts)
+        })
     }
 
     fn execute_session_batch_sql_multi(
@@ -79,23 +78,14 @@ where
         session_id: SessionId,
         sql: &str,
     ) -> Result<Vec<Option<QueryResult>>, DbError> {
-        let quoted_ident = {
-            let session_mutex =
-                self.state.sessions.get(&session_id).ok_or_else(|| {
-                    DbError::Execution(format!("session {} not found", session_id))
-                })?;
-            let session = session_mutex.lock();
-            session.options.quoted_identifier
-        };
+        let quoted_ident = with_session(&self.state, session_id, |session| {
+            Ok(session.options.quoted_identifier)
+        })?;
 
         let stmts = parse_batch_with_quoted_ident(sql, quoted_ident)?;
-        let session_mutex = self
-            .state
-            .sessions
-            .get(&session_id)
-            .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
-        let mut session = session_mutex.lock();
-        execute_batch_statements_multi(&self.state, session_id, &mut session, stmts)
+        with_session(&self.state, session_id, |session| {
+            execute_batch_statements_multi(&self.state, session_id, session, stmts)
+        })
     }
 
     fn set_session_metadata(
@@ -106,55 +96,115 @@ where
         host_name: Option<String>,
         database: Option<String>,
     ) -> Result<(), DbError> {
-        let session_mutex = self
-            .state
-            .sessions
-            .get(&session_id)
-            .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
-        let mut session = session_mutex.lock();
-        session.user = user;
-        session.app_name = app_name;
-        session.host_name = host_name;
-        if let Some(database) = database {
-            session.current_database = database.clone();
-            session.original_database = database;
-        }
-        Ok(())
+        with_session(&self.state, session_id, |session| {
+            session.user = user;
+            session.app_name = app_name;
+            session.host_name = host_name;
+            if let Some(database) = database {
+                session.current_database = database.clone();
+                session.original_database = database;
+            }
+            Ok(())
+        })
     }
 
     fn set_session_database(&self, session_id: SessionId, database: String) -> Result<(), DbError> {
-        let session_mutex = self
-            .state
-            .sessions
-            .get(&session_id)
-            .ok_or_else(|| DbError::Execution(format!("session {} not found", session_id)))?;
-        let mut session = session_mutex.lock();
-        session.current_database = database;
-        Ok(())
+        with_session(&self.state, session_id, |session| {
+            session.current_database = database;
+            Ok(())
+        })
     }
 }
 
+#[allow(deprecated)]
 fn build_execution_context<'a, C, S>(
     session_id: SessionId,
     session: &'a mut SessionRuntime<C, S>,
     state: &SharedState<C, S>,
-) -> ExecutionContext<'a>
+) -> (
+    ExecutionContext<'a>,
+    &'a mut crate::executor::transaction::TransactionManager<
+        C,
+        S,
+        crate::executor::session::SessionSnapshot,
+    >,
+    &'a mut Box<dyn crate::executor::journal::Journal>,
+    &'a mut Option<crate::executor::locks::TxWorkspace<C, S>>,
+    &'a mut Box<dyn crate::executor::clock::Clock>,
+    &'a mut crate::executor::tooling::SessionOptions,
+)
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     let dirty_buffer = if session.tx_manager.active.is_some() {
         Some(state.dirty_buffer.clone())
     } else {
         None
     };
-    ExecutionContext::from_session(session, session_id, dirty_buffer)
+    let (
+        clock,
+        tx_manager,
+        journal,
+        variables,
+        identities,
+        tables,
+        cursors,
+        diagnostics,
+        workspace,
+        options,
+        random_state,
+        original_database,
+        user,
+        app_name,
+        host_name,
+    ) = (
+        &mut session.clock,
+        &mut session.tx_manager,
+        &mut session.journal,
+        &mut session.variables,
+        &mut session.identities,
+        &mut session.tables,
+        &mut session.cursors,
+        &mut session.diagnostics,
+        &mut session.workspace,
+        &mut session.options,
+        &mut session.random_state,
+        &mut session.original_database,
+        &mut session.user,
+        &mut session.app_name,
+        &mut session.host_name,
+    );
+
+    let mut ctx = ExecutionContext::new(
+        variables,
+        &mut identities.last_identity,
+        &mut identities.scope_stack,
+        &mut tables.temp_map,
+        &mut tables.var_map,
+        &mut tables.var_counter,
+        options.ansi_nulls,
+        options.datefirst,
+        random_state,
+        &mut cursors.map,
+        &mut cursors.fetch_status,
+        &mut diagnostics.print_output,
+        dirty_buffer,
+        session_id,
+        original_database.clone(),
+        user.clone(),
+        app_name.clone(),
+        host_name.clone(),
+    );
+    ctx.options = options.clone();
+    (
+        ctx,
+        tx_manager,
+        journal,
+        workspace,
+        clock,
+        options,
+    )
 }
 
 fn execute_stmt_loop<C, S, F>(
@@ -174,14 +224,8 @@ fn execute_stmt_loop<C, S, F>(
     mut on_result: F,
 ) -> Result<(), DbError>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
     F: FnMut(Option<QueryResult>),
 {
     for stmt in stmts {
@@ -269,14 +313,8 @@ fn execute_batch_core_inner<C, S, F>(
     body: F,
 ) -> Result<(), DbError>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
     F: FnOnce(
         &mut ExecutionContext,
         &SharedState<C, S>,
@@ -292,34 +330,29 @@ where
         &mut crate::executor::tooling::SessionOptions,
     ) -> Result<(), DbError>,
 {
-    let session_ptr = session as *mut SessionRuntime<C, S>;
-
-    let mut ctx = unsafe {
-        let session_ref = &mut *session_ptr;
-        build_execution_context(session_id, session_ref, state)
-    };
+    let (mut ctx, tx_manager, journal, workspace, clock, options) =
+        build_execution_context(session_id, session, state);
 
     ctx.enter_scope();
 
-    let exec_res = unsafe {
-        let session_ref = &mut *session_ptr;
-        let tx_manager = &mut session_ref.tx_manager;
-        let journal = &mut session_ref.journal;
-        let workspace = &mut session_ref.workspace;
-        let clock = session_ref.clock.as_ref();
-        let options = &mut session_ref.options;
-        body(
-            &mut ctx, state, session_id, tx_manager, journal, workspace, clock, options,
-        )
-    };
+    let exec_res = body(
+        &mut ctx,
+        state,
+        session_id,
+        tx_manager,
+        journal,
+        workspace,
+        clock.as_ref(),
+        options,
+    );
 
     // Scope cleanup always runs before error propagation — guarantees no leak
     // even when the body returns Err (BREAK/CONTINUE/deadlock/etc).
     let dropped_physical = ctx.leave_scope_collect_table_vars();
+    let tx_active = tx_manager.active.is_some();
+    let workspace = workspace.as_mut();
     drop(ctx);
-    unsafe {
-        cleanup_scope_tables(state, &mut *session_ptr, dropped_physical);
-    }
+    cleanup_scope_tables(state, tx_active, workspace, dropped_physical);
 
     exec_res
 }
@@ -331,14 +364,8 @@ pub(crate) fn execute_batch_statements<C, S>(
     stmts: Vec<Statement>,
 ) -> Result<Option<QueryResult>, DbError>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     let mut last_res = None;
     let exec_res = execute_batch_core_inner(
@@ -373,14 +400,8 @@ pub(crate) fn execute_batch_statements_multi<C, S>(
     stmts: Vec<Statement>,
 ) -> Result<Vec<Option<QueryResult>>, DbError>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     let mut results = Vec::new();
     let exec_res = execute_batch_core_inner(
@@ -415,61 +436,42 @@ pub(crate) fn execute_single_statement<C, S>(
     stmt: Statement,
 ) -> Result<Option<QueryResult>, DbError>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
-    let session_ptr = session as *mut SessionRuntime<C, S>;
-    let mut ctx = unsafe {
-        let session_ref = &mut *session_ptr;
-        build_execution_context(session_id, session_ref, state)
-    };
     let mut res = None;
-    let exec_res = unsafe {
-        let session_ref = &mut *session_ptr;
-        let tx_manager = &mut session_ref.tx_manager;
-        let journal = &mut session_ref.journal;
-        let workspace = &mut session_ref.workspace;
-        let clock = session_ref.clock.as_ref();
-        let options = &mut session_ref.options;
-        execute_stmt_loop(
+    let exec_res = {
+        let (mut ctx, tx_manager, journal, workspace, clock, options) =
+            build_execution_context(session_id, session, state);
+        let exec_res = execute_stmt_loop(
             state,
             session_id,
             tx_manager,
             journal,
             workspace,
-            clock,
+            clock.as_ref(),
             options,
             &mut ctx,
             vec![stmt],
             |r| {
                 res = r;
             },
-        )
+        );
+        drop(ctx);
+        exec_res
     };
-    drop(ctx);
     exec_res?;
     Ok(res)
 }
 
 fn cleanup_scope_tables<C, S>(
     state: &SharedState<C, S>,
-    session: &mut SessionRuntime<C, S>,
+    tx_active: bool,
+    workspace: Option<&mut crate::executor::locks::TxWorkspace<C, S>>,
     dropped_physical: Vec<String>,
 ) where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     fn drop_physical_table(
         catalog: &mut dyn Catalog,
@@ -493,8 +495,8 @@ fn cleanup_scope_tables<C, S>(
         Ok(())
     }
 
-    if session.tx_manager.active.is_some() {
-        if let Some(workspace) = session.workspace.as_mut() {
+    if tx_active {
+        if let Some(workspace) = workspace {
             for physical in dropped_physical {
                 let _ =
                     drop_physical_table(&mut workspace.catalog, &mut workspace.storage, &physical);

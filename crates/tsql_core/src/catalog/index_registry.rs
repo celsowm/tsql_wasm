@@ -1,5 +1,6 @@
 use super::*;
 use crate::error::DbError;
+use crate::executor::string_norm::normalize_identifier;
 
 impl IndexRegistry for CatalogImpl {
     fn get_indexes(&self) -> &[IndexDef] {
@@ -63,7 +64,7 @@ impl IndexRegistry for CatalogImpl {
             is_clustered: false,
         });
         self.index_map.insert(
-            (index_schema_id, name.to_lowercase()),
+            (index_schema_id, normalize_identifier(name)),
             self.indexes.len() - 1,
         );
         Ok(())
@@ -122,7 +123,7 @@ impl IndexRegistry for CatalogImpl {
             is_clustered,
         });
         self.index_map.insert(
-            (index_schema_id, name.to_lowercase()),
+            (index_schema_id, normalize_identifier(name)),
             self.indexes.len() - 1,
         );
         Ok(())

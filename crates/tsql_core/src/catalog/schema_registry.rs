@@ -1,5 +1,6 @@
 use super::*;
 use crate::error::DbError;
+use crate::executor::string_norm::normalize_identifier;
 
 impl SchemaRegistry for CatalogImpl {
     fn get_schemas(&self) -> &[SchemaDef] {
@@ -7,7 +8,7 @@ impl SchemaRegistry for CatalogImpl {
     }
 
     fn get_schema_id(&self, name: &str) -> Option<u32> {
-        let idx = self.schema_map.get(&name.to_lowercase())?;
+        let idx = self.schema_map.get(&normalize_identifier(name))?;
         Some(self.schemas[*idx].id)
     }
 
@@ -21,7 +22,7 @@ impl SchemaRegistry for CatalogImpl {
             id,
             name: name.to_string(),
         });
-        self.schema_map.insert(name.to_lowercase(), idx);
+        self.schema_map.insert(normalize_identifier(name), idx);
         Ok(())
     }
 

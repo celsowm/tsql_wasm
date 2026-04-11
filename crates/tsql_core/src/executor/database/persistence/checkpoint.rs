@@ -1,15 +1,12 @@
-use crate::catalog::Catalog;
 use crate::error::DbError;
 use crate::executor::database::{CheckpointManager, CheckpointManagerService};
 use crate::executor::durability::RecoveryCheckpoint;
-use crate::storage::CheckpointableStorage;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
+use super::{EngineCatalog, EngineStorage};
 
 impl<C, S> CheckpointManager for CheckpointManagerService<C, S>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     fn export_checkpoint(&self) -> Result<String, DbError> {
         self.state.to_checkpoint().to_json()

@@ -3,6 +3,5 @@
     "allow": [
       "Bash(powershell *)"
     ]
-  },
-  "$version": 3
+  }
 }

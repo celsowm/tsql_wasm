@@ -1,11 +1,8 @@
-use serde::de::DeserializeOwned;
-use serde::Serialize;
-
 use crate::ast::{IsolationLevel, Statement};
-use crate::catalog::{Catalog, CatalogImpl};
+use crate::catalog::CatalogImpl;
 use crate::error::DbError;
 use crate::parser::parse_sql_with_quoted_ident;
-use crate::storage::{InMemoryStorage, Storage};
+use crate::storage::InMemoryStorage;
 
 use super::super::durability::DurabilitySink;
 use super::super::journal::Journal;
@@ -14,12 +11,13 @@ use super::super::result::QueryResult;
 use super::super::session::SessionManager;
 use super::super::tooling::{ExecutionTrace, ExplainPlan, SessionOptions};
 use super::persistence::DatabaseInner;
+use super::{EngineCatalog, EngineStorage};
 use super::{CheckpointManager, SqlAnalyzer, StatementExecutor};
 
 pub struct EngineInner<C, S>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     db: DatabaseInner<C, S>,
     pub(crate) default_session: SessionId,
@@ -27,8 +25,8 @@ where
 
 impl<C, S> std::fmt::Debug for EngineInner<C, S>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Engine")
@@ -183,14 +181,8 @@ impl EngineInner<CatalogImpl, InMemoryStorage> {
 
 impl<C, S> EngineInner<C, S>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     pub fn create_session(&self) -> SessionId {
         self.db.session_manager().create_session()

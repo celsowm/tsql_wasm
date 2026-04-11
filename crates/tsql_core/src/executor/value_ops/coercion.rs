@@ -782,7 +782,7 @@ pub fn parse_money_string(s: &str) -> Result<Value, DbError> {
 
 pub fn parse_hex_string(s: &str) -> Result<Vec<u8>, DbError> {
     let s = s.trim();
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return Err(DbError::Execution(
             "hex string must have even number of digits".into(),
         ));

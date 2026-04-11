@@ -4,6 +4,9 @@ use crate::error::DbError;
 use crate::storage::Storage;
 use crate::types::Value;
 
+use std::collections::HashMap;
+use std::sync::OnceLock;
+
 use crate::executor::clock::Clock;
 use crate::executor::context::ExecutionContext;
 use crate::executor::model::ContextTable;
@@ -65,6 +68,12 @@ const SYSTEM_FUNCTIONS: &[BuiltinScalarFunction] = &[
     builtin!("IDENT_CURRENT" => tsql_metadata::eval_ident_current),
     builtin!("SCOPE_IDENTITY" => |_args, _row, ctx, _catalog, _storage, _clock| {
         Ok(system::identity::eval_scope_identity(ctx))
+    }),
+    builtin!("XACT_STATE" => |args, _row, ctx, _catalog, _storage, _clock| {
+        if !args.is_empty() {
+            return Err(DbError::Execution("XACT_STATE expects no arguments".into()));
+        }
+        Ok(Value::Int(ctx.frame.xact_state as i32))
     }),
     builtin!("@@IDENTITY" => |_args, _row, ctx, _catalog, _storage, _clock| {
         Ok(system::identity::eval_identity(ctx))
@@ -178,6 +187,8 @@ const SYSTEM_FUNCTIONS: &[BuiltinScalarFunction] = &[
 
 const DATETIME_FUNCTIONS: &[BuiltinScalarFunction] = &[
     builtin!("GETDATE" => datetime::eval_getdate),
+    builtin!("CURRENT_TIMESTAMP" => datetime::eval_current_timestamp),
+    builtin!("CURRENT_DATE" => datetime::eval_current_date),
     builtin!("GETUTCDATE" => datetime::eval_getutcdate),
     builtin!("SYSDATETIME" => datetime::eval_sysdatetime),
     builtin!("SYSUTCDATETIME" => datetime::eval_sysutcdatetime),
@@ -359,57 +370,30 @@ const FUZZY_FUNCTIONS: &[BuiltinScalarFunction] = &[
     builtin!("JARO_WINKLER_SIMILARITY" => fuzzy::eval_jaro_winkler_similarity),
 ];
 
-fn lookup_builtin_function(
-    functions: &[BuiltinScalarFunction],
-    name: &str,
-) -> Option<ScalarHandler> {
-    functions
-        .iter()
-        .find(|entry| entry.name.eq_ignore_ascii_case(name))
-        .map(|entry| entry.handler)
-}
-
-pub(crate) fn lookup_system_function(name: &str) -> Option<ScalarHandler> {
-    lookup_builtin_function(SYSTEM_FUNCTIONS, name)
-}
-
-pub(crate) fn lookup_datetime_function(name: &str) -> Option<ScalarHandler> {
-    lookup_builtin_function(DATETIME_FUNCTIONS, name)
-}
-
-pub(crate) fn lookup_string_function(name: &str) -> Option<ScalarHandler> {
-    lookup_builtin_function(STRING_FUNCTIONS, name)
-}
-
-pub(crate) fn lookup_math_function(name: &str) -> Option<ScalarHandler> {
-    lookup_builtin_function(MATH_FUNCTIONS, name)
-}
-
-pub(crate) fn lookup_logic_function(name: &str) -> Option<ScalarHandler> {
-    lookup_builtin_function(LOGIC_FUNCTIONS, name)
-}
-
-pub(crate) fn lookup_json_function(name: &str) -> Option<ScalarHandler> {
-    lookup_builtin_function(JSON_FUNCTIONS, name)
-}
-
-pub(crate) fn lookup_regexp_function(name: &str) -> Option<ScalarHandler> {
-    lookup_builtin_function(REGEXP_FUNCTIONS, name)
-}
-
-pub(crate) fn lookup_fuzzy_function(name: &str) -> Option<ScalarHandler> {
-    lookup_builtin_function(FUZZY_FUNCTIONS, name)
+fn builtin_handler_map() -> &'static HashMap<&'static str, ScalarHandler> {
+    static HANDLERS: OnceLock<HashMap<&'static str, ScalarHandler>> = OnceLock::new();
+    HANDLERS.get_or_init(|| {
+        let mut handlers = HashMap::new();
+        for group in [
+            SYSTEM_FUNCTIONS,
+            DATETIME_FUNCTIONS,
+            STRING_FUNCTIONS,
+            MATH_FUNCTIONS,
+            LOGIC_FUNCTIONS,
+            JSON_FUNCTIONS,
+            REGEXP_FUNCTIONS,
+            FUZZY_FUNCTIONS,
+        ] {
+            for entry in group {
+                handlers.entry(entry.name).or_insert(entry.handler);
+            }
+        }
+        handlers
+    })
 }
 
 pub(crate) fn lookup_builtin_handler(name: &str) -> Option<ScalarHandler> {
-    lookup_system_function(name)
-        .or_else(|| lookup_datetime_function(name))
-        .or_else(|| lookup_string_function(name))
-        .or_else(|| lookup_math_function(name))
-        .or_else(|| lookup_logic_function(name))
-        .or_else(|| lookup_json_function(name))
-        .or_else(|| lookup_regexp_function(name))
-        .or_else(|| lookup_fuzzy_function(name))
+    builtin_handler_map().get(name).copied()
 }
 
 pub(crate) fn lookup_system_variable(

@@ -132,8 +132,8 @@ pub(crate) fn eval_like(
 }
 
 fn like_match(s: &str, pattern: &str) -> bool {
-    let s_chars: Vec<char> = s.chars().collect();
-    let p_chars: Vec<char> = pattern.chars().collect();
+    let s_chars: Vec<char> = s.to_ascii_uppercase().chars().collect();
+    let p_chars: Vec<char> = pattern.to_ascii_uppercase().chars().collect();
     like_match_impl(&s_chars, 0, &p_chars, 0)
 }
 

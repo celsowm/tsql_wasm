@@ -23,30 +23,33 @@ pub(crate) fn execute_apply(
         if sub_result.rows.is_empty() {
             if apply.apply_type == crate::ast::ApplyType::Outer {
                 let mut combined = left_row.clone();
-                combined.push(ContextTable {
-                    table: build_virtual_table(&apply.alias, &sub_result),
-                    alias: apply.alias.clone(),
-                    row: None,
-                    storage_index: None,
-                });
+                combined.push(
+                    ContextTable {
+                        table: build_virtual_table(&apply.alias, &sub_result),
+                        alias: apply.alias.clone(),
+                        row: None,
+                        storage_index: None,
+                    }
+                    .null_row(),
+                );
                 result_rows.push(combined);
             }
         } else {
-            let apply_table = build_virtual_table(&apply.alias, &sub_result);
-            for (idx, sub_row_values) in sub_result.rows.iter().enumerate() {
-                let mut combined = left_row.clone();
-                combined.push(ContextTable {
-                    table: apply_table.clone(),
-                    alias: apply.alias.clone(),
-                    row: Some(StoredRow {
-                        values: sub_row_values.clone(),
-                        deleted: false,
-                    }),
-                    storage_index: Some(idx),
-                });
-                result_rows.push(combined);
+                let apply_table = build_virtual_table(&apply.alias, &sub_result);
+                for (idx, sub_row_values) in sub_result.rows.iter().enumerate() {
+                    let mut combined = left_row.clone();
+                    combined.push(ContextTable {
+                        table: apply_table.clone(),
+                        alias: apply.alias.clone(),
+                        row: Some(StoredRow {
+                            values: sub_row_values.clone(),
+                            deleted: false,
+                        }),
+                        storage_index: Some(idx),
+                    });
+                    result_rows.push(combined);
+                }
             }
-        }
     }
 
     Ok(result_rows)

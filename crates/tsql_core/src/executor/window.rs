@@ -190,7 +190,7 @@ impl<'a> WindowExecutor<'a> {
                                         }
                                     }
                                     WindowFunc::NTile => {
-                                        let n_buckets = if let Some(e) = args.get(0) {
+                                        let n_buckets = if let Some(e) = args.first() {
                                             match eval_expr(e, w_row.row, ctx, self.catalog, self.storage, self.clock) {
                                                 Ok(Value::Int(n)) => n as i64,
                                                 Ok(Value::BigInt(n)) => n,
@@ -223,7 +223,7 @@ impl<'a> WindowExecutor<'a> {
                                         }
                                     }
                                     WindowFunc::PercentileCont | WindowFunc::PercentileDisc => {
-                                        let percentile = if let Some(e) = args.get(0) {
+                                        let percentile = if let Some(e) = args.first() {
                                             match eval_expr(e, w_row.row, ctx, self.catalog, self.storage, self.clock) {
                                                 Ok(Value::Float(v)) => f64::from_bits(v),
                                                 Ok(v) => value_to_f64(&v).unwrap_or(f64::NAN),
@@ -233,7 +233,7 @@ impl<'a> WindowExecutor<'a> {
                                             f64::NAN
                                         };
 
-                                        if percentile.is_nan() || percentile < 0.0 || percentile > 1.0 {
+                                        if percentile.is_nan() || !(0.0..=1.0).contains(&percentile) {
                                             Value::Null
                                         } else {
                                             let mut values: Vec<f64> = Vec::new();
@@ -256,15 +256,13 @@ impl<'a> WindowExecutor<'a> {
                                                 let hi = exact_index.ceil() as usize;
 
                                                 if func == &WindowFunc::PercentileDisc {
-                                                     Value::Float(values[hi].to_bits())
+                                                    Value::Float(values[hi].to_bits())
+                                                } else if lo == hi {
+                                                    Value::Float(values[lo].to_bits())
                                                 } else {
-                                                    if lo == hi {
-                                                        Value::Float(values[lo].to_bits())
-                                                    } else {
-                                                        let frac = exact_index - lo as f64;
-                                                        let result = values[lo] * (1.0 - frac) + values[hi] * frac;
-                                                        Value::Float(result.to_bits())
-                                                    }
+                                                    let frac = exact_index - lo as f64;
+                                                    let result = values[lo] * (1.0 - frac) + values[hi] * frac;
+                                                    Value::Float(result.to_bits())
                                                 }
                                             }
                                         }
@@ -357,9 +355,9 @@ impl<'a> WindowExecutor<'a> {
         true
     }
 
-    fn collect_window_exprs<'b>(
+    fn collect_window_exprs(
         &self,
-        expr: &'b Expr,
+        expr: &Expr,
         window_specs: &mut Vec<(WindowSpec, Vec<Expr>)>,
     ) {
         match expr {
@@ -564,11 +562,11 @@ pub fn has_window_function(expr: &Expr) -> bool {
         Expr::Unary { expr: inner, .. } => has_window_function(inner),
         Expr::Cast { expr: inner, .. } | Expr::Convert { expr: inner, .. } | Expr::TryCast { expr: inner, .. } | Expr::TryConvert { expr: inner, .. } | Expr::IsNull(inner) | Expr::IsNotNull(inner) => has_window_function(inner),
         Expr::Case { operand, when_clauses, else_result } => {
-            let has_in_operand = operand.as_ref().map_or(false, |e| has_window_function(e));
+            let has_in_operand = operand.as_ref().is_some_and(|e| has_window_function(e));
             let has_in_when = when_clauses
                 .iter()
                 .any(|wc| has_window_function(&wc.condition) || has_window_function(&wc.result));
-            let has_in_else = else_result.as_ref().map_or(false, |e| has_window_function(e));
+            let has_in_else = else_result.as_ref().is_some_and(|e| has_window_function(e));
             has_in_operand || has_in_when || has_in_else
         }
         Expr::FunctionCall { args, .. } => args.iter().any(has_window_function),

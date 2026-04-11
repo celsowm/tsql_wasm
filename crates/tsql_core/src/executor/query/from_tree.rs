@@ -107,12 +107,15 @@ fn execute_table_ref(
     ctx: &mut ExecutionContext,
 ) -> Result<FromEval, DbError> {
     let bound = super::binding::bind_table(executor, executor.catalog, table_ref.clone(), ctx)?;
-    let base_shape = vec![ContextTable {
-        table: bound.table.clone(),
-        alias: bound.alias.clone(),
-        row: None,
-        storage_index: None,
-    }];
+    let base_shape = vec![
+        ContextTable {
+            table: bound.table.clone(),
+            alias: bound.alias.clone(),
+            row: None,
+            storage_index: None,
+        }
+        .null_row(),
+    ];
     let strategy = choose_scan_strategy(&bound, None, &[], executor.catalog);
     let scan = PhysicalScan {
         bound,
@@ -208,12 +211,15 @@ fn apply_from_alias(source: FromEval, alias: &str) -> Result<FromEval, DbError> 
         }]);
     }
 
-    let shape = vec![ContextTable {
-        table: alias_table,
-        alias: alias.to_string(),
-        row: None,
-        storage_index: None,
-    }];
+    let shape = vec![
+        ContextTable {
+            table: alias_table,
+            alias: alias.to_string(),
+            row: None,
+            storage_index: None,
+        }
+        .null_row(),
+    ];
 
     Ok(FromEval {
         rows: aliased_rows,

@@ -320,6 +320,28 @@ pub(crate) fn eval_getdate(
     Ok(Value::DateTime(clock.now_datetime_literal()))
 }
 
+pub(crate) fn eval_current_timestamp(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    eval_getdate(args, row, ctx, catalog, storage, clock)
+}
+
+pub(crate) fn eval_current_date(
+    _args: &[Expr],
+    _row: &[ContextTable],
+    _ctx: &mut ExecutionContext,
+    _catalog: &dyn Catalog,
+    _storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    Ok(Value::Date(clock.now_datetime_literal().date()))
+}
+
 pub(crate) fn eval_getutcdate(
     _args: &[Expr],
     _row: &[ContextTable],

@@ -8,6 +8,8 @@ use crate::ast::{IsolationLevel, Statement};
 use crate::catalog::CatalogImpl;
 use crate::error::DbError;
 use crate::storage::InMemoryStorage;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 use super::result::QueryResult;
 use super::session::SharedState;
@@ -66,6 +68,38 @@ pub trait SqlAnalyzer {
 
 pub trait RandomSeed {
     fn set_session_seed(&self, session_id: SessionId, seed: u64) -> Result<(), DbError>;
+}
+
+pub trait EngineCatalog:
+    crate::catalog::Catalog + Serialize + DeserializeOwned + Clone + 'static + Default
+{
+}
+
+impl<T> EngineCatalog for T where
+    T: crate::catalog::Catalog + Serialize + DeserializeOwned + Clone + 'static + Default
+{
+}
+
+pub trait EngineStorage:
+    crate::storage::Storage
+    + crate::storage::CheckpointableStorage
+    + Serialize
+    + DeserializeOwned
+    + Clone
+    + 'static
+    + Default
+{
+}
+
+impl<T> EngineStorage for T where
+    T: crate::storage::Storage
+        + crate::storage::CheckpointableStorage
+        + Serialize
+        + DeserializeOwned
+        + Clone
+        + 'static
+        + Default
+{
 }
 
 pub struct StatementExecutorService<C, S> {

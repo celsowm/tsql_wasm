@@ -1,6 +1,3 @@
-use serde::de::DeserializeOwned;
-use serde::Serialize;
-
 use crate::ast::{DmlStatement, IsolationLevel, SessionStatement, Statement};
 use crate::catalog::Catalog;
 use crate::error::{DbError, StmtOutcome, StmtResult};
@@ -19,6 +16,7 @@ use super::super::table_util::{collect_read_tables, collect_write_tables, is_tra
 use super::super::tooling::{apply_set_option, SessionOptions};
 use super::super::transaction::TransactionManager;
 use super::super::transaction_exec;
+use super::{EngineCatalog, EngineStorage};
 
 /// D4: Factory function to create a ScriptExecutor, eliminating
 /// 6× inline constructions scattered across dispatch.
@@ -51,14 +49,8 @@ fn lookup_session_deadlock_priority<C, S>(
     session_id: SessionId,
 ) -> i32
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     state
         .deadlock_priorities
@@ -114,14 +106,8 @@ fn refresh_workspace_for_read_committed<C, S>(
     stmt: &Statement,
 ) -> Result<(), DbError>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     let storage_guard = state.storage.read();
     let read_tables = collect_read_tables(stmt);
@@ -160,6 +146,7 @@ where
 }
 
 /// S3: Extract transaction state update logic after statement execution.
+#[allow(clippy::too_many_arguments)]
 fn update_transaction_state<C, S>(
     out: &StmtResult<Option<QueryResult>>,
     tx_manager: &mut TransactionManager<C, S, SessionSnapshot>,
@@ -171,16 +158,10 @@ fn update_transaction_state<C, S>(
     session_options: &mut SessionOptions,
     stmt: &Statement,
 ) where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
-    let is_control_flow = out.as_ref().map_or(false, |o| o.is_control_flow());
+    let is_control_flow = out.as_ref().is_ok_and(|o| o.is_control_flow());
     if out.is_ok() && !is_control_flow {
         transaction_exec::register_read_tables(workspace_slot, stmt);
         transaction_exec::register_workspace_write_tables(workspace_slot, stmt);
@@ -204,6 +185,7 @@ fn update_transaction_state<C, S>(
 }
 
 /// S3: Execute a statement within an active transaction.
+#[allow(clippy::too_many_arguments)]
 fn execute_in_transaction<C, S>(
     state: &SharedState<C, S>,
     session_id: SessionId,
@@ -216,14 +198,8 @@ fn execute_in_transaction<C, S>(
     ctx: &mut ExecutionContext,
 ) -> StmtResult<Option<QueryResult>>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     LockTable::acquire_statement_locks(
         &state.table_locks,
@@ -304,6 +280,7 @@ where
 
 /// S3: Execute a write statement without an active transaction.
 /// Uses clone-and-rollback for durability safety.
+#[allow(clippy::too_many_arguments)]
 fn execute_write_without_transaction<C, S>(
     state: &SharedState<C, S>,
     session_id: SessionId,
@@ -315,14 +292,8 @@ fn execute_write_without_transaction<C, S>(
     clock: &dyn Clock,
 ) -> StmtResult<Option<QueryResult>>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     LockTable::acquire_statement_locks(
         &state.table_locks,
@@ -343,7 +314,7 @@ where
     let (cat, stor) = storage_guard.get_mut_refs();
     let mut script = create_script_executor(cat, stor, clock);
     let out = script.execute(stmt.clone(), ctx);
-    let is_control_flow = out.as_ref().map_or(false, |o| o.is_control_flow());
+    let is_control_flow = out.as_ref().is_ok_and(|o| o.is_control_flow());
     if out.is_ok() && !is_control_flow {
         storage_guard.commit_ts += 1;
         let written_tables = collect_write_tables(&stmt);
@@ -369,6 +340,7 @@ where
 /// P1 #20: Uses `state.storage.read()` instead of `state.storage.write()`
 /// for plain SELECT statements. Complex read paths (CTEs, SELECT ASSIGN)
 /// fall back to the write path until a read-only ScriptExecutor is available.
+#[allow(clippy::too_many_arguments)]
 fn execute_read_without_transaction<C, S>(
     state: &SharedState<C, S>,
     session_id: SessionId,
@@ -380,14 +352,8 @@ fn execute_read_without_transaction<C, S>(
     clock: &dyn Clock,
 ) -> StmtResult<Option<QueryResult>>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     LockTable::acquire_statement_locks(
         &state.table_locks,
@@ -424,6 +390,7 @@ where
 }
 
 /// S3: Execute a dirty-read (READ UNCOMMITTED) statement without an active transaction.
+#[allow(clippy::too_many_arguments)]
 fn execute_dirty_read_without_transaction<C, S>(
     state: &SharedState<C, S>,
     session_id: SessionId,
@@ -433,14 +400,8 @@ fn execute_dirty_read_without_transaction<C, S>(
     clock: &dyn Clock,
 ) -> StmtResult<Option<QueryResult>>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     let (mut dirty_catalog, mut dirty_storage) =
         dirty_buffer::build_dirty_read_storage(state, session_id, workspace_slot);
@@ -450,6 +411,7 @@ where
 
 /// Main dispatch entry point for non-transaction statement execution.
 /// Delegates to focused sub-functions for each execution path (S3).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn execute_non_transaction_statement<C, S>(
     state: &SharedState<C, S>,
     session_id: SessionId,
@@ -462,14 +424,8 @@ pub(crate) fn execute_non_transaction_statement<C, S>(
     ctx: &mut ExecutionContext,
 ) -> StmtResult<Option<QueryResult>>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     // Handle session-level statements early (SetOption, SetIdentityInsert)
     if let Some(result) = handle_session_statement(state, session_id, &stmt, session_options, ctx, journal) {

@@ -67,7 +67,7 @@ pub fn eval_edit_distance_similarity(
         .to_string_value();
     let s2 = crate::executor::evaluator::eval_expr(&args[1], row, ctx, catalog, storage, clock)?
         .to_string_value();
-    Ok(Value::Float(edit_distance_similarity(&s1, &s2).to_bits()))
+    Ok(decimal_from_unit_interval(edit_distance_similarity(&s1, &s2)))
 }
 
 pub fn edit_distance_similarity(s1: &str, s2: &str) -> f64 {
@@ -113,7 +113,7 @@ pub fn eval_jaro_winkler_distance(
         .to_string_value();
     let s2 = crate::executor::evaluator::eval_expr(&args[1], row, ctx, catalog, storage, clock)?
         .to_string_value();
-    Ok(Value::Float(jaro_winkler_distance(&s1, &s2).to_bits()))
+    Ok(decimal_from_unit_interval(jaro_winkler_distance(&s1, &s2)))
 }
 
 pub fn eval_jaro_winkler_similarity(
@@ -133,7 +133,11 @@ pub fn eval_jaro_winkler_similarity(
         .to_string_value();
     let s2 = crate::executor::evaluator::eval_expr(&args[1], row, ctx, catalog, storage, clock)?
         .to_string_value();
-    Ok(Value::Float(jaro_winkler_similarity(&s1, &s2).to_bits()))
+    Ok(decimal_from_unit_interval(jaro_winkler_similarity(&s1, &s2)))
+}
+
+fn decimal_from_unit_interval(value: f64) -> Value {
+    Value::Decimal((value * 1_000_000_000.0).round() as i128, 9)
 }
 
 pub fn jaro_winkler_similarity(s1: &str, s2: &str) -> f64 {

@@ -89,12 +89,7 @@ fn apply_join_left(
 
         if !matched && join_type == JoinType::Left {
             let mut candidate = left_row.clone();
-            candidate.extend(right_shape.iter().map(|ctx| ContextTable {
-                table: ctx.table.clone(),
-                alias: ctx.alias.clone(),
-                row: None,
-                storage_index: None,
-            }));
+            candidate.extend(right_shape.iter().map(ContextTable::null_row));
             next_rows.push(candidate);
         }
     }
@@ -127,15 +122,7 @@ fn apply_join_right(
         }
 
         if !matched {
-            let mut candidate: JoinedRow = left_shape
-                .iter()
-                .map(|ctx| ContextTable {
-                    table: ctx.table.clone(),
-                    alias: ctx.alias.clone(),
-                    row: None,
-                    storage_index: None,
-                })
-                .collect();
+            let mut candidate: JoinedRow = left_shape.iter().map(ContextTable::null_row).collect();
             candidate.extend(right_row.clone());
             next_rows.push(candidate);
         }
@@ -173,27 +160,14 @@ fn apply_join_full(
 
         if !matched {
             let mut candidate = left_row.clone();
-            candidate.extend(right_shape.iter().map(|ctx| ContextTable {
-                table: ctx.table.clone(),
-                alias: ctx.alias.clone(),
-                row: None,
-                storage_index: None,
-            }));
+            candidate.extend(right_shape.iter().map(ContextTable::null_row));
             next_rows.push(candidate);
         }
     }
 
     for (ri, matched) in matched_right.iter().enumerate() {
         if !matched {
-            let mut candidate: JoinedRow = left_shape
-                .iter()
-                .map(|ctx| ContextTable {
-                    table: ctx.table.clone(),
-                    alias: ctx.alias.clone(),
-                    row: None,
-                    storage_index: None,
-                })
-                .collect();
+            let mut candidate: JoinedRow = left_shape.iter().map(ContextTable::null_row).collect();
             candidate.extend(right_rows[ri].clone());
             next_rows.push(candidate);
         }

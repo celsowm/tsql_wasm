@@ -258,7 +258,7 @@ pub(crate) fn format_select_stmt(stmt: &SelectStmt) -> String {
     out
 }
 
-fn format_from_node(node: &FromNode) -> String {
+pub(crate) fn format_from_node(node: &FromNode) -> String {
     match node {
         FromNode::Table(table) => format_table_ref(table),
         FromNode::Aliased { source, alias } => format!("({}) AS {}", format_from_node(source), alias),

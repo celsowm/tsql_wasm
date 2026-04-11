@@ -99,7 +99,7 @@ pub fn eval_bound_expr_inner(
             // We reconstruct a synthetic Expr tree with literal values.
             let arg_exprs = args
                 .iter()
-                .map(|a| bound_to_literal_expr(a))
+                .map(bound_to_literal_expr)
                 .collect::<Result<Vec<_>, _>>()?;
             super::super::scalar::eval_function(name, &arg_exprs, row, ctx, catalog, storage, clock)
         }
@@ -189,7 +189,26 @@ pub fn eval_bound_expr_inner(
             if val.is_null() || lo.is_null() || hi.is_null() {
                 return Ok(Value::Null);
             }
-            let in_range = val >= lo && val <= hi;
+            let ge_low = super::super::operators::eval_binary(
+                &crate::ast::BinaryOp::Gte,
+                val.clone(),
+                lo,
+                ctx.metadata.ansi_nulls,
+                ctx.options.concat_null_yields_null,
+                ctx.options.arithabort,
+                ctx.options.ansi_warnings,
+            )?;
+            let le_high = super::super::operators::eval_binary(
+                &crate::ast::BinaryOp::Lte,
+                val,
+                hi,
+                ctx.metadata.ansi_nulls,
+                ctx.options.concat_null_yields_null,
+                ctx.options.arithabort,
+                ctx.options.ansi_warnings,
+            )?;
+            let in_range = super::super::value_ops::truthy(&ge_low)
+                && super::super::value_ops::truthy(&le_high);
             Ok(Value::Bit(if *negated { !in_range } else { in_range }))
         }
         BoundExpr::Like {
@@ -199,8 +218,11 @@ pub fn eval_bound_expr_inner(
         } => {
             let val = eval_bound_expr_inner(expr, row, ctx, catalog, storage, clock)?;
             let pat = eval_bound_expr_inner(pattern, row, ctx, catalog, storage, clock)?;
-            let val_str = format!("{:?}", val);
-            let pat_str = format!("{:?}", pat);
+            if val.is_null() || pat.is_null() {
+                return Ok(Value::Null);
+            }
+            let val_str = val.to_string_value();
+            let pat_str = pat.to_string_value();
             let matched = simple_like_match(&val_str, &pat_str);
             Ok(Value::Bit(if *negated { !matched } else { matched }))
         }
@@ -257,39 +279,38 @@ fn bound_to_literal_expr(bound: &BoundExpr) -> Result<crate::ast::Expr, DbError>
 }
 
 fn simple_like_match(s: &str, pattern: &str) -> bool {
-    let mut si = 0;
-    let mut pi = 0;
-    let sb = s.as_bytes();
-    let pb = pattern.as_bytes();
-    let mut star_pi: Option<usize> = None;
-    let mut star_si: Option<usize> = None;
+    let s_chars: Vec<char> = s.to_ascii_uppercase().chars().collect();
+    let p_chars: Vec<char> = pattern.to_ascii_uppercase().chars().collect();
+    simple_like_match_impl(&s_chars, 0, &p_chars, 0)
+}
 
-    while si < sb.len() {
-        if pi < pb.len() && (pb[pi] == b'?' || pb[pi] == sb[si]) {
-            si += 1;
-            pi += 1;
-        } else if pi < pb.len() && pb[pi] == b'*' {
-            star_pi = Some(pi);
-            star_si = Some(si);
-            pi += 1;
-        } else if let Some(spi) = star_pi {
-            pi = spi + 1;
-            match star_si {
-                Some(current_si) => {
-                    let next_si = current_si + 1;
-                    star_si = Some(next_si);
-                    si = next_si;
-                }
-                None => return false,
+fn simple_like_match_impl(s: &[char], si: usize, p: &[char], pi: usize) -> bool {
+    if pi >= p.len() {
+        return si >= s.len();
+    }
+    match p[pi] {
+        '%' => {
+            if pi + 1 >= p.len() {
+                return true;
             }
-        } else {
-            return false;
+            for skip in 0..=(s.len().saturating_sub(si)) {
+                if simple_like_match_impl(s, si + skip, p, pi + 1) {
+                    return true;
+                }
+            }
+            false
+        }
+        '_' => {
+            if si >= s.len() {
+                return false;
+            }
+            simple_like_match_impl(s, si + 1, p, pi + 1)
+        }
+        _ => {
+            if si >= s.len() || s[si] != p[pi] {
+                return false;
+            }
+            simple_like_match_impl(s, si + 1, p, pi + 1)
         }
     }
-
-    while pi < pb.len() && pb[pi] == b'*' {
-        pi += 1;
-    }
-
-    pi == pb.len()
 }

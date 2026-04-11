@@ -64,7 +64,7 @@ async fn get_sqlserver_client() -> Client<tokio_util::compat::Compat<TcpStream>>
 }
 
 async fn compare(sql: &str) {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     let mut client = get_sqlserver_client().await;
 
     // Run on tsql_core

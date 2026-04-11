@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use crate::ast::{DdlStatement, DmlStatement, Statement};
-use super::formatting::{format_expr, format_select_columns, format_select_stmt};
+use crate::ast::{DdlStatement, DmlStatement, FromNode, Statement};
+use super::formatting::{format_expr, format_from_node, format_select_columns, format_select_stmt};
 use super::{collect_read_tables, collect_write_tables, normalize_object_name, select_from_name};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,6 +31,9 @@ pub fn explain_statement(stmt: &Statement) -> ExplainPlan {
                     op: "FromTree".to_string(),
                     detail: format_select_stmt(s),
                 });
+                if let Some(from) = &s.from_clause {
+                    collect_join_operators(from, &mut operators);
+                }
             }
             if let Some(where_expr) = &s.selection {
                 operators.push(ExplainOperator {
@@ -116,5 +119,20 @@ pub fn explain_statement(stmt: &Statement) -> ExplainPlan {
         operators,
         read_tables,
         write_tables,
+    }
+}
+
+fn collect_join_operators(node: &FromNode, operators: &mut Vec<ExplainOperator>) {
+    match node {
+        FromNode::Table(_) => {}
+        FromNode::Aliased { source, .. } => collect_join_operators(source, operators),
+        FromNode::Join { left, right, .. } => {
+            operators.push(ExplainOperator {
+                op: "Join".to_string(),
+                detail: format_from_node(node),
+            });
+            collect_join_operators(left, operators);
+            collect_join_operators(right, operators);
+        }
     }
 }

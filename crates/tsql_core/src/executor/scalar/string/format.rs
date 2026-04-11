@@ -39,6 +39,9 @@ pub(crate) fn eval_concat_ws(
         return Err(DbError::Execution("CONCAT_WS requires at least 2 arguments".into()));
     }
     let sep_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if sep_val.is_null() {
+        return Ok(Value::Null);
+    }
     let sep = sep_val.to_string_value();
     let mut parts = Vec::new();
     for arg in &args[1..] {
@@ -77,6 +80,10 @@ pub(crate) fn eval_format(
         Value::Date(d) => Ok(Value::NVarChar(d.format(&fmt).to_string())),
         Value::Int(v) => Ok(Value::NVarChar(format_integer(v, &fmt))),
         Value::BigInt(v) => Ok(Value::NVarChar(format_integer(v, &fmt))),
+        Value::Decimal(raw, scale) => {
+            let f = raw as f64 / 10f64.powi(scale as i32);
+            Ok(Value::NVarChar(format_float_value(f, &fmt)))
+        }
         Value::Float(bits) => {
             let f = f64::from_bits(bits);
             Ok(Value::NVarChar(format_float_value(f, &fmt)))
@@ -346,6 +353,19 @@ pub(crate) fn eval_string_escape(
                 _ if c.is_control() => {
                     result.push_str(&format!("\\u{:04x}", c as u32));
                 }
+                _ => result.push(c),
+            }
+        }
+        Ok(Value::NVarChar(result))
+    } else if escape_type == "HTML" || escape_type == "XML" {
+        let mut result = String::with_capacity(s.len());
+        for c in s.chars() {
+            match c {
+                '&' => result.push_str("&amp;"),
+                '<' => result.push_str("&lt;"),
+                '>' => result.push_str("&gt;"),
+                '"' => result.push_str("&quot;"),
+                '\'' => result.push_str("&apos;"),
                 _ => result.push(c),
             }
         }

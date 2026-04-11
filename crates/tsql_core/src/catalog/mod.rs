@@ -11,6 +11,7 @@ mod view_registry;
 use crate::ast::Expr;
 use crate::ast::{DataTypeSpec, FunctionBody, RoutineParam, Statement, TriggerEvent};
 use crate::error::DbError;
+use crate::executor::string_norm::normalize_identifier;
 use crate::types::DataType;
 use serde::{Deserialize, Serialize};
 
@@ -334,43 +335,63 @@ impl CatalogImpl {
             .schemas
             .iter()
             .enumerate()
-            .map(|(i, s)| (s.name.to_lowercase(), i))
+            .map(|(i, s)| (normalize_identifier(&s.name), i))
             .collect();
         self.table_map = self
             .tables
             .iter()
             .enumerate()
-            .map(|(i, t)| ((t.schema_id, t.name.to_lowercase()), i))
+            .map(|(i, t)| ((t.schema_id, normalize_identifier(&t.name)), i))
             .collect();
         self.routine_map = self
             .routines
             .iter()
             .enumerate()
-            .map(|(i, r)| ((r.schema.to_lowercase(), r.name.to_lowercase()), i))
+            .map(|(i, r)| {
+                (
+                    (normalize_identifier(&r.schema), normalize_identifier(&r.name)),
+                    i,
+                )
+            })
             .collect();
         self.type_map = self
             .table_types
             .iter()
             .enumerate()
-            .map(|(i, t)| ((t.schema.to_lowercase(), t.name.to_lowercase()), i))
+            .map(|(i, t)| {
+                (
+                    (normalize_identifier(&t.schema), normalize_identifier(&t.name)),
+                    i,
+                )
+            })
             .collect();
         self.view_map = self
             .views
             .iter()
             .enumerate()
-            .map(|(i, v)| ((v.schema.to_lowercase(), v.name.to_lowercase()), i))
+            .map(|(i, v)| {
+                (
+                    (normalize_identifier(&v.schema), normalize_identifier(&v.name)),
+                    i,
+                )
+            })
             .collect();
         self.trigger_map = self
             .triggers
             .iter()
             .enumerate()
-            .map(|(i, t)| ((t.schema.to_lowercase(), t.name.to_lowercase()), i))
+            .map(|(i, t)| {
+                (
+                    (normalize_identifier(&t.schema), normalize_identifier(&t.name)),
+                    i,
+                )
+            })
             .collect();
         self.index_map = self
             .indexes
             .iter()
             .enumerate()
-            .map(|(i, idx)| ((idx.schema_id, idx.name.to_lowercase()), i))
+            .map(|(i, idx)| ((idx.schema_id, normalize_identifier(&idx.name)), i))
             .collect();
     }
 
@@ -378,12 +399,14 @@ impl CatalogImpl {
     /// table_map and index_map entries that were affected.
     pub(crate) fn remove_table_at(&mut self, idx: usize) {
         let removed = self.tables.swap_remove(idx);
-        self.table_map.remove(&(removed.schema_id, removed.name.to_lowercase()));
+        self.table_map
+            .remove(&(removed.schema_id, normalize_identifier(&removed.name)));
 
         // If swap_remove moved the last element into `idx`, update its map entry.
         if idx < self.tables.len() {
             let swapped = &self.tables[idx];
-            self.table_map.insert((swapped.schema_id, swapped.name.to_lowercase()), idx);
+            self.table_map
+                .insert((swapped.schema_id, normalize_identifier(&swapped.name)), idx);
         }
 
         // Remove associated indexes and rebuild only the index_map.
@@ -392,7 +415,7 @@ impl CatalogImpl {
             .indexes
             .iter()
             .enumerate()
-            .map(|(i, idx)| ((idx.schema_id, idx.name.to_lowercase()), i))
+            .map(|(i, idx)| ((idx.schema_id, normalize_identifier(&idx.name)), i))
             .collect();
     }
 }

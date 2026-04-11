@@ -1,16 +1,12 @@
 use std::collections::HashSet;
 
 use crate::ast::{DdlStatement, DmlStatement, SessionStatement, Statement, TransactionStatement};
-use crate::catalog::Catalog;
 use crate::error::DbError;
-use crate::storage::Storage;
-
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 
 use super::conflict::detect_conflicts;
 use super::journal::{Journal, JournalEvent, WriteKind};
 use super::locks::{SessionId, TxWorkspace};
+use super::database::{EngineCatalog, EngineStorage};
 use super::session::SharedState;
 use super::table_util::{collect_read_tables, collect_write_tables};
 use super::transaction::{TransactionManager, WriteIntentKind};
@@ -26,8 +22,8 @@ pub(crate) fn execute_transaction_statement<C, S>(
     stmt: Statement,
 ) -> Result<Option<super::result::QueryResult>, DbError>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     match stmt {
         Statement::Transaction(TransactionStatement::Begin(name)) => {
@@ -221,8 +217,8 @@ pub(crate) fn force_xact_abort<C, S>(
     ctx: &mut super::context::ExecutionContext,
     session_options: &mut super::tooling::SessionOptions,
 ) where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     if tx_manager.active.is_none() {
         return;
@@ -282,8 +278,8 @@ pub(crate) fn register_write_intent<C, S>(
     journal: &mut dyn Journal,
     stmt: &Statement,
 ) where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + crate::storage::CheckpointableStorage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     if tx_manager.active.is_none() {
         return;

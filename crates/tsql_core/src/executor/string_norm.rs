@@ -3,7 +3,6 @@
 /// T-SQL identifiers are case-insensitive and may include schema prefixes like "dbo.".
 /// This module provides consistent normalization to avoid scattered `to_uppercase()`,
 /// `eq_ignore_ascii_case()`, and manual `"DBO."` stripping across the codebase.
-
 /// Normalizes a T-SQL identifier to uppercase for consistent comparison.
 #[inline]
 #[allow(dead_code)]
@@ -23,7 +22,10 @@ pub fn eq_ignoring_case(a: &str, b: &str) -> bool {
 #[inline]
 pub fn strip_schema_prefix<'a>(name: &'a str, schema: &str) -> &'a str {
     let prefix_len = schema.len() + 1; // "schema."
-    if name.len() > prefix_len && name[..prefix_len].eq_ignore_ascii_case(schema) && name.as_bytes()[schema.len()] == b'.' {
+    if name.len() > prefix_len
+        && name[..schema.len()].eq_ignore_ascii_case(schema)
+        && name.as_bytes()[schema.len()] == b'.'
+    {
         &name[prefix_len..]
     } else {
         name

@@ -117,7 +117,7 @@ fn split_date_time(s: &str) -> (&str, &str) {
 fn parse_date_part(date_part: &str, dateformat: &str) -> Result<(i32, i32, i32), DbError> {
     let cleaned = date_part.trim();
     let segments: Vec<&str> = cleaned
-        .split(|c: char| c == '-' || c == '/' || c == '.')
+        .split(['-', '/', '.'])
         .filter(|s| !s.is_empty())
         .collect();
     if segments.len() < 3 {

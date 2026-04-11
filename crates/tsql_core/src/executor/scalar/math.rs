@@ -75,6 +75,31 @@ where
     }
 }
 
+fn eval_math_unary_float<F>(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+    name: &str,
+    func: F,
+) -> Result<Value, DbError>
+where
+    F: Fn(f64) -> f64,
+{
+    if args.len() != 1 {
+        return Err(DbError::Execution(format!("{} expects 1 argument", name)));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+    let f = value_to_f64(&val)?;
+    let result = func(f);
+    Ok(Value::Float(result.to_bits()))
+}
+
 pub(crate) fn eval_round(
     args: &[Expr],
     row: &[ContextTable],
@@ -426,7 +451,7 @@ pub(crate) fn eval_sin(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    eval_math_unary(args, row, ctx, catalog, storage, clock, "SIN", |f| f.sin())
+    eval_math_unary_float(args, row, ctx, catalog, storage, clock, "SIN", |f| f.sin())
 }
 
 pub(crate) fn eval_cos(
@@ -437,7 +462,7 @@ pub(crate) fn eval_cos(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    eval_math_unary(args, row, ctx, catalog, storage, clock, "COS", |f| f.cos())
+    eval_math_unary_float(args, row, ctx, catalog, storage, clock, "COS", |f| f.cos())
 }
 
 pub(crate) fn eval_tan(
@@ -448,7 +473,7 @@ pub(crate) fn eval_tan(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    eval_math_unary(args, row, ctx, catalog, storage, clock, "TAN", |f| f.tan())
+    eval_math_unary_float(args, row, ctx, catalog, storage, clock, "TAN", |f| f.tan())
 }
 
 pub(crate) fn eval_asin(
@@ -459,7 +484,7 @@ pub(crate) fn eval_asin(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    eval_math_unary(args, row, ctx, catalog, storage, clock, "ASIN", |f| f.asin())
+    eval_math_unary_float(args, row, ctx, catalog, storage, clock, "ASIN", |f| f.asin())
 }
 
 pub(crate) fn eval_acos(
@@ -470,7 +495,7 @@ pub(crate) fn eval_acos(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    eval_math_unary(args, row, ctx, catalog, storage, clock, "ACOS", |f| f.acos())
+    eval_math_unary_float(args, row, ctx, catalog, storage, clock, "ACOS", |f| f.acos())
 }
 
 pub(crate) fn eval_atan(
@@ -481,7 +506,7 @@ pub(crate) fn eval_atan(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    eval_math_unary(args, row, ctx, catalog, storage, clock, "ATAN", |f| f.atan())
+    eval_math_unary_float(args, row, ctx, catalog, storage, clock, "ATAN", |f| f.atan())
 }
 
 pub(crate) fn eval_cot(
@@ -492,7 +517,7 @@ pub(crate) fn eval_cot(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    eval_math_unary(args, row, ctx, catalog, storage, clock, "COT", |f| 1.0 / f.tan())
+    eval_math_unary_float(args, row, ctx, catalog, storage, clock, "COT", |f| 1.0 / f.tan())
 }
 
 pub(crate) fn eval_degrees(
@@ -503,7 +528,7 @@ pub(crate) fn eval_degrees(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    eval_math_unary(args, row, ctx, catalog, storage, clock, "DEGREES", |f| f.to_degrees())
+    eval_math_unary_float(args, row, ctx, catalog, storage, clock, "DEGREES", |f| f.to_degrees())
 }
 
 pub(crate) fn eval_radians(
@@ -514,7 +539,7 @@ pub(crate) fn eval_radians(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    eval_math_unary(args, row, ctx, catalog, storage, clock, "RADIANS", |f| f.to_radians())
+    eval_math_unary_float(args, row, ctx, catalog, storage, clock, "RADIANS", |f| f.to_radians())
 }
 
 pub(crate) fn eval_rand(

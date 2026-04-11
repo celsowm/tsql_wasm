@@ -69,6 +69,7 @@ fn convert_datetime_to_string(
 
 pub fn format_date(d: &NaiveDate, style: i32) -> String {
     match style {
+        1 => d.format("%m/%d/%Y").to_string(),
         101 => d.format("%m/%d/%Y").to_string(),
         103 => d.format("%d/%m/%Y").to_string(),
         120 => d.format("%Y-%m-%d").to_string(),
@@ -87,7 +88,7 @@ pub fn format_time(t: &NaiveTime, style: i32) -> String {
 pub fn format_datetime(dt: &NaiveDateTime, style: i32) -> String {
     match style {
         0 => dt.format("%b %d %Y %I:%M%p").to_string(),
-        1 => dt.format("%m/%d/%y").to_string(),
+        1 => dt.format("%m/%d/%Y").to_string(),
         2 => dt.format("%y.%m.%d").to_string(),
         3 => dt.format("%d/%m/%y").to_string(),
         4 => dt.format("%d.%m.%y").to_string(),
@@ -194,7 +195,7 @@ pub fn normalize_datetime_string(s: &str) -> String {
     let date_time: Vec<&str> = s.splitn(2, |c: char| c.is_ascii_whitespace()).collect();
     let date_part = date_time[0];
     let time_part = date_time.get(1).unwrap_or(&"");
-    let date_parts: Vec<&str> = date_part.split(|c: char| c == '-' || c == '/').collect();
+    let date_parts: Vec<&str> = date_part.split(['-', '/']).collect();
     if date_parts.len() >= 3 {
         let y = date_parts[0].trim();
         let m = date_parts[1].trim();
@@ -210,10 +211,10 @@ pub fn normalize_datetime_string(s: &str) -> String {
 #[allow(dead_code)]
 fn parse_dt_parts(dt: &str) -> (i32, i32, i32, i32, i32, i32) {
     let parts: Vec<&str> = dt
-        .split(|c: char| c == '-' || c == '/' || c == ':')
+        .split(['-', '/', ':'])
         .collect();
     let y = parts
-        .get(0)
+        .first()
         .and_then(|s| s.trim().parse().ok())
         .unwrap_or(0);
     let mo = parts
@@ -231,7 +232,7 @@ fn parse_dt_parts(dt: &str) -> (i32, i32, i32, i32, i32, i32) {
         let tparts: Vec<&str> = rest.split(':').collect();
         (
             tparts
-                .get(0)
+                .first()
                 .and_then(|s| s.trim().parse().ok())
                 .unwrap_or(0),
             tparts

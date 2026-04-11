@@ -1,11 +1,6 @@
-use serde::de::DeserializeOwned;
-use serde::Serialize;
-
 use crate::ast::IsolationLevel;
-use crate::catalog::Catalog;
 use crate::error::DbError;
 use crate::parser::parse_sql;
-use crate::storage::Storage;
 
 use super::super::locks::SessionId;
 use super::super::tooling::{
@@ -13,18 +8,12 @@ use super::super::tooling::{
     collect_write_tables as collect_write_tables_tooling, explain_statement, split_sql_statements,
     statement_option_warnings, ExecutionTrace, ExplainPlan, SessionOptions, TraceStatementEvent,
 };
-use super::{RandomSeed, SqlAnalyzer, StatementExecutor};
+use super::{EngineCatalog, EngineStorage, RandomSeed, SqlAnalyzer, StatementExecutor};
 
 impl<C, S> SqlAnalyzer for super::SqlAnalyzerService<C, S>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     fn session_isolation_level(&self, session_id: SessionId) -> Result<IsolationLevel, DbError> {
         let session_mutex = self
@@ -151,14 +140,8 @@ where
 
 impl<C, S> RandomSeed for super::SqlAnalyzerService<C, S>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     fn set_session_seed(&self, session_id: SessionId, seed: u64) -> Result<(), DbError> {
         let session_mutex = self

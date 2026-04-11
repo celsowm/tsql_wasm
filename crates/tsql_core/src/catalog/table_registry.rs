@@ -1,5 +1,6 @@
 use super::*;
 use crate::error::DbError;
+use crate::executor::string_norm::normalize_identifier;
 
 impl TableRegistry for CatalogImpl {
     fn get_tables(&self) -> &[TableDef] {
@@ -7,21 +8,21 @@ impl TableRegistry for CatalogImpl {
     }
 
     fn find_table(&self, schema: &str, name: &str) -> Option<&TableDef> {
-        let schema_id = self.get_schema_id(schema)?;
-        let idx = self.table_map.get(&(schema_id, name.to_lowercase()))?;
+        let schema_id = self.get_schema_id(schema)?; 
+        let idx = self.table_map.get(&(schema_id, normalize_identifier(name)))?;
         Some(&self.tables[*idx])
     }
 
     fn find_table_mut(&mut self, schema: &str, name: &str) -> Option<&mut TableDef> {
         let schema_id = self.get_schema_id(schema)?;
-        let idx = self.table_map.get(&(schema_id, name.to_lowercase()))?;
+        let idx = self.table_map.get(&(schema_id, normalize_identifier(name)))?;
         Some(&mut self.tables[*idx])
     }
 
     fn register_table(&mut self, table: TableDef) {
         let idx = self.tables.len();
         self.table_map
-            .insert((table.schema_id, table.name.to_lowercase()), idx);
+            .insert((table.schema_id, normalize_identifier(&table.name)), idx);
         self.tables.push(table);
     }
 
@@ -38,7 +39,7 @@ impl TableRegistry for CatalogImpl {
 
         let idx = *self
             .table_map
-            .get(&(schema_id, name.to_lowercase()))
+            .get(&(schema_id, normalize_identifier(name)))
             .ok_or_else(|| DbError::table_not_found(schema, name))?;
 
         let table_id = self.tables[idx].id;

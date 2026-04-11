@@ -1,4 +1,5 @@
 use super::super::value_helpers::{rescale_raw, value_to_f64};
+use chrono::{NaiveDate, NaiveDateTime};
 use crate::types::Value;
 use std::cmp::Ordering;
 
@@ -105,7 +106,11 @@ pub fn compare_values(a: &Value, b: &Value) -> Ordering {
         | (ValueCategory::String, ValueCategory::Money) => compare_numeric_with_string(&a, &b),
 
         (ValueCategory::DateTime, ValueCategory::DateTime) => {
-            extract_string(&a).cmp(&extract_string(&b))
+            if let (Some(da), Some(db)) = (normalize_datetime(&a), normalize_datetime(&b)) {
+                da.cmp(&db)
+            } else {
+                extract_string(&a).cmp(&extract_string(&b))
+            }
         }
 
         (ValueCategory::DateTime, ValueCategory::String)
@@ -204,6 +209,16 @@ fn extract_bytes(v: &Value) -> &[u8] {
     match v {
         Value::Binary(b) | Value::VarBinary(b) => b,
         _ => &[],
+    }
+}
+
+fn normalize_datetime(v: &Value) -> Option<NaiveDateTime> {
+    match v {
+        Value::Date(d) => d.and_hms_opt(0, 0, 0),
+        Value::Time(t) => NaiveDate::from_ymd_opt(1900, 1, 1).map(|d| d.and_time(*t)),
+        Value::DateTime(dt) | Value::DateTime2(dt) => Some(*dt),
+        Value::SqlVariant(inner) => normalize_datetime(inner),
+        _ => None,
     }
 }
 

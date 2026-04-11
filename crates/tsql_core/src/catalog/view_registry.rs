@@ -1,5 +1,6 @@
 use super::*;
 use crate::error::DbError;
+use crate::executor::string_norm::normalize_identifier;
 
 impl ViewRegistry for CatalogImpl {
     fn get_views(&self) -> &[ViewDef] {
@@ -9,7 +10,7 @@ impl ViewRegistry for CatalogImpl {
     fn find_view(&self, schema: &str, name: &str) -> Option<&ViewDef> {
         let idx = self
             .view_map
-            .get(&(schema.to_lowercase(), name.to_lowercase()))?;
+            .get(&(normalize_identifier(schema), normalize_identifier(name)))?;
         Some(&self.views[*idx])
     }
 
@@ -19,7 +20,7 @@ impl ViewRegistry for CatalogImpl {
         }
         let idx = self.views.len();
         self.view_map
-            .insert((view.schema.to_lowercase(), view.name.to_lowercase()), idx);
+            .insert((normalize_identifier(&view.schema), normalize_identifier(&view.name)), idx);
         self.views.push(view);
         Ok(())
     }
@@ -27,7 +28,7 @@ impl ViewRegistry for CatalogImpl {
     fn drop_view(&mut self, schema: &str, name: &str) -> Result<(), DbError> {
         let idx = *self
             .view_map
-            .get(&(schema.to_lowercase(), name.to_lowercase()))
+            .get(&(normalize_identifier(schema), normalize_identifier(name)))
             .ok_or_else(|| DbError::view_not_found(schema, name))?;
         self.views.remove(idx);
         self.rebuild_maps();

@@ -1,20 +1,17 @@
 use std::sync::Arc;
 
-use serde::de::DeserializeOwned;
-use serde::Serialize;
-
 use crate::ast::Statement;
-use crate::catalog::{Catalog, CatalogImpl};
+use crate::catalog::CatalogImpl;
 use crate::error::DbError;
 use crate::executor::locks::SessionId;
 use crate::executor::result::QueryResult;
 use crate::executor::session::SessionManager as SessionManagerTrait;
 use crate::executor::tooling::{ExecutionTrace, ExplainPlan, SessionOptions};
-use crate::storage::Storage;
 
 use super::super::durability::{DurabilitySink, RecoveryCheckpoint, RecoveryReader};
 use super::super::session::{SharedState, SharedStorage};
 use super::{
+    EngineCatalog, EngineStorage,
     CheckpointManager as CheckpointManagerTrait, RandomSeed as RandomSeedTrait,
     SqlAnalyzer as SqlAnalyzerTrait, StatementExecutor as StatementExecutorTrait,
 };
@@ -32,8 +29,8 @@ mod session;
 #[derive(Clone)]
 pub struct DatabaseInner<C, S>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     pub(crate) inner: Arc<SharedState<C, S>>,
 }
@@ -58,14 +55,8 @@ impl DatabaseInner<CatalogImpl, crate::storage::RedbStorage> {
 
 impl<C, S> DatabaseInner<C, S>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     pub fn new() -> Self {
         let mut catalog = C::default();
@@ -225,14 +216,8 @@ where
 
 impl<C, S> SessionManagerTrait for DatabaseInner<C, S>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     fn create_session(&self) -> SessionId {
         self.session_manager().create_session()
@@ -258,14 +243,8 @@ where
 
 impl<C, S> StatementExecutorTrait for DatabaseInner<C, S>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     fn execute_session(
         &self,
@@ -319,14 +298,8 @@ where
 
 impl<C, S> SqlAnalyzerTrait for DatabaseInner<C, S>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     fn explain_sql(&self, sql: &str) -> Result<ExplainPlan, DbError> {
         self.analyzer().explain_sql(sql)
@@ -358,14 +331,8 @@ where
 
 impl<C, S> RandomSeedTrait for DatabaseInner<C, S>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     fn set_session_seed(&self, session_id: SessionId, seed: u64) -> Result<(), DbError> {
         self.analyzer().set_session_seed(session_id, seed)
@@ -374,14 +341,8 @@ where
 
 impl<C, S> super::CheckpointManager for DatabaseInner<C, S>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage
-        + crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     fn export_checkpoint(&self) -> Result<String, DbError> {
         self.checkpoint_manager().export_checkpoint()
@@ -394,13 +355,8 @@ where
 
 impl<C, S> SharedState<C, S>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: crate::storage::CheckpointableStorage
-        + Serialize
-        + DeserializeOwned
-        + Clone
-        + 'static
-        + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     pub fn from_checkpoint(
         checkpoint: RecoveryCheckpoint<C>,

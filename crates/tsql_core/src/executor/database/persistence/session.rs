@@ -1,21 +1,18 @@
 use parking_lot::Mutex;
 use std::collections::HashSet;
 
-use crate::catalog::Catalog;
 use crate::error::DbError;
 use crate::executor::database::SessionManagerService;
 use crate::executor::journal::Journal;
 use crate::executor::locks::SessionId;
 use crate::executor::session::{SessionManager, SessionRuntime};
 use crate::executor::string_norm::normalize_identifier;
-use crate::storage::Storage;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
+use super::{EngineCatalog, EngineStorage};
 
 impl<C, S> SessionManager for SessionManagerService<C, S>
 where
-    C: Catalog + Serialize + DeserializeOwned + Clone + 'static + Default,
-    S: Storage + Serialize + DeserializeOwned + Clone + 'static + Default,
+    C: EngineCatalog,
+    S: EngineStorage,
 {
     fn create_session(&self) -> SessionId {
         let id = self

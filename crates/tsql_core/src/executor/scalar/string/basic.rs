@@ -82,7 +82,7 @@ pub(crate) fn eval_upper(
     match val {
         Value::Null => Ok(Value::Null),
         Value::VarChar(s) | Value::NVarChar(s) | Value::Char(s) | Value::NChar(s) => {
-            Ok(Value::NVarChar(s.to_uppercase()))
+            Ok(Value::VarChar(s.to_uppercase()))
         }
         _ => Ok(Value::VarChar(val.to_string_value().to_uppercase())),
     }
@@ -103,7 +103,7 @@ pub(crate) fn eval_lower(
     match val {
         Value::Null => Ok(Value::Null),
         Value::VarChar(s) | Value::NVarChar(s) | Value::Char(s) | Value::NChar(s) => {
-            Ok(Value::NVarChar(s.to_lowercase()))
+            Ok(Value::VarChar(s.to_lowercase()))
         }
         _ => Ok(Value::VarChar(val.to_string_value().to_lowercase())),
     }
@@ -228,7 +228,7 @@ pub(crate) fn eval_ascii(
     if let Some(c) = s.chars().next() {
         Ok(Value::Int(c as i32))
     } else {
-        Ok(Value::Int(0))
+        Ok(Value::Null)
     }
 }
 
@@ -248,7 +248,7 @@ pub(crate) fn eval_char(
         return Ok(Value::Null);
     }
     let code = val.to_integer_i64().unwrap_or(0) as u8;
-    Ok(Value::Char((code as char).to_string()))
+    Ok(Value::VarChar((code as char).to_string()))
 }
 
 pub(crate) fn eval_nchar(
@@ -268,7 +268,7 @@ pub(crate) fn eval_nchar(
     }
     let code = val.to_integer_i64().unwrap_or(0) as u32;
     if let Some(c) = std::char::from_u32(code) {
-        Ok(Value::NChar(c.to_string()))
+        Ok(Value::NVarChar(c.to_string()))
     } else {
         Ok(Value::Null)
     }
