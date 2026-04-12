@@ -255,6 +255,63 @@ Priority values:
 - Exit criteria:
   - supported scenarios have guardrails, not just correctness tests
 
+### B018: Implement missing INFORMATION_SCHEMA views
+
+- Phase: 2
+- Priority: P2
+- Goal: provide real metadata for standard INFORMATION_SCHEMA views
+- Primary areas:
+  - `crates/tsql_core/src/executor/metadata/info_schema_empty.rs`
+- Deliverables:
+  - implementation for `COLUMN_DOMAIN_USAGE`, `DOMAINS`, `DOMAIN_CONSTRAINTS`
+  - implementation for `TABLE_PRIVILEGES`, `COLUMN_PRIVILEGES`
+  - implementation for `VIEW_COLUMN_USAGE`, `VIEW_TABLE_USAGE`
+  - implementation for `ROUTINE_COLUMNS`
+- Exit criteria:
+  - these views return data aligned with the engine's catalog instead of empty sets
+
+### B019: Implement Partitioning and HADR metadata stubs
+
+- Phase: 2 and 7
+- Priority: P2
+- Goal: replace stubs for partitioning and availability groups with modeled data or documented shims
+- Primary areas:
+  - `crates/tsql_core/src/executor/metadata/sys/partition.rs`
+  - `crates/tsql_core/src/executor/metadata/sys/hadr.rs`
+- Deliverables:
+  - implementation for `partition_functions`, `partition_schemes`, etc.
+  - implementation for `availability_replicas`, `availability_groups`, etc.
+- Exit criteria:
+  - metadata probes for partitioning and HADR behave predictably for tools
+
+### B020: Handle or explicitly reject unsupported session options
+
+- Phase: 1
+- Priority: P2
+- Goal: move from silent "Unsupported" variant to explicit behavior for SET options
+- Primary areas:
+  - `crates/tsql_core/src/parser/parse/mod.rs`
+  - `crates/tsql_core/src/executor/tooling/session_options.rs`
+- Deliverables:
+  - inventory of common `SET` options that hit the `Unsupported` branch
+  - explicit implementation or `DbError::Unsupported` for each
+- Exit criteria:
+  - no unknown `SET` option is silently captured as an internal `Unsupported` enum without a user-visible result
+
+### B021: Expand RPC support for cursors and prepared statements
+
+- Phase: 3
+- Priority: P1
+- Goal: support driver-level RPC calls beyond simple batch execution
+- Primary areas:
+  - `crates/tsql_server/src/tds/rpc/parser.rs`
+  - `crates/tsql_server/src/session/mod.rs`
+- Deliverables:
+  - support for `sp_cursoropen`, `sp_cursorfetch`, `sp_cursorclose`
+  - support for `sp_prepare`, `sp_execute`, `sp_unprepare`
+- Exit criteria:
+  - ADO.NET and other drivers using these RPCs can function correctly
+
 ## Suggested First Execution Slice
 
 1. Finish B001 and keep the matrix current.

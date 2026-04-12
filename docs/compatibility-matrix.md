@@ -44,8 +44,8 @@ The baseline below is seeded from the current README, tests, and explicit code-l
 
 | Area | Status | Notes | Evidence |
 |---|---|---|---|
-| `INFORMATION_SCHEMA` | compatible subset | Extensive support exists and is tested | `crates/tsql_core/tests/information_schema.rs` |
-| Core `sys.*` catalog views | compatible subset | Several important views exist, but README explicitly says metadata coverage is still a subset | `README.md`, `crates/tsql_core/src/executor/metadata/sys/*` |
+| `INFORMATION_SCHEMA` | compatible subset | Extensive support exists, but several views remain as empty stubs | `crates/tsql_core/tests/information_schema.rs`, `crates/tsql_core/src/executor/metadata/info_schema_empty.rs` |
+| Core `sys.*` catalog views | compatible subset | Several important views exist, but partitioning and other areas are currently empty stubs | `README.md`, `crates/tsql_core/src/executor/metadata/sys/*`, `crates/tsql_core/src/executor/metadata/sys/partition.rs` |
 | SSMS Object Explorer bootstrap / table enumeration | shim | Current contract replay exists specifically for tooling compatibility | `crates/tsql_server/tests/ssms_object_explorer_contract.rs` |
 | HADR / availability metadata | shim | Stub views exist and intentionally return empty results | `crates/tsql_core/src/executor/metadata/sys/hadr.rs` |
 | Full server-level metadata surface | unsupported | Not present as a complete implementation | aggregate repo state |
@@ -56,7 +56,7 @@ The baseline below is seeded from the current README, tests, and explicit code-l
 |---|---|---|---|
 | TDS login / prelogin / basic batch execution | compatible subset | Core flows exist and are tested | `crates/tsql_server/src/session/mod.rs`, `crates/tsql_server/tests/basic.rs` |
 | TLS support | compatible subset | TLS is implemented, but parity depends on negotiation and client behavior details | `crates/tsql_server/src/tls.rs`, `crates/tsql_server/src/tds_tls_io.rs`, `crates/tsql_server/tests/security.rs` |
-| RPC support | compatible subset | Server currently handles a narrow RPC subset | `crates/tsql_server/src/tds/rpc/parser.rs` |
+| RPC support | compatible subset | Only `sp_executesql` and `sp_prepexec` are supported; others are ignored with a warning | `crates/tsql_server/src/tds/rpc/parser.rs`, `crates/tsql_server/src/session/mod.rs` |
 | Full SQL Server RPC surface | unsupported | Explicit unsupported RPC requests are still ignored | `crates/tsql_server/src/session/mod.rs` |
 | SSMS / ADS connectivity | compatible subset | Supported in meaningful paths, but still dependent on compatibility-focused shims and partial protocol coverage | `README.md`, `crates/tsql_server/tests/ssms_object_explorer_contract.rs` |
 | ADO.NET / ODBC / JDBC parity | unsupported | Not defined as complete today | aggregate repo state |

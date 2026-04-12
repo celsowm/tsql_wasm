@@ -412,6 +412,25 @@
           "min_rows": 1
         }
       ]
+    },
+    {
+      "name": "triggers_list_from_sys_triggers",
+      "scope": "triggers",
+      "sql": "SELECT name, object_id, parent_id, type_desc, is_instead_of_trigger FROM sys.triggers ORDER BY name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "object_id",
+            "parent_id",
+            "type_desc",
+            "is_instead_of_trigger"
+          ],
+          "min_rows": 1
+        }
+      ]
     }
   ]
 }

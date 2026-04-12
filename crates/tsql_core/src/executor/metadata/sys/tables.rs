@@ -564,19 +564,56 @@ impl VirtualTable for SysTriggers {
         virtual_table_def(
             "triggers",
             vec![
+                ("name", DataType::NVarChar { max_len: 128 }, false),
                 ("object_id", DataType::Int, false),
+                ("parent_class", DataType::TinyInt, false),
+                ("parent_class_desc", DataType::NVarChar { max_len: 60 }, false),
+                ("parent_id", DataType::Int, false),
+                ("type", DataType::Char { len: 2 }, false),
+                ("type_desc", DataType::NVarChar { max_len: 60 }, false),
+                ("create_date", DataType::DateTime, false),
+                ("modify_date", DataType::DateTime, false),
+                ("is_ms_shipped", DataType::Bit, false),
                 ("is_disabled", DataType::Bit, false),
+                ("is_not_for_replication", DataType::Bit, false),
+                ("is_instead_of_trigger", DataType::Bit, false),
             ],
         )
     }
 
     fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+        let created = Value::DateTime(
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap(),
+        );
+
         catalog
             .get_triggers()
             .iter()
-            .map(|t| StoredRow {
-                values: vec![Value::Int(t.object_id), Value::Bit(false)],
-                deleted: false,
+            .map(|t| {
+                let parent_id = catalog
+                    .object_id(&t.table_schema, &t.table_name)
+                    .unwrap_or(0);
+                StoredRow {
+                    values: vec![
+                        Value::NVarChar(t.name.clone()),
+                        Value::Int(t.object_id),
+                        Value::TinyInt(1), // OBJECT_OR_COLUMN
+                        Value::NVarChar("OBJECT_OR_COLUMN".to_string()),
+                        Value::Int(parent_id),
+                        Value::Char("TR".to_string()),
+                        Value::NVarChar("SQL_TRIGGER".to_string()),
+                        created.clone(),
+                        created.clone(),
+                        Value::Bit(false), // is_ms_shipped
+                        Value::Bit(false), // is_disabled
+                        Value::Bit(false), // is_not_for_replication
+                        Value::Bit(t.is_instead_of),
+                    ],
+                    deleted: false,
+                }
             })
             .collect()
     }
