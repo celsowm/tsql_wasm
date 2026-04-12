@@ -3,8 +3,8 @@ use crate::types::{DataType, Value};
 use std::fmt::Debug;
 use uuid::Uuid;
 
-use super::formatting::parse_datetime_string;
 use super::super::value_helpers::{pad_binary_right, pad_right, rescale_raw};
+use super::formatting::parse_datetime_string;
 
 pub fn coerce_value_to_type(value: Value, ty: &DataType) -> Result<Value, DbError> {
     coerce_value_to_type_with_dateformat(value, ty, "mdy")

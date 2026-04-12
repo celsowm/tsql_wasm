@@ -1,6 +1,6 @@
 use super::super::tooling::formatting::format_expr;
-use super::VirtualTable;
 use super::virtual_table_def;
+use super::VirtualTable;
 use crate::ast::{Expr, SelectStmt, TableFactor};
 use crate::catalog::{Catalog, RoutineKind};
 use crate::storage::StoredRow;
@@ -80,9 +80,7 @@ impl VirtualTable for RoutineColumns {
                         let resolved = resolve_source_column(expr, &source);
                         let (nullable, data_type, char_max_length) = resolved
                             .as_ref()
-                            .map(|(_, ty, nullable)| {
-                                (*nullable, ty.clone(), char_max_length(ty))
-                            })
+                            .map(|(_, ty, nullable)| (*nullable, ty.clone(), char_max_length(ty)))
                             .unwrap_or_else(|| {
                                 (true, DataType::VarChar { max_len: 128 }, Value::Int(128))
                             });
@@ -166,7 +164,9 @@ fn resolve_source_column(expr: &Expr, source: &SourceTable) -> Option<(String, D
 fn default_column_name(expr: &Expr) -> String {
     match expr {
         Expr::Identifier(name) => name.clone(),
-        Expr::QualifiedIdentifier(parts) => parts.last().cloned().unwrap_or_else(|| format_expr(expr)),
+        Expr::QualifiedIdentifier(parts) => {
+            parts.last().cloned().unwrap_or_else(|| format_expr(expr))
+        }
         _ => format_expr(expr),
     }
 }

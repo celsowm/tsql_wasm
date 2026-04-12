@@ -105,7 +105,9 @@ pub enum DbError {
     #[error("Divide by zero error encountered.")]
     DivideByZero,
 
-    #[error("Conversion failed when converting the {from_type} value '{value}' to data type {to_type}.")]
+    #[error(
+        "Conversion failed when converting the {from_type} value '{value}' to data type {to_type}."
+    )]
     ConversionFailed {
         from_type: String,
         value: String,
@@ -185,7 +187,6 @@ impl DbError {
             _ => 50000,
         }
     }
-
 
     pub fn code(&self) -> &'static str {
         match self {

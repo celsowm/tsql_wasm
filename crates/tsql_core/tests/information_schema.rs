@@ -377,17 +377,62 @@ fn test_view_table_usage() {
     assert_eq!(val(&r, 0, 2), "t1");
 }
 
+#[test]
+fn test_view_column_usage() {
+    let mut e = Engine::new();
+    exec(
+        &mut e,
+        "CREATE TABLE customers (CustomerId INT, FirstName VARCHAR(50), LastName VARCHAR(50))",
+    );
+    exec(
+        &mut e,
+        "CREATE TABLE orders (OrderId INT, CustomerId INT, TotalAmount DECIMAL(18,2))",
+    );
+    exec(
+        &mut e,
+        "
+        CREATE VIEW v_customer_orders AS
+        SELECT
+            c.CustomerId,
+            c.FirstName,
+            c.LastName,
+            COUNT(o.OrderId) AS TotalOrders,
+            CAST(COALESCE(SUM(o.TotalAmount), 0) AS DECIMAL(18,2)) AS TotalSpent
+        FROM customers c
+        LEFT JOIN orders o ON c.CustomerId = o.CustomerId
+        GROUP BY c.CustomerId, c.FirstName, c.LastName
+    ",
+    );
+    let r = query(&mut e, "SELECT TABLE_NAME, COLUMN_NAME FROM INFORMATION_SCHEMA.VIEW_COLUMN_USAGE WHERE VIEW_NAME = 'v_customer_orders' ORDER BY TABLE_NAME, COLUMN_NAME");
+    let got: std::collections::HashSet<(String, String)> = r
+        .rows
+        .iter()
+        .map(|row| (row[0].to_string_value(), row[1].to_string_value()))
+        .collect();
+    let expected = [
+        ("customers", "CustomerId"),
+        ("customers", "FirstName"),
+        ("customers", "LastName"),
+        ("orders", "CustomerId"),
+        ("orders", "OrderId"),
+        ("orders", "TotalAmount"),
+    ];
+    assert_eq!(got.len(), expected.len());
+    for pair in expected {
+        assert!(
+            got.contains(&(pair.0.to_string(), pair.1.to_string())),
+            "missing {:?}",
+            pair
+        );
+    }
+}
+
 // ─── Empty views (should return 0 rows but not error) ─────────────────
 
 #[test]
 fn test_empty_views_queryable() {
     let mut e = Engine::new();
-    for view in &[
-        "COLUMN_DOMAIN_USAGE",
-        "DOMAINS",
-        "DOMAIN_CONSTRAINTS",
-        "VIEW_COLUMN_USAGE",
-    ] {
+    for view in &["COLUMN_DOMAIN_USAGE", "DOMAINS", "DOMAIN_CONSTRAINTS"] {
         let sql = format!("SELECT * FROM INFORMATION_SCHEMA.{}", view);
         let r = query(&mut e, &sql);
         assert_eq!(r.rows.len(), 0, "{} should return 0 rows", view);

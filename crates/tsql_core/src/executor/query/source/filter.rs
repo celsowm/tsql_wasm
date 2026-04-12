@@ -4,7 +4,6 @@ use super::super::from_tree::{self, FromEval};
 use super::super::plan::RelationalQuery;
 use super::super::QueryExecutor;
 
-
 pub(crate) fn execute_where_stage(
     _executor: &QueryExecutor<'_>,
     query: &RelationalQuery,

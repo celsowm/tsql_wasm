@@ -199,6 +199,11 @@ fn ssms_object_explorer_server_properties_contract() {
 }
 
 #[test]
+fn ssms_object_explorer_view_column_usage_contract() {
+    run_scope("view_column_usage");
+}
+
+#[test]
 fn ssms_object_explorer_indexes_contract() {
     run_scope("indexes");
 }

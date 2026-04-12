@@ -8,14 +8,14 @@ pub(crate) use columns::{SysAllColumns, SysColumns};
 pub(crate) use databases::{SysConfigurations, SysDatabases, SysSysDatabases};
 pub(crate) use objects_misc::{
     SysAssemblyModules, SysDataSpaces, SysEdgeConstraints, SysExtendedProperties,
-    SysForeignKeyColumns, SysIndexColumns, SysServerPrincipals, SysStats, SysTriggers,
-    SysXmlIndexes, SysXmlSchemaCollections, SysSqlModules, SysSystemSqlModules
+    SysForeignKeyColumns, SysIndexColumns, SysServerPrincipals, SysSqlModules, SysStats,
+    SysSystemSqlModules, SysTriggers, SysXmlIndexes, SysXmlSchemaCollections,
 };
 pub(crate) use tables::SysTables;
 pub(crate) use types::{SysTableTypes, SysTypes};
 
+use super::super::virtual_table_def;
 use super::super::VirtualTable;
-use super::super::{virtual_table_def};
 use crate::catalog::Catalog;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};

@@ -1,6 +1,6 @@
+use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use parking_lot::Mutex;
 
 use super::cte::CteStorage;
 use super::model::{Cursor, JoinedRow};

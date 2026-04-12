@@ -322,21 +322,19 @@ impl TdsSession {
                 Ok((header, data)) => {
                     log_packet(self.connection_id, "packet", &header, &data);
                     match header.packet_type {
-                        SQL_BATCH => {
-                            match self.handle_sql_batch(&data, &mut writer).await {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    log::error!("[conn={}] SQL batch error: {}", self.connection_id, e);
-                                    let err_resp = build_error_response(&e);
-                                    let _ = packet::write_packet(
-                                        &mut writer,
-                                        TABULAR_RESULT,
-                                        &err_resp.data,
-                                    )
-                                    .await;
-                                }
+                        SQL_BATCH => match self.handle_sql_batch(&data, &mut writer).await {
+                            Ok(_) => {}
+                            Err(e) => {
+                                log::error!("[conn={}] SQL batch error: {}", self.connection_id, e);
+                                let err_resp = build_error_response(&e);
+                                let _ = packet::write_packet(
+                                    &mut writer,
+                                    TABULAR_RESULT,
+                                    &err_resp.data,
+                                )
+                                .await;
                             }
-                        }
+                        },
                         RPC => match parse_rpc(&data) {
                             Ok(Some(rpc)) => {
                                 let preamble = build_param_preamble(&rpc.params);
@@ -467,9 +465,9 @@ impl TdsSession {
             return Ok(true);
         }
 
-        let session_id = self
-            .session_id
-            .ok_or_else(|| tsql_core::error::DbError::Execution("session not initialized".to_string()))?;
+        let session_id = self.session_id.ok_or_else(|| {
+            tsql_core::error::DbError::Execution("session not initialized".to_string())
+        })?;
 
         if is_ssms_contained_auth_probe(sql) {
             if let Some(db_name) = extract_leading_use_database(sql) {

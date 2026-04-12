@@ -429,6 +429,23 @@
       ]
     },
     {
+      "name": "view_column_usage_for_customer_orders",
+      "scope": "view_column_usage",
+      "sql": "SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME FROM INFORMATION_SCHEMA.VIEW_COLUMN_USAGE WHERE VIEW_SCHEMA = 'dbo' AND VIEW_NAME = 'vCustomerOrders' ORDER BY TABLE_NAME, COLUMN_NAME",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "COLUMN_NAME"
+          ],
+          "min_rows": 6
+        }
+      ]
+    },
+    {
       "name": "indexes_list_for_customers",
       "scope": "indexes",
       "sql": "SELECT i.name, i.type_desc, i.is_unique, i.is_primary_key FROM sys.indexes i INNER JOIN sys.tables t ON i.object_id = t.object_id WHERE t.name = 'Customers' AND t.schema_id = SCHEMA_ID('dbo')",

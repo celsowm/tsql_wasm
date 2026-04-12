@@ -14,14 +14,10 @@ pub(crate) fn execute_apply_stage(
         return Ok(source_eval);
     }
 
-    let mut rows = source_eval.materialize(ctx, executor.catalog, executor.storage, executor.clock)?;
+    let mut rows =
+        source_eval.materialize(ctx, executor.catalog, executor.storage, executor.clock)?;
     for apply_clause in &query.applies {
-        rows = super::super::transformer::execute_apply(
-            rows,
-            apply_clause,
-            ctx,
-            executor,
-        )?;
+        rows = super::super::transformer::execute_apply(rows, apply_clause, ctx, executor)?;
     }
     let shape = rows.first().cloned().unwrap_or_default();
     Ok(FromEval {

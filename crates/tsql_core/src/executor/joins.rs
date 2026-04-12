@@ -26,11 +26,25 @@ fn combine_sides(s1: JoinSide, s2: JoinSide) -> JoinSide {
     }
 }
 
-fn get_expr_side(expr: &Expr, left_shape: &[ContextTable], right_shape: &[ContextTable]) -> JoinSide {
+fn get_expr_side(
+    expr: &Expr,
+    left_shape: &[ContextTable],
+    right_shape: &[ContextTable],
+) -> JoinSide {
     match expr {
         Expr::Identifier(name) => {
-            let in_left = left_shape.iter().any(|b| b.table.columns.iter().any(|c| c.name.eq_ignore_ascii_case(name)));
-            let in_right = right_shape.iter().any(|b| b.table.columns.iter().any(|c| c.name.eq_ignore_ascii_case(name)));
+            let in_left = left_shape.iter().any(|b| {
+                b.table
+                    .columns
+                    .iter()
+                    .any(|c| c.name.eq_ignore_ascii_case(name))
+            });
+            let in_right = right_shape.iter().any(|b| {
+                b.table
+                    .columns
+                    .iter()
+                    .any(|c| c.name.eq_ignore_ascii_case(name))
+            });
             match (in_left, in_right) {
                 (true, false) => JoinSide::Left,
                 (false, true) => JoinSide::Right,
@@ -39,10 +53,18 @@ fn get_expr_side(expr: &Expr, left_shape: &[ContextTable], right_shape: &[Contex
             }
         }
         Expr::QualifiedIdentifier(parts) => {
-            if parts.len() != 2 { return JoinSide::None; }
+            if parts.len() != 2 {
+                return JoinSide::None;
+            }
             let table_name = &parts[0];
-            let in_left = left_shape.iter().any(|b| b.alias.eq_ignore_ascii_case(table_name) || b.table.name.eq_ignore_ascii_case(table_name));
-            let in_right = right_shape.iter().any(|b| b.alias.eq_ignore_ascii_case(table_name) || b.table.name.eq_ignore_ascii_case(table_name));
+            let in_left = left_shape.iter().any(|b| {
+                b.alias.eq_ignore_ascii_case(table_name)
+                    || b.table.name.eq_ignore_ascii_case(table_name)
+            });
+            let in_right = right_shape.iter().any(|b| {
+                b.alias.eq_ignore_ascii_case(table_name)
+                    || b.table.name.eq_ignore_ascii_case(table_name)
+            });
             match (in_left, in_right) {
                 (true, false) => JoinSide::Left,
                 (false, true) => JoinSide::Right,
@@ -56,7 +78,10 @@ fn get_expr_side(expr: &Expr, left_shape: &[ContextTable], right_shape: &[Contex
             combine_sides(l_side, r_side)
         }
         Expr::Unary { expr, .. } => get_expr_side(expr, left_shape, right_shape),
-        Expr::Cast { expr, .. } | Expr::TryCast { expr, .. } | Expr::Convert { expr, .. } | Expr::TryConvert { expr, .. } => get_expr_side(expr, left_shape, right_shape),
+        Expr::Cast { expr, .. }
+        | Expr::TryCast { expr, .. }
+        | Expr::Convert { expr, .. }
+        | Expr::TryConvert { expr, .. } => get_expr_side(expr, left_shape, right_shape),
         Expr::FunctionCall { args, .. } => {
             let mut side = JoinSide::None;
             for arg in args {
@@ -74,23 +99,35 @@ pub(crate) fn find_equi_join_conditions(
     right_shape: &[ContextTable],
 ) -> Option<(Vec<Expr>, Vec<Expr>)> {
     match on {
-        Expr::Binary { left, op: BinaryOp::And, right } => {
+        Expr::Binary {
+            left,
+            op: BinaryOp::And,
+            right,
+        } => {
             let (mut l1, mut r1) = find_equi_join_conditions(left, left_shape, right_shape)?;
             let (l2, r2) = find_equi_join_conditions(right, left_shape, right_shape)?;
             l1.extend(l2);
             r1.extend(r2);
             Some((l1, r1))
         }
-        Expr::Binary { left, op: BinaryOp::Eq, right } => {
+        Expr::Binary {
+            left,
+            op: BinaryOp::Eq,
+            right,
+        } => {
             let l_side = get_expr_side(left, left_shape, right_shape);
             let r_side = get_expr_side(right, left_shape, right_shape);
             match (l_side, r_side) {
-                (JoinSide::Left, JoinSide::Right) => Some((vec![(**left).clone()], vec![(**right).clone()])),
-                (JoinSide::Right, JoinSide::Left) => Some((vec![(**right).clone()], vec![(**left).clone()])),
-                _ => None
+                (JoinSide::Left, JoinSide::Right) => {
+                    Some((vec![(**left).clone()], vec![(**right).clone()]))
+                }
+                (JoinSide::Right, JoinSide::Left) => {
+                    Some((vec![(**right).clone()], vec![(**left).clone()]))
+                }
+                _ => None,
             }
         }
-        _ => None
+        _ => None,
     }
 }
 

@@ -1,4 +1,4 @@
-use super::super::super::{virtual_table_def};
+use super::super::super::virtual_table_def;
 use super::super::super::VirtualTable;
 use crate::catalog::Catalog;
 use crate::storage::StoredRow;

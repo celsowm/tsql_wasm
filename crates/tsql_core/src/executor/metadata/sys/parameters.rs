@@ -35,7 +35,9 @@ impl VirtualTable for SysParameters {
         for r in catalog.get_routines() {
             for (i, p) in r.params.iter().enumerate() {
                 let (dt, is_user_defined) = match &p.param_type {
-                    RoutineParamType::Scalar(dt_spec) => (data_type_spec_to_runtime(dt_spec), false),
+                    RoutineParamType::Scalar(dt_spec) => {
+                        (data_type_spec_to_runtime(dt_spec), false)
+                    }
                     RoutineParamType::TableType(_) => {
                         // For table types, we use a placeholder or look up its base type if applicable.
                         // SQL Server sys.parameters for TVP shows system_type_id = 243 (table type).
@@ -45,12 +47,10 @@ impl VirtualTable for SysParameters {
 
                 let type_id = if is_user_defined {
                     match &p.param_type {
-                        RoutineParamType::TableType(obj) => {
-                            catalog
-                                .find_table_type(obj.schema_or_dbo(), &obj.name)
-                                .map(|tt| tt.object_id)
-                                .unwrap_or(0)
-                        }
+                        RoutineParamType::TableType(obj) => catalog
+                            .find_table_type(obj.schema_or_dbo(), &obj.name)
+                            .map(|tt| tt.object_id)
+                            .unwrap_or(0),
                         _ => 0,
                     }
                 } else {

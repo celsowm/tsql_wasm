@@ -5,10 +5,10 @@
 //! Usage: compat-query "SELECT 1 as n"
 
 use serde::Serialize;
+use std::io::Write;
 use tsql_core::types::{DataType, Value};
 use tsql_core::{Database, DbError, QueryResult, StatementExecutor};
 use tsql_server::playground;
-use std::io::Write;
 
 fn format_compat_value(value: &Value) -> String {
     match value {
@@ -146,10 +146,15 @@ fn main() {
             let stdout = std::io::stdout();
             let mut handle = stdout.lock();
             writeln!(handle, "{}", json).expect("failed to write compatibility response");
-            handle.flush().expect("failed to flush compatibility response");
+            handle
+                .flush()
+                .expect("failed to flush compatibility response");
         }
         Err(e) => {
-            eprintln!("ERROR:0:0:0:failed to serialize compatibility response: {}", e);
+            eprintln!(
+                "ERROR:0:0:0:failed to serialize compatibility response: {}",
+                e
+            );
             std::process::exit(1);
         }
     }

@@ -1,17 +1,20 @@
 use crate::ast::FromNode;
 use crate::catalog::{Catalog, ColumnDef, TableDef};
 use crate::error::DbError;
-use crate::storage::{Storage, StoredRow};
 use crate::executor::clock::Clock;
+use crate::storage::{Storage, StoredRow};
 use std::collections::HashMap;
 
 use super::super::context::ExecutionContext;
 use super::super::model::{ContextTable, JoinedRow};
 use super::super::physical::{PhysicalPivot, PhysicalScan, PhysicalUnpivot};
+pub(crate) use super::pipeline::iterator::{
+    FilterIterator, HashJoinIterator, NestedLoopJoinIterator, RowIterator, ScanIterator,
+    TableScanIterator,
+};
 use super::plan::RelationalQuery;
 use super::scan::{choose_scan_strategy, execute_scan};
 use super::transformer;
-pub(crate) use super::pipeline::iterator::{RowIterator, ScanIterator, FilterIterator, NestedLoopJoinIterator, HashJoinIterator, TableScanIterator};
 use super::QueryExecutor;
 
 pub(crate) struct FromEval {
@@ -54,13 +57,19 @@ pub(crate) fn execute_from_clause(
         } => {
             let left_eval = execute_from_clause(executor, *left, ctx)?;
             let right_eval = execute_from_clause(executor, *right, ctx)?;
-            
+
             let mut shape = left_eval.shape.clone();
             shape.extend(right_eval.shape.clone());
 
             // Try Hash Join for equi-joins
             if let Some(on_expr) = &on {
-                if let Some((left_keys, right_keys)) = crate::executor::joins::find_equi_join_conditions(on_expr, &left_eval.shape, &right_eval.shape) {
+                if let Some((left_keys, right_keys)) =
+                    crate::executor::joins::find_equi_join_conditions(
+                        on_expr,
+                        &left_eval.shape,
+                        &right_eval.shape,
+                    )
+                {
                     return Ok(FromEval {
                         iter: Box::new(HashJoinIterator {
                             left: left_eval.iter,
@@ -80,7 +89,7 @@ pub(crate) fn execute_from_clause(
                             finishing_right: false,
                             finishing_idx: 0,
                         }),
-                        shape
+                        shape,
                     });
                 }
             }
@@ -96,7 +105,7 @@ pub(crate) fn execute_from_clause(
                     right_shape: right_eval.shape,
                     matched_current_left: false,
                 }),
-                shape
+                shape,
             })
         }
     }
@@ -153,7 +162,7 @@ fn execute_table_ref(
     ctx: &mut ExecutionContext,
 ) -> Result<FromEval, DbError> {
     let bound = super::binding::bind_table(executor, executor.catalog, table_ref.clone(), ctx)?;
-    
+
     // Check if it's a CTE
     if let Some(cte) = ctx
         .row
@@ -164,12 +173,13 @@ fn execute_table_ref(
     {
         let rows = crate::executor::cte::cte_to_context_rows(cte, &bound.alias);
         let shape = rows.first().cloned().unwrap_or_else(|| {
-             vec![ContextTable {
+            vec![ContextTable {
                 table: bound.table.clone(),
                 alias: bound.alias.clone(),
                 row: None,
                 storage_index: None,
-            }.null_row()]
+            }
+            .null_row()]
         });
         return Ok(FromEval {
             iter: Box::new(ScanIterator::new(rows)),
@@ -240,18 +250,18 @@ fn execute_table_ref(
     }
 
     let strategy = choose_scan_strategy(&bound, None, &[], executor.catalog);
-    
+
     // Only use truly lazy TableScanIterator if it's a simple TableScan strategy
     // and we don't have complex PIVOT/UNPIVOT (which still materialize for now)
-    if matches!(strategy, crate::executor::physical::ScanStrategy::TableScan) 
-       && table_ref.pivot.is_none() 
-       && table_ref.unpivot.is_none() 
+    if matches!(strategy, crate::executor::physical::ScanStrategy::TableScan)
+        && table_ref.pivot.is_none()
+        && table_ref.unpivot.is_none()
     {
         let table_iter = TableScanIterator {
             bound: bound.clone(),
             next_index: 0,
         };
-        
+
         let shape = vec![ContextTable {
             table: bound.table.clone(),
             alias: bound.alias.clone(),
@@ -361,7 +371,8 @@ fn apply_from_alias(
         foreign_keys: vec![],
     };
 
-    let source_rows = source.materialize(ctx, executor.catalog, executor.storage, executor.clock)?;
+    let source_rows =
+        source.materialize(ctx, executor.catalog, executor.storage, executor.clock)?;
     let mut aliased_rows = Vec::with_capacity(source_rows.len());
     for row in source_rows {
         let mut values = Vec::new();

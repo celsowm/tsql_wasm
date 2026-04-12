@@ -1,5 +1,5 @@
-use super::super::super::{builtin_types_rows, virtual_table_def};
 use super::super::super::VirtualTable;
+use super::super::super::{builtin_types_rows, virtual_table_def};
 use crate::catalog::Catalog;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};

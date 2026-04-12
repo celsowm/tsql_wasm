@@ -1,4 +1,4 @@
-use super::super::super::{virtual_table_def};
+use super::super::super::virtual_table_def;
 use super::super::super::VirtualTable;
 use crate::catalog::Catalog;
 use crate::storage::StoredRow;
@@ -227,7 +227,11 @@ impl VirtualTable for SysTriggers {
                 ("name", DataType::NVarChar { max_len: 128 }, false),
                 ("object_id", DataType::Int, false),
                 ("parent_class", DataType::TinyInt, false),
-                ("parent_class_desc", DataType::NVarChar { max_len: 60 }, false),
+                (
+                    "parent_class_desc",
+                    DataType::NVarChar { max_len: 60 },
+                    false,
+                ),
                 ("parent_id", DataType::Int, false),
                 ("type", DataType::Char { len: 2 }, false),
                 ("type_desc", DataType::NVarChar { max_len: 60 }, false),

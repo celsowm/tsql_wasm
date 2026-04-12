@@ -5,15 +5,15 @@ use crate::catalog::Catalog;
 use crate::error::DbError;
 use crate::executor::clock::Clock;
 use crate::executor::context::ExecutionContext;
+use crate::executor::evaluator::eval_predicate;
 use crate::executor::joins::eval_key;
 use crate::executor::model::{BoundTable, ContextTable, JoinedRow};
-use crate::executor::evaluator::eval_predicate;
 use crate::storage::Storage;
 use crate::types::Value;
 
 pub trait RowIterator {
     fn next_row(
-        &mut self, 
+        &mut self,
         ctx: &mut ExecutionContext,
         catalog: &dyn Catalog,
         storage: &dyn Storage,
@@ -39,7 +39,7 @@ impl ScanIterator {
 
 impl RowIterator for ScanIterator {
     fn next_row(
-        &mut self, 
+        &mut self,
         _ctx: &mut ExecutionContext,
         _catalog: &dyn Catalog,
         _storage: &dyn Storage,
@@ -67,21 +67,14 @@ pub struct FilterIterator {
 
 impl RowIterator for FilterIterator {
     fn next_row(
-        &mut self, 
+        &mut self,
         ctx: &mut ExecutionContext,
         catalog: &dyn Catalog,
         storage: &dyn Storage,
         clock: &dyn Clock,
     ) -> Result<Option<JoinedRow>, DbError> {
         while let Some(row) = self.source.next_row(ctx, catalog, storage, clock)? {
-            if eval_predicate(
-                &self.predicate,
-                &row,
-                ctx,
-                catalog,
-                storage,
-                clock,
-            )? {
+            if eval_predicate(&self.predicate, &row, ctx, catalog, storage, clock)? {
                 return Ok(Some(row));
             }
         }
@@ -105,7 +98,7 @@ pub struct NestedLoopJoinIterator {
 
 impl RowIterator for NestedLoopJoinIterator {
     fn next_row(
-        &mut self, 
+        &mut self,
         ctx: &mut ExecutionContext,
         catalog: &dyn Catalog,
         storage: &dyn Storage,
@@ -124,7 +117,7 @@ impl RowIterator for NestedLoopJoinIterator {
             while let Some(right_row) = self.right.next_row(ctx, catalog, storage, clock)? {
                 let mut candidate = self.current_left.as_ref().unwrap().clone();
                 candidate.extend(right_row);
-                
+
                 let matches = if let Some(on_expr) = &self.on {
                     eval_predicate(on_expr, &candidate, ctx, catalog, storage, clock)?
                 } else {
@@ -139,7 +132,9 @@ impl RowIterator for NestedLoopJoinIterator {
 
             // Exhausted right side for current_left
             let left_row = self.current_left.take().unwrap();
-            if !self.matched_current_left && (self.join_type == JoinType::Left || self.join_type == JoinType::Full) {
+            if !self.matched_current_left
+                && (self.join_type == JoinType::Left || self.join_type == JoinType::Full)
+            {
                 let mut candidate = left_row;
                 candidate.extend(self.right_shape.iter().map(ContextTable::null_row));
                 return Ok(Some(candidate));
@@ -182,7 +177,7 @@ pub struct HashJoinIterator {
 
 impl RowIterator for HashJoinIterator {
     fn next_row(
-        &mut self, 
+        &mut self,
         ctx: &mut ExecutionContext,
         catalog: &dyn Catalog,
         storage: &dyn Storage,
@@ -214,7 +209,14 @@ impl RowIterator for HashJoinIterator {
                         }
                     }
 
-                    let key = eval_key(&self.left_keys, self.current_left.as_ref().unwrap(), ctx, catalog, storage, clock)?;
+                    let key = eval_key(
+                        &self.left_keys,
+                        self.current_left.as_ref().unwrap(),
+                        ctx,
+                        catalog,
+                        storage,
+                        clock,
+                    )?;
                     if !key.iter().any(|v| v.is_null()) {
                         if let Some(indices) = self.hash_map.get(&key) {
                             self.current_matches = indices.clone();
@@ -238,7 +240,9 @@ impl RowIterator for HashJoinIterator {
 
                 // Exhausted matches for current_left
                 let left_row = self.current_left.take().unwrap();
-                if self.current_matches.is_empty() && (self.join_type == JoinType::Left || self.join_type == JoinType::Full) {
+                if self.current_matches.is_empty()
+                    && (self.join_type == JoinType::Left || self.join_type == JoinType::Full)
+                {
                     let mut candidate = left_row;
                     candidate.extend(self.right_shape.iter().map(ContextTable::null_row));
                     return Ok(Some(candidate));
@@ -251,7 +255,8 @@ impl RowIterator for HashJoinIterator {
             let ri = self.finishing_idx;
             self.finishing_idx += 1;
             if !self.right_matched[ri] {
-                let mut candidate: JoinedRow = self.left_shape.iter().map(ContextTable::null_row).collect();
+                let mut candidate: JoinedRow =
+                    self.left_shape.iter().map(ContextTable::null_row).collect();
                 candidate.extend(self.right_materialized[ri].clone());
                 return Ok(Some(candidate));
             }
@@ -279,7 +284,7 @@ pub struct TableScanIterator {
 
 impl RowIterator for TableScanIterator {
     fn next_row(
-        &mut self, 
+        &mut self,
         _ctx: &mut ExecutionContext,
         _catalog: &dyn Catalog,
         storage: &dyn Storage,

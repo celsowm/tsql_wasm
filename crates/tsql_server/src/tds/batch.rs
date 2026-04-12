@@ -74,9 +74,9 @@ pub fn build_error_response(err: &DbError) -> BatchResult {
     super::tokens::write_error(
         &mut b,
         err.number(),
-        1,                       // state
-        err.class_severity(),    // class (severity)
-        &err.to_string(),        // message
+        1,                    // state
+        err.class_severity(), // class (severity)
+        &err.to_string(),     // message
         "tsql_server",
         "",
         0,

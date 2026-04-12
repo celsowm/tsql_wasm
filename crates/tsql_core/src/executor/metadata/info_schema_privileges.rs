@@ -1,8 +1,5 @@
 use super::VirtualTable;
-use super::{
-    virtual_table_def,
-    DB_CATALOG, schema_name_by_id
-};
+use super::{schema_name_by_id, virtual_table_def, DB_CATALOG};
 use crate::catalog::Catalog;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};

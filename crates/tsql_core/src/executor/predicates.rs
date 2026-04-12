@@ -308,7 +308,7 @@ fn execute_subquery_select(
             clock,
         };
         let result = qe.execute_select(RelationalQuery::from(stmt.clone()), &mut sub_ctx)?;
-        
+
         {
             let mut cache = ctx.subquery_cache.lock();
             cache.insert(key, result.clone());
@@ -329,7 +329,10 @@ fn execute_subquery_select(
 fn is_uncorrelated(stmt: &crate::ast::SelectStmt) -> bool {
     // If it has NO FromNode, it's uncorrelated if selection/projection are uncorrelated.
     if stmt.from_clause.is_none() {
-        return stmt.projection.iter().all(|i| is_expr_uncorrelated(&i.expr))
+        return stmt
+            .projection
+            .iter()
+            .all(|i| is_expr_uncorrelated(&i.expr))
             && stmt.selection.as_ref().map_or(true, is_expr_uncorrelated);
     }
     // For now, only literals are considered uncorrelated.
@@ -344,7 +347,9 @@ fn is_expr_uncorrelated(expr: &Expr) -> bool {
         | Expr::String(_)
         | Expr::UnicodeString(_)
         | Expr::Null => true,
-        Expr::Binary { left, right, .. } => is_expr_uncorrelated(left) && is_expr_uncorrelated(right),
+        Expr::Binary { left, right, .. } => {
+            is_expr_uncorrelated(left) && is_expr_uncorrelated(right)
+        }
         Expr::Unary { expr, .. } => is_expr_uncorrelated(expr),
         Expr::Cast { expr, .. }
         | Expr::TryCast { expr, .. }

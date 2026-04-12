@@ -1,5 +1,8 @@
 use super::VirtualTable;
-use super::{info_schema_columns, info_schema_constraints, info_schema_empty, info_schema_routines, info_schema_tables, info_schema_routine_columns, info_schema_privileges, info_schema_views};
+use super::{
+    info_schema_columns, info_schema_constraints, info_schema_empty, info_schema_privileges,
+    info_schema_routine_columns, info_schema_routines, info_schema_tables, info_schema_views,
+};
 
 pub(super) fn lookup(name: &str) -> Option<Box<dyn VirtualTable>> {
     if let Some(vt) = info_schema_tables::lookup(name) {
