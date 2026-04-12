@@ -83,9 +83,11 @@ fn to_envelope_result_set(result: &QueryResult) -> ResultSetEnvelope {
     let mut column_precisions = Vec::new();
     let mut column_scales = Vec::new();
     let mut column_lengths = Vec::new();
+    let mut column_nullabilities = Vec::new();
 
-    for ct in &result.column_types {
+    for (i, ct) in result.column_types.iter().enumerate() {
         column_types.push(format_compat_type(ct));
+        column_nullabilities.push(result.column_nullabilities.get(i).copied());
         match ct {
             DataType::Decimal { precision, scale } => {
                 column_precisions.push(Some(*precision));
@@ -126,6 +128,7 @@ fn to_envelope_result_set(result: &QueryResult) -> ResultSetEnvelope {
         column_precisions,
         column_scales,
         column_lengths,
+        column_nullabilities,
         rows,
         row_count: result.rows.len(),
     }
@@ -212,6 +215,7 @@ struct ResultSetEnvelope {
     column_precisions: Vec<Option<u8>>,
     column_scales: Vec<Option<u8>>,
     column_lengths: Vec<Option<i32>>,
+    column_nullabilities: Vec<Option<bool>>,
     rows: Vec<Vec<String>>,
     row_count: usize,
 }

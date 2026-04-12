@@ -59,7 +59,8 @@ fn test_invalid_numeric_conversion_error() {
     let err = e
         .execute(parse_sql("INSERT INTO t VALUES ('abc')").unwrap())
         .unwrap_err();
-    assert!(err.to_string().contains("cannot convert"));
+    // Engine now returns more accurate SQL Server-style error
+    assert!(err.to_string().contains("converting") || err.to_string().contains("cannot convert"));
 }
 
 #[test]

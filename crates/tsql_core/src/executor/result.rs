@@ -8,6 +8,7 @@ use crate::types::DataType;
 pub struct QueryResult {
     pub columns: Vec<String>,
     pub column_types: Vec<DataType>,
+    pub column_nullabilities: Vec<bool>,
     pub rows: Vec<Vec<Value>>,
     pub return_status: Option<i32>,
     pub is_procedure: bool,

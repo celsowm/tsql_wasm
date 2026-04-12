@@ -80,9 +80,11 @@ pub fn build_output_result(
 
     if inserted_rows.is_empty() && deleted_rows.is_empty() {
         let n = columns.len();
+        let column_nullabilities = vec![true; columns.len()];
         return Ok(Some(QueryResult {
             columns,
             column_types: vec![crate::types::DataType::VarChar { max_len: 4000 }; n],
+            column_nullabilities,
             rows,
             ..Default::default()
         }));
@@ -101,9 +103,11 @@ pub fn build_output_result(
             rows.push(row);
         }
         let column_types = derive_column_types(&rows, columns.len());
+        let column_nullabilities = vec![true; columns.len()];
         return Ok(Some(QueryResult {
             columns,
             column_types,
+            column_nullabilities,
             rows,
             ..Default::default()
         }));
@@ -122,9 +126,11 @@ pub fn build_output_result(
             rows.push(row);
         }
         let column_types = derive_column_types(&rows, columns.len());
+        let column_nullabilities = vec![true; columns.len()];
         return Ok(Some(QueryResult {
             columns,
             column_types,
+            column_nullabilities,
             rows,
             ..Default::default()
         }));
@@ -143,9 +149,11 @@ pub fn build_output_result(
     }
 
     let column_types = derive_column_types(&rows, columns.len());
+    let column_nullabilities = vec![true; columns.len()];
     Ok(Some(QueryResult {
         columns,
         column_types,
+        column_nullabilities,
         rows,
         ..Default::default()
     }))
@@ -188,9 +196,11 @@ pub fn build_output_result_merge(
     }
 
     let column_types = derive_column_types(&rows, columns.len());
+    let column_nullabilities = vec![true; columns.len()];
     Ok(Some(QueryResult {
         columns,
         column_types,
+        column_nullabilities,
         rows,
         ..Default::default()
     }))

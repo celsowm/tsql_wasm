@@ -16,7 +16,7 @@ pub enum DbError {
     #[error("{0}")]
     Semantic(String),
 
-    #[error("{0}")]
+    #[error("execution error: {0}")]
     Execution(String),
 
     #[error("{0}")]

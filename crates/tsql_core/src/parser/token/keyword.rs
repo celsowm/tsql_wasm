@@ -266,6 +266,9 @@ define_keywords! {
 
     // Lock timeout
     LockTimeout => "LOCK_TIMEOUT",
+    Statistics => "STATISTICS",
+    Showplan => "SHOWPLAN",
+    Io => "IO",
     Low => "LOW",
     Normal => "NORMAL",
     High => "HIGH",
