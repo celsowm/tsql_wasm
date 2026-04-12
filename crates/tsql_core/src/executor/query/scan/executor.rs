@@ -10,6 +10,7 @@ use crate::executor::evaluator::eval_expr;
 use crate::executor::model::{BoundTable, JoinedRow};
 use crate::executor::physical::{PhysicalScan, ScanStrategy};
 use crate::executor::value_ops::compare_values;
+use crate::storage::IndexStorage;
 
 pub(crate) fn execute_scan(
     scan: &PhysicalScan,
@@ -95,6 +96,19 @@ fn apply_index_strategy(
         ScanStrategy::IndexSeek { index_id } | ScanStrategy::IndexScan { index_id } => index_id,
         ScanStrategy::TableScan => return Ok(rows),
     };
+
+    if let Some(index_storage) = storage.as_index_storage() {
+        return apply_index_strategy_indexed(
+            rows,
+            scan,
+            ctx,
+            catalog,
+            storage,
+            index_storage,
+            clock,
+        );
+    }
+
     let Some(index) = catalog
         .get_indexes()
         .iter()
@@ -160,6 +174,100 @@ fn apply_index_strategy(
         keyed.into_iter().map(|(_, row)| row).collect()
     };
     Ok(out)
+}
+
+fn apply_index_strategy_indexed(
+    _rows: Vec<JoinedRow>,
+    scan: &PhysicalScan,
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn crate::storage::Storage,
+    index_storage: &dyn IndexStorage,
+    clock: &dyn crate::executor::clock::Clock,
+) -> Result<Vec<JoinedRow>, DbError> {
+    let index_id = match scan.strategy {
+        ScanStrategy::IndexSeek { index_id } | ScanStrategy::IndexScan { index_id } => index_id,
+        ScanStrategy::TableScan => return Ok(Vec::new()),
+    };
+
+    let Some(first_col_id) = catalog
+        .get_indexes()
+        .iter()
+        .find(|idx| idx.id == index_id && idx.table_id == scan.bound.table.id)
+        .and_then(|idx| idx.column_ids.first().copied())
+    else {
+        return Ok(Vec::new());
+    };
+
+    let Some(col_idx) = scan
+        .bound
+        .table
+        .columns
+        .iter()
+        .position(|c| c.id == first_col_id)
+    else {
+        return Ok(Vec::new());
+    };
+
+    let row_indices = if matches!(scan.strategy, ScanStrategy::IndexSeek { .. }) {
+        if let Some((op, rhs)) = super::strategy::extract_index_predicate_rhs(
+            scan.pushed_predicate.as_ref(),
+            &scan.bound.alias,
+            &scan.bound.table.columns[col_idx].name,
+        ) {
+            let rhs_val = eval_expr(&rhs, &[], ctx, catalog, storage, clock)?;
+            match op {
+                BinaryOp::Eq => index_storage.seek_index(index_id, &rhs_val)?,
+                BinaryOp::Gt => {
+                    let results = index_storage.seek_index_range(index_id, Some(&rhs_val), None)?;
+                    results
+                        .into_iter()
+                        .flat_map(|(_, indices)| indices)
+                        .collect()
+                }
+                BinaryOp::Gte => {
+                    let results = index_storage.seek_index_range(index_id, Some(&rhs_val), None)?;
+                    results
+                        .into_iter()
+                        .flat_map(|(_, indices)| indices)
+                        .collect()
+                }
+                BinaryOp::Lt => {
+                    let results = index_storage.seek_index_range(index_id, None, Some(&rhs_val))?;
+                    results
+                        .into_iter()
+                        .flat_map(|(_, indices)| indices)
+                        .collect()
+                }
+                BinaryOp::Lte => {
+                    let results = index_storage.seek_index_range(index_id, None, Some(&rhs_val))?;
+                    results
+                        .into_iter()
+                        .flat_map(|(_, indices)| indices)
+                        .collect()
+                }
+                _ => Vec::new(),
+            }
+        } else {
+            let all = index_storage.seek_index_range(index_id, None, None)?;
+            all.into_iter().flat_map(|(_, indices)| indices).collect()
+        }
+    } else {
+        let all = index_storage.seek_index_range(index_id, None, None)?;
+        all.into_iter().flat_map(|(_, indices)| indices).collect()
+    };
+
+    Ok(row_indices
+        .into_iter()
+        .map(|idx| {
+            vec![crate::executor::model::ContextTable {
+                table: scan.bound.table.clone(),
+                alias: scan.bound.alias.clone(),
+                row: None,
+                storage_index: Some(idx),
+            }]
+        })
+        .collect())
 }
 
 fn compare_with_op(ord: Ordering, op: BinaryOp) -> bool {

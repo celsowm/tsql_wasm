@@ -1,4 +1,6 @@
+pub mod btree_index;
 pub mod redb_storage;
+pub use btree_index::{BTreeIndex, IndexStorage};
 pub use redb_storage::RedbStorage;
 
 use std::collections::HashMap;
@@ -26,7 +28,6 @@ pub trait Storage: std::fmt::Debug + Send + Sync {
 
     fn get_row(&self, table_id: u32, index: usize) -> Result<Option<StoredRow>, DbError>;
 
-    /// Compatibility shim for callers that still need a fully materialized table snapshot.
     fn get_rows(&self, table_id: u32) -> Result<Vec<StoredRow>, DbError> {
         self.scan_rows(table_id)?.collect()
     }
@@ -34,14 +35,19 @@ pub trait Storage: std::fmt::Debug + Send + Sync {
     fn insert_row(&mut self, table_id: u32, row: StoredRow) -> Result<(), DbError>;
     fn update_row(&mut self, table_id: u32, index: usize, row: StoredRow) -> Result<(), DbError>;
     fn delete_row(&mut self, table_id: u32, index: usize) -> Result<(), DbError>;
-    /// Replaces all rows in a table with the given set.
-    /// The table must already exist; returns an error otherwise.
     fn replace_table(&mut self, table_id: u32, rows: Vec<StoredRow>) -> Result<(), DbError>;
     fn clear_table(&mut self, table_id: u32) -> Result<(), DbError>;
     fn remove_table(&mut self, table_id: u32) -> Result<(), DbError>;
     fn ensure_table(&mut self, table_id: u32) -> Result<(), DbError>;
 
     fn clone_boxed(&self) -> Box<dyn Storage>;
+
+    fn as_index_storage(&self) -> Option<&dyn IndexStorage> {
+        None
+    }
+    fn as_index_storage_mut(&mut self) -> Option<&mut dyn IndexStorage> {
+        None
+    }
 }
 
 pub trait CheckpointableStorage: Storage {
@@ -144,6 +150,13 @@ impl Storage for InMemoryStorage {
 
     fn clone_boxed(&self) -> Box<dyn Storage> {
         Box::new(self.clone())
+    }
+
+    fn as_index_storage(&self) -> Option<&dyn IndexStorage> {
+        None
+    }
+    fn as_index_storage_mut(&mut self) -> Option<&mut dyn IndexStorage> {
+        None
     }
 }
 

@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use crate::ast::UpdateStmt;
 use crate::error::DbError;
+use crate::types::Value;
 
 use super::super::context::ExecutionContext;
 use super::super::query::QueryExecutor;
@@ -173,6 +174,22 @@ impl<'a> MutationExecutor<'a> {
                 enforce_unique_on_update(&table, self.storage, table_id, &new_row, idx)?;
 
                 self.storage.update_row(table_id, idx, new_row.clone())?;
+
+                if let Some(index_storage) = self.storage.as_index_storage_mut() {
+                    for idx_def in self
+                        .catalog
+                        .get_indexes()
+                        .iter()
+                        .filter(|i| i.table_id == table_id)
+                    {
+                        if let Some(bi) = index_storage.get_index_mut(idx_def.id) {
+                            let old_values: Vec<Value> = stored_row.values.clone();
+                            let new_values: Vec<Value> = new_row.values.clone();
+                            let _ = bi.update(idx, &old_values, idx, &new_values);
+                        }
+                    }
+                }
+
                 self.push_dirty_update(ctx, &table.name, idx, &new_row);
 
                 if collect_rows {

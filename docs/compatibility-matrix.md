@@ -80,7 +80,7 @@ The baseline below is seeded from the current README, tests, and explicit code-l
 | Area | Status | Notes | Evidence |
 |---|---|---|---|
 | Logical index catalog | compatible subset | Index metadata exists and persists | `README.md`, `crates/tsql_core/tests/phase8_persistence.rs` |
-| Planner index usage | unsupported | README explicitly states planner still uses table scans | `README.md` |
+| Planner index usage | compatible subset | BTreeIndex storage implemented; supports index seeks and range scans for equality, greater than, less than operations | `crates/tsql_core/src/storage/btree_index.rs`, `crates/tsql_core/src/executor/query/scan/executor.rs` |
 | Cost-based optimization / statistics | unsupported | No evidence of SQL Server-class optimizer behavior | aggregate repo state |
 
 ## Security and Visibility

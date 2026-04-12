@@ -155,6 +155,26 @@ impl<'a> MutationExecutor<'a> {
                 self.clock,
             )?;
             self.storage.insert_row(table_id, row.clone())?;
+
+            let row_index = self
+                .storage
+                .get_rows(table_id)
+                .map(|r| r.len() - 1)
+                .unwrap_or(0);
+
+            if let Some(index_storage) = self.storage.as_index_storage_mut() {
+                for idx in self
+                    .catalog
+                    .get_indexes()
+                    .iter()
+                    .filter(|i| i.table_id == table_id)
+                {
+                    if let Some(bi) = index_storage.get_index_mut(idx.id) {
+                        let _ = bi.insert(row_index, &row.values);
+                    }
+                }
+            }
+
             self.push_dirty_insert(ctx, &table.name, &row);
             if collect_rows {
                 inserted_rows_for_output.push(row);

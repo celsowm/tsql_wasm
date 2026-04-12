@@ -256,13 +256,63 @@ impl<'a> SchemaExecutor<'a> {
     pub(crate) fn create_index(&mut self, stmt: CreateIndexStmt) -> Result<(), DbError> {
         let index_schema = stmt.name.schema_or_dbo().to_string();
         let table_schema = stmt.table.schema_or_dbo().to_string();
+
         self.catalog.create_index(
             &index_schema,
             &stmt.name.name,
             &table_schema,
             &stmt.table.name,
             &stmt.columns,
-        )
+        )?;
+
+        let index_id = self
+            .catalog
+            .get_indexes()
+            .iter()
+            .find(|idx| idx.name.eq_ignore_ascii_case(&stmt.name.name))
+            .map(|idx| idx.id);
+
+        if let (Some(index_def_id), Some(table)) = (
+            index_id,
+            self.catalog.find_table(&table_schema, &stmt.table.name),
+        ) {
+            let rows = self.storage.get_rows(table.id)?;
+            let row_refs: Vec<(usize, &[crate::types::Value])> = rows
+                .iter()
+                .enumerate()
+                .map(|(i, r)| (i, r.values.as_slice()))
+                .collect();
+
+            if let Some(index_storage) = self.storage.as_index_storage_mut() {
+                index_storage.register_index(
+                    index_def_id,
+                    self.catalog
+                        .get_indexes()
+                        .iter()
+                        .find(|idx| idx.id == index_def_id)
+                        .map(|idx| idx.column_ids.clone())
+                        .unwrap_or_default(),
+                    self.catalog
+                        .get_indexes()
+                        .iter()
+                        .find(|idx| idx.id == index_def_id)
+                        .map(|idx| idx.is_unique)
+                        .unwrap_or(false),
+                    self.catalog
+                        .get_indexes()
+                        .iter()
+                        .find(|idx| idx.id == index_def_id)
+                        .map(|idx| idx.is_clustered)
+                        .unwrap_or(false),
+                );
+
+                if let Some(idx) = index_storage.get_index_mut(index_def_id) {
+                    let _ = idx.rebuild_from_rows(row_refs.as_slice());
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub(crate) fn drop_index(&mut self, stmt: DropIndexStmt) -> Result<(), DbError> {

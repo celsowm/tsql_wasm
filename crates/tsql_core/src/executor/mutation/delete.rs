@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use crate::ast::DeleteStmt;
 use crate::error::DbError;
+use crate::types::Value;
 
 use super::super::context::ExecutionContext;
 use super::super::query::QueryExecutor;
@@ -133,9 +134,31 @@ impl<'a> MutationExecutor<'a> {
         let mut indices_to_delete: Vec<usize> = deleted_indices.into_iter().collect();
         indices_to_delete.sort_unstable_by(|a, b| b.cmp(a));
 
-        for idx in indices_to_delete {
-            self.storage.delete_row(table_id, idx)?;
-            self.push_dirty_delete(ctx, &table.name, idx);
+        let rows = self.storage.get_rows(table_id)?;
+        let deleted_values: Vec<Vec<Value>> = indices_to_delete
+            .iter()
+            .filter_map(|&idx| rows.get(idx).map(|r| r.values.clone()))
+            .collect();
+
+        for (i, idx) in indices_to_delete.iter().enumerate() {
+            self.storage.delete_row(table_id, *idx)?;
+
+            if let Some(index_storage) = self.storage.as_index_storage_mut() {
+                if let Some(values) = deleted_values.get(i) {
+                    for idx_def in self
+                        .catalog
+                        .get_indexes()
+                        .iter()
+                        .filter(|i| i.table_id == table_id)
+                    {
+                        if let Some(bi) = index_storage.get_index_mut(idx_def.id) {
+                            let _ = bi.delete(*idx, values);
+                        }
+                    }
+                }
+            }
+
+            self.push_dirty_delete(ctx, &table.name, *idx);
         }
 
         self.execute_triggers(
