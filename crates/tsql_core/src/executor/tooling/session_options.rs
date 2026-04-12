@@ -29,6 +29,8 @@ pub struct SessionOptions {
     pub statistics_io: bool,
     pub statistics_time: bool,
     pub showplan_all: bool,
+    pub noexec: bool,
+    pub parseonly: bool,
     #[serde(skip)]
     pub identity_insert: HashSet<String>,
 }
@@ -58,6 +60,8 @@ impl Default for SessionOptions {
             statistics_io: false,
             statistics_time: false,
             showplan_all: false,
+            noexec: false,
+            parseonly: false,
             identity_insert: HashSet::new(),
         }
     }
@@ -167,6 +171,22 @@ pub fn apply_set_option(
         }
         (SessionOption::ShowplanAll, SessionOptionValue::Bool(v)) => {
             options.showplan_all = *v;
+        }
+        (SessionOption::NoExec, SessionOptionValue::Bool(v)) => {
+            options.noexec = *v;
+        }
+        (SessionOption::ParseOnly, SessionOptionValue::Bool(v)) => {
+            options.parseonly = *v;
+        }
+        (SessionOption::AnsiDefaults, SessionOptionValue::Bool(v)) => {
+            options.ansi_nulls = *v;
+            options.quoted_identifier = *v;
+            options.ansi_null_dflt_on = *v;
+            options.ansi_padding = *v;
+            options.ansi_warnings = *v;
+            options.arithabort = *v;
+            options.cursor_close_on_commit = *v;
+            options.implicit_transactions = *v;
         }
         (SessionOption::Unsupported(name), _) => {
             warnings.push(format!(
