@@ -436,6 +436,10 @@ where
         return result;
     }
 
+    if session_options.noexec {
+        return Ok(StmtOutcome::Ok(None));
+    }
+
     if tx_manager.active.is_none()
         && session_options.implicit_transactions
         && should_start_implicit_transaction(&stmt)

@@ -8,7 +8,7 @@ use super::super::context::ExecutionContext;
 use super::super::locks::SessionId;
 use super::super::result::QueryResult;
 use super::super::session::{SessionRuntime, SharedState};
-use super::super::table_util::is_transaction_statement;
+use super::super::table_util::{is_set_parseonly, is_transaction_statement};
 use super::super::transaction_exec;
 use super::StatementExecutor;
 use super::{EngineCatalog, EngineStorage};
@@ -63,11 +63,33 @@ where
         session_id: SessionId,
         sql: &str,
     ) -> Result<Option<QueryResult>, DbError> {
-        let quoted_ident = with_session(&self.state, session_id, |session| {
-            Ok(session.options.quoted_identifier)
+        let (quoted_ident, mut parse_only) = with_session(&self.state, session_id, |session| {
+            Ok((session.options.quoted_identifier, session.options.parseonly))
         })?;
 
         let stmts = parse_batch_with_quoted_ident(sql, quoted_ident)?;
+
+        let mut final_parse_only = parse_only;
+        let mut changed = false;
+        for stmt in &stmts {
+            if let Some(v) = is_set_parseonly(stmt) {
+                final_parse_only = v;
+                changed = true;
+            }
+        }
+
+        if changed {
+            with_session(&self.state, session_id, |session| {
+                session.options.parseonly = final_parse_only;
+                Ok(())
+            })?;
+            parse_only = final_parse_only;
+        }
+
+        if parse_only {
+            return Ok(None);
+        }
+
         with_session(&self.state, session_id, |session| {
             execute_batch_statements(&self.state, session_id, session, stmts)
         })
@@ -78,11 +100,33 @@ where
         session_id: SessionId,
         sql: &str,
     ) -> Result<Vec<Option<QueryResult>>, DbError> {
-        let quoted_ident = with_session(&self.state, session_id, |session| {
-            Ok(session.options.quoted_identifier)
+        let (quoted_ident, mut parse_only) = with_session(&self.state, session_id, |session| {
+            Ok((session.options.quoted_identifier, session.options.parseonly))
         })?;
 
         let stmts = parse_batch_with_quoted_ident(sql, quoted_ident)?;
+
+        let mut final_parse_only = parse_only;
+        let mut changed = false;
+        for stmt in &stmts {
+            if let Some(v) = is_set_parseonly(stmt) {
+                final_parse_only = v;
+                changed = true;
+            }
+        }
+
+        if changed {
+            with_session(&self.state, session_id, |session| {
+                session.options.parseonly = final_parse_only;
+                Ok(())
+            })?;
+            parse_only = final_parse_only;
+        }
+
+        if parse_only {
+            return Ok(vec![]);
+        }
+
         with_session(&self.state, session_id, |session| {
             execute_batch_statements_multi(&self.state, session_id, session, stmts)
         })

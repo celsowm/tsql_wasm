@@ -1,4 +1,5 @@
 mod constraints;
+mod dm_exec;
 mod hadr;
 mod host_info;
 mod indexes;
@@ -86,6 +87,12 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(objects::SysSystemViews))
     } else if name.eq_ignore_ascii_case("dm_os_host_info") {
         Some(Box::new(host_info::SysHostInfo))
+    } else if name.eq_ignore_ascii_case("dm_exec_sessions") {
+        Some(Box::new(dm_exec::SysDmExecSessions))
+    } else if name.eq_ignore_ascii_case("dm_exec_connections") {
+        Some(Box::new(dm_exec::SysDmExecConnections))
+    } else if name.eq_ignore_ascii_case("dm_exec_requests") {
+        Some(Box::new(dm_exec::SysDmExecRequests))
     } else if name.eq_ignore_ascii_case("check_constraints") {
         Some(Box::new(constraints::SysCheckConstraints))
     } else if name.eq_ignore_ascii_case("routines") {

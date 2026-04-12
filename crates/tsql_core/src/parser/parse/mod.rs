@@ -603,6 +603,16 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
         }
     }
 
+    if matches_set_name(parser.peek(), "ANSI_DEFAULTS") {
+        return parse_bool_setting(parser, crate::parser::ast::SessionOption::AnsiDefaults);
+    }
+    if matches_set_name(parser.peek(), "NOEXEC") {
+        return parse_bool_setting(parser, crate::parser::ast::SessionOption::NoExec);
+    }
+    if matches_set_name(parser.peek(), "PARSEONLY") {
+        return parse_bool_setting(parser, crate::parser::ast::SessionOption::ParseOnly);
+    }
+
     if let Some(tok) = parser.peek() {
         let option_name = match tok {
             Token::Identifier(id) => Some(id.clone()),

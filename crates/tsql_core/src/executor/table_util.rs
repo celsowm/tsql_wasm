@@ -172,3 +172,14 @@ pub(crate) fn is_transaction_statement(stmt: &Statement) -> bool {
             ))
     )
 }
+
+pub(crate) fn is_set_parseonly(stmt: &Statement) -> Option<bool> {
+    if let Statement::Session(crate::ast::SessionStatement::SetOption(opt)) = stmt {
+        if let (crate::ast::SessionOption::ParseOnly, crate::ast::SessionOptionValue::Bool(v)) =
+            (&opt.option, &opt.value)
+        {
+            return Some(*v);
+        }
+    }
+    None
+}

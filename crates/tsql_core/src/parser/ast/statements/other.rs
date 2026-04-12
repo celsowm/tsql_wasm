@@ -442,6 +442,9 @@ pub enum SessionOption {
     StatisticsIo,
     StatisticsTime,
     ShowplanAll,
+    AnsiDefaults,
+    NoExec,
+    ParseOnly,
     Unsupported(String),
 }
 
