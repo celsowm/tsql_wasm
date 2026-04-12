@@ -26,6 +26,7 @@ pub(crate) fn execute_flat_select(
     let row_types = derive_types_from_rows(&projected_rows, columns.len());
 
     let mut column_types = Vec::with_capacity(columns.len());
+    let mut column_nullabilities = Vec::with_capacity(columns.len());
     for i in 0..columns.len() {
         column_types.push(
             expr_types
@@ -34,11 +35,13 @@ pub(crate) fn execute_flat_select(
                 .or_else(|| row_types.get(i).and_then(|t| t.clone()))
                 .unwrap_or(DataType::VarChar { max_len: 4000 }),
         );
+        column_nullabilities.push(true); // Default to nullable for expressions
     }
 
     Ok(QueryResult {
         columns,
         column_types,
+        column_nullabilities,
         rows: projected_rows,
         ..Default::default()
     })

@@ -322,6 +322,7 @@ static QueryEnvelope ExecuteAzure(string connStr, string sql)
             var columnPrecisions = new byte?[reader.FieldCount];
             var columnScales = new byte?[reader.FieldCount];
             var columnLengths = new int?[reader.FieldCount];
+            var columnNullabilities = new bool?[reader.FieldCount];
 
             var schemaTable = reader.GetSchemaTable();
 
@@ -336,6 +337,7 @@ static QueryEnvelope ExecuteAzure(string connStr, string sql)
                     columnPrecisions[i] = row["NumericPrecision"] != DBNull.Value ? (byte?)Convert.ToByte(row["NumericPrecision"]) : null;
                     columnScales[i] = row["NumericScale"] != DBNull.Value ? (byte?)Convert.ToByte(row["NumericScale"]) : null;
                     columnLengths[i] = row["ColumnSize"] != DBNull.Value ? (int?)Convert.ToInt32(row["ColumnSize"]) : null;
+                    columnNullabilities[i] = row["AllowDBNull"] != DBNull.Value ? (bool?)Convert.ToBoolean(row["AllowDBNull"]) : null;
                 }
             }
 
@@ -357,6 +359,7 @@ static QueryEnvelope ExecuteAzure(string connStr, string sql)
                 columnPrecisions,
                 columnScales,
                 columnLengths,
+                columnNullabilities,
                 rows.ToArray(),
                 rows.Count));
         } while (reader.NextResult());
@@ -585,6 +588,11 @@ static bool CompareResponses(
         if (!a.ColumnLengths.SequenceEqual(l.ColumnLengths))
             diffs.Add(
                 $"result set {setIdx} column lengths mismatch: Azure={FormatVector(a.ColumnLengths.Select(p => p?.ToString() ?? \"null\"))}, Local={FormatVector(l.ColumnLengths.Select(p => p?.ToString() ?? \"null\"))}"
+            );
+
+        if (!a.ColumnNullabilities.SequenceEqual(l.ColumnNullabilities))
+            diffs.Add(
+                $"result set {setIdx} column nullabilities mismatch: Azure={FormatVector(a.ColumnNullabilities.Select(p => p?.ToString() ?? \"null\"))}, Local={FormatVector(l.ColumnNullabilities.Select(p => p?.ToString() ?? \"null\"))}"
             );
 
         if (a.RowCount != l.RowCount)
@@ -859,6 +867,7 @@ record ResultSetEnvelope(
     byte?[] ColumnPrecisions,
     byte?[] ColumnScales,
     int?[] ColumnLengths,
+    bool?[] ColumnNullabilities,
     string[][] Rows,
     int RowCount
 );

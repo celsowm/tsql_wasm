@@ -335,6 +335,13 @@ pub fn lower_session(session: ast::SessionStatement) -> Result<executor_ast::Sta
                         ast::SessionOption::ImplicitTransactions => {
                             executor_ast::SessionOption::ImplicitTransactions
                         }
+                        ast::SessionOption::StatisticsIo => {
+                            executor_ast::SessionOption::StatisticsIo
+                        }
+                        ast::SessionOption::StatisticsTime => {
+                            executor_ast::SessionOption::StatisticsTime
+                        }
+                        ast::SessionOption::ShowplanAll => executor_ast::SessionOption::ShowplanAll,
                         ast::SessionOption::Unsupported(v) => {
                             executor_ast::SessionOption::Unsupported(v)
                         }

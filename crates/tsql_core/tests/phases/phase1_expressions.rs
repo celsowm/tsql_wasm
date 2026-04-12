@@ -80,6 +80,8 @@ fn test_arithmetic_divide() {
 fn test_arithmetic_divide_by_zero_returns_null() {
     let mut e = Engine::new();
     setup(&mut e);
+    exec(&mut e, "SET ARITHABORT OFF");
+    exec(&mut e, "SET ANSI_WARNINGS OFF");
     let r = query(
         &mut e,
         "SELECT val / 0 AS result FROM t WHERE name = 'Alice'",

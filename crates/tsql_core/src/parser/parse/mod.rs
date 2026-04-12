@@ -584,6 +584,25 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
         }));
     }
 
+    if parser.at_keyword(Keyword::Statistics) {
+        let _ = parser.next();
+        if parser.at_keyword(Keyword::Io) {
+            let _ = parser.next();
+            return parse_bool_setting(parser, crate::parser::ast::SessionOption::StatisticsIo);
+        }
+        if parser.at_keyword(Keyword::Time) {
+            let _ = parser.next();
+            return parse_bool_setting(parser, crate::parser::ast::SessionOption::StatisticsTime);
+        }
+    }
+    if parser.at_keyword(Keyword::Showplan) {
+        let _ = parser.next();
+        if parser.at_keyword(Keyword::All) {
+            let _ = parser.next();
+            return parse_bool_setting(parser, crate::parser::ast::SessionOption::ShowplanAll);
+        }
+    }
+
     if let Some(tok) = parser.peek() {
         let option_name = match tok {
             Token::Identifier(id) => Some(id.clone()),

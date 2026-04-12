@@ -152,7 +152,7 @@ pub(super) fn bind_builtin_tvf(
 
     Ok(Some(BoundTable {
         table: table_def,
-        alias: "STRING_SPLIT".to_string(),
+        alias: tref.alias.clone().unwrap_or_else(|| "STRING_SPLIT".into()),
         virtual_rows: Some(rows),
     }))
 }

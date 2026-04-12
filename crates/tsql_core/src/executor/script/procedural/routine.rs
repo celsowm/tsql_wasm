@@ -15,6 +15,7 @@ pub(crate) fn execute_xp_msver() -> QueryResult {
             crate::types::DataType::Int,
             crate::types::DataType::NVarChar { max_len: 512 },
         ],
+        column_nullabilities: vec![true, true, true, true],
         rows: vec![
             vec![
                 Value::Int(1),

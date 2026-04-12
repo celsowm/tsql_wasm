@@ -237,9 +237,11 @@ impl<'a> GroupExecutor<'a> {
         } else {
             column_types = vec![crate::types::DataType::VarChar { max_len: 4000 }; columns.len()];
         }
+        let column_nullabilities = vec![true; columns.len()];
         Ok(super::result::QueryResult {
             columns,
             column_types,
+            column_nullabilities,
             rows: projected_rows,
             ..Default::default()
         })

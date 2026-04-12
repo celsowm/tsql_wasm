@@ -136,6 +136,9 @@ pub enum SessionOption {
     AnsiWarnings,
     CursorCloseOnCommit,
     ImplicitTransactions,
+    StatisticsIo,
+    StatisticsTime,
+    ShowplanAll,
     Unsupported(String),
 }
 

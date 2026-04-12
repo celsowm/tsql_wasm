@@ -368,8 +368,12 @@ fn arithmetic_overflow(
     }
 }
 
-fn divide_by_zero(_arithabort: bool, _ansi_warnings: bool) -> Result<Value, DbError> {
-    Err(DbError::divide_by_zero())
+fn divide_by_zero(arithabort: bool, ansi_warnings: bool) -> Result<Value, DbError> {
+    if arithabort || ansi_warnings {
+        Err(DbError::divide_by_zero())
+    } else {
+        Ok(Value::Null)
+    }
 }
 
 fn eval_bitwise_not(val: Value) -> Result<Value, DbError> {

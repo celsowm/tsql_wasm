@@ -31,6 +31,7 @@ pub(crate) fn execute_rows_to_result(
     let result = projection::execute_projection_stage(executor, query, source_rows, ctx, &state)?;
     let result_columns = result.columns.clone();
     let result_column_types = result.column_types.clone();
+    let result_column_nullabilities = result.column_nullabilities.clone();
     let mut final_rows = result.rows;
 
     if query.projection.distinct {
@@ -47,6 +48,7 @@ pub(crate) fn execute_rows_to_result(
     Ok(result::QueryResult {
         columns: result_columns,
         column_types: result_column_types,
+        column_nullabilities: result_column_nullabilities,
         rows: final_rows,
         ..Default::default()
     })

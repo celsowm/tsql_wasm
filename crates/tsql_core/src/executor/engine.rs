@@ -48,9 +48,11 @@ pub(crate) fn execute_set_op(
         }
     };
 
+    let column_nullabilities = left.column_nullabilities.clone();
     Ok(QueryResult {
         columns: left.columns,
         column_types: left.column_types,
+        column_nullabilities,
         rows,
         ..Default::default()
     })

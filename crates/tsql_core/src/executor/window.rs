@@ -490,9 +490,11 @@ impl<'a> WindowExecutor<'a> {
             })
             .collect();
 
+        let column_nullabilities = vec![true; columns.len()];
         Ok(super::result::QueryResult {
             columns,
             column_types,
+            column_nullabilities,
             rows: final_projected_rows,
             is_procedure: false,
             return_status: None,
@@ -758,9 +760,11 @@ impl<'a> WindowExecutor<'a> {
             column_types = vec![crate::types::DataType::VarChar { max_len: 4000 }; columns.len()];
         }
 
+        let column_nullabilities = vec![true; columns.len()];
         Ok(super::result::QueryResult {
             columns,
             column_types,
+            column_nullabilities,
             rows: result,
             is_procedure: false,
             return_status: None,

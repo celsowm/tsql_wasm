@@ -6,6 +6,7 @@ mod info_schema_privileges;
 mod info_schema_routine_columns;
 mod info_schema_routines;
 mod info_schema_tables;
+mod info_schema_types;
 mod info_schema_views;
 mod sys;
 pub(crate) mod system_vars;

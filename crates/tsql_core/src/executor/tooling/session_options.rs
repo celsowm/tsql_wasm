@@ -26,6 +26,9 @@ pub struct SessionOptions {
     pub query_governor_cost_limit: i64,
     pub deadlock_priority: i32,
     pub lock_timeout_ms: i64,
+    pub statistics_io: bool,
+    pub statistics_time: bool,
+    pub showplan_all: bool,
     #[serde(skip)]
     pub identity_insert: HashSet<String>,
 }
@@ -52,6 +55,9 @@ impl Default for SessionOptions {
             query_governor_cost_limit: 0,
             deadlock_priority: 0,
             lock_timeout_ms: 0,
+            statistics_io: false,
+            statistics_time: false,
+            showplan_all: false,
             identity_insert: HashSet::new(),
         }
     }
@@ -152,6 +158,15 @@ pub fn apply_set_option(
                     )));
                 }
             };
+        }
+        (SessionOption::StatisticsIo, SessionOptionValue::Bool(v)) => {
+            options.statistics_io = *v;
+        }
+        (SessionOption::StatisticsTime, SessionOptionValue::Bool(v)) => {
+            options.statistics_time = *v;
+        }
+        (SessionOption::ShowplanAll, SessionOptionValue::Bool(v)) => {
+            options.showplan_all = *v;
         }
         (SessionOption::Unsupported(name), _) => {
             warnings.push(format!(
