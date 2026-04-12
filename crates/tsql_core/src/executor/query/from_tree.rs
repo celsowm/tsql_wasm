@@ -191,16 +191,50 @@ fn execute_table_ref(
                 }]
             })
             .collect();
-        let shape = ctx_rows.first().cloned().unwrap_or_else(|| {
-             vec![ContextTable {
+        let mut rows = ctx_rows;
+
+        if let Some(pivot) = &table_ref.pivot {
+            rows = transformer::execute_pivot(
+                executor.catalog,
+                executor.storage,
+                executor.clock,
+                rows,
+                &PhysicalPivot {
+                    spec: (**pivot).clone(),
+                    alias: table_ref
+                        .alias
+                        .clone()
+                        .unwrap_or_else(|| "pivoted".to_string()),
+                },
+                ctx,
+            )?;
+        }
+
+        if let Some(unpivot) = &table_ref.unpivot {
+            rows = transformer::execute_unpivot(
+                rows,
+                &PhysicalUnpivot {
+                    spec: (**unpivot).clone(),
+                    alias: table_ref
+                        .alias
+                        .clone()
+                        .unwrap_or_else(|| "unpivoted".to_string()),
+                },
+                ctx,
+            )?;
+        }
+
+        let shape = rows.first().cloned().unwrap_or_else(|| {
+            vec![ContextTable {
                 table: bound.table.clone(),
                 alias: bound.alias.clone(),
                 row: None,
                 storage_index: None,
-            }.null_row()]
+            }
+            .null_row()]
         });
         return Ok(FromEval {
-            iter: Box::new(ScanIterator::new(ctx_rows)),
+            iter: Box::new(ScanIterator::new(rows)),
             shape,
         });
     }

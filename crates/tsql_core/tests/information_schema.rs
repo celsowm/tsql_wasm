@@ -213,6 +213,29 @@ fn test_routines_function() {
     assert_eq!(val(&r, 0, 3), "READS");
 }
 
+#[test]
+fn test_routine_columns_inline_tvf() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE t1 (v INT)");
+    exec(
+        &mut e,
+        "
+        CREATE FUNCTION dbo.gt(@min INT) RETURNS TABLE AS
+        RETURN (SELECT v FROM t1 WHERE v > @min)
+    ",
+    );
+    let r = query(
+        &mut e,
+        "SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE FROM INFORMATION_SCHEMA.ROUTINE_COLUMNS WHERE TABLE_NAME = 'gt' ORDER BY ORDINAL_POSITION",
+    );
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(val(&r, 0, 0), "dbo");
+    assert_eq!(val(&r, 0, 1), "gt");
+    assert_eq!(val(&r, 0, 2), "v");
+    assert_eq!(val(&r, 0, 3), "1");
+    assert_eq!(val(&r, 0, 4), "int");
+}
+
 // ─── PARAMETERS ────────────────────────────────────────────────────────
 
 #[test]
@@ -342,6 +365,18 @@ fn test_constraint_column_usage() {
     assert_eq!(val(&r, 0, 2), "PK_t1");
 }
 
+#[test]
+fn test_view_table_usage() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE t1 (id INT, v INT)");
+    exec(&mut e, "CREATE VIEW v1 AS SELECT id FROM t1 WHERE v > 0");
+    let r = query(&mut e, "SELECT VIEW_SCHEMA, VIEW_NAME, TABLE_NAME FROM INFORMATION_SCHEMA.VIEW_TABLE_USAGE WHERE VIEW_NAME = 'v1'");
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(val(&r, 0, 0), "dbo");
+    assert_eq!(val(&r, 0, 1), "v1");
+    assert_eq!(val(&r, 0, 2), "t1");
+}
+
 // ─── Empty views (should return 0 rows but not error) ─────────────────
 
 #[test]
@@ -351,11 +386,7 @@ fn test_empty_views_queryable() {
         "COLUMN_DOMAIN_USAGE",
         "DOMAINS",
         "DOMAIN_CONSTRAINTS",
-        "TABLE_PRIVILEGES",
-        "COLUMN_PRIVILEGES",
         "VIEW_COLUMN_USAGE",
-        "VIEW_TABLE_USAGE",
-        "ROUTINE_COLUMNS",
     ] {
         let sql = format!("SELECT * FROM INFORMATION_SCHEMA.{}", view);
         let r = query(&mut e, &sql);

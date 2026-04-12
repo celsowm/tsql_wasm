@@ -17,6 +17,7 @@ pub struct SelectStmt {
     pub order_by: Vec<OrderByExpr>,
     pub offset: Option<Expr>,
     pub fetch: Option<Expr>,
+    pub set_op: Option<Box<SetOpClause>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -80,17 +81,23 @@ pub struct OrderByExpr {
     pub asc: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SetOpStmt {
-    pub left: Box<crate::ast::Statement>,
-    pub op: SetOpKind,
-    pub right: Box<crate::ast::Statement>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SetOpClause {
+    pub kind: SetOpKind,
+    pub right: SelectStmt,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SetOpKind {
     Union,
     UnionAll,
     Intersect,
     Except,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetOpStmt {
+    pub left: Box<crate::ast::Statement>,
+    pub op: SetOpKind,
+    pub right: Box<crate::ast::Statement>,
 }

@@ -15,9 +15,15 @@ impl<'a> QueryExecutor<'a> {
         query: RelationalQuery,
         ctx: &mut ExecutionContext,
     ) -> Result<QueryResult, DbError> {
+        let set_op = query.set_op.clone();
         let into_table = query.into_table.clone();
         let result = select::execute_select_internal(self, &query, ctx)?;
         let mut result = result;
+
+        if let Some(set_op) = set_op {
+            let right = self.execute_select(RelationalQuery::from(set_op.right), ctx)?;
+            result = crate::executor::engine::execute_set_op(result, right, set_op.kind)?;
+        }
 
         if ctx.options.rowcount > 0 && result.rows.len() > ctx.options.rowcount as usize {
             result.rows.truncate(ctx.options.rowcount as usize);

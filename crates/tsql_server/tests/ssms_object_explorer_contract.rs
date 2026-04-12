@@ -199,6 +199,11 @@ fn ssms_object_explorer_foreign_keys_contract() {
 }
 
 #[test]
+fn ssms_object_explorer_constraints_contract() {
+    run_scope("constraints");
+}
+
+#[test]
 fn ssms_object_explorer_triggers_contract() {
     run_scope("triggers");
 }

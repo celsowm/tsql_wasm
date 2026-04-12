@@ -362,17 +362,23 @@ impl TdsSession {
                             Ok(None) => {
                                 let preview_len = data.len().min(96);
                                 log::warn!(
-                                    "[conn={}] Ignoring unsupported RPC request ({} bytes), first {} bytes: {:02X?}",
+                                    "[conn={}] Unsupported RPC request ({} bytes), first {} bytes: {:02X?}",
                                     self.connection_id,
                                     data.len(),
                                     preview_len,
                                     &data[..preview_len]
                                 );
-                                let mut b = PacketBuilder::new();
-                                tokens::write_done(&mut b, tokens::DONE_FINAL, 1, 0);
-                                let _ =
-                                    packet::write_packet(&mut writer, TABULAR_RESULT, b.as_bytes())
-                                        .await;
+                                let err = DbError::Parse(
+                                    "unsupported RPC request; only sp_executesql and sp_prepexec are supported"
+                                        .into(),
+                                );
+                                let err_resp = build_error_response(&err);
+                                let _ = packet::write_packet(
+                                    &mut writer,
+                                    TABULAR_RESULT,
+                                    &err_resp.data,
+                                )
+                                .await;
                             }
                             Err(e) => {
                                 let err = tsql_core::error::DbError::Parse(e.to_string());

@@ -53,6 +53,8 @@ Priority values:
 - Deliverables:
   - backlog item per explicit unsupported path
   - matrix row linked to each item
+  - RPC fallback currently visible in `crates/tsql_server/src/session/mod.rs`:
+    unsupported RPC requests now return an explicit parse error
 - Exit criteria:
   - no explicit unsupported branch exists without a tracking item
 
@@ -74,26 +76,25 @@ Priority values:
 
 ## P1
 
-### B005: Close grouped join / `PIVOT` / `UNPIVOT` parser gaps
+### B005: Track grouped join / `PIVOT` / `UNPIVOT` compatibility corners
 
 - Phase: 1
 - Priority: P1
-- Goal: remove current explicit parser rejections in in-scope query shapes
+- Goal: keep the remaining grouped-join and pivoting corners visible and tested
 - Primary areas:
   - `crates/tsql_core/src/parser/lower/dml.rs`
   - query executor / transformer modules
 - Deliverables:
-  - supported lowering for grouped join aliases
-  - supported lowering or explicit classification for grouped join hint cases
   - end-to-end query tests against SQL Server reference behavior
+  - keep grouped-join aliasing and derived subquery set-op behavior covered
 - Exit criteria:
-  - current explicit unsupported branches are removed or narrowed to out-of-scope features
+  - the remaining compatibility corners are described by tests, not surprise failures
 
 ### B006: Broaden RPC coverage beyond `sp_executesql` and `sp_prepexec`
 
 - Phase: 3
 - Priority: P1
-- Goal: stop ignoring in-scope RPC requests
+- Goal: make unsupported RPC requests explicit and expand supported RPC coverage
 - Primary areas:
   - `crates/tsql_server/src/tds/rpc/*`
   - `crates/tsql_server/src/session/mod.rs`
@@ -101,8 +102,9 @@ Priority values:
   - supported RPC selector inventory
   - explicit support plan for SSMS / ADS / driver-required RPC procedures
   - regression tests for each added RPC family
+  - tracked fallback for unsupported RPC packets remains visible in session handling
 - Exit criteria:
-  - no required client path depends on ignored RPC packets
+  - no required client path depends on silent RPC ignoring
 
 ### B007: Replace HADR and availability metadata stubs with a defined compatibility model
 

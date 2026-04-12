@@ -53,9 +53,21 @@ fn test_info_schema_fidelity() {
     let engine = Engine::new();
     engine.exec("CREATE TABLE dbo.InfoTable (id INT)").unwrap();
 
-    // 1. Check ROUTINE_COLUMNS (exists, though empty for now)
-    let res = engine.query("SELECT * FROM INFORMATION_SCHEMA.ROUTINE_COLUMNS").unwrap();
-    assert_eq!(res.rows.len(), 0);
+    // 1. Check ROUTINE_COLUMNS for inline TVFs
+    engine
+        .exec(
+            "
+            CREATE FUNCTION dbo.InfoFn(@min INT) RETURNS TABLE AS
+            RETURN (SELECT id FROM dbo.InfoTable WHERE id > @min)
+        ",
+        )
+        .unwrap();
+    let res = engine
+        .query("SELECT COLUMN_NAME, ORDINAL_POSITION FROM INFORMATION_SCHEMA.ROUTINE_COLUMNS WHERE TABLE_NAME = 'InfoFn'")
+        .unwrap();
+    assert_eq!(res.rows.len(), 1);
+    assert_eq!(res.rows[0][0], Value::VarChar("id".to_string()));
+    assert_eq!(res.rows[0][1], Value::Int(1));
 
     // 2. Check TABLE_PRIVILEGES
     let res = engine.query("SELECT TABLE_NAME, PRIVILEGE_TYPE FROM INFORMATION_SCHEMA.TABLE_PRIVILEGES WHERE TABLE_NAME = 'InfoTable'").unwrap();

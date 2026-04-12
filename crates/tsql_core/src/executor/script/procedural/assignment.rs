@@ -72,6 +72,7 @@ impl<'a> ScriptExecutor<'a> {
                 fetch: None,
             },
             into_table: None,
+            set_op: None,
         };
         let result = QueryExecutor {
             catalog: self.catalog as &dyn Catalog,

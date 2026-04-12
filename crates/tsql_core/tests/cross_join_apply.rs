@@ -123,6 +123,30 @@ fn test_cross_apply_no_match_excluded() {
     assert_eq!(r.rows.len(), 3);
 }
 
+#[test]
+fn test_cross_apply_join_group() {
+    let mut e = Engine::new();
+    setup(&mut e);
+
+    let r = query(
+        &mut e,
+        "SELECT e.name, x.amount, x.dept_name FROM employees e \
+         CROSS APPLY (orders o INNER JOIN departments d ON d.id = e.dept_id AND o.emp_id = e.id) x \
+         ORDER BY e.name, x.amount",
+    );
+
+    assert_eq!(r.rows.len(), 3);
+    assert_eq!(r.rows[0][0], Value::VarChar("Alice".to_string()));
+    assert_eq!(r.rows[0][1], Value::Int(100));
+    assert_eq!(r.rows[0][2], Value::VarChar("Engineering".to_string()));
+    assert_eq!(r.rows[1][0], Value::VarChar("Alice".to_string()));
+    assert_eq!(r.rows[1][1], Value::Int(200));
+    assert_eq!(r.rows[1][2], Value::VarChar("Engineering".to_string()));
+    assert_eq!(r.rows[2][0], Value::VarChar("Bob".to_string()));
+    assert_eq!(r.rows[2][1], Value::Int(50));
+    assert_eq!(r.rows[2][2], Value::VarChar("Marketing".to_string()));
+}
+
 // ─── OUTER APPLY ───────────────────────────────────────────────────────
 
 #[test]

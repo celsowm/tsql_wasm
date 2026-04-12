@@ -19,7 +19,7 @@ The baseline below is seeded from the current README, tests, and explicit code-l
 |---|---|---|---|
 | Core DDL (`CREATE/ALTER/DROP/TRUNCATE TABLE`, schemas, indexes) | compatible subset | Broad support exists, but index execution behavior is not SQL Server-like yet | `README.md`, `crates/tsql_core/tests/phase3_ddl.rs`, `crates/tsql_core/tests/phase3_indexes_constraints.rs` |
 | Core DML (`SELECT/INSERT/UPDATE/DELETE`) | compatible subset | Strong coverage exists, but edge-case behavior still needs differential closure | `README.md`, `crates/tsql_core/tests/sqlserver/*`, `crates/tsql_core/tests/phase9_dml_advanced.rs` |
-| Query features (`JOIN`, `GROUP BY`, `HAVING`, set ops, CTEs) | compatible subset | Major surface is present, but some grouped-join / PIVOT / UNPIVOT corners are still explicitly rejected | `README.md`, `crates/tsql_core/src/parser/lower/dml.rs` |
+| Query features (`JOIN`, `GROUP BY`, `HAVING`, set ops, CTEs) | compatible subset | Major surface is present, including grouped-join alias lowering and set-op subqueries; remaining compatibility corners are documented in B003 / B005 | `README.md`, `crates/tsql_core/src/parser/lower/dml.rs`, `docs/compatibility-backlog.md` |
 | Window functions | compatible subset | Supported and tested, but not yet declared exact | `README.md`, `crates/tsql_core/tests/phase9_window_functions.rs` |
 | Procedural T-SQL (`DECLARE`, `SET`, `IF`, `WHILE`, `TRY/CATCH`) | compatible subset | Broad procedural subset is present | `README.md`, `crates/tsql_core/tests/phase4_programmability.rs`, `crates/tsql_core/tests/try_catch_test.rs` |
 | Stored procedures / UDF / TVF | compatible subset | Supported as a subset, not full SQL Server programmability | `README.md`, `crates/tsql_core/tests/phase4_programmability_closure.rs`, `crates/tsql_core/tests/p1_16_read_only_udf_regression.rs` |
@@ -45,6 +45,9 @@ The baseline below is seeded from the current README, tests, and explicit code-l
 | Area | Status | Notes | Evidence |
 |---|---|---|---|
 | `INFORMATION_SCHEMA` | compatible subset | Extensive support exists, but several views remain as empty stubs | `crates/tsql_core/tests/information_schema.rs`, `crates/tsql_core/src/executor/metadata/info_schema_empty.rs` |
+| `INFORMATION_SCHEMA.VIEW_TABLE_USAGE` | compatible subset | Backed by catalog view dependencies for supported views | `crates/tsql_core/src/executor/metadata/info_schema_views.rs`, `crates/tsql_core/tests/information_schema.rs` |
+| `INFORMATION_SCHEMA.ROUTINE_COLUMNS` | compatible subset | Backed for inline table-valued functions with a single source table | `crates/tsql_core/src/executor/metadata/info_schema_routine_columns.rs`, `crates/tsql_core/tests/information_schema.rs` |
+| `INFORMATION_SCHEMA.VIEW_COLUMN_USAGE` / domain views | shim | Still intentionally empty where the engine does not yet have enough lineage or domain metadata | `crates/tsql_core/src/executor/metadata/info_schema_views.rs`, `crates/tsql_core/src/executor/metadata/info_schema_empty.rs` |
 | Core `sys.*` catalog views | compatible subset | Several important views exist, but partitioning and other areas are currently empty stubs | `README.md`, `crates/tsql_core/src/executor/metadata/sys/*`, `crates/tsql_core/src/executor/metadata/sys/partition.rs` |
 | SSMS Object Explorer bootstrap / table enumeration | shim | Current contract replay exists specifically for tooling compatibility | `crates/tsql_server/tests/ssms_object_explorer_contract.rs` |
 | HADR / availability metadata | shim | Stub views exist and intentionally return empty results | `crates/tsql_core/src/executor/metadata/sys/hadr.rs` |
@@ -56,8 +59,8 @@ The baseline below is seeded from the current README, tests, and explicit code-l
 |---|---|---|---|
 | TDS login / prelogin / basic batch execution | compatible subset | Core flows exist and are tested | `crates/tsql_server/src/session/mod.rs`, `crates/tsql_server/tests/basic.rs` |
 | TLS support | compatible subset | TLS is implemented, but parity depends on negotiation and client behavior details | `crates/tsql_server/src/tls.rs`, `crates/tsql_server/src/tds_tls_io.rs`, `crates/tsql_server/tests/security.rs` |
-| RPC support | compatible subset | Only `sp_executesql` and `sp_prepexec` are supported; others are ignored with a warning | `crates/tsql_server/src/tds/rpc/parser.rs`, `crates/tsql_server/src/session/mod.rs` |
-| Full SQL Server RPC surface | unsupported | Explicit unsupported RPC requests are still ignored | `crates/tsql_server/src/session/mod.rs` |
+| RPC support | compatible subset | Only `sp_executesql` and `sp_prepexec` are supported; other RPC packets now return an explicit unsupported error in session handling | `crates/tsql_server/src/tds/rpc/parser.rs`, `crates/tsql_server/src/session/mod.rs`, `docs/compatibility-backlog.md` |
+| Full SQL Server RPC surface | unsupported | Explicit unsupported RPC requests now produce an error response instead of being silently ignored | `crates/tsql_server/src/session/mod.rs` |
 | SSMS / ADS connectivity | compatible subset | Supported in meaningful paths, but still dependent on compatibility-focused shims and partial protocol coverage | `README.md`, `crates/tsql_server/tests/ssms_object_explorer_contract.rs` |
 | ADO.NET / ODBC / JDBC parity | unsupported | Not defined as complete today | aggregate repo state |
 

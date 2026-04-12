@@ -265,6 +265,44 @@ fn test_join_group_in_parentheses() {
     assert_eq!(col_str(&result.rows[0], 1), "Engineering");
 }
 
+#[test]
+fn test_join_group_with_alias() {
+    let mut engine = Engine::new();
+    engine
+        .exec("CREATE TABLE left_t (lid INT, lval NVARCHAR(10))")
+        .unwrap();
+    engine
+        .exec("CREATE TABLE right_t (rid INT, rval NVARCHAR(10))")
+        .unwrap();
+    engine.exec("INSERT INTO left_t VALUES (1, 'A')").unwrap();
+    engine.exec("INSERT INTO right_t VALUES (1, 'B')").unwrap();
+    let result = query(
+        &mut engine,
+        "SELECT g.lid, g.lval, g.rid, g.rval FROM (left_t l JOIN right_t r ON l.lid = r.rid) g",
+    );
+
+    assert_eq!(result.rows.len(), 1);
+    assert_eq!(result.columns, vec!["lid", "lval", "rid", "rval"]);
+    assert_eq!(col_num(&result.rows[0], 0), 1);
+    assert_eq!(col_str(&result.rows[0], 1), "A");
+    assert_eq!(col_num(&result.rows[0], 2), 1);
+    assert_eq!(col_str(&result.rows[0], 3), "B");
+}
+
+#[test]
+fn test_derived_table_set_op_subquery() {
+    let mut engine = setup_engine();
+    let result = query(
+        &mut engine,
+        "SELECT x.v FROM (SELECT 1 AS v UNION ALL SELECT 2 AS v) x ORDER BY x.v",
+    );
+
+    assert_eq!(result.columns, vec!["v"]);
+    assert_eq!(result.rows.len(), 2);
+    assert_eq!(col_num(&result.rows[0], 0), 1);
+    assert_eq!(col_num(&result.rows[1], 0), 2);
+}
+
 // ─── Subqueries with comparison operators ─────────────────────────────────
 
 #[test]

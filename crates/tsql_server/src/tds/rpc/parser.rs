@@ -270,3 +270,28 @@ fn parse_param_decl(decl: &str) -> Vec<(String, String)> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn supported_rpc_procedures_are_recognized() {
+        assert!(is_supported_rpc_proc(&RpcProcSelector::Id(10)));
+        assert!(is_supported_rpc_proc(&RpcProcSelector::Id(13)));
+        assert!(is_supported_rpc_proc(&RpcProcSelector::Name(
+            "dbo.sp_executesql".to_string()
+        )));
+        assert!(is_supported_rpc_proc(&RpcProcSelector::Name(
+            "[dbo].[sp_prepexec]".to_string()
+        )));
+    }
+
+    #[test]
+    fn unsupported_rpc_procedures_are_rejected() {
+        assert!(!is_supported_rpc_proc(&RpcProcSelector::Id(42)));
+        assert!(!is_supported_rpc_proc(&RpcProcSelector::Name(
+            "dbo.sp_help".to_string()
+        )));
+    }
+}

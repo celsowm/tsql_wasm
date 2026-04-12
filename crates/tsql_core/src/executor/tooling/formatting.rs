@@ -339,6 +339,16 @@ pub(crate) fn format_select_stmt(stmt: &SelectStmt) -> String {
             out.push_str(" ROWS ONLY");
         }
     }
+    if let Some(set_op) = &stmt.set_op {
+        let op_kw = match set_op.kind {
+            crate::ast::SetOpKind::Union => " UNION ",
+            crate::ast::SetOpKind::UnionAll => " UNION ALL ",
+            crate::ast::SetOpKind::Intersect => " INTERSECT ",
+            crate::ast::SetOpKind::Except => " EXCEPT ",
+        };
+        out.push_str(op_kw);
+        out.push_str(&format_select_stmt(&set_op.right));
+    }
     out
 }
 
