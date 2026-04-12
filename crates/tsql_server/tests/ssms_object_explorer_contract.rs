@@ -197,3 +197,8 @@ fn ssms_object_explorer_indexes_contract() {
 fn ssms_object_explorer_foreign_keys_contract() {
     run_scope("foreign_keys");
 }
+
+#[test]
+fn ssms_object_explorer_triggers_contract() {
+    run_scope("triggers");
+}

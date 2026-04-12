@@ -76,4 +76,12 @@ CREATE TABLE dbo.Categories (
     CONSTRAINT FK_Categories_Parent FOREIGN KEY (ParentCategoryId) REFERENCES dbo.Categories(CategoryId)
 );
 "#,
+    r#"
+CREATE TRIGGER dbo.tr_CustomerUpdate ON dbo.Customers
+AFTER UPDATE
+AS
+BEGIN
+    PRINT 'Customer updated';
+END
+"#,
 ];
