@@ -13,7 +13,6 @@ use std::io::Write;
 fn format_compat_value(value: &Value) -> String {
     match value {
         Value::Null => "NULL".to_string(),
-        // SqlClient materializes SQL DATE as DateTime at midnight in the C# runner.
         Value::Date(v) => format!("{} 00:00:00", v.format("%Y-%m-%d")),
         Value::DateTime(v) | Value::DateTime2(v) => v.format("%Y-%m-%d %H:%M:%S").to_string(),
         other => other.to_string_value(),
