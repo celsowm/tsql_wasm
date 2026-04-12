@@ -283,6 +283,11 @@ var queries = new string[]
     "DECLARE @x INT = 10; IF @x > 5 SELECT 'Greater' as r ELSE SELECT 'Smaller' as r",
 
     "SELECT DB_NAME() as current_db",
+    "SELECT name, type, type_desc FROM sys.procedures",
+    "SELECT name, type, type_desc FROM sys.functions",
+    "SELECT name, system_type_id, user_type_id FROM sys.parameters",
+    "SELECT name, is_user_defined FROM sys.types WHERE is_user_defined = 1",
+    "SELECT name FROM sys.table_types",
 
     // -- Error cases for parity testing --
     "SELECT * FROM NonExistentTable",
@@ -714,6 +719,7 @@ record ResultSetEnvelope(
     byte?[] ColumnPrecisions,
     byte?[] ColumnScales,
     int?[] ColumnLengths,
+    bool[] ColumnNullabilities,
     string[][] Rows,
     int RowCount
 );

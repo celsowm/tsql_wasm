@@ -3,6 +3,7 @@ mod hadr;
 mod host_info;
 mod indexes;
 mod objects;
+mod parameters;
 mod partition;
 mod policy_configuration;
 mod routines;
@@ -69,6 +70,12 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(tables::SysStats))
     } else if name.eq_ignore_ascii_case("types") {
         Some(Box::new(tables::SysTypes))
+    } else if name.eq_ignore_ascii_case("parameters") {
+        Some(Box::new(parameters::SysParameters))
+    } else if name.eq_ignore_ascii_case("procedures") {
+        Some(Box::new(routines::SysProcedures))
+    } else if name.eq_ignore_ascii_case("functions") {
+        Some(Box::new(routines::SysFunctions))
     } else if name.eq_ignore_ascii_case("indexes") {
         Some(Box::new(indexes::SysIndexes))
     } else if name.eq_ignore_ascii_case("objects") {
