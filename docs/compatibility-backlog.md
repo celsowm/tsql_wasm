@@ -53,6 +53,7 @@ Priority values:
 - Deliverables:
   - backlog item per explicit unsupported path
   - matrix row linked to each item
+  - unsupported parser branches tracked from `crates/tsql_core/src/parser/parse/mod.rs` and `crates/tsql_core/src/executor/tooling/session_options.rs`
   - RPC fallback currently visible in `crates/tsql_server/src/session/mod.rs`:
     unsupported RPC requests now return an explicit parse error
 - Exit criteria:
@@ -71,6 +72,7 @@ Priority values:
   - add contract cases for constraints
   - add contract cases for routines
   - add contract cases for database and server property probes
+  - keep the fixture and test scopes aligned as new Object Explorer pages are added
 - Exit criteria:
   - Object Explorer scenarios cover more than initial metadata startup
 

@@ -604,6 +604,127 @@ static bool CompareResponses(
     return diffs.Count == 0;
 }
 
+static string SummarizeDiffs(IEnumerable<string> diffs)
+{
+    var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["status"] = 0,
+        ["error"] = 0,
+        ["result-set-shape"] = 0,
+        ["metadata"] = 0,
+        ["rowcount"] = 0,
+        ["values"] = 0,
+        ["other"] = 0,
+    };
+
+    foreach (var diff in diffs)
+    {
+        var bucket = ClassifyDiff(diff);
+        counts[bucket]++;
+    }
+
+    return string.Join(
+        ", ",
+        counts.Where(kv => kv.Value > 0).Select(kv => $"{kv.Key}={kv.Value}")
+    );
+}
+
+static string ClassifyDiff(string diff)
+{
+    var lower = diff.ToLowerInvariant();
+    if (lower.Contains("status mismatch"))
+        return "status";
+    if (lower.Contains("error number mismatch")
+        || lower.Contains("error class mismatch")
+        || lower.Contains("error state mismatch")
+        || lower.Contains("error message mismatch"))
+    {
+        return "error";
+    }
+    if (lower.Contains("result-set count mismatch"))
+        return "result-set-shape";
+    if (lower.Contains("columns mismatch")
+        || lower.Contains("column types mismatch")
+        || lower.Contains("column precisions mismatch")
+        || lower.Contains("column scales mismatch")
+        || lower.Contains("column lengths mismatch"))
+    {
+        return "metadata";
+    }
+    if (lower.Contains("row count mismatch"))
+        return "rowcount";
+    if (lower.Contains("row values mismatch"))
+        return "values";
+    return "other";
+}
+
+static void WriteCompatReport(
+    List<(string sql, QueryEnvelope azure, QueryEnvelope local, List<string> diffs)> failures,
+    int passed,
+    int failed,
+    int skipped,
+    int totalQueries,
+    string azureConnStr,
+    string compatBin
+)
+{
+    var reportDir = Environment.GetEnvironmentVariable("TSQL_COMPAT_REPORT_DIR");
+    if (string.IsNullOrWhiteSpace(reportDir))
+    {
+        return;
+    }
+
+    var reportStem = Environment.GetEnvironmentVariable("TSQL_COMPAT_REPORT_STEM");
+    if (string.IsNullOrWhiteSpace(reportStem))
+    {
+        reportStem = $"compat-run-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
+    }
+
+    Directory.CreateDirectory(reportDir);
+
+    var report = new CompatRunReport(
+        DateTimeOffset.UtcNow,
+        totalQueries,
+        passed,
+        failed,
+        skipped,
+        RedactConnectionString(azureConnStr),
+        compatBin,
+        failures.Select(failure => new CompatFailureReport(
+            failure.sql,
+            failure.azure,
+            failure.local,
+            failure.diffs.Select(diff => new CompatDiffReport(
+                ClassifyDiff(diff),
+                diff
+            )).ToArray()
+        )).ToArray()
+    );
+
+    var json = JsonSerializer.Serialize(report, new JsonSerializerOptions
+    {
+        WriteIndented = true
+    });
+    File.WriteAllText(Path.Combine(reportDir, $"{reportStem}.json"), json);
+}
+
+static string RedactConnectionString(string connectionString)
+{
+    try
+    {
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        if (!string.IsNullOrWhiteSpace(builder.Password))
+        {
+            builder.Password = "***";
+        }
+        return builder.ConnectionString;
+    }
+    catch
+    {
+        return connectionString;
+    }
+}
+
 // ── Seed Azure SQL Edge ─────────────────────────────────────────────
 Console.ForegroundColor = ConsoleColor.Cyan;
 Console.WriteLine("Seeding Azure SQL Edge...");
@@ -706,7 +827,26 @@ if (failures.Count > 0)
         }
     }
     Console.ResetColor();
+
+    Console.ForegroundColor = ConsoleColor.Cyan;
+    Console.WriteLine("\nDIFF SUMMARY:");
+    foreach (var failure in failures)
+    {
+        Console.WriteLine($"  {failure.sql}");
+        Console.WriteLine($"    {SummarizeDiffs(failure.diffs)}");
+    }
+    Console.ResetColor();
 }
+
+WriteCompatReport(
+    failures,
+    passed,
+    failed,
+    skipped,
+    queries.Length,
+    azureConnStr,
+    compatBin
+);
 
 return failed > 0 ? 1 : 0;
 
@@ -719,9 +859,28 @@ record ResultSetEnvelope(
     byte?[] ColumnPrecisions,
     byte?[] ColumnScales,
     int?[] ColumnLengths,
-    bool[] ColumnNullabilities,
     string[][] Rows,
     int RowCount
 );
 
 record QueryEnvelope(bool Ok, ErrorEnvelope? Error, ResultSetEnvelope[] ResultSets);
+
+record CompatRunReport(
+    DateTimeOffset GeneratedAtUtc,
+    int TotalQueries,
+    int Passed,
+    int Failed,
+    int Skipped,
+    string AzureConnection,
+    string LocalBinary,
+    CompatFailureReport[] Failures
+);
+
+record CompatFailureReport(
+    string Sql,
+    QueryEnvelope Azure,
+    QueryEnvelope Local,
+    CompatDiffReport[] Diffs
+);
+
+record CompatDiffReport(string Category, string Message);

@@ -92,8 +92,19 @@ Write-Host "=============================================" -ForegroundColor Cyan
 
 $prevPref = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
-& dotnet run --project scripts/compat-runner 2>&1 | ForEach-Object { Write-Host $_ }
+$reportDir = Join-Path $repoRoot "target\compatibility"
+if (-not (Test-Path $reportDir)) {
+    New-Item -ItemType Directory -Path $reportDir | Out-Null
+}
+$reportStem = "compat-run-{0}" -f (Get-Date -Format "yyyyMMdd-HHmmss")
+$reportPath = Join-Path $reportDir ($reportStem + ".log")
+$env:TSQL_COMPAT_REPORT_DIR = $reportDir
+$env:TSQL_COMPAT_REPORT_STEM = $reportStem
+& dotnet run --project scripts/compat-runner 2>&1 | Tee-Object -FilePath $reportPath | ForEach-Object { Write-Host $_ }
 $testExit = $LASTEXITCODE
 $ErrorActionPreference = $prevPref
+
+Write-Host "Compatibility report saved to $reportPath" -ForegroundColor Cyan
+Write-Host "Structured JSON report saved to $(Join-Path $reportDir ($reportStem + '.json'))" -ForegroundColor Cyan
 
 exit $testExit

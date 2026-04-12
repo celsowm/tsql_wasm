@@ -190,6 +190,39 @@
       ]
     },
     {
+      "name": "database_property_collation_probe",
+      "scope": "database_properties",
+      "sql": "SELECT DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS [DatabaseCollation], DATABASEPROPERTYEX(DB_NAME(), 'IsReadOnly') AS [DatabaseIsReadOnly]",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "DatabaseCollation",
+            "DatabaseIsReadOnly"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "name": "server_property_edition_probe",
+      "scope": "server_properties",
+      "sql": "SELECT CAST(SERVERPROPERTY(N'Edition') AS sysname) AS [Edition], CAST(SERVERPROPERTY(N'EngineEdition') AS int) AS [EngineEdition], CAST(SERVERPROPERTY(N'ProductVersion') AS sysname) AS [ProductVersion]",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "Edition",
+            "EngineEdition",
+            "ProductVersion"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
       "name": "bootstrap_databases_enumeration_probe",
       "scope": "bootstrap",
       "sql": "SELECT name, database_id FROM sys.databases WHERE HAS_DBACCESS(name) = 1 ORDER BY name",

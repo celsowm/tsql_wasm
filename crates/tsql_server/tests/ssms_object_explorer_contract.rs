@@ -189,6 +189,16 @@ fn ssms_object_explorer_routines_contract() {
 }
 
 #[test]
+fn ssms_object_explorer_database_properties_contract() {
+    run_scope("database_properties");
+}
+
+#[test]
+fn ssms_object_explorer_server_properties_contract() {
+    run_scope("server_properties");
+}
+
+#[test]
 fn ssms_object_explorer_indexes_contract() {
     run_scope("indexes");
 }

@@ -49,7 +49,7 @@ The baseline below is seeded from the current README, tests, and explicit code-l
 | `INFORMATION_SCHEMA.ROUTINE_COLUMNS` | compatible subset | Backed for inline table-valued functions with a single source table | `crates/tsql_core/src/executor/metadata/info_schema_routine_columns.rs`, `crates/tsql_core/tests/information_schema.rs` |
 | `INFORMATION_SCHEMA.VIEW_COLUMN_USAGE` / domain views | shim | Still intentionally empty where the engine does not yet have enough lineage or domain metadata | `crates/tsql_core/src/executor/metadata/info_schema_views.rs`, `crates/tsql_core/src/executor/metadata/info_schema_empty.rs` |
 | Core `sys.*` catalog views | compatible subset | Several important views exist, but partitioning and other areas are currently empty stubs | `README.md`, `crates/tsql_core/src/executor/metadata/sys/*`, `crates/tsql_core/src/executor/metadata/sys/partition.rs` |
-| SSMS Object Explorer bootstrap / table enumeration | shim | Current contract replay exists specifically for tooling compatibility | `crates/tsql_server/tests/ssms_object_explorer_contract.rs` |
+| SSMS Object Explorer bootstrap / table enumeration / property probes | shim | Current contract replay covers bootstrap, tables, indexes, constraints, routines, triggers, and database/server property probes | `crates/tsql_server/tests/ssms_object_explorer_contract.rs`, `crates/tsql_server/tests/fixtures/ssms_object_explorer_cases.json` |
 | HADR / availability metadata | shim | Stub views exist and intentionally return empty results | `crates/tsql_core/src/executor/metadata/sys/hadr.rs` |
 | Full server-level metadata surface | unsupported | Not present as a complete implementation | aggregate repo state |
 
