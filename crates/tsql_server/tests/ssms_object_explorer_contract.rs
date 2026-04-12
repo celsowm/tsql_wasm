@@ -182,3 +182,18 @@ fn ssms_object_explorer_bootstrap_contract() {
 fn ssms_object_explorer_tables_contract() {
     run_scope("tables");
 }
+
+#[test]
+fn ssms_object_explorer_routines_contract() {
+    run_scope("routines");
+}
+
+#[test]
+fn ssms_object_explorer_indexes_contract() {
+    run_scope("indexes");
+}
+
+#[test]
+fn ssms_object_explorer_foreign_keys_contract() {
+    run_scope("foreign_keys");
+}

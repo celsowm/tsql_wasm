@@ -361,6 +361,57 @@
           "min_rows": 0
         }
       ]
+    },
+    {
+      "name": "routines_list_from_sys_routines",
+      "scope": "routines",
+      "sql": "SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE FROM INFORMATION_SCHEMA.ROUTINES ORDER BY ROUTINE_SCHEMA, ROUTINE_NAME",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "ROUTINE_SCHEMA",
+            "ROUTINE_NAME",
+            "ROUTINE_TYPE"
+          ],
+          "min_rows": 0
+        }
+      ]
+    },
+    {
+      "name": "indexes_list_for_customers",
+      "scope": "indexes",
+      "sql": "SELECT i.name, i.type_desc, i.is_unique, i.is_primary_key FROM sys.indexes i INNER JOIN sys.tables t ON i.object_id = t.object_id WHERE t.name = 'Customers' AND t.schema_id = SCHEMA_ID('dbo')",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "type_desc",
+            "is_unique",
+            "is_primary_key"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "name": "foreign_keys_list_for_orders",
+      "scope": "foreign_keys",
+      "sql": "SELECT name, OBJECT_NAME(referenced_object_id) as referenced_table_name FROM sys.foreign_keys WHERE parent_object_id = OBJECT_ID('dbo.Orders')",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "referenced_table_name"
+          ],
+          "min_rows": 1
+        }
+      ]
     }
   ]
 }

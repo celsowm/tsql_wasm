@@ -35,6 +35,11 @@ impl VirtualTable for SysObjects {
                 .and_hms_opt(0, 0, 0)
                 .unwrap(),
         );
+
+        let mut chk_idx = 0;
+        let mut pk_uq_idx = 0;
+        let mut fk_idx = 0;
+
         for t in catalog.get_tables() {
             rows.push(StoredRow {
                 values: vec![
@@ -53,12 +58,13 @@ impl VirtualTable for SysObjects {
             });
 
             // Primary Keys and Uniques
-            let mut pk_uq_id = 2_000_000i32;
             for col in &t.columns {
                 if col.primary_key {
+                    let object_id = 2_000_000 + pk_uq_idx;
+                    pk_uq_idx += 1;
                     rows.push(StoredRow {
                         values: vec![
-                            Value::Int(pk_uq_id),
+                            Value::Int(object_id),
                             Value::VarChar(format!("PK_{}", t.name)),
                             Value::Int(t.schema_id as i32),
                             Value::Null,
@@ -71,11 +77,12 @@ impl VirtualTable for SysObjects {
                         ],
                         deleted: false,
                     });
-                    pk_uq_id += 1;
                 } else if col.unique {
+                    let object_id = 2_000_000 + pk_uq_idx;
+                    pk_uq_idx += 1;
                     rows.push(StoredRow {
                         values: vec![
-                            Value::Int(pk_uq_id),
+                            Value::Int(object_id),
                             Value::VarChar(format!("UQ_{}_{}", t.name, col.name)),
                             Value::Int(t.schema_id as i32),
                             Value::Null,
@@ -88,7 +95,6 @@ impl VirtualTable for SysObjects {
                         ],
                         deleted: false,
                     });
-                    pk_uq_id += 1;
                 }
 
                 if let Some(_default_expr) = &col.default {
@@ -115,11 +121,12 @@ impl VirtualTable for SysObjects {
             }
 
             // Check Constraints
-            let mut chk_id = 1_000_000i32;
             for chk in &t.check_constraints {
+                let object_id = 1_000_000 + chk_idx;
+                chk_idx += 1;
                 rows.push(StoredRow {
                     values: vec![
-                        Value::Int(chk_id),
+                        Value::Int(object_id),
                         Value::VarChar(chk.name.clone()),
                         Value::Int(t.schema_id as i32),
                         Value::Null,
@@ -132,15 +139,15 @@ impl VirtualTable for SysObjects {
                     ],
                     deleted: false,
                 });
-                chk_id += 1;
             }
 
             // Foreign Keys
-            let mut fk_id = 4_000_000i32;
             for fk in &t.foreign_keys {
+                let object_id = 4_000_000 + fk_idx;
+                fk_idx += 1;
                 rows.push(StoredRow {
                     values: vec![
-                        Value::Int(fk_id),
+                        Value::Int(object_id),
                         Value::VarChar(fk.name.clone()),
                         Value::Int(t.schema_id as i32),
                         Value::Null,
@@ -153,7 +160,6 @@ impl VirtualTable for SysObjects {
                     ],
                     deleted: false,
                 });
-                fk_id += 1;
             }
         }
         for routine in catalog.get_routines() {
