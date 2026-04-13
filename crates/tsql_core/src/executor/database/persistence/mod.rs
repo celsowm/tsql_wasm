@@ -310,6 +310,35 @@ where
     fn set_session_database(&self, session_id: SessionId, database: String) -> Result<(), DbError> {
         self.executor().set_session_database(session_id, database)
     }
+
+    fn cursor_rpc_open(
+        &self,
+        session_id: SessionId,
+        sql: &str,
+        scroll_opt: i32,
+    ) -> Result<(i32, QueryResult), DbError> {
+        self.executor().cursor_rpc_open(session_id, sql, scroll_opt)
+    }
+
+    fn cursor_rpc_fetch(
+        &self,
+        session_id: SessionId,
+        handle: i32,
+        fetch_type: i32,
+        row_num: i32,
+        n_rows: i32,
+    ) -> Result<super::CursorFetchResult, DbError> {
+        self.executor()
+            .cursor_rpc_fetch(session_id, handle, fetch_type, row_num, n_rows)
+    }
+
+    fn cursor_rpc_close(&self, session_id: SessionId, handle: i32) -> Result<(), DbError> {
+        self.executor().cursor_rpc_close(session_id, handle)
+    }
+
+    fn cursor_rpc_deallocate(&self, session_id: SessionId, handle: i32) -> Result<(), DbError> {
+        self.executor().cursor_rpc_deallocate(session_id, handle)
+    }
 }
 
 impl<C, S> SqlAnalyzerTrait for DatabaseInner<C, S>

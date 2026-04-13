@@ -83,6 +83,8 @@ impl TableState {
 pub struct CursorState {
     pub(crate) map: HashMap<String, super::model::Cursor>,
     pub(crate) fetch_status: i32,
+    pub(crate) next_cursor_handle: i32,
+    pub(crate) handle_map: HashMap<i32, String>,
 }
 
 impl Default for CursorState {
@@ -96,11 +98,15 @@ impl CursorState {
         Self {
             map: HashMap::new(),
             fetch_status: -1,
+            next_cursor_handle: 1,
+            handle_map: HashMap::new(),
         }
     }
     pub fn reset(&mut self) {
         self.map.clear();
         self.fetch_status = -1;
+        self.next_cursor_handle = 1;
+        self.handle_map.clear();
     }
 }
 

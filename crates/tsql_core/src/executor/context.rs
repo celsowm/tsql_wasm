@@ -36,6 +36,8 @@ pub struct SessionStateRefs<'a> {
     pub(crate) random_state: &'a mut u64,
     pub(crate) cursors: &'a mut HashMap<String, Cursor>,
     pub(crate) fetch_status: &'a mut i32,
+    pub(crate) next_cursor_handle: &'a mut i32,
+    pub(crate) handle_map: &'a mut HashMap<i32, String>,
     pub(crate) print_output: &'a mut Vec<String>,
     pub(crate) dirty_buffer:
         Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>>,
@@ -172,6 +174,8 @@ impl<'a> SessionStateRefs<'a> {
             cursors: super::session::CursorState {
                 map: self.cursors.clone(),
                 fetch_status: *self.fetch_status,
+                next_cursor_handle: *self.next_cursor_handle,
+                handle_map: self.handle_map.clone(),
             },
             options: options.clone(),
             random_state: *self.random_state,
@@ -191,6 +195,8 @@ impl<'a> SessionStateRefs<'a> {
         *self.var_counter = snapshot.tables.var_counter;
         *self.cursors = snapshot.cursors.map;
         *self.fetch_status = snapshot.cursors.fetch_status;
+        *self.next_cursor_handle = snapshot.cursors.next_cursor_handle;
+        *self.handle_map = snapshot.cursors.handle_map;
         *options = snapshot.options;
         *self.random_state = snapshot.random_state;
     }
@@ -384,6 +390,8 @@ impl<'a> ExecutionContext<'a> {
                 random_state: &mut session.random_state,
                 cursors: &mut session.cursors.map,
                 fetch_status: &mut session.cursors.fetch_status,
+                next_cursor_handle: &mut session.cursors.next_cursor_handle,
+                handle_map: &mut session.cursors.handle_map,
                 print_output: &mut session.diagnostics.print_output,
                 dirty_buffer,
                 identity_insert: HashSet::new(),
@@ -438,6 +446,8 @@ impl<'a> ExecutionContext<'a> {
         random_state: &'a mut u64,
         cursors: &'a mut HashMap<String, Cursor>,
         fetch_status: &'a mut i32,
+        next_cursor_handle: &'a mut i32,
+        handle_map: &'a mut HashMap<i32, String>,
         print_output: &'a mut Vec<String>,
         dirty_buffer: Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>>,
         session_id: super::locks::SessionId,
@@ -457,6 +467,8 @@ impl<'a> ExecutionContext<'a> {
                 random_state,
                 cursors,
                 fetch_status,
+                next_cursor_handle,
+                handle_map,
                 print_output,
                 dirty_buffer,
                 identity_insert: HashSet::new(),
@@ -610,6 +622,8 @@ impl<'a> ExecutionContext<'a> {
                 random_state: self.session.random_state,
                 cursors: self.session.cursors,
                 fetch_status: self.session.fetch_status,
+                next_cursor_handle: self.session.next_cursor_handle,
+                handle_map: self.session.handle_map,
                 print_output: self.session.print_output,
                 dirty_buffer: self.session.dirty_buffer.clone(),
                 identity_insert: self.session.identity_insert.clone(),

@@ -3,9 +3,16 @@ mod parser;
 mod render;
 mod types;
 
-pub use parser::parse_rpc;
-pub use render::build_param_preamble;
-pub use types::{RpcParam, RpcRequest};
+pub use parser::{
+    parse_rpc, CatalogProc, CursorOp, CursorRpcRequest, RpcProc, RpcRequest, SqlRpcRequest,
+};
+pub use render::{build_param_preamble, build_param_preamble_with_decls};
+pub use types::{RpcParam, RpcRequest as RpcRequestType};
+
+pub use parser::{
+    parse_param_decl, CatalogRpcRequest, ExecuteRpcRequest, PrepExecRpcRequest, PrepareRpcRequest,
+    UnprepareRpcRequest,
+};
 
 #[cfg(test)]
 mod tests {

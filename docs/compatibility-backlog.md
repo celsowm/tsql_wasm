@@ -302,19 +302,39 @@ Priority values:
 - Exit criteria:
   - no unknown `SET` option is silently captured as an internal `Unsupported` enum without a user-visible result
 
-### B021: Expand RPC support for cursors and prepared statements
+### B021: Expand RPC support for cursors and prepared statements ✅
 
 - Phase: 3
 - Priority: P1
+- Status: **done** (cursor RPCs + prepared statements + catalog procedures implemented)
 - Goal: support driver-level RPC calls beyond simple batch execution
 - Primary areas:
   - `crates/tsql_server/src/tds/rpc/parser.rs`
   - `crates/tsql_server/src/session/mod.rs`
+  - `crates/tsql_core/src/executor/database/execution.rs`
 - Deliverables:
-  - support for `sp_cursoropen`, `sp_cursorfetch`, `sp_cursorclose`
-  - support for `sp_prepare`, `sp_execute`, `sp_unprepare`
+  - ✅ support for `sp_cursoropen`, `sp_cursorfetch`, `sp_cursorclose`
+  - ✅ support for `sp_cursorprepare`, `sp_cursorexecute`, `sp_cursorunprepare`, `sp_cursoroption`
+  - ✅ support for `sp_cursorprepexec` (ID 5)
+  - ✅ support for `sp_prepare`, `sp_execute`, `sp_unprepare` (by name)
+  - ✅ support for `sp_prepexec`, `sp_prepexecrpc` (ID 13, 14)
+  - ✅ support for `sp_executesql` (ID 10)
+  - ✅ support for catalog procedures: `sp_tables`, `sp_columns`, `sp_sproc_columns`, `sp_pkeys`
+  - ✅ support for `sp_describe_cursor`
+  - ✅ support for `sp_reset_connection` (by name) and STATUS_RESET bit (0x08) in TDS header
+  - ✅ MS-TDS procedure IDs corrected (IDs 3-15 now match spec)
 - Exit criteria:
-  - ADO.NET and other drivers using these RPCs can function correctly
+  - ADO.NET and other drivers using cursor RPCs can function correctly
+- Evidence:
+  - Parser recognizes ALL cursor procedure IDs (1-9) per MS-TDS spec
+  - Session handler dispatches to ALL cursor operations
+  - `cursor_rpc_open` returns cursor handle via OUTPUT_PARAM token (0x80)
+  - `cursor_rpc_fetch` returns COLMETADATA + ROW + DONE tokens
+  - `cursor_rpc_close` returns DONE token
+  - `cursor_rpc_deallocate` implemented for sp_cursorunprepare
+  - Prepared statements cache implemented in session
+  - Catalog procedures execute SQL queries against sys.* virtual tables
+  - Test files: `crates/tsql_server/tests/cursor_compat_test.rs`, `cursor_compare_test.rs`, `cursor_quick_test.rs`
 
 ## Suggested First Execution Slice
 

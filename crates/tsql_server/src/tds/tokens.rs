@@ -16,6 +16,7 @@ pub const LOGINACK_TOKEN: u8 = 0xAD;
 pub const ENVCHANGE_TOKEN: u8 = 0xE3;
 pub const FEATUREEXTACK_TOKEN: u8 = 0xAE;
 pub const RETURNSTATUS_TOKEN: u8 = 0x79;
+pub const OUTPUT_PARAM_TOKEN: u8 = 0x80;
 
 pub const DONE_FINAL: u16 = 0x0000;
 pub const DONE_MORE: u16 = 0x0001;
@@ -164,6 +165,37 @@ pub fn write_doneproc(b: &mut PacketBuilder, status: u16, cur_cmd: u16, row_coun
 pub fn write_returnstatus(b: &mut PacketBuilder, status: i32) {
     b.put_u8(RETURNSTATUS_TOKEN);
     b.put_i32_le(status);
+}
+
+/// Write an OUTPUT parameter token (0x80) for an integer value.
+/// Used by cursor RPC to return the cursor handle as an output parameter.
+pub fn write_output_int(b: &mut PacketBuilder, param_name: &str, value: i32) {
+    b.put_u8(OUTPUT_PARAM_TOKEN);
+
+    // Param name (B_VARCHAR, length-prefixed with single byte)
+    let name_bytes: Vec<u16> = param_name.encode_utf16().collect();
+    b.put_u8(name_bytes.len() as u8);
+    for ch in name_bytes {
+        b.put_u16_le(ch);
+    }
+
+    // STATUS byte (0x00 = RETURN value)
+    b.put_u8(0x00);
+
+    // Type info: INTN (type 0x26), 4 bytes max
+    b.put_u8(0x26); // INTN
+    b.put_u8(0x04); // max length = 4
+
+    // Collation (5 bytes) - for INTN we can use zeroes
+    b.put_u8(0x00);
+    b.put_u8(0x00);
+    b.put_u8(0x00);
+    b.put_u8(0x00);
+    b.put_u8(0x00);
+
+    // Actual length (1 byte) + value (4 bytes LE)
+    b.put_u8(0x04);
+    b.put_i32_le(value);
 }
 
 #[allow(clippy::too_many_arguments)]

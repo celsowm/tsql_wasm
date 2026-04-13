@@ -472,3 +472,34 @@ Suggested status fields:
 2. Expand `scripts/test-compat.ps1` output to record rowcount, error shape, and column metadata diffs.
 3. Grow the SSMS contract suite from bootstrap/table enumeration to indexes, constraints, routines, and database property probes.
 4. Convert current explicit unsupported parser and RPC branches into tracked backlog items linked to this roadmap.
+
+## Changelog
+
+### 2026-04-13: Cursor RPC Operations (B021) ✅
+
+**Implemented TDS cursor RPC support:**
+
+- **Parser** (`crates/tsql_server/src/tds/rpc/parser.rs`):
+  - Added `CursorOp` enum (Open, Fetch, Close, Prepare, Execute, Unprepare, Option)
+  - Added `CursorRpcRequest` struct with cursor-specific parameters
+  - `parse_cursor_rpc()` handles all cursor procedure variants
+  - Supports procedure IDs: 1,2,3,4,5,7,9,12,13 and names: `sp_cursor`, `sp_cursoropen`, `sp_cursorclose`, `sp_cursorfetch`, `sp_cursorprepare`, `sp_cursorexecute`, `sp_cursorunprepare`, `sp_cursoroption`
+
+- **Core Engine** (`crates/tsql_core/src/executor/session.rs`, `execution.rs`):
+  - Added `next_cursor_handle` and `handle_map` to `CursorState` for handle management
+  - Added `cursor_rpc_open()`: parses SELECT, generates handle, materializes results
+  - Added `cursor_rpc_fetch()`: supports FIRST/NEXT/PREV/LAST/ABSOLUTE/RELATIVE
+  - Added `cursor_rpc_close()` and `cursor_rpc_deallocate()`
+
+- **TDS Tokens** (`crates/tsql_server/src/tds/tokens.rs`):
+  - Added `OUTPUT_PARAM_TOKEN` (0x80)
+  - Added `write_output_int()` for returning cursor handles
+
+- **Session Handler** (`crates/tsql_server/src/session/mod.rs`):
+  - `CursorOp::Open`: returns OUTPUT_PARAM with handle + DONE
+  - `CursorOp::Fetch`: returns COLMETADATA + ROW + DONE
+  - `CursorOp::Close`: returns DONE
+
+- **Tests**:
+  - 12 cursor compatibility tests against Azure SQL Edge
+  - Test files: `cursor_compat_test.rs`, `cursor_compare_test.rs`, `cursor_quick_test.rs`

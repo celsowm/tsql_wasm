@@ -2,7 +2,7 @@ use crate::tds::packet::PacketReader;
 use std::io;
 
 use super::decode;
-use super::types::{RpcParam, RpcRequest};
+use super::types::RpcParam;
 
 #[derive(Debug, Clone)]
 enum RpcProcSelector {
@@ -14,7 +14,205 @@ struct RpcFrameParser<'a> {
     reader: PacketReader<'a>,
 }
 
-/// Parse an RPC request packet (sp_executesql=10, sp_prepexec=13).
+#[derive(Debug, Clone)]
+pub enum RpcRequest {
+    Sql(SqlRpcRequest),
+    Cursor(CursorRpcRequest),
+    Prepare(PrepareRpcRequest),
+    Execute(ExecuteRpcRequest),
+    Unprepare(UnprepareRpcRequest),
+    PrepExec(PrepExecRpcRequest),
+    ResetConnection,
+    Catalog(CatalogRpcRequest),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CatalogProc {
+    Tables,
+    Columns,
+    SprocColumns,
+    PrimaryKeys,
+    DescribeCursor,
+}
+
+#[derive(Debug, Clone)]
+pub struct CatalogRpcRequest {
+    pub proc: CatalogProc,
+    pub params: Vec<RpcParam>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SqlRpcRequest {
+    pub sql: String,
+    pub params: Vec<RpcParam>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PrepareRpcRequest {
+    pub stmt_handle: Option<i32>,
+    pub sql: String,
+    pub param_decl: String,
+    pub params: Vec<RpcParam>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExecuteRpcRequest {
+    pub stmt_handle: i32,
+    pub params: Vec<RpcParam>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UnprepareRpcRequest {
+    pub stmt_handle: i32,
+}
+
+#[derive(Debug, Clone)]
+pub struct PrepExecRpcRequest {
+    pub stmt_handle: Option<i32>,
+    pub sql: String,
+    pub param_decl: String,
+    pub params: Vec<RpcParam>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CursorRpcRequest {
+    pub cursor_op: CursorOp,
+    pub cursor_handle: Option<i32>,
+    pub scroll_opt: Option<i32>,
+    pub cc_opt: Option<i32>,
+    pub row_count: Option<i32>,
+    pub sql: Option<String>,
+    pub param_def: Option<String>,
+    pub params: Vec<RpcParam>,
+    pub fetch_type: Option<i32>,
+    pub row_num: Option<i32>,
+    pub n_rows: Option<i32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CursorOp {
+    Open,
+    Fetch,
+    Close,
+    Prepare,
+    Execute,
+    PrepExec,
+    Unprepare,
+    Option,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RpcProc {
+    CursorOpen,
+    CursorClose,
+    CursorFetch,
+    CursorPrepare,
+    CursorExecute,
+    CursorPrepExec,
+    CursorUnprepare,
+    CursorOption,
+    ExecuteSql,
+    PrepExec,
+    PrepExecRpc,
+    Prepare,
+    Execute,
+    Unprepare,
+    ResetConnection,
+    SpTables,
+    SpColumns,
+    SpSprocColumns,
+    SpPkeys,
+    SpDescribeCursor,
+}
+
+impl RpcProc {
+    fn from_id(id: u16) -> Option<Self> {
+        match id {
+            1 => Some(RpcProc::CursorOpen),      // sp_cursor
+            2 => Some(RpcProc::CursorOpen),      // sp_cursoropen
+            3 => Some(RpcProc::CursorPrepare),   // sp_cursorprepare (MS-TDS)
+            4 => Some(RpcProc::CursorExecute),   // sp_cursorexecute (MS-TDS)
+            5 => Some(RpcProc::CursorPrepExec),  // sp_cursorprepexec (MS-TDS)
+            6 => Some(RpcProc::CursorUnprepare), // sp_cursorunprepare (MS-TDS)
+            7 => Some(RpcProc::CursorFetch),     // sp_cursorfetch
+            8 => Some(RpcProc::CursorOption),    // sp_cursoroption (MS-TDS)
+            9 => Some(RpcProc::CursorClose),     // sp_cursorclose (MS-TDS)
+            10 => Some(RpcProc::ExecuteSql),     // sp_executesql
+            11 => Some(RpcProc::Prepare),        // sp_prepare (MS-TDS)
+            12 => Some(RpcProc::Execute),        // sp_execute (MS-TDS)
+            13 => Some(RpcProc::PrepExec),       // sp_prepexec
+            14 => Some(RpcProc::PrepExecRpc),    // sp_prepexecrpc (MS-TDS)
+            15 => Some(RpcProc::Unprepare),      // sp_unprepare (MS-TDS)
+            _ => None,
+        }
+    }
+
+    fn from_name(name: &str) -> Option<Self> {
+        let n = normalize_proc_name(name);
+        match n.as_str() {
+            "sp_cursor" | "sp_cursoropen" => Some(RpcProc::CursorOpen),
+            "sp_cursorclose" => Some(RpcProc::CursorClose),
+            "sp_cursorfetch" => Some(RpcProc::CursorFetch),
+            "sp_cursorprepare" => Some(RpcProc::CursorPrepare),
+            "sp_cursorexecute" => Some(RpcProc::CursorExecute),
+            "sp_cursorprepexec" => Some(RpcProc::CursorPrepExec),
+            "sp_cursorunprepare" => Some(RpcProc::CursorUnprepare),
+            "sp_cursoroption" => Some(RpcProc::CursorOption),
+            "sp_executesql" => Some(RpcProc::ExecuteSql),
+            "sp_prepexec" => Some(RpcProc::PrepExec),
+            "sp_prepexecrpc" => Some(RpcProc::PrepExecRpc),
+            "sp_prepare" => Some(RpcProc::Prepare),
+            "sp_execute" => Some(RpcProc::Execute),
+            "sp_unprepare" => Some(RpcProc::Unprepare),
+            "sp_reset_connection" => Some(RpcProc::ResetConnection),
+            "sp_tables" => Some(RpcProc::SpTables),
+            "sp_columns" => Some(RpcProc::SpColumns),
+            "sp_sproc_columns" => Some(RpcProc::SpSprocColumns),
+            "sp_pkeys" => Some(RpcProc::SpPkeys),
+            "sp_describe_cursor" => Some(RpcProc::SpDescribeCursor),
+            _ => None,
+        }
+    }
+
+    pub fn is_cursor(&self) -> bool {
+        matches!(
+            self,
+            RpcProc::CursorOpen
+                | RpcProc::CursorClose
+                | RpcProc::CursorFetch
+                | RpcProc::CursorPrepare
+                | RpcProc::CursorExecute
+                | RpcProc::CursorPrepExec
+                | RpcProc::CursorUnprepare
+                | RpcProc::CursorOption
+        )
+    }
+}
+
+impl CursorOp {
+    #[allow(dead_code)]
+    fn from_id(_id: u16) -> Option<Self> {
+        None
+    }
+
+    #[allow(dead_code)]
+    fn from_name(name: &str) -> Option<Self> {
+        let n = normalize_proc_name(name);
+        match n.as_str() {
+            "sp_cursor" | "sp_cursoropen" => Some(CursorOp::Open),
+            "sp_cursorclose" => Some(CursorOp::Close),
+            "sp_cursorfetch" => Some(CursorOp::Fetch),
+            "sp_cursorprepare" => Some(CursorOp::Prepare),
+            "sp_cursorexecute" => Some(CursorOp::Execute),
+            "sp_cursorprepexec" => Some(CursorOp::PrepExec),
+            "sp_cursorunprepare" => Some(CursorOp::Unprepare),
+            "sp_cursoroption" => Some(CursorOp::Option),
+            _ => None,
+        }
+    }
+}
+
+/// Parse an RPC request packet (sp_executesql=10, sp_prepexec=13, cursor procedures).
 /// Returns None if not a supported RPC call.
 pub fn parse_rpc(data: &[u8]) -> io::Result<Option<RpcRequest>> {
     RpcFrameParser::new(data).parse()
@@ -32,24 +230,424 @@ impl<'a> RpcFrameParser<'a> {
         let proc_selector = self.read_proc_selector()?;
         self.skip_rpc_flags()?;
 
-        // Only handle sp_executesql=10 and sp_prepexec=13
-        if !is_supported_rpc_proc(&proc_selector) {
-            log::warn!("Unsupported RPC procedure selector: {:?}", proc_selector);
-            return Ok(None);
-        }
-
-        // Param 1: SQL string
-        let sql = match self.read_rpc_nvarchar_param()? {
-            Some(s) => s,
-            None => return Ok(None),
+        let proc = match &proc_selector {
+            RpcProcSelector::Id(id) => RpcProc::from_id(*id),
+            RpcProcSelector::Name(name) => RpcProc::from_name(name),
         };
 
-        // Param 2: parameter declaration string e.g. "@val INT,@name NVARCHAR(50)"
-        let param_decl = self.read_rpc_nvarchar_param()?.unwrap_or_default();
-        let decl_parts = parse_param_decl(&param_decl);
+        let proc = match proc {
+            Some(p) => p,
+            None => {
+                log::warn!("Unsupported RPC procedure selector: {:?}", proc_selector);
+                return Ok(None);
+            }
+        };
 
-        let params = self.read_rpc_params(&decl_parts)?;
-        Ok(Some(RpcRequest { sql, params }))
+        if proc.is_cursor() {
+            let cursor_op = match proc {
+                RpcProc::CursorOpen => CursorOp::Open,
+                RpcProc::CursorClose => CursorOp::Close,
+                RpcProc::CursorFetch => CursorOp::Fetch,
+                RpcProc::CursorPrepare => CursorOp::Prepare,
+                RpcProc::CursorExecute => CursorOp::Execute,
+                RpcProc::CursorPrepExec => CursorOp::PrepExec,
+                RpcProc::CursorUnprepare => CursorOp::Unprepare,
+                RpcProc::CursorOption => CursorOp::Option,
+                _ => unreachable!(),
+            };
+            return self.parse_cursor_rpc(cursor_op);
+        }
+
+        match proc {
+            RpcProc::ExecuteSql => {
+                let sql = match self.read_rpc_nvarchar_param()? {
+                    Some(s) => s,
+                    None => return Ok(None),
+                };
+                let param_decl = self.read_rpc_nvarchar_param()?.unwrap_or_default();
+                let decl_parts = parse_param_decl(&param_decl);
+                let params = self.read_rpc_params(&decl_parts)?;
+                Ok(Some(RpcRequest::Sql(SqlRpcRequest { sql, params })))
+            }
+            RpcProc::Prepare => self.parse_prepare_rpc(),
+            RpcProc::Execute => self.parse_execute_rpc(),
+            RpcProc::Unprepare => self.parse_unprepare_rpc(),
+            RpcProc::PrepExec | RpcProc::PrepExecRpc => self.parse_prepexec_rpc(),
+            RpcProc::ResetConnection => Ok(Some(RpcRequest::ResetConnection)),
+            RpcProc::SpTables => self.parse_catalog_rpc(CatalogProc::Tables),
+            RpcProc::SpColumns => self.parse_catalog_rpc(CatalogProc::Columns),
+            RpcProc::SpSprocColumns => self.parse_catalog_rpc(CatalogProc::SprocColumns),
+            RpcProc::SpPkeys => self.parse_catalog_rpc(CatalogProc::PrimaryKeys),
+            RpcProc::SpDescribeCursor => self.parse_catalog_rpc(CatalogProc::DescribeCursor),
+            _ => Ok(None),
+        }
+    }
+
+    fn parse_catalog_rpc(&mut self, catalog_proc: CatalogProc) -> io::Result<Option<RpcRequest>> {
+        let mut params: Vec<RpcParam> = vec![];
+        let _idx: usize = 0;
+
+        while self.reader.remaining() > 0 {
+            let name_len = match self.reader.read_u8() {
+                Ok(n) => n as usize,
+                Err(_) => break,
+            };
+            if name_len > 0 && self.reader.remaining() >= name_len * 2 {
+                let _ = self.reader.read_bytes(name_len * 2)?;
+            }
+            if self.reader.remaining() < 2 {
+                break;
+            }
+            let _status = self.reader.read_u8()?;
+            let type_id = self.reader.read_u8()?;
+
+            let decoded = decode::read_typed_value(&mut self.reader, type_id)?;
+            params.push(RpcParam {
+                name: String::new(),
+                type_name: decoded.type_name,
+                value_sql: decoded.value_sql,
+                tvp_rows: decoded.tvp_rows,
+            });
+        }
+
+        Ok(Some(RpcRequest::Catalog(CatalogRpcRequest {
+            proc: catalog_proc,
+            params,
+        })))
+    }
+
+    fn parse_prepare_rpc(&mut self) -> io::Result<Option<RpcRequest>> {
+        let mut stmt_handle: Option<i32> = None;
+        let mut sql: Option<String> = None;
+        let mut param_decl: Option<String> = None;
+        let mut params: Vec<RpcParam> = vec![];
+        let mut param_idx: usize = 0;
+
+        while self.reader.remaining() > 0 {
+            let name_len = match self.reader.read_u8() {
+                Ok(n) => n as usize,
+                Err(_) => break,
+            };
+            if name_len > 0 && self.reader.remaining() >= name_len * 2 {
+                let _ = self.reader.read_bytes(name_len * 2)?;
+            }
+            if self.reader.remaining() < 2 {
+                break;
+            }
+            let _status = self.reader.read_u8()?;
+            let type_id = self.reader.read_u8()?;
+
+            match param_idx {
+                0 => stmt_handle = self.read_int_param(type_id)?,
+                1 => sql = self.read_rpc_nvarchar_param()?,
+                2 => param_decl = self.read_rpc_nvarchar_param()?,
+                _ => {
+                    if sql.is_some() && param_decl.is_some() {
+                        let decl_parts = parse_param_decl(param_decl.as_ref().unwrap());
+                        params = self.read_rpc_params(&decl_parts)?;
+                    } else {
+                        self.skip_typed_value(type_id)?;
+                    }
+                }
+            }
+            param_idx += 1;
+        }
+
+        Ok(Some(RpcRequest::Prepare(PrepareRpcRequest {
+            stmt_handle,
+            sql: sql.unwrap_or_default(),
+            param_decl: param_decl.unwrap_or_default(),
+            params,
+        })))
+    }
+
+    fn parse_execute_rpc(&mut self) -> io::Result<Option<RpcRequest>> {
+        let mut stmt_handle: Option<i32> = None;
+        let mut params: Vec<RpcParam> = vec![];
+        let mut param_idx: usize = 0;
+
+        while self.reader.remaining() > 0 {
+            let name_len = match self.reader.read_u8() {
+                Ok(n) => n as usize,
+                Err(_) => break,
+            };
+            if name_len > 0 && self.reader.remaining() >= name_len * 2 {
+                let _ = self.reader.read_bytes(name_len * 2)?;
+            }
+            if self.reader.remaining() < 2 {
+                break;
+            }
+            let _status = self.reader.read_u8()?;
+            let type_id = self.reader.read_u8()?;
+
+            match param_idx {
+                0 => stmt_handle = self.read_int_param(type_id)?,
+                _ => self.skip_typed_value(type_id)?,
+            }
+            param_idx += 1;
+        }
+
+        Ok(Some(RpcRequest::Execute(ExecuteRpcRequest {
+            stmt_handle: stmt_handle.unwrap_or(0),
+            params,
+        })))
+    }
+
+    fn parse_unprepare_rpc(&mut self) -> io::Result<Option<RpcRequest>> {
+        let mut stmt_handle: Option<i32> = None;
+        let mut param_idx: usize = 0;
+
+        while self.reader.remaining() > 0 {
+            let name_len = match self.reader.read_u8() {
+                Ok(n) => n as usize,
+                Err(_) => break,
+            };
+            if name_len > 0 && self.reader.remaining() >= name_len * 2 {
+                let _ = self.reader.read_bytes(name_len * 2)?;
+            }
+            if self.reader.remaining() < 2 {
+                break;
+            }
+            let _status = self.reader.read_u8()?;
+            let type_id = self.reader.read_u8()?;
+
+            if param_idx == 0 {
+                stmt_handle = self.read_int_param(type_id)?;
+            } else {
+                self.skip_typed_value(type_id)?;
+            }
+            param_idx += 1;
+        }
+
+        Ok(Some(RpcRequest::Unprepare(UnprepareRpcRequest {
+            stmt_handle: stmt_handle.unwrap_or(0),
+        })))
+    }
+
+    fn parse_prepexec_rpc(&mut self) -> io::Result<Option<RpcRequest>> {
+        let mut stmt_handle: Option<i32> = None;
+        let mut sql: Option<String> = None;
+        let mut param_decl: Option<String> = None;
+        let mut params: Vec<RpcParam> = vec![];
+        let mut param_idx: usize = 0;
+
+        while self.reader.remaining() > 0 {
+            let name_len = match self.reader.read_u8() {
+                Ok(n) => n as usize,
+                Err(_) => break,
+            };
+            if name_len > 0 && self.reader.remaining() >= name_len * 2 {
+                let _ = self.reader.read_bytes(name_len * 2)?;
+            }
+            if self.reader.remaining() < 2 {
+                break;
+            }
+            let _status = self.reader.read_u8()?;
+            let type_id = self.reader.read_u8()?;
+
+            match param_idx {
+                0 => stmt_handle = self.read_int_param(type_id)?,
+                1 => sql = self.read_rpc_nvarchar_param()?,
+                2 => param_decl = self.read_rpc_nvarchar_param()?,
+                _ => {
+                    if sql.is_some() && param_decl.is_some() {
+                        let decl_parts = parse_param_decl(param_decl.as_ref().unwrap());
+                        params = self.read_rpc_params(&decl_parts)?;
+                    } else {
+                        self.skip_typed_value(type_id)?;
+                    }
+                }
+            }
+            param_idx += 1;
+        }
+
+        Ok(Some(RpcRequest::PrepExec(PrepExecRpcRequest {
+            stmt_handle,
+            sql: sql.unwrap_or_default(),
+            param_decl: param_decl.unwrap_or_default(),
+            params,
+        })))
+    }
+
+    fn parse_cursor_rpc(&mut self, cursor_op: CursorOp) -> io::Result<Option<RpcRequest>> {
+        let mut cursor_handle: Option<i32> = None;
+        let mut scroll_opt: Option<i32> = None;
+        let mut cc_opt: Option<i32> = None;
+        let mut row_count: Option<i32> = None;
+        let mut sql: Option<String> = None;
+        let mut param_def: Option<String> = None;
+        let mut params: Vec<RpcParam> = vec![];
+        let mut fetch_type: Option<i32> = None;
+        let mut row_num: Option<i32> = None;
+        let mut n_rows: Option<i32> = None;
+        let mut param_idx: usize = 0;
+
+        while self.reader.remaining() > 0 {
+            let name_len = match self.reader.read_u8() {
+                Ok(n) => n as usize,
+                Err(_) => break,
+            };
+            if name_len > 0 && self.reader.remaining() >= name_len * 2 {
+                let _ = self.reader.read_bytes(name_len * 2)?;
+            }
+            if self.reader.remaining() < 2 {
+                break;
+            }
+            let _status = self.reader.read_u8()?;
+            let type_id = self.reader.read_u8()?;
+
+            match cursor_op {
+                CursorOp::Open => match param_idx {
+                    0 => cursor_handle = self.read_int_param(type_id)?,
+                    1 => sql = self.read_rpc_nvarchar_param()?,
+                    2 => scroll_opt = self.read_int_param(type_id)?,
+                    3 => cc_opt = self.read_int_param(type_id)?,
+                    4 => row_count = self.read_int_param(type_id)?,
+                    5 => {
+                        param_def = self.read_rpc_nvarchar_param()?;
+                        if let Some(ref pd) = param_def {
+                            let decl_parts = parse_param_decl(pd);
+                            params = self.read_rpc_params(&decl_parts)?;
+                        }
+                    }
+                    _ => self.skip_typed_value(type_id)?,
+                },
+                CursorOp::Fetch => match param_idx {
+                    0 => cursor_handle = self.read_int_param(type_id)?,
+                    1 => fetch_type = self.read_int_param(type_id)?,
+                    2 => row_num = self.read_int_param(type_id)?,
+                    3 => n_rows = self.read_int_param(type_id)?,
+                    _ => self.skip_typed_value(type_id)?,
+                },
+                CursorOp::Close | CursorOp::Unprepare => {
+                    if param_idx == 0 {
+                        cursor_handle = self.read_int_param(type_id)?;
+                    } else {
+                        self.skip_typed_value(type_id)?;
+                    }
+                }
+                CursorOp::Prepare => match param_idx {
+                    0 => {}
+                    1 => sql = self.read_rpc_nvarchar_param()?,
+                    2 => scroll_opt = self.read_int_param(type_id)?,
+                    3 => cc_opt = self.read_int_param(type_id)?,
+                    4 => param_def = self.read_rpc_nvarchar_param()?,
+                    _ => self.skip_typed_value(type_id)?,
+                },
+                CursorOp::Execute => match param_idx {
+                    0 => cursor_handle = self.read_int_param(type_id)?,
+                    1 => row_count = self.read_int_param(type_id)?,
+                    _ => self.skip_typed_value(type_id)?,
+                },
+                CursorOp::PrepExec => match param_idx {
+                    0 => {}
+                    1 => cursor_handle = self.read_int_param(type_id)?,
+                    2 => sql = self.read_rpc_nvarchar_param()?,
+                    3 => scroll_opt = self.read_int_param(type_id)?,
+                    4 => cc_opt = self.read_int_param(type_id)?,
+                    5 => {
+                        param_def = self.read_rpc_nvarchar_param()?;
+                        if let Some(ref pd) = param_def {
+                            let decl_parts = parse_param_decl(pd);
+                            params = self.read_rpc_params(&decl_parts)?;
+                        }
+                    }
+                    _ => self.skip_typed_value(type_id)?,
+                },
+                CursorOp::Option => match param_idx {
+                    0 => cursor_handle = self.read_int_param(type_id)?,
+                    1 => row_num = self.read_int_param(type_id)?,
+                    _ => self.skip_typed_value(type_id)?,
+                },
+            }
+            param_idx += 1;
+        }
+
+        Ok(Some(RpcRequest::Cursor(CursorRpcRequest {
+            cursor_op,
+            cursor_handle,
+            scroll_opt,
+            cc_opt,
+            row_count,
+            sql,
+            param_def,
+            params,
+            fetch_type,
+            row_num,
+            n_rows,
+        })))
+    }
+
+    fn read_int_param(&mut self, type_id: u8) -> io::Result<Option<i32>> {
+        match type_id {
+            0x26 => {
+                // INTN (4 bytes) - reads as i32 from little-endian u32
+                if self.reader.remaining() < 4 {
+                    return Ok(None);
+                }
+                let val = self.reader.read_u32_le()?;
+                let len = self.reader.read_u8()?;
+                if len == 0 {
+                    Ok(None)
+                } else {
+                    Ok(Some(val as i32))
+                }
+            }
+            0x38 => {
+                // BIGINT - reads as i32 from little-endian u64
+                if self.reader.remaining() < 8 {
+                    return Ok(None);
+                }
+                let val = self.reader.read_u64_le()?;
+                Ok(Some(val as i32))
+            }
+            _ => {
+                self.skip_typed_value(type_id)?;
+                Ok(None)
+            }
+        }
+    }
+
+    fn skip_typed_value(&mut self, type_id: u8) -> io::Result<()> {
+        match type_id {
+            0x1F => {
+                // NULL
+                Ok(())
+            }
+            0x26 => {
+                // INTN
+                if self.reader.remaining() >= 5 {
+                    self.reader.skip(5)?;
+                }
+                Ok(())
+            }
+            0x38 => {
+                // BIGINTN
+                if self.reader.remaining() >= 9 {
+                    self.reader.skip(9)?;
+                }
+                Ok(())
+            }
+            0x6A | 0x68 => {
+                // INT | SMALLINT
+                if self.reader.remaining() >= 1 {
+                    self.reader.skip(1)?;
+                }
+                Ok(())
+            }
+            _ => {
+                // Skip based on type family
+                let skip_chars = match type_id {
+                    0xE7 | 0xA7 => 9,
+                    0x22 | 0x21 => 5,
+                    0x7A | 0x7C => 1,
+                    _ => 3,
+                };
+                let to_skip = self.reader.remaining().min(skip_chars);
+                self.reader.skip(to_skip)?;
+                Ok(())
+            }
+        }
     }
 
     fn skip_all_headers(&mut self) -> io::Result<()> {
@@ -233,12 +831,16 @@ impl<'a> RpcFrameParser<'a> {
     }
 }
 
+#[allow(dead_code)]
 fn is_supported_rpc_proc(proc: &RpcProcSelector) -> bool {
     match proc {
         RpcProcSelector::Id(id) => *id == 10 || *id == 13,
         RpcProcSelector::Name(name) => {
             let base = normalize_proc_name(name);
-            base == "sp_executesql" || base == "sp_prepexec"
+            base == "sp_executesql"
+                || base == "sp_prepexec"
+                || base == "sp_prepare"
+                || base == "sp_unprepare"
         }
     }
 }
@@ -252,7 +854,7 @@ fn normalize_proc_name(name: &str) -> String {
         .to_ascii_lowercase()
 }
 
-fn parse_param_decl(decl: &str) -> Vec<(String, String)> {
+pub fn parse_param_decl(decl: &str) -> Vec<(String, String)> {
     if decl.trim().is_empty() {
         return vec![];
     }
@@ -276,22 +878,100 @@ mod tests {
     use super::*;
 
     #[test]
-    fn supported_rpc_procedures_are_recognized() {
-        assert!(is_supported_rpc_proc(&RpcProcSelector::Id(10)));
-        assert!(is_supported_rpc_proc(&RpcProcSelector::Id(13)));
-        assert!(is_supported_rpc_proc(&RpcProcSelector::Name(
-            "dbo.sp_executesql".to_string()
-        )));
-        assert!(is_supported_rpc_proc(&RpcProcSelector::Name(
-            "[dbo].[sp_prepexec]".to_string()
-        )));
+    fn rpc_proc_resolves_by_id() {
+        // MS-TDS spec IDs (corrected)
+        assert_eq!(RpcProc::from_id(1), Some(RpcProc::CursorOpen));
+        assert_eq!(RpcProc::from_id(2), Some(RpcProc::CursorOpen));
+        assert_eq!(RpcProc::from_id(3), Some(RpcProc::CursorPrepare)); // sp_cursorprepare
+        assert_eq!(RpcProc::from_id(4), Some(RpcProc::CursorExecute)); // sp_cursorexecute
+        assert_eq!(RpcProc::from_id(5), Some(RpcProc::CursorPrepExec)); // sp_cursorprepexec
+        assert_eq!(RpcProc::from_id(6), Some(RpcProc::CursorUnprepare)); // sp_cursorunprepare
+        assert_eq!(RpcProc::from_id(7), Some(RpcProc::CursorFetch));
+        assert_eq!(RpcProc::from_id(8), Some(RpcProc::CursorOption)); // sp_cursoroption
+        assert_eq!(RpcProc::from_id(9), Some(RpcProc::CursorClose)); // sp_cursorclose
+        assert_eq!(RpcProc::from_id(10), Some(RpcProc::ExecuteSql));
+        assert_eq!(RpcProc::from_id(11), Some(RpcProc::Prepare)); // sp_prepare
+        assert_eq!(RpcProc::from_id(12), Some(RpcProc::Execute)); // sp_execute
+        assert_eq!(RpcProc::from_id(13), Some(RpcProc::PrepExec)); // sp_prepexec
+        assert_eq!(RpcProc::from_id(14), Some(RpcProc::PrepExecRpc)); // sp_prepexecrpc
+        assert_eq!(RpcProc::from_id(15), Some(RpcProc::Unprepare)); // sp_unprepare
+        assert_eq!(RpcProc::from_id(42), None);
     }
 
     #[test]
-    fn unsupported_rpc_procedures_are_rejected() {
-        assert!(!is_supported_rpc_proc(&RpcProcSelector::Id(42)));
-        assert!(!is_supported_rpc_proc(&RpcProcSelector::Name(
-            "dbo.sp_help".to_string()
-        )));
+    fn rpc_proc_resolves_by_name() {
+        assert_eq!(RpcProc::from_name("sp_cursor"), Some(RpcProc::CursorOpen));
+        assert_eq!(
+            RpcProc::from_name("sp_cursoropen"),
+            Some(RpcProc::CursorOpen)
+        );
+        assert_eq!(
+            RpcProc::from_name("sp_cursorclose"),
+            Some(RpcProc::CursorClose)
+        );
+        assert_eq!(
+            RpcProc::from_name("sp_cursorfetch"),
+            Some(RpcProc::CursorFetch)
+        );
+        assert_eq!(
+            RpcProc::from_name("[dbo].[sp_cursorprepare]"),
+            Some(RpcProc::CursorPrepare)
+        );
+        assert_eq!(
+            RpcProc::from_name("sp_cursorexecute"),
+            Some(RpcProc::CursorExecute)
+        );
+        assert_eq!(
+            RpcProc::from_name("sp_cursorunprepare"),
+            Some(RpcProc::CursorUnprepare)
+        );
+        assert_eq!(
+            RpcProc::from_name("sp_cursoroption"),
+            Some(RpcProc::CursorOption)
+        );
+        assert_eq!(
+            RpcProc::from_name("sp_executesql"),
+            Some(RpcProc::ExecuteSql)
+        );
+        assert_eq!(RpcProc::from_name("sp_prepexec"), Some(RpcProc::PrepExec));
+        assert_eq!(RpcProc::from_name("sp_prepare"), Some(RpcProc::Prepare));
+        assert_eq!(RpcProc::from_name("sp_execute"), Some(RpcProc::Execute));
+        assert_eq!(RpcProc::from_name("sp_unprepare"), Some(RpcProc::Unprepare));
+        assert_eq!(
+            RpcProc::from_name("sp_reset_connection"),
+            Some(RpcProc::ResetConnection)
+        );
+        assert_eq!(RpcProc::from_name("sp_help"), None);
+    }
+
+    #[test]
+    fn rpc_proc_is_cursor() {
+        assert!(RpcProc::CursorOpen.is_cursor());
+        assert!(RpcProc::CursorClose.is_cursor());
+        assert!(RpcProc::CursorFetch.is_cursor());
+        assert!(RpcProc::CursorPrepare.is_cursor());
+        assert!(RpcProc::CursorExecute.is_cursor());
+        assert!(RpcProc::CursorUnprepare.is_cursor());
+        assert!(RpcProc::CursorOption.is_cursor());
+        assert!(!RpcProc::ExecuteSql.is_cursor());
+        assert!(!RpcProc::PrepExec.is_cursor());
+        assert!(!RpcProc::Prepare.is_cursor());
+        assert!(!RpcProc::Execute.is_cursor());
+        assert!(!RpcProc::Unprepare.is_cursor());
+        assert!(!RpcProc::ResetConnection.is_cursor());
+    }
+
+    #[test]
+    fn param_decl_parsing() {
+        let decls = parse_param_decl("@x INT, @name NVARCHAR(50)");
+        assert_eq!(decls.len(), 2);
+        assert_eq!(decls[0], ("@x".to_string(), "INT".to_string()));
+        assert_eq!(decls[1], ("@name".to_string(), "NVARCHAR(50)".to_string()));
+
+        let empty = parse_param_decl("");
+        assert!(empty.is_empty());
+
+        let single = parse_param_decl("@y INT");
+        assert_eq!(single.len(), 1);
     }
 }

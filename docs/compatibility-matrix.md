@@ -25,7 +25,7 @@ The baseline below is seeded from the current README, tests, and explicit code-l
 | Procedural T-SQL (`DECLARE`, `SET`, `IF`, `WHILE`, `TRY/CATCH`) | compatible subset | Broad procedural subset is present | `README.md`, `crates/tsql_core/tests/phase4_programmability.rs`, `crates/tsql_core/tests/try_catch_test.rs` |
 | Stored procedures / UDF / TVF | compatible subset | Supported as a subset, not full SQL Server programmability | `README.md`, `crates/tsql_core/tests/phase4_programmability_closure.rs`, `crates/tsql_core/tests/p1_16_read_only_udf_regression.rs` |
 | Dynamic SQL / `sp_executesql` | compatible subset | Important paths exist, but broader RPC and dynamic execution parity is incomplete | `README.md`, `crates/tsql_core/src/executor/script/procedural/sp_executesql.rs`, `crates/tsql_server/src/tds/rpc/parser.rs` |
-| Cursors | compatible subset | Syntax and executor support exist, but client/protocol parity is not yet complete | `crates/tsql_core/tests/cursor_extended_test.rs`, `crates/tsql_core/src/executor/script/procedural/cursor.rs` |
+| Cursors | compatible subset | Syntax and executor support exist; RPC cursor operations (`sp_cursoropen`, `sp_cursorfetch`, `sp_cursorclose`) now supported via TDS | `crates/tsql_core/tests/cursor_extended_test.rs`, `crates/tsql_core/src/executor/script/procedural/cursor.rs`, `crates/tsql_server/src/tds/rpc/parser.rs` |
 | Temporary tables and table variables | compatible subset | Supported in core engine coverage | `README.md`, `crates/tsql_core/tests/tvp_and_xact_state.rs` |
 | Full SQL Server syntax surface | unsupported | The engine supports a large subset, not the complete language | aggregate repo state |
 
@@ -61,7 +61,7 @@ The baseline below is seeded from the current README, tests, and explicit code-l
 |---|---|---|---|
 | TDS login / prelogin / basic batch execution | compatible subset | Core flows exist and are tested | `crates/tsql_server/src/session/mod.rs`, `crates/tsql_server/tests/basic.rs` |
 | TLS support | compatible subset | TLS is implemented, but parity depends on negotiation and client behavior details | `crates/tsql_server/src/tls.rs`, `crates/tsql_server/src/tds_tls_io.rs`, `crates/tsql_server/tests/security.rs` |
-| RPC support | compatible subset | Only `sp_executesql` and `sp_prepexec` are supported; other RPC packets now return an explicit unsupported error in session handling | `crates/tsql_server/src/tds/rpc/parser.rs`, `crates/tsql_server/src/session/mod.rs`, `docs/compatibility-backlog.md` |
+| RPC support | compatible subset | `sp_executesql`, `sp_prepexec`, and cursor RPCs (`sp_cursoropen`, `sp_cursorfetch`, `sp_cursorclose`) are supported; other RPC packets return explicit unsupported error | `crates/tsql_server/src/tds/rpc/parser.rs`, `crates/tsql_server/src/session/mod.rs`, `docs/compatibility-backlog.md` |
 | Full SQL Server RPC surface | unsupported | Explicit unsupported RPC requests now produce an error response instead of being silently ignored | `crates/tsql_server/src/session/mod.rs` |
 | SSMS / ADS connectivity | compatible subset | Supported in meaningful paths, but still dependent on compatibility-focused shims and partial protocol coverage | `README.md`, `crates/tsql_server/tests/ssms_object_explorer_contract.rs` |
 | ADO.NET / ODBC / JDBC parity | unsupported | Not defined as complete today | aggregate repo state |

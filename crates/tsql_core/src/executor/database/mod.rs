@@ -22,6 +22,15 @@ pub trait CheckpointManager {
     fn import_checkpoint(&self, payload: &str) -> Result<(), DbError>;
 }
 
+pub struct CursorFetchResult {
+    pub handle: i32,
+    pub rows: Vec<Vec<crate::types::Value>>,
+    pub columns: Vec<String>,
+    pub column_types: Vec<crate::types::DataType>,
+    pub column_nullabilities: Vec<bool>,
+    pub fetch_status: i32,
+}
+
 pub trait StatementExecutor {
     fn execute_session(
         &self,
@@ -52,6 +61,24 @@ pub trait StatementExecutor {
         database: Option<String>,
     ) -> Result<(), DbError>;
     fn set_session_database(&self, session_id: SessionId, database: String) -> Result<(), DbError>;
+
+    /// RPC cursor operations
+    fn cursor_rpc_open(
+        &self,
+        session_id: SessionId,
+        sql: &str,
+        scroll_opt: i32,
+    ) -> Result<(i32, QueryResult), DbError>;
+    fn cursor_rpc_fetch(
+        &self,
+        session_id: SessionId,
+        handle: i32,
+        fetch_type: i32,
+        row_num: i32,
+        n_rows: i32,
+    ) -> Result<CursorFetchResult, DbError>;
+    fn cursor_rpc_close(&self, session_id: SessionId, handle: i32) -> Result<(), DbError>;
+    fn cursor_rpc_deallocate(&self, session_id: SessionId, handle: i32) -> Result<(), DbError>;
 }
 
 pub trait SqlAnalyzer {
@@ -278,6 +305,31 @@ macro_rules! delegate_db_traits {
                 database: String,
             ) -> Result<(), DbError> {
                 self.0.set_session_database(sid, database)
+            }
+            fn cursor_rpc_open(
+                &self,
+                sid: SessionId,
+                sql: &str,
+                scroll_opt: i32,
+            ) -> Result<(i32, QueryResult), DbError> {
+                self.0.cursor_rpc_open(sid, sql, scroll_opt)
+            }
+            fn cursor_rpc_fetch(
+                &self,
+                sid: SessionId,
+                handle: i32,
+                fetch_type: i32,
+                row_num: i32,
+                n_rows: i32,
+            ) -> Result<CursorFetchResult, DbError> {
+                self.0
+                    .cursor_rpc_fetch(sid, handle, fetch_type, row_num, n_rows)
+            }
+            fn cursor_rpc_close(&self, sid: SessionId, handle: i32) -> Result<(), DbError> {
+                self.0.cursor_rpc_close(sid, handle)
+            }
+            fn cursor_rpc_deallocate(&self, sid: SessionId, handle: i32) -> Result<(), DbError> {
+                self.0.cursor_rpc_deallocate(sid, handle)
             }
         }
         impl SqlAnalyzer for $wrapper {
