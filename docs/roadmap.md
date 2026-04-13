@@ -490,7 +490,7 @@ Suggested status fields:
 
 - **Phase 0 (Freeze Target)**: COMPLETE - Compatibility matrix and backlog maintained
 - **Phase 1 (Core Language)**: SUBSTANTIAL - PIVOT/UNPIVOT, MERGE, OUTPUT, recursive CTEs, window functions, STRING_AGG, PROCEDURAL OUTPUT, TRY_CAST/TRY_CONVERT
-- **Phase 2 (Metadata)**: SUBSTANTIAL - INFORMATION_SCHEMA, sys.* views, SSMS Object Explorer contract (50+ cases), database principals, permissions, role members
+- **Phase 2 (Metadata)**: SUBSTANTIAL - INFORMATION_SCHEMA, sys.* views, SSMS Object Explorer contract (55+ cases), database principals, permissions, role members, sys.all_objects, sys.identity_columns, sys.computed_columns, sys.sql_expression_dependencies
 - **Phase 3 (TDS/Protocol)**: SUBSTANTIAL - Login/prelogin, sp_executesql, sp_prepexec, cursor RPCs, TLS, error handling
 - **Phase 4 (Transactions)**: SUBSTANTIAL - Row locking, MVCC, savepoints, nested transactions, XACT_STATE, deadlock detection
 - **Phase 5 (Physical Engine)**: IN PROGRESS - BTreeIndex storage, checkpoint import/export, planner index usage
@@ -563,3 +563,26 @@ cargo test -p tsql_server    # Server tests (requires Podman for integration)
 - **Tests**:
   - 12 cursor compatibility tests against Azure SQL Edge
   - Test files: `cursor_compat_test.rs`, `cursor_compare_test.rs`, `cursor_quick_test.rs`
+
+### 2026-04-13: Phase 2 Metadata and Catalog Fidelity ✅
+
+**Implemented:**
+
+- **sys.all_objects view**: Mirrors sys.objects for SSMS Object Explorer compatibility. `crates/tsql_core/src/executor/metadata/sys/objects.rs`
+- **sys.identity_columns view**: Returns identity column metadata (object_id, column_id, name, seed_value, increment_value, last_value, is_not_for_replication). `crates/tsql_core/src/executor/metadata/sys/tables/identity_columns.rs`
+- **sys.computed_columns view**: Returns computed column metadata (object_id, column_id, name, is_computed, is_persisted, definition). `crates/tsql_core/src/executor/metadata/sys/tables/columns.rs`
+- **sys.sql_expression_dependencies stub**: View shape matches SQL Server; rows intentionally empty until cross-object dependency tracking is implemented. `crates/tsql_core/src/executor/metadata/sys/tables/objects_misc.rs`
+- **Partition metadata column enhancements**: Added type_desc, type, create_date, modify_date columns to sys.partition_functions and sys.partition_schemes for better compatibility. `crates/tsql_core/src/executor/metadata/sys/partition.rs`
+
+**SSMS Object Explorer Contract Expansion:**
+
+- Added 4 new test scopes: `identity_columns`, `computed_columns`, `all_objects`, `metadata_dependencies`
+- Total SSMS contract cases increased from 51 to 55
+
+**Test Coverage:**
+
+- Added 7 new tests in `information_schema.rs` covering: sys.all_objects, sys.identity_columns (with/without identity), sys.computed_columns, sys.sql_expression_dependencies, sys.partition_functions column shape, sys.partition_schemes column shape
+
+**Documentation:**
+
+- Updated compatibility-matrix.md with new sys.* views and documented shims (HADR/availability, partition views, sql_expression_dependencies)
