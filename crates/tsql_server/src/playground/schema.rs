@@ -84,4 +84,7 @@ BEGIN
     PRINT 'Customer updated';
 END
 "#,
+    r#"
+CREATE PROCEDURE dbo.uspGetOrderDetails AS BEGIN SELECT 1 END
+"#,
 ];

@@ -513,6 +513,400 @@
           "min_rows": 1
         }
       ]
+    },
+    {
+      "name": "schemas_list_all",
+      "scope": "schemas",
+      "sql": "SELECT name, schema_id, principal_id FROM sys.schemas ORDER BY name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "schema_id"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "name": "views_list_all",
+      "scope": "views",
+      "sql": "SELECT v.name, s.name AS schema_name, v.object_id, v.create_date, v.modify_date FROM sys.views v INNER JOIN sys.schemas s ON v.schema_id = s.schema_id WHERE v.is_ms_shipped = 0 ORDER BY s.name, v.name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "schema_name",
+            "object_id"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "name": "view_columns_for_customer_orders",
+      "scope": "views",
+      "sql": "SELECT name FROM sys.views WHERE is_ms_shipped = 0",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "name": "routine_parameters_list",
+      "scope": "routine_parameters",
+      "sql": "SELECT p.name AS parameter_name, t.name AS type_name, p.max_length, p.precision, p.scale, p.is_output, p.parameter_id FROM sys.parameters p INNER JOIN sys.procedures r ON p.object_id = r.object_id INNER JOIN sys.types t ON p.user_type_id = t.user_type_id WHERE r.name = 'uspGetOrderDetails' AND r.schema_id = SCHEMA_ID('dbo') ORDER BY p.parameter_id",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "parameter_name",
+            "type_name",
+            "is_output"
+          ],
+          "min_rows": 0
+        }
+      ]
+    },
+    {
+      "name": "routine_definition_from_sql_modules",
+      "scope": "routine_definition",
+      "sql": "SELECT m.definition, m.object_id FROM sys.sql_modules m WHERE m.object_id = OBJECT_ID('dbo.uspGetOrderDetails')",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "definition"
+          ],
+          "min_rows": 0
+        }
+      ]
+    },
+    {
+      "name": "partition_functions_list",
+      "scope": "partitions",
+      "sql": "SELECT name, function_id, type_desc, create_date FROM sys.partition_functions ORDER BY name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "function_id",
+            "type_desc"
+          ],
+          "min_rows": 0
+        }
+      ]
+    },
+    {
+      "name": "partition_schemes_list",
+      "scope": "partitions",
+      "sql": "SELECT name, data_space_id, type_desc FROM sys.partition_schemes ORDER BY name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "data_space_id",
+            "type_desc"
+          ],
+          "min_rows": 0
+        }
+      ]
+    },
+    {
+      "name": "stats_list_for_customers",
+      "scope": "stats",
+      "sql": "SELECT name FROM sys.stats WHERE object_id = OBJECT_ID('dbo.Customers') ORDER BY name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name"
+          ],
+          "min_rows": 0
+        }
+      ]
+    },
+    {
+      "name": "extended_properties_for_customers",
+      "scope": "extended_properties",
+      "sql": "SELECT ep.name, ep.value, ep.minor_id, CASE WHEN ep.class = 1 THEN 'TABLE' WHEN ep.class = 2 THEN 'COLUMN' ELSE 'UNKNOWN' END AS class_desc FROM sys.extended_properties ep WHERE ep.major_id = OBJECT_ID('dbo.Customers') ORDER BY ep.class, ep.minor_id",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "value",
+            "class_desc"
+          ],
+          "min_rows": 0
+        }
+      ]
+    },
+    {
+      "name": "database_principals_list",
+      "scope": "database_principals",
+      "sql": "SELECT name, principal_id, type, type_desc, default_schema_name, create_date, modify_date FROM sys.database_principals WHERE type IN ('S', 'U', 'G') ORDER BY name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "principal_id",
+            "type"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "name": "database_permissions_list",
+      "scope": "database_permissions",
+      "sql": "SELECT dp.class, dp.major_id, dp.minor_id, dp.grantee_principal_id, dp.grantor_principal_id, dp.type, dp.permission_name, dp.state, dp.state_desc FROM sys.database_permissions dp ORDER BY dp.class, dp.major_id",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "class",
+            "permission_name",
+            "state"
+          ],
+          "min_rows": 0
+        }
+      ]
+    },
+    {
+      "name": "database_role_members_list",
+      "scope": "database_role_members",
+      "sql": "SELECT r.name AS role_name, m.name AS member_name, m.type AS member_type FROM sys.database_role_members rm INNER JOIN sys.database_principals r ON rm.role_principal_id = r.principal_id INNER JOIN sys.database_principals m ON rm.member_principal_id = m.principal_id ORDER BY r.name, m.name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "role_name",
+            "member_name"
+          ],
+          "min_rows": 0
+        }
+      ]
+    },
+    {
+      "name": "table_types_list",
+      "scope": "table_types",
+      "sql": "SELECT tt.name, tt.type_table_object_id, tt.is_user_defined, s.name AS schema_name FROM sys.table_types tt INNER JOIN sys.schemas s ON tt.schema_id = s.schema_id WHERE tt.is_ms_shipped = 0 ORDER BY s.name, tt.name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "type_table_object_id",
+            "schema_name"
+          ],
+          "min_rows": 0
+        }
+      ]
+    },
+    {
+      "name": "table_type_columns_list",
+      "scope": "table_types",
+      "sql": "SELECT c.name AS column_name, t.name AS type_name, c.max_length, c.precision, c.scale, c.is_nullable, c.column_id FROM sys.columns c INNER JOIN sys.table_types tt ON c.object_id = tt.type_table_object_id INNER JOIN sys.types t ON c.user_type_id = t.user_type_id WHERE tt.name = 'OrderType' AND tt.schema_id = SCHEMA_ID('dbo') ORDER BY c.column_id",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "column_name",
+            "type_name"
+          ],
+          "min_rows": 0
+        }
+      ]
+    },
+    {
+      "name": "index_columns_detail_for_customers",
+      "scope": "indexes",
+      "sql": "SELECT object_id, index_id, column_id, key_ordinal FROM sys.index_columns WHERE object_id = OBJECT_ID('dbo.Customers') ORDER BY index_id, key_ordinal",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "object_id",
+            "column_id",
+            "key_ordinal"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "name": "foreign_keys_columns_detail",
+      "scope": "foreign_keys",
+      "sql": "SELECT name, parent_object_id, referenced_object_id FROM sys.foreign_keys WHERE parent_object_id = OBJECT_ID('dbo.Orders')",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "parent_object_id",
+            "referenced_object_id"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "name": "check_constraints_list",
+      "scope": "constraints",
+      "sql": "SELECT cc.name, cc.definition, cc.object_id, cc.parent_object_id FROM sys.check_constraints cc INNER JOIN sys.tables t ON cc.parent_object_id = t.object_id WHERE t.name = 'Orders' ORDER BY cc.name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "definition"
+          ],
+          "min_rows": 0
+        }
+      ]
+    },
+    {
+      "name": "default_constraints_list",
+      "scope": "constraints",
+      "sql": "SELECT dc.name, dc.definition, dc.object_id, dc.parent_object_id FROM sys.default_constraints dc INNER JOIN sys.tables t ON dc.parent_object_id = t.object_id WHERE t.name = 'Orders' ORDER BY dc.name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "definition"
+          ],
+          "min_rows": 0
+        }
+      ]
+    },
+    {
+      "name": "procedures_list_all",
+      "scope": "routines",
+      "sql": "SELECT name, object_id, schema_id FROM sys.procedures WHERE is_ms_shipped = 0 ORDER BY name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "object_id"
+          ],
+          "min_rows": 0
+        }
+      ]
+    },
+    {
+      "name": "functions_list_all",
+      "scope": "routines",
+      "sql": "SELECT name, object_id, schema_id FROM sys.functions ORDER BY name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "object_id",
+            "schema_id"
+          ],
+          "min_rows": 0
+        }
+      ]
+    },
+    {
+      "name": "filegroups_list",
+      "scope": "partitions",
+      "sql": "SELECT name, type, type_desc, is_read_only, is_default FROM sys.filegroups ORDER BY name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "type",
+            "type_desc"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "name": "data_spaces_list",
+      "scope": "partitions",
+      "sql": "SELECT name, data_space_id, type, type_desc FROM sys.data_spaces ORDER BY name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "data_space_id",
+            "type"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "name": "assembly_modules_list",
+      "scope": "routines",
+      "sql": "SELECT o.name, o.object_id, am.assembly_id, am.assembly_class, am.assembly_method FROM sys.assembly_modules am INNER JOIN sys.objects o ON am.object_id = o.object_id ORDER BY o.name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "assembly_class"
+          ],
+          "min_rows": 0
+        }
+      ]
+    },
+    {
+      "name": "xml_indexes_list",
+      "scope": "indexes",
+      "sql": "SELECT xi.name, xi.object_id, xi.index_id, xi.xml_index_type, xi.path_id FROM sys.xml_indexes xi INNER JOIN sys.tables t ON xi.object_id = t.object_id WHERE t.name = 'Customers' ORDER BY xi.name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "name",
+            "xml_index_type"
+          ],
+          "min_rows": 0
+        }
+      ]
     }
   ]
 }

@@ -222,3 +222,58 @@ fn ssms_object_explorer_constraints_contract() {
 fn ssms_object_explorer_triggers_contract() {
     run_scope("triggers");
 }
+
+#[test]
+fn ssms_object_explorer_schemas_contract() {
+    run_scope("schemas");
+}
+
+#[test]
+fn ssms_object_explorer_views_contract() {
+    run_scope("views");
+}
+
+#[test]
+fn ssms_object_explorer_routine_parameters_contract() {
+    run_scope("routine_parameters");
+}
+
+#[test]
+fn ssms_object_explorer_routine_definition_contract() {
+    run_scope("routine_definition");
+}
+
+#[test]
+fn ssms_object_explorer_partitions_contract() {
+    run_scope("partitions");
+}
+
+#[test]
+fn ssms_object_explorer_stats_contract() {
+    run_scope("stats");
+}
+
+#[test]
+fn ssms_object_explorer_extended_properties_contract() {
+    run_scope("extended_properties");
+}
+
+#[test]
+fn ssms_object_explorer_database_principals_contract() {
+    run_scope("database_principals");
+}
+
+#[test]
+fn ssms_object_explorer_database_permissions_contract() {
+    run_scope("database_permissions");
+}
+
+#[test]
+fn ssms_object_explorer_database_role_members_contract() {
+    run_scope("database_role_members");
+}
+
+#[test]
+fn ssms_object_explorer_table_types_contract() {
+    run_scope("table_types");
+}
