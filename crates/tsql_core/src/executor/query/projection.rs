@@ -136,6 +136,10 @@ fn expand_projection_item_types(
                     .filter(|binding| {
                         binding.alias.eq_ignore_ascii_case(table_name)
                             || binding.table.name.eq_ignore_ascii_case(table_name)
+                            || binding
+                                .source_aliases
+                                .iter()
+                                .any(|a| a.eq_ignore_ascii_case(table_name))
                     })
                     .flat_map(|binding| {
                         binding
@@ -282,7 +286,11 @@ fn lookup_qualified_identifier_type(
     for binding in row {
         if let Some(prefix_name) = prefix {
             let matches_prefix = binding.alias.eq_ignore_ascii_case(prefix_name)
-                || binding.table.name.eq_ignore_ascii_case(prefix_name);
+                || binding.table.name.eq_ignore_ascii_case(prefix_name)
+                || binding
+                    .source_aliases
+                    .iter()
+                    .any(|a| a.eq_ignore_ascii_case(prefix_name));
             if !matches_prefix {
                 continue;
             }

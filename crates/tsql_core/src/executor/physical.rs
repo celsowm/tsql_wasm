@@ -26,4 +26,5 @@ pub(crate) struct PhysicalPivot {
 pub(crate) struct PhysicalUnpivot {
     pub(crate) spec: crate::ast::UnpivotSpec,
     pub(crate) alias: String,
+    pub(crate) source_aliases: Vec<String>,
 }

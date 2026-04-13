@@ -178,6 +178,7 @@ fn execute_table_ref(
                 alias: bound.alias.clone(),
                 row: None,
                 storage_index: None,
+                source_aliases: Vec::new(),
             }
             .null_row()]
         });
@@ -198,6 +199,7 @@ fn execute_table_ref(
                     alias: bound.alias.clone(),
                     row: Some(row.clone()),
                     storage_index: Some(i),
+                    source_aliases: Vec::new(),
                 }]
             })
             .collect();
@@ -211,24 +213,42 @@ fn execute_table_ref(
                 rows,
                 &PhysicalPivot {
                     spec: (**pivot).clone(),
-                    alias: table_ref
-                        .alias
-                        .clone()
-                        .unwrap_or_else(|| "pivoted".to_string()),
+                    alias: pivot.alias.clone().unwrap_or_else(|| "pivoted".to_string()),
                 },
                 ctx,
             )?;
         }
 
         if let Some(unpivot) = &table_ref.unpivot {
+            let unpivot_alias = unpivot
+                .alias
+                .clone()
+                .unwrap_or_else(|| "unpivoted".to_string());
+            let mut source_aliases: Vec<String> = rows
+                .first()
+                .map(|r| {
+                    r.iter()
+                        .flat_map(|ct| {
+                            let mut aliases = vec![ct.alias.clone()];
+                            if !ct.alias.eq_ignore_ascii_case(&ct.table.name) {
+                                aliases.push(ct.table.name.clone());
+                            }
+                            aliases
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            if let Some(sa) = &unpivot.source_alias {
+                if !source_aliases.iter().any(|a| a.eq_ignore_ascii_case(sa)) {
+                    source_aliases.push(sa.clone());
+                }
+            }
             rows = transformer::execute_unpivot(
                 rows,
                 &PhysicalUnpivot {
                     spec: (**unpivot).clone(),
-                    alias: table_ref
-                        .alias
-                        .clone()
-                        .unwrap_or_else(|| "unpivoted".to_string()),
+                    alias: unpivot_alias,
+                    source_aliases,
                 },
                 ctx,
             )?;
@@ -240,6 +260,7 @@ fn execute_table_ref(
                 alias: bound.alias.clone(),
                 row: None,
                 storage_index: None,
+                source_aliases: Vec::new(),
             }
             .null_row()]
         });
@@ -267,6 +288,7 @@ fn execute_table_ref(
             alias: bound.alias.clone(),
             row: None,
             storage_index: None,
+            source_aliases: Vec::new(),
         }
         .null_row()];
 
@@ -282,6 +304,7 @@ fn execute_table_ref(
         alias: bound.alias.clone(),
         row: None,
         storage_index: None,
+        source_aliases: Vec::new(),
     }
     .null_row()];
     let scan = PhysicalScan {
@@ -305,24 +328,42 @@ fn execute_table_ref(
             rows,
             &PhysicalPivot {
                 spec: (**pivot).clone(),
-                alias: table_ref
-                    .alias
-                    .clone()
-                    .unwrap_or_else(|| "pivoted".to_string()),
+                alias: pivot.alias.clone().unwrap_or_else(|| "pivoted".to_string()),
             },
             ctx,
         )?;
     }
 
     if let Some(unpivot) = &table_ref.unpivot {
+        let unpivot_alias = unpivot
+            .alias
+            .clone()
+            .unwrap_or_else(|| "unpivoted".to_string());
+        let mut source_aliases: Vec<String> = rows
+            .first()
+            .map(|r| {
+                r.iter()
+                    .flat_map(|ct| {
+                        let mut aliases = vec![ct.alias.clone()];
+                        if !ct.alias.eq_ignore_ascii_case(&ct.table.name) {
+                            aliases.push(ct.table.name.clone());
+                        }
+                        aliases
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        if let Some(sa) = &unpivot.source_alias {
+            if !source_aliases.iter().any(|a| a.eq_ignore_ascii_case(sa)) {
+                source_aliases.push(sa.clone());
+            }
+        }
         rows = transformer::execute_unpivot(
             rows,
             &PhysicalUnpivot {
                 spec: (**unpivot).clone(),
-                alias: table_ref
-                    .alias
-                    .clone()
-                    .unwrap_or_else(|| "unpivoted".to_string()),
+                alias: unpivot_alias,
+                source_aliases,
             },
             ctx,
         )?;
@@ -392,6 +433,7 @@ fn apply_from_alias(
                 deleted: false,
             }),
             storage_index: None,
+            source_aliases: Vec::new(),
         }]);
     }
 
@@ -400,6 +442,7 @@ fn apply_from_alias(
         alias: alias.to_string(),
         row: None,
         storage_index: None,
+        source_aliases: Vec::new(),
     }
     .null_row()];
 

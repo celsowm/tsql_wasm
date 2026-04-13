@@ -114,6 +114,10 @@ pub(crate) fn resolve_qualified_identifier(
         for binding in row {
             if binding.alias.eq_ignore_ascii_case(table_name)
                 || binding.table.name.eq_ignore_ascii_case(table_name)
+                || binding
+                    .source_aliases
+                    .iter()
+                    .any(|a| a.eq_ignore_ascii_case(table_name))
             {
                 let idx = binding
                     .table

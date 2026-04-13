@@ -302,6 +302,7 @@ impl RowIterator for TableScanIterator {
                             alias: self.bound.alias.clone(),
                             row: Some(stored),
                             storage_index: Some(idx),
+                            source_aliases: Vec::new(),
                         }]));
                     }
                 }

@@ -70,6 +70,8 @@ pub struct PivotSpec {
     pub aggregate_col: String,
     pub pivot_col: String,
     pub pivot_values: Vec<String>,
+    #[serde(default)]
+    pub alias: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -77,4 +79,8 @@ pub struct UnpivotSpec {
     pub value_col: String,
     pub pivot_col: String,
     pub column_list: Vec<String>,
+    #[serde(default)]
+    pub alias: Option<String>,
+    #[serde(default)]
+    pub source_alias: Option<String>,
 }

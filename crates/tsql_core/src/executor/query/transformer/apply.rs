@@ -29,6 +29,7 @@ pub(crate) fn execute_apply(
                         alias: apply.alias.clone(),
                         row: None,
                         storage_index: None,
+                        source_aliases: Vec::new(),
                     }
                     .null_row(),
                 );
@@ -46,6 +47,7 @@ pub(crate) fn execute_apply(
                         deleted: false,
                     }),
                     storage_index: Some(idx),
+                    source_aliases: Vec::new(),
                 });
                 result_rows.push(combined);
             }

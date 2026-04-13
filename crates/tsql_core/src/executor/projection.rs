@@ -60,6 +60,10 @@ fn expand_projection_labels(item: &SelectItem, sample: Option<&JoinedRow>) -> Ve
                     .filter(|binding| {
                         binding.alias.eq_ignore_ascii_case(table_name)
                             || binding.table.name.eq_ignore_ascii_case(table_name)
+                            || binding
+                                .source_aliases
+                                .iter()
+                                .any(|a| a.eq_ignore_ascii_case(table_name))
                     })
                     .flat_map(|binding| binding.table.columns.iter().map(|c| c.name.clone()))
                     .collect()
@@ -76,6 +80,10 @@ pub fn expand_qualified_wildcard_values(row: &JoinedRow, table_name: &str) -> Ve
     for binding in row {
         if binding.alias.eq_ignore_ascii_case(table_name)
             || binding.table.name.eq_ignore_ascii_case(table_name)
+            || binding
+                .source_aliases
+                .iter()
+                .any(|a| a.eq_ignore_ascii_case(table_name))
         {
             for (idx, _) in binding.table.columns.iter().enumerate() {
                 let value = binding

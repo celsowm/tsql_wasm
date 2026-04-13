@@ -60,6 +60,7 @@ fn bind_table_rows(
                     alias: bound.alias.clone(),
                     row: Some(row.clone()),
                     storage_index: Some(i),
+                    source_aliases: Vec::new(),
                 }]
             })
             .collect());
@@ -78,6 +79,7 @@ fn bind_table_rows(
             alias: bound.alias.clone(),
             row: Some(row),
             storage_index: Some(i),
+            source_aliases: Vec::new(),
         }]);
     }
 
@@ -265,6 +267,7 @@ fn apply_index_strategy_indexed(
                 alias: scan.bound.alias.clone(),
                 row: None,
                 storage_index: Some(idx),
+                source_aliases: Vec::new(),
             }]
         })
         .collect())

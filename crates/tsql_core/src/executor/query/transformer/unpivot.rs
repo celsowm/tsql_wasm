@@ -33,6 +33,24 @@ pub(crate) fn execute_unpivot(
         }
     }
 
+    for col_to_unpivot in &spec.column_list {
+        let mut column_exists = false;
+        for ct in first_row {
+            if ct
+                .table
+                .columns
+                .iter()
+                .any(|c| c.name.eq_ignore_ascii_case(col_to_unpivot))
+            {
+                column_exists = true;
+                break;
+            }
+        }
+        if !column_exists {
+            return Err(DbError::column_not_found(col_to_unpivot));
+        }
+    }
+
     let mut output_columns = Vec::new();
     for (_, col, _) in &fixed_cols {
         output_columns.push(col.clone());
@@ -123,6 +141,7 @@ pub(crate) fn execute_unpivot(
                     deleted: false,
                 }),
                 storage_index: Some(0),
+                source_aliases: unpivot.source_aliases.clone(),
             }]);
         }
     }

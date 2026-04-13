@@ -281,6 +281,7 @@ fn lower_table_ref_flat(tr: ast::TableRef) -> Result<executor_ast::common::Table
             aggregate_col: p.aggregate_col,
             pivot_col: p.pivot_col,
             pivot_values: p.pivot_values,
+            alias: p.alias,
         })
     });
     let unpivot = tr.unpivot.map(|u| {
@@ -288,6 +289,8 @@ fn lower_table_ref_flat(tr: ast::TableRef) -> Result<executor_ast::common::Table
             value_col: u.value_col,
             pivot_col: u.pivot_col,
             column_list: u.column_list,
+            alias: u.alias,
+            source_alias: u.source_alias,
         })
     });
 
@@ -432,6 +435,7 @@ pub fn lower_table_ref_recursive(
             aggregate_col: p.aggregate_col,
             pivot_col: p.pivot_col,
             pivot_values: p.pivot_values,
+            alias: p.alias,
         })
     });
     let unpivot = tr.unpivot.map(|u| {
@@ -439,6 +443,8 @@ pub fn lower_table_ref_recursive(
             value_col: u.value_col,
             pivot_col: u.pivot_col,
             column_list: u.column_list,
+            alias: u.alias,
+            source_alias: u.source_alias,
         })
     });
 

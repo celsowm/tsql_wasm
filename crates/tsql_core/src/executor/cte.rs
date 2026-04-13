@@ -52,6 +52,7 @@ pub fn cte_to_context_rows(cte: &CteTable, alias: &str) -> Vec<crate::executor::
                 alias: alias.to_string(),
                 row: Some(row.clone()),
                 storage_index: Some(i),
+                source_aliases: Vec::new(),
             }]
         })
         .collect()

@@ -179,6 +179,7 @@ pub(crate) fn execute_pivot(
                 deleted: false,
             }),
             storage_index: Some(0),
+            source_aliases: Vec::new(),
         }]);
     }
 

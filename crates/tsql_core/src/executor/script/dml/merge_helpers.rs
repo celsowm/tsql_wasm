@@ -111,6 +111,7 @@ pub(crate) fn merge_target_context(
         alias,
         row: Some(row),
         storage_index,
+        source_aliases: Vec::new(),
     }]
 }
 
@@ -125,6 +126,7 @@ pub(crate) fn merge_source_context(
         alias,
         row: Some(row),
         storage_index,
+        source_aliases: Vec::new(),
     }]
 }
 

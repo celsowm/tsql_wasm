@@ -388,6 +388,7 @@ pub fn parse_table_ref(parser: &mut Parser) -> ParseResult<TableRef> {
                     aggregate_col,
                     pivot_col,
                     pivot_values,
+                    alias: Some(alias.clone()),
                 }));
                 table.alias = Some(alias);
             }
@@ -418,10 +419,13 @@ pub fn parse_table_ref(parser: &mut Parser) -> ParseResult<TableRef> {
                 parser.expect_rparen()?;
                 parser.expect_rparen()?;
                 let alias = parse_required_alias(parser)?;
+                let source_alias = table.alias.clone();
                 table.unpivot = Some(Box::new(UnpivotSpec {
                     value_col,
                     pivot_col,
                     column_list,
+                    alias: Some(alias.clone()),
+                    source_alias,
                 }));
                 table.alias = Some(alias);
             }
