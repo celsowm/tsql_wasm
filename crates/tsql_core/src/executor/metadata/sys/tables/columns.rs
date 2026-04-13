@@ -1,11 +1,13 @@
 use super::super::super::VirtualTable;
 use super::super::super::{system_type_id, type_max_length, virtual_table_def};
+use crate::ast::{DmlStatement, Expr, SelectItem, Statement};
 use crate::catalog::Catalog;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
 pub(crate) struct SysColumns;
 pub(crate) struct SysAllColumns;
+pub(crate) struct SysViewColumns;
 
 impl VirtualTable for SysColumns {
     fn definition(&self) -> crate::catalog::TableDef {
@@ -24,6 +26,16 @@ impl VirtualTable for SysAllColumns {
 
     fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
         column_rows(catalog, true)
+    }
+}
+
+impl VirtualTable for SysViewColumns {
+    fn definition(&self) -> crate::catalog::TableDef {
+        view_column_table_def()
+    }
+
+    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+        view_column_rows(catalog)
     }
 }
 
@@ -140,4 +152,103 @@ fn column_rows(catalog: &dyn Catalog, include_sparse: bool) -> Vec<StoredRow> {
         }
     }
     rows
+}
+
+fn view_column_table_def() -> crate::catalog::TableDef {
+    virtual_table_def(
+        "view_columns",
+        vec![
+            ("object_id", DataType::Int, false),
+            ("column_id", DataType::Int, false),
+            ("name", DataType::VarChar { max_len: 128 }, false),
+            ("user_type_id", DataType::Int, false),
+            ("system_type_id", DataType::TinyInt, false),
+            ("max_length", DataType::SmallInt, false),
+            ("precision", DataType::TinyInt, false),
+            ("scale", DataType::TinyInt, false),
+            ("is_nullable", DataType::Bit, false),
+            ("is_computed", DataType::Bit, false),
+            ("is_xml_document", DataType::Bit, false),
+            ("is_column_set", DataType::Bit, false),
+            ("xml_collection_id", DataType::Int, true),
+            ("generated_always_type", DataType::TinyInt, false),
+            ("graph_type", DataType::Int, true),
+            ("default_object_id", DataType::Int, false),
+            ("is_dropped_ledger_column", DataType::Bit, false),
+        ],
+    )
+}
+
+fn view_column_rows(catalog: &dyn Catalog) -> Vec<StoredRow> {
+    let mut rows = Vec::new();
+    for v in catalog.get_views() {
+        let object_id = if v.object_id != 0 {
+            v.object_id
+        } else {
+            catalog.object_id(&v.schema, &v.name).unwrap_or(0)
+        };
+        let Some(select) = extract_view_select(&v.query) else {
+            continue;
+        };
+        for (i, item) in select.projection.iter().enumerate() {
+            let name = extract_column_name(item);
+            rows.push(StoredRow {
+                values: vec![
+                    Value::Int(object_id),
+                    Value::Int((i + 1) as i32),
+                    Value::VarChar(name),
+                    Value::Int(0),      // user_type_id - unknown for view columns
+                    Value::TinyInt(0),  // system_type_id - unknown
+                    Value::SmallInt(0), // max_length - unknown
+                    Value::TinyInt(0),  // precision - unknown
+                    Value::TinyInt(0),  // scale - unknown
+                    Value::Bit(true),   // is_nullable - true by default
+                    Value::Bit(false),  // is_computed
+                    Value::Bit(false),  // is_xml_document
+                    Value::Bit(false),  // is_column_set
+                    Value::Null,        // xml_collection_id
+                    Value::TinyInt(0),  // generated_always_type
+                    Value::Null,        // graph_type
+                    Value::Int(0),      // default_object_id
+                    Value::Bit(false),  // is_dropped_ledger_column
+                ],
+                deleted: false,
+            });
+        }
+    }
+    rows
+}
+
+fn extract_view_select(stmt: &Statement) -> Option<&crate::ast::SelectStmt> {
+    match stmt {
+        Statement::Dml(DmlStatement::Select(select)) => Some(select),
+        _ => None,
+    }
+}
+
+fn extract_column_name(item: &SelectItem) -> String {
+    if let Some(ref alias) = item.alias {
+        return alias.clone();
+    }
+    match &item.expr {
+        Expr::Identifier(name) => name.clone(),
+        Expr::QualifiedIdentifier(parts) => parts.last().cloned().unwrap_or_default(),
+        Expr::FunctionCall { name, .. } => name.clone(),
+        Expr::Binary { .. } => String::new(),
+        Expr::Unary { expr, .. } => extract_name_from_expr(expr),
+        Expr::Case { .. } => String::new(),
+        Expr::Cast { expr, .. } => extract_name_from_expr(expr),
+        Expr::Convert { expr, .. } => extract_name_from_expr(expr),
+        Expr::TryCast { expr, .. } => extract_name_from_expr(expr),
+        Expr::TryConvert { expr, .. } => extract_name_from_expr(expr),
+        _ => String::new(),
+    }
+}
+
+fn extract_name_from_expr(expr: &Expr) -> String {
+    match expr {
+        Expr::Identifier(name) => name.clone(),
+        Expr::QualifiedIdentifier(parts) => parts.last().cloned().unwrap_or_default(),
+        _ => String::new(),
+    }
 }

@@ -7,6 +7,54 @@ use crate::types::{DataType, Value};
 pub(crate) struct SysObjects;
 pub(crate) struct SysSystemViews;
 pub(crate) struct SysCompatSysObjects;
+pub(crate) struct SysViews;
+
+impl VirtualTable for SysViews {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "views",
+            vec![
+                ("name", DataType::VarChar { max_len: 128 }, false),
+                ("object_id", DataType::Int, false),
+                ("schema_id", DataType::Int, false),
+                ("create_date", DataType::DateTime, false),
+                ("modify_date", DataType::DateTime, false),
+                ("is_ms_shipped", DataType::Bit, false),
+            ],
+        )
+    }
+
+    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+        let created = Value::DateTime(
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap(),
+        );
+
+        let mut rows = Vec::new();
+        for v in catalog.get_views() {
+            let schema_id = v.schema_id;
+            let object_id = if v.object_id != 0 {
+                v.object_id
+            } else {
+                catalog.object_id(&v.schema, &v.name).unwrap_or(0)
+            };
+            rows.push(StoredRow {
+                values: vec![
+                    Value::VarChar(v.name.clone()),
+                    Value::Int(object_id),
+                    Value::Int(schema_id as i32),
+                    created.clone(),
+                    created.clone(),
+                    Value::Bit(false),
+                ],
+                deleted: false,
+            });
+        }
+        rows
+    }
+}
 
 impl VirtualTable for SysObjects {
     fn definition(&self) -> crate::catalog::TableDef {

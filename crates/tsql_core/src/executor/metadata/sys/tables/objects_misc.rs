@@ -75,6 +75,7 @@ impl VirtualTable for SysIndexColumns {
                 ("index_id", DataType::Int, false),
                 ("index_column_id", DataType::Int, false),
                 ("column_id", DataType::Int, false),
+                ("key_ordinal", DataType::TinyInt, false),
                 ("is_included_column", DataType::Bit, false),
             ],
         )
@@ -90,6 +91,7 @@ impl VirtualTable for SysIndexColumns {
                         Value::Int(idx.id as i32),
                         Value::Int((ordinal + 1) as i32),
                         Value::Int(*col_id as i32),
+                        Value::TinyInt((ordinal + 1) as u8),
                         Value::Bit(false),
                     ],
                     deleted: false,

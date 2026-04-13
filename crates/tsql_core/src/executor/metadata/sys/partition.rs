@@ -2,7 +2,7 @@ use super::super::virtual_table_def;
 use super::super::VirtualTable;
 use crate::catalog::Catalog;
 use crate::storage::StoredRow;
-use crate::types::DataType;
+use crate::types::{DataType, Value};
 
 pub(crate) struct SysPartitionFunctions;
 pub(crate) struct SysPartitionParameters;
@@ -89,14 +89,25 @@ impl VirtualTable for SysFilegroups {
         virtual_table_def(
             "filegroups",
             vec![
-                ("data_space_id", DataType::Int, false),
                 ("name", DataType::VarChar { max_len: 128 }, false),
                 ("type", DataType::Char { len: 2 }, false),
+                ("type_desc", DataType::VarChar { max_len: 60 }, false),
+                ("is_read_only", DataType::Bit, false),
+                ("is_default", DataType::Bit, false),
             ],
         )
     }
 
     fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
-        vec![]
+        vec![StoredRow {
+            values: vec![
+                Value::VarChar("PRIMARY".to_string()),
+                Value::Char("FG".to_string()),
+                Value::VarChar("ROWS_FILEGROUP".to_string()),
+                Value::Bit(false),
+                Value::Bit(true),
+            ],
+            deleted: false,
+        }]
     }
 }

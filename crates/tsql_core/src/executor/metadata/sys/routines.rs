@@ -66,11 +66,20 @@ impl VirtualTable for SysProcedures {
                 ("schema_id", DataType::Int, false),
                 ("type", DataType::Char { len: 2 }, false),
                 ("type_desc", DataType::VarChar { max_len: 60 }, false),
+                ("create_date", DataType::DateTime, false),
+                ("modify_date", DataType::DateTime, false),
+                ("is_ms_shipped", DataType::Bit, false),
             ],
         )
     }
 
     fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+        let created = Value::DateTime(
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap(),
+        );
         catalog
             .get_routines()
             .iter()
@@ -84,6 +93,9 @@ impl VirtualTable for SysProcedures {
                         Value::Int(schema_id as i32),
                         Value::Char("P ".to_string()),
                         Value::VarChar("SQL_STORED_PROCEDURE".to_string()),
+                        created.clone(),
+                        created.clone(),
+                        Value::Bit(false),
                     ],
                     deleted: false,
                 }

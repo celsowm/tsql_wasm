@@ -146,6 +146,8 @@ pub struct ViewDef {
     pub object_id: i32,
     pub schema: String,
     pub name: String,
+    #[serde(default)]
+    pub schema_id: u32,
     pub query: Statement, // Should be Statement::Select
     #[serde(default)]
     pub definition_sql: String,

@@ -42,11 +42,7 @@ impl VirtualTable for SysIndexes {
                                 .find(|c| c.id == col_id)
                                 .map(|c| c.primary_key)
                                 .unwrap_or(false)
-                        }) && t
-                            .columns
-                            .iter()
-                            .filter(|c| c.primary_key)
-                            .count()
+                        }) && t.columns.iter().filter(|c| c.primary_key).count()
                             == idx.column_ids.len()
                     })
                     .unwrap_or(false);
@@ -59,12 +55,7 @@ impl VirtualTable for SysIndexes {
                                 .find(|c| c.id == col_id)
                                 .map(|c| c.unique)
                                 .unwrap_or(false)
-                        }) && t
-                            .columns
-                            .iter()
-                            .filter(|c| c.unique)
-                            .count()
-                            == idx.column_ids.len()
+                        }) && t.columns.iter().filter(|c| c.unique).count() == idx.column_ids.len()
                     })
                     .unwrap_or(false);
 

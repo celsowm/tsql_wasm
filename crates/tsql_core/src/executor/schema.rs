@@ -213,10 +213,12 @@ impl<'a> SchemaExecutor<'a> {
         let schema = stmt.name.schema_or_dbo().to_string();
         let view_name = stmt.name.name;
         let query = stmt.query;
+        let schema_id = self.catalog.get_schema_id(&schema).unwrap_or(1);
         let mut view = crate::catalog::ViewDef {
             object_id: self.catalog.alloc_object_id(),
             schema,
             name: view_name,
+            schema_id,
             query: crate::ast::Statement::Dml(crate::ast::DmlStatement::Select(query)),
             definition_sql: String::new(),
         };

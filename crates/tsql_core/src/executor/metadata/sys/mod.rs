@@ -1,4 +1,5 @@
 mod constraints;
+mod database_principals;
 mod hadr;
 mod host_info;
 mod indexes;
@@ -32,6 +33,8 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(tables::SysColumns))
     } else if name.eq_ignore_ascii_case("all_columns") {
         Some(Box::new(tables::SysAllColumns))
+    } else if name.eq_ignore_ascii_case("view_columns") {
+        Some(Box::new(tables::SysViewColumns))
     } else if name.eq_ignore_ascii_case("data_spaces") {
         Some(Box::new(tables::SysDataSpaces))
     } else if name.eq_ignore_ascii_case("extended_properties") {
@@ -84,6 +87,8 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(objects::SysCompatSysObjects))
     } else if name.eq_ignore_ascii_case("system_views") {
         Some(Box::new(objects::SysSystemViews))
+    } else if name.eq_ignore_ascii_case("views") {
+        Some(Box::new(objects::SysViews))
     } else if name.eq_ignore_ascii_case("dm_os_host_info") {
         Some(Box::new(host_info::SysHostInfo))
     } else if name.eq_ignore_ascii_case("check_constraints") {
@@ -108,6 +113,12 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(hadr::SysDatabaseMirroring))
     } else if name.eq_ignore_ascii_case("master_files") {
         Some(Box::new(hadr::SysMasterFiles))
+    } else if name.eq_ignore_ascii_case("database_principals") {
+        Some(Box::new(database_principals::SysDatabasePrincipals))
+    } else if name.eq_ignore_ascii_case("database_permissions") {
+        Some(Box::new(database_principals::SysDatabasePermissions))
+    } else if name.eq_ignore_ascii_case("database_role_members") {
+        Some(Box::new(database_principals::SysDatabaseRoleMembers))
     } else {
         None
     }

@@ -438,3 +438,91 @@ fn test_empty_views_queryable() {
         assert_eq!(r.rows.len(), 0, "{} should return 0 rows", view);
     }
 }
+
+// ─── sys.view_columns ───────────────────────────────────────────────
+
+#[test]
+fn test_sys_view_columns() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE t1 (id INT, name VARCHAR(50))");
+    exec(&mut e, "INSERT INTO t1 VALUES (1, 'test')");
+    exec(
+        &mut e,
+        "CREATE VIEW v1 AS SELECT id, name FROM t1 WHERE id > 0",
+    );
+
+    let r = query(
+        &mut e,
+        "SELECT object_id, column_id, name FROM sys.view_columns WHERE object_id = OBJECT_ID('dbo.v1') ORDER BY column_id",
+    );
+    assert_eq!(r.rows.len(), 2, "v1 should have 2 columns");
+    assert_eq!(val(&r, 0, 2), "id");
+    assert_eq!(val(&r, 1, 2), "name");
+}
+
+#[test]
+fn test_sys_view_columns_join_with_alias() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE t1 (id INT, name VARCHAR(50))");
+    exec(&mut e, "INSERT INTO t1 VALUES (1, 'test')");
+    exec(
+        &mut e,
+        "CREATE VIEW v1 AS SELECT id, name FROM t1 WHERE id > 0",
+    );
+
+    // Test JOIN between sys.views and sys.view_columns with aliases
+    let r = query(
+        &mut e,
+        "SELECT v.name AS view_name, c.name AS column_name FROM sys.views v INNER JOIN sys.view_columns c ON v.object_id = c.object_id WHERE v.name = 'v1' ORDER BY c.column_id",
+    );
+    assert_eq!(r.rows.len(), 2, "v1 should have 2 columns");
+    assert_eq!(val(&r, 0, 1), "id");
+    assert_eq!(val(&r, 1, 1), "name");
+}
+
+#[test]
+fn test_sys_index_columns_with_alias() {
+    let mut e = Engine::new();
+    exec(
+        &mut e,
+        "CREATE TABLE t1 (id INT PRIMARY KEY, name VARCHAR(50))",
+    );
+
+    // Test alias for sys.index_columns - using correct column names
+    let r = query(
+        &mut e,
+        "SELECT ic.column_id, ic.object_id FROM sys.index_columns ic WHERE ic.object_id = OBJECT_ID('dbo.t1')",
+    );
+    assert!(r.rows.len() >= 1, "t1 should have at least 1 index column");
+}
+
+#[test]
+fn test_sys_index_columns_no_alias() {
+    let mut e = Engine::new();
+    exec(
+        &mut e,
+        "CREATE TABLE t1 (id INT PRIMARY KEY, name VARCHAR(50))",
+    );
+
+    // Test without alias - this should work
+    let r = query(
+        &mut e,
+        "SELECT object_id FROM sys.index_columns WHERE object_id = OBJECT_ID('dbo.t1')",
+    );
+    assert!(r.rows.len() >= 1, "t1 should have at least 1 index column");
+}
+
+#[test]
+fn test_sys_indexes_with_alias_where() {
+    let mut e = Engine::new();
+    exec(
+        &mut e,
+        "CREATE TABLE t1 (id INT PRIMARY KEY, name VARCHAR(50))",
+    );
+
+    let r = query(
+        &mut e,
+        "SELECT i.name, i.object_id FROM sys.indexes AS i WHERE i.object_id = OBJECT_ID('dbo.t1')",
+    );
+    assert!(r.rows.len() >= 1, "t1 should have at least 1 index");
+}

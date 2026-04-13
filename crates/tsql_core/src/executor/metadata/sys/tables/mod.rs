@@ -4,7 +4,7 @@ mod objects_misc;
 mod tables;
 mod types;
 
-pub(crate) use columns::{SysAllColumns, SysColumns};
+pub(crate) use columns::{SysAllColumns, SysColumns, SysViewColumns};
 pub(crate) use databases::{SysConfigurations, SysDatabases, SysSysDatabases};
 pub(crate) use objects_misc::{
     SysAssemblyModules, SysDataSpaces, SysEdgeConstraints, SysExtendedProperties,
@@ -29,6 +29,7 @@ impl VirtualTable for SysSchemas {
             vec![
                 ("schema_id", DataType::Int, false),
                 ("name", DataType::VarChar { max_len: 128 }, false),
+                ("principal_id", DataType::Int, true),
             ],
         )
     }
@@ -38,7 +39,11 @@ impl VirtualTable for SysSchemas {
             .get_schemas()
             .iter()
             .map(|s| StoredRow {
-                values: vec![Value::Int(s.id as i32), Value::VarChar(s.name.clone())],
+                values: vec![
+                    Value::Int(s.id as i32),
+                    Value::VarChar(s.name.clone()),
+                    Value::Null,
+                ],
                 deleted: false,
             })
             .collect()
