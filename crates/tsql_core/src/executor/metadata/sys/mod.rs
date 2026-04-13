@@ -35,6 +35,10 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(tables::SysAllColumns))
     } else if name.eq_ignore_ascii_case("view_columns") {
         Some(Box::new(tables::SysViewColumns))
+    } else if name.eq_ignore_ascii_case("computed_columns") {
+        Some(Box::new(tables::SysComputedColumns))
+    } else if name.eq_ignore_ascii_case("identity_columns") {
+        Some(Box::new(tables::SysIdentityColumns))
     } else if name.eq_ignore_ascii_case("data_spaces") {
         Some(Box::new(tables::SysDataSpaces))
     } else if name.eq_ignore_ascii_case("extended_properties") {
@@ -69,6 +73,8 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(tables::SysSqlModules))
     } else if name.eq_ignore_ascii_case("system_sql_modules") {
         Some(Box::new(tables::SysSystemSqlModules))
+    } else if name.eq_ignore_ascii_case("sql_expression_dependencies") {
+        Some(Box::new(tables::SysSqlExpressionDependencies))
     } else if name.eq_ignore_ascii_case("stats") {
         Some(Box::new(tables::SysStats))
     } else if name.eq_ignore_ascii_case("types") {
@@ -83,6 +89,8 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(indexes::SysIndexes))
     } else if name.eq_ignore_ascii_case("objects") {
         Some(Box::new(objects::SysObjects))
+    } else if name.eq_ignore_ascii_case("all_objects") {
+        Some(Box::new(objects::SysAllObjects))
     } else if name.eq_ignore_ascii_case("sysobjects") {
         Some(Box::new(objects::SysCompatSysObjects))
     } else if name.eq_ignore_ascii_case("system_views") {

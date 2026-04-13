@@ -252,3 +252,47 @@ fn extract_name_from_expr(expr: &Expr) -> String {
         _ => String::new(),
     }
 }
+
+pub(crate) struct SysComputedColumns;
+
+impl VirtualTable for SysComputedColumns {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "computed_columns",
+            vec![
+                ("object_id", DataType::Int, false),
+                ("column_id", DataType::Int, false),
+                ("name", DataType::VarChar { max_len: 128 }, false),
+                ("is_computed", DataType::Bit, false),
+                ("is_persisted", DataType::Bit, false),
+                ("definition", DataType::NVarChar { max_len: 4000 }, true),
+            ],
+        )
+    }
+
+    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+        let mut rows = Vec::new();
+        for table in catalog.get_tables() {
+            for col in &table.columns {
+                if let Some(_expr) = &col.computed_expr {
+                    rows.push(StoredRow {
+                        values: vec![
+                            Value::Int(table.id as i32),
+                            Value::Int(col.id as i32),
+                            Value::VarChar(col.name.clone()),
+                            Value::Bit(true),
+                            Value::Bit(false),
+                            Value::NVarChar(
+                                col.computed_expr
+                                    .as_ref()
+                                    .map_or(String::new(), |e| format!("{:?}", e)),
+                            ),
+                        ],
+                        deleted: false,
+                    });
+                }
+            }
+        }
+        rows
+    }
+}

@@ -18,8 +18,11 @@ impl VirtualTable for SysPartitionFunctions {
                 ("name", DataType::VarChar { max_len: 128 }, false),
                 ("function_id", DataType::Int, false),
                 ("type", DataType::TinyInt, false),
+                ("type_desc", DataType::VarChar { max_len: 60 }, false),
                 ("fanout", DataType::Int, false),
                 ("boundary_value_on_right", DataType::Bit, false),
+                ("create_date", DataType::DateTime, false),
+                ("modify_date", DataType::DateTime, false),
             ],
         )
     }
@@ -58,6 +61,10 @@ impl VirtualTable for SysPartitionSchemes {
                 ("name", DataType::VarChar { max_len: 128 }, false),
                 ("data_space_id", DataType::Int, false),
                 ("function_id", DataType::Int, false),
+                ("type", DataType::Char { len: 2 }, false),
+                ("type_desc", DataType::VarChar { max_len: 60 }, false),
+                ("create_date", DataType::DateTime, false),
+                ("modify_date", DataType::DateTime, false),
             ],
         )
     }

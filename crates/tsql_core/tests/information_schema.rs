@@ -526,3 +526,108 @@ fn test_sys_indexes_with_alias_where() {
     );
     assert!(r.rows.len() >= 1, "t1 should have at least 1 index");
 }
+
+// ─── sys.all_objects ──────────────────────────────────────────────────────
+
+#[test]
+fn test_sys_all_objects_returns_user_tables() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE foo (id INT PRIMARY KEY)");
+    let r = query(
+        &mut e,
+        "SELECT name, type, type_desc FROM sys.all_objects WHERE type = 'U ' ORDER BY name",
+    );
+    assert!(!r.rows.is_empty());
+    assert_eq!(val(&r, 0, 0), "foo");
+    assert_eq!(val(&r, 0, 1), "U ");
+    assert_eq!(val(&r, 0, 2), "USER_TABLE");
+}
+
+// ─── sys.identity_columns ──────────────────────────────────────────────
+
+#[test]
+fn test_sys_identity_columns() {
+    let mut e = Engine::new();
+    exec(
+        &mut e,
+        "CREATE TABLE ident_test (id INT IDENTITY(1,1) PRIMARY KEY, name VARCHAR(50))",
+    );
+    let r = query(
+        &mut e,
+        "SELECT name, seed_value, increment_value FROM sys.identity_columns",
+    );
+    assert!(!r.rows.is_empty(), "identity_columns should have rows");
+    assert_eq!(val(&r, 0, 0), "id");
+    assert_eq!(val(&r, 0, 1), "1");
+    assert_eq!(val(&r, 0, 2), "1");
+}
+
+#[test]
+fn test_sys_identity_columns_no_identity() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE no_ident (id INT, name VARCHAR(50))");
+    let r = query(&mut e, "SELECT name FROM sys.identity_columns");
+    assert!(r.rows.is_empty(), "no identity columns expected");
+}
+
+// ─── sys.computed_columns ──────────────────────────────────────────────
+
+#[test]
+fn test_sys_computed_columns_empty() {
+    let mut e = Engine::new();
+    exec(
+        &mut e,
+        "CREATE TABLE comp_test (id INT PRIMARY KEY, val INT)",
+    );
+    let r = query(&mut e, "SELECT name FROM sys.computed_columns");
+    assert!(r.rows.is_empty(), "no computed columns expected");
+}
+
+// ─── sys.sql_expression_dependencies ──────────────────────────────────
+
+#[test]
+fn test_sys_sql_expression_dependencies_empty() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE dep_test (id INT PRIMARY KEY)");
+    let r = query(
+        &mut e,
+        "SELECT referencing_id, referenced_id FROM sys.sql_expression_dependencies",
+    );
+    assert!(r.rows.is_empty(), "no dependencies expected yet");
+}
+
+// ─── sys.partition_functions column shape ──────────────────────────────
+
+#[test]
+fn test_sys_partition_functions_has_type_desc() {
+    let mut e = Engine::new();
+    let r = query(
+        &mut e,
+        "SELECT name, function_id, type, type_desc, fanout, boundary_value_on_right, create_date FROM sys.partition_functions",
+    );
+    assert!(r.rows.is_empty(), "no partition functions expected");
+    assert!(r
+        .columns
+        .iter()
+        .any(|c| c.eq_ignore_ascii_case("type_desc")));
+    assert!(r
+        .columns
+        .iter()
+        .any(|c| c.eq_ignore_ascii_case("create_date")));
+}
+
+// ─── sys.partition_schemes column shape ────────────────────────────────
+
+#[test]
+fn test_sys_partition_schemes_has_type_desc() {
+    let mut e = Engine::new();
+    let r = query(
+        &mut e,
+        "SELECT name, data_space_id, function_id, type, type_desc FROM sys.partition_schemes",
+    );
+    assert!(r.rows.is_empty(), "no partition schemes expected");
+    assert!(r
+        .columns
+        .iter()
+        .any(|c| c.eq_ignore_ascii_case("type_desc")));
+}

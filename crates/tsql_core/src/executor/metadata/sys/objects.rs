@@ -5,6 +5,7 @@ use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
 pub(crate) struct SysObjects;
+pub(crate) struct SysAllObjects;
 pub(crate) struct SysSystemViews;
 pub(crate) struct SysCompatSysObjects;
 pub(crate) struct SysViews;
@@ -298,6 +299,16 @@ impl VirtualTable for SysObjects {
             });
         }
         rows
+    }
+}
+
+impl VirtualTable for SysAllObjects {
+    fn definition(&self) -> crate::catalog::TableDef {
+        SysObjects.definition()
+    }
+
+    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+        SysObjects.rows(catalog)
     }
 }
 

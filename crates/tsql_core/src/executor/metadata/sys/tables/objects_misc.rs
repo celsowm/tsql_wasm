@@ -390,3 +390,58 @@ impl VirtualTable for SysServerPrincipals {
         }]
     }
 }
+
+/// Stub for sys.sql_expression_dependencies — intentionally empty until
+/// cross-object dependency tracking is implemented.
+pub(crate) struct SysSqlExpressionDependencies;
+
+impl VirtualTable for SysSqlExpressionDependencies {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "sql_expression_dependencies",
+            vec![
+                ("referencing_id", DataType::Int, false),
+                ("referencing_class", DataType::TinyInt, false),
+                (
+                    "referencing_class_desc",
+                    DataType::VarChar { max_len: 60 },
+                    false,
+                ),
+                ("referencing_name", DataType::VarChar { max_len: 128 }, true),
+                (
+                    "referencing_schema",
+                    DataType::VarChar { max_len: 128 },
+                    true,
+                ),
+                (
+                    "referencing_database",
+                    DataType::VarChar { max_len: 128 },
+                    true,
+                ),
+                ("referenced_id", DataType::Int, true),
+                ("referenced_class", DataType::TinyInt, false),
+                (
+                    "referenced_class_desc",
+                    DataType::VarChar { max_len: 60 },
+                    false,
+                ),
+                ("referenced_name", DataType::VarChar { max_len: 128 }, true),
+                (
+                    "referenced_schema",
+                    DataType::VarChar { max_len: 128 },
+                    true,
+                ),
+                (
+                    "referenced_database",
+                    DataType::VarChar { max_len: 128 },
+                    true,
+                ),
+                ("is_schema_bound", DataType::Bit, false),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+        Vec::new()
+    }
+}

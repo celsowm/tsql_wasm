@@ -277,3 +277,23 @@ fn ssms_object_explorer_database_role_members_contract() {
 fn ssms_object_explorer_table_types_contract() {
     run_scope("table_types");
 }
+
+#[test]
+fn ssms_object_explorer_identity_columns_contract() {
+    run_scope("identity_columns");
+}
+
+#[test]
+fn ssms_object_explorer_computed_columns_contract() {
+    run_scope("computed_columns");
+}
+
+#[test]
+fn ssms_object_explorer_all_objects_contract() {
+    run_scope("all_objects");
+}
+
+#[test]
+fn ssms_object_explorer_metadata_dependencies_contract() {
+    run_scope("metadata_dependencies");
+}

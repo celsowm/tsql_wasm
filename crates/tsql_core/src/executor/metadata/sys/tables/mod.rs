@@ -1,15 +1,18 @@
 mod columns;
 mod databases;
+mod identity_columns;
 mod objects_misc;
 mod tables;
 mod types;
 
-pub(crate) use columns::{SysAllColumns, SysColumns, SysViewColumns};
+pub(crate) use columns::{SysAllColumns, SysColumns, SysComputedColumns, SysViewColumns};
 pub(crate) use databases::{SysConfigurations, SysDatabases, SysSysDatabases};
+pub(crate) use identity_columns::SysIdentityColumns;
 pub(crate) use objects_misc::{
     SysAssemblyModules, SysDataSpaces, SysEdgeConstraints, SysExtendedProperties,
-    SysForeignKeyColumns, SysIndexColumns, SysServerPrincipals, SysSqlModules, SysStats,
-    SysSystemSqlModules, SysTriggers, SysXmlIndexes, SysXmlSchemaCollections,
+    SysForeignKeyColumns, SysIndexColumns, SysServerPrincipals, SysSqlExpressionDependencies,
+    SysSqlModules, SysStats, SysSystemSqlModules, SysTriggers, SysXmlIndexes,
+    SysXmlSchemaCollections,
 };
 pub(crate) use tables::SysTables;
 pub(crate) use types::{SysTableTypes, SysTypes};

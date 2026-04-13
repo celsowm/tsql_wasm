@@ -907,6 +907,81 @@
           "min_rows": 0
         }
       ]
+    },
+    {
+      "name": "identity_columns_list",
+      "scope": "identity_columns",
+      "sql": "SELECT object_id, column_id, name, seed_value, increment_value, is_not_for_replication FROM sys.identity_columns ORDER BY name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "object_id",
+            "column_id",
+            "name",
+            "seed_value",
+            "increment_value",
+            "is_not_for_replication"
+          ],
+          "min_rows": 0
+        }
+      ]
+    },
+    {
+      "name": "computed_columns_list",
+      "scope": "computed_columns",
+      "sql": "SELECT object_id, column_id, name, is_computed, is_persisted FROM sys.computed_columns ORDER BY name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "object_id",
+            "column_id",
+            "name",
+            "is_computed",
+            "is_persisted"
+          ],
+          "min_rows": 0
+        }
+      ]
+    },
+    {
+      "name": "all_objects_list_user_tables",
+      "scope": "all_objects",
+      "sql": "SELECT object_id, name, type, type_desc, is_ms_shipped FROM sys.all_objects WHERE type_desc IN ('USER_TABLE', 'VIEW') AND is_ms_shipped = 0 ORDER BY name",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "object_id",
+            "name",
+            "type",
+            "type_desc",
+            "is_ms_shipped"
+          ],
+          "min_rows": 6
+        }
+      ]
+    },
+    {
+      "name": "sql_expression_dependencies_empty",
+      "scope": "metadata_dependencies",
+      "sql": "SELECT referencing_id, referenced_id, is_schema_bound FROM sys.sql_expression_dependencies ORDER BY referencing_id",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "referencing_id",
+            "referenced_id",
+            "is_schema_bound"
+          ],
+          "min_rows": 0
+        }
+      ]
     }
   ]
 }
