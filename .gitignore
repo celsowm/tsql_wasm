@@ -36,6 +36,9 @@ __pycache__/
 *~
 .qwen/
 
+# OpenCode
+.opencode/package-lock.json
+
 # OS
 .DS_Store
 Thumbs.db
