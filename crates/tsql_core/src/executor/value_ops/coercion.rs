@@ -464,6 +464,10 @@ fn coerce_date_value(v: chrono::NaiveDate, ty: &DataType) -> Result<Value, DbErr
             Ok(Value::NVarChar(v.format("%Y-%m-%d").to_string()))
         }
         DataType::Date => Ok(Value::Date(v)),
+        DataType::DateTime | DataType::DateTime2 => {
+            let dt = v.and_hms_opt(0, 0, 0).unwrap();
+            Ok(Value::DateTime(dt))
+        }
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Date(v)))),
         _ => Err(DbError::Execution(format!(
             "cannot convert DATE value to {:?}",
@@ -481,6 +485,12 @@ fn coerce_time_value(v: chrono::NaiveTime, ty: &DataType) -> Result<Value, DbErr
             Ok(Value::NVarChar(v.format("%H:%M:%S%.f").to_string()))
         }
         DataType::Time => Ok(Value::Time(v)),
+        DataType::DateTime | DataType::DateTime2 => {
+            let dt = chrono::NaiveDate::from_ymd_opt(1900, 1, 1)
+                .unwrap()
+                .and_time(v);
+            Ok(Value::DateTime(dt))
+        }
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Time(v)))),
         _ => Err(DbError::Execution(format!(
             "cannot convert TIME value to {:?}",
@@ -563,6 +573,22 @@ fn coerce_binary(data: &[u8], ty: &DataType) -> Result<Value, DbError> {
             Ok(Value::NVarChar(crate::types::format_binary(data)))
         }
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Binary(data.to_vec())))),
+        DataType::UniqueIdentifier => {
+            if data.len() == 16 {
+                let arr: [u8; 16] = data[..16].try_into().map_err(|_| {
+                    DbError::Execution("cannot convert BINARY to UNIQUEIDENTIFIER".into())
+                })?;
+                let uuid = uuid::Uuid::from_bytes_le(arr);
+                Ok(Value::UniqueIdentifier(uuid))
+            } else {
+                Err(DbError::Execution(
+                    "cannot convert BINARY to UNIQUEIDENTIFIER: expected 16 bytes".into(),
+                ))
+            }
+        }
+        DataType::DateTime | DataType::DateTime2 | DataType::Date | DataType::Time => Err(
+            DbError::Execution(format!("cannot convert BINARY to {:?}", ty)),
+        ),
         _ => Err(DbError::Execution(format!(
             "cannot convert BINARY to {:?}",
             ty

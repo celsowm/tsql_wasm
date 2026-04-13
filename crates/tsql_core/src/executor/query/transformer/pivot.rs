@@ -315,6 +315,51 @@ fn apply_aggregate_to_values(
             }
             Ok(Value::NVarChar(result))
         }
+        "STDEV" | "STDEVP" | "VAR" | "VARP" => {
+            let nums: Vec<f64> = values
+                .iter()
+                .filter_map(|v| {
+                    if v.is_null() {
+                        None
+                    } else {
+                        match v {
+                            Value::Int(i) => Some(*i as f64),
+                            Value::BigInt(i) => Some(*i as f64),
+                            Value::SmallInt(i) => Some(*i as f64),
+                            Value::TinyInt(i) => Some(*i as f64),
+                            Value::Float(f) => Some(f64::from_bits(*f)),
+                            Value::Decimal(raw, scale) => {
+                                let divisor = 10f64.powi(*scale as i32);
+                                Some(*raw as f64 / divisor)
+                            }
+                            Value::Money(m) => Some(*m as f64 / 10000.0),
+                            Value::SmallMoney(m) => Some(*m as f64 / 10000.0),
+                            _ => None,
+                        }
+                    }
+                })
+                .collect();
+            if nums.is_empty() {
+                return Ok(Value::Null);
+            }
+            let n = nums.len() as f64;
+            let mean = nums.iter().sum::<f64>() / n;
+            let variance = if func == "VAR" || func == "STDEV" {
+                if n <= 1.0 {
+                    return Ok(Value::Null);
+                }
+                let sum_sq = nums.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>();
+                sum_sq / (n - 1.0)
+            } else {
+                let sum_sq = nums.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>();
+                sum_sq / n
+            };
+            match func {
+                "VAR" | "VARP" => Ok(Value::Float(variance.to_bits())),
+                "STDEV" | "STDEVP" => Ok(Value::Float(variance.sqrt().to_bits())),
+                _ => unreachable!(),
+            }
+        }
         _ => Err(DbError::Execution(format!(
             "Aggregate function {} not supported in PIVOT yet",
             func

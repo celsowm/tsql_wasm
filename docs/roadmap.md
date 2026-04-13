@@ -53,17 +53,23 @@ Explicitly deferred until later phases:
 
 ## Current Baseline
 
-The repository already has strong coverage in core T-SQL, metadata subsets, playground mode, and differential checks.
+The repository now has **1156+ tests** in `tsql_core` covering language surface, metadata, transactions, and differential comparison. The `tsql_server` crate has **11 test files** covering TDS protocol, SSMS Object Explorer contract, cursors, and security.
 
-Known structural gaps already called out in the repo:
+**Implemented since last roadmap update:**
 
-- no on-disk WAL or page persistence
-- indexes are catalog-only and not used by the planner
-- metadata coverage is still a subset of SQL Server
-- TDS RPC handling is partial
-- some parser and executor paths still reject SQL Server syntax corners
+- Cursor RPC operations (sp_cursoropen, sp_cursorfetch, sp_cursorclose) - full TDS support
+- SSMS Object Explorer contract - 50+ test cases covering tables, indexes, constraints, routines, triggers, views, schemas, partitions, filegroups, stats, extended properties, database principals, permissions, role members
+- BTreeIndex storage - supports index seeks and range scans
+- Phase 1 features - PIVOT/UNPIVOT, MERGE, STRING_AGG, window functions, recursive CTEs
+- Phase 3-5 features - row locking, MVCC, savepoints, nested transactions, XACT_STATE
+- Phase 6-8 features - SET options, tooling compatibility, parser fuzz, persistence restart
 
-This roadmap assumes those gaps are real until closed by tests.
+**Remaining gaps:**
+
+- WAL/page persistence and crash recovery (not yet implemented)
+- Planner does not use indexes for all access paths
+- Metadata coverage is still a subset of SQL Server
+- Full security model (principals, roles, permissions) not yet implemented
 
 Current status tracking lives in:
 
@@ -178,9 +184,12 @@ Focus areas:
 
 - remaining DDL / DML syntax gaps
 - expression semantics and type coercion edge cases
-- `APPLY`, `PIVOT`, `UNPIVOT`, grouped join corners, `MERGE`, `OUTPUT`
+- `APPLY`, `PIVOT`, `UNPIVOT`, grouped join corners, `MERGE` (including `NOT MATCHED BY SOURCE`), `OUTPUT`
 - routine semantics, temp objects, TVPs, dynamic SQL
 - SQL Server-specific string, date, conversion, and identity behavior
+- PIVOT statistical aggregates (`STDEV`, `STDEVP`, `VAR`, `VARP`)
+- `STRING_ESCAPE` with `JSON`, `HTML`, `CSV` escape types
+- type coercion: `DATE`/`TIME` to `DATETIME`/`DATETIME2`, `BINARY` to `UNIQUEIDENTIFIER`, `DECIMAL` identity columns
 - error cases where SQL Server fails but the engine currently returns a value or vice versa
 
 Primary owners:
@@ -474,6 +483,57 @@ Suggested status fields:
 4. Convert current explicit unsupported parser and RPC branches into tracked backlog items linked to this roadmap.
 
 ## Changelog
+
+### 2026-04-13: Current Status - Major Milestone Achieved ✅
+
+**Phase Progress:**
+
+- **Phase 0 (Freeze Target)**: COMPLETE - Compatibility matrix and backlog maintained
+- **Phase 1 (Core Language)**: SUBSTANTIAL - PIVOT/UNPIVOT, MERGE, OUTPUT, recursive CTEs, window functions, STRING_AGG, PROCEDURAL OUTPUT, TRY_CAST/TRY_CONVERT
+- **Phase 2 (Metadata)**: SUBSTANTIAL - INFORMATION_SCHEMA, sys.* views, SSMS Object Explorer contract (50+ cases), database principals, permissions, role members
+- **Phase 3 (TDS/Protocol)**: SUBSTANTIAL - Login/prelogin, sp_executesql, sp_prepexec, cursor RPCs, TLS, error handling
+- **Phase 4 (Transactions)**: SUBSTANTIAL - Row locking, MVCC, savepoints, nested transactions, XACT_STATE, deadlock detection
+- **Phase 5 (Physical Engine)**: IN PROGRESS - BTreeIndex storage, checkpoint import/export, planner index usage
+- **Phase 6 (Security)**: STARTING - SET options, tooling compatibility
+- **Phase 7 (Admin)**: TRIAGE - Classification in progress
+- **Phase 8 (Hardening)**: IN PROGRESS - Parser fuzz, persistence restart suite, performance guards
+
+**Test Coverage:**
+- 1156+ tests in tsql_core
+- 11 test files in tsql_server (cursor, ssms_object_explorer, compatibility, security, basic, crud, playground, pool)
+
+**Key Files:**
+- Cursor: `crates/tsql_server/tests/cursor_compat_test.rs`, `cursor_compare_test.rs`, `cursor_quick_test.rs`
+- SSMS: `crates/tsql_server/tests/ssms_object_explorer_contract.rs`, `fixtures/ssms_object_explorer_cases.json`
+- Phases: `crates/tsql_core/tests/phase*_*.rs`
+- SQL Server comparison: `crates/tsql_core/tests/sqlserver_*.rs`
+
+**Test Commands:**
+```bash
+cargo test -p tsql_core        # Core engine tests (recommended for dev)
+cargo test -p tsql_wasm       # WASM bindings tests
+cargo test -p tsql_server    # Server tests (requires Podman for integration)
+```
+
+### 2026-04-13: Phase 1 Language Closure Progress ✅
+
+**Implemented:**
+
+- **MERGE `WHEN NOT MATCHED BY SOURCE`**: Full executor support for UPDATE and DELETE actions with conditions. Tests cover delete, update, conditional, and all-three-clauses scenarios. `crates/tsql_core/tests/merge_statement.rs`
+- **PIVOT statistical aggregates**: `STDEV`, `STDEVP`, `VAR`, `VARP` now work in PIVOT queries. Proper sample/population variance calculation and null handling. `crates/tsql_core/src/executor/query/transformer/pivot.rs`
+- **STRING_ESCAPE `CSV` type**: Added CSV escape type alongside existing JSON, HTML, XML support. `crates/tsql_core/src/executor/scalar/string/format.rs`
+- **Type coercion improvements**: `DATE`/`TIME` → `DATETIME`/`DATETIME2`, `BINARY` → `UNIQUEIDENTIFIER` (16-byte), `DECIMAL` identity columns. `crates/tsql_core/src/executor/value_ops/coercion.rs`
+- **UDF error message fix**: "not supported" → "not found" for missing UDFs. `crates/tsql_core/src/executor/scalar/udf.rs`
+
+**Confirmed already implemented:**
+
+- **Temp tables (`#temp`)**: CREATE TABLE #temp, INSERT/SELECT/DROP with session-scoped name mapping and cleanup. `crates/tsql_core/tests/phase4_programmability_closure.rs`
+
+**Remaining Phase 1 gaps:**
+
+- SET options: many silently ignored (NOEXEC, FMTONLY, etc.)
+- TVF/UDF non-scalar parameters (TVP parameters)
+- Full type coercion parity (all source→target combinations)
 
 ### 2026-04-13: Cursor RPC Operations (B021) ✅
 

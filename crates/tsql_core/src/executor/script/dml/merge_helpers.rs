@@ -427,6 +427,7 @@ pub(crate) fn merge_process_not_matched_phase(
     source_matched_to_target: &mut [bool],
     merge_output_rows: &mut Vec<MergeOutputRow>,
     inserted_rows_for_trigger: &mut Vec<StoredRow>,
+    inserted_new_rows: &mut Vec<StoredRow>,
 ) -> Result<(), DbError> {
     let source_alias = merge_source_alias(stmt)?;
     let source_table_def = synthetic_source_table(source_alias.clone(), target_table);
@@ -480,11 +481,159 @@ pub(crate) fn merge_process_not_matched_phase(
                         merge_output_rows,
                         inserted_rows_for_trigger,
                     )?;
-                    storage.insert_row(target_table.id, temp_row.clone())?;
+                    inserted_new_rows.push(temp_row);
                 }
                 _ => {
                     return Err(DbError::Execution(
                         "only INSERT is allowed in WHEN NOT MATCHED".into(),
+                    ));
+                }
+            }
+            break;
+        }
+    }
+
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn merge_process_not_matched_by_source_phase(
+    stmt: &MergeStmt,
+    target_table: &TableDef,
+    target_alias: &str,
+    source_rows: &[Vec<Value>],
+    target_rows: &[StoredRow],
+    ctx: &mut ExecutionContext<'_>,
+    catalog: &mut dyn Catalog,
+    storage: &mut dyn Storage,
+    clock: &dyn Clock,
+    updated_target_rows: &mut [StoredRow],
+    merge_output_rows: &mut Vec<MergeOutputRow>,
+    inserted_rows_for_trigger: &mut Vec<StoredRow>,
+    deleted_rows_for_trigger: &mut Vec<StoredRow>,
+) -> Result<(), DbError> {
+    let source_alias = merge_source_alias(stmt)?;
+    let source_table_def = synthetic_source_table(source_alias.clone(), target_table);
+
+    let has_not_matched_by_source = stmt
+        .when_clauses
+        .iter()
+        .any(|wc| matches!(wc.when, crate::ast::MergeWhen::NotMatchedBySource));
+
+    if !has_not_matched_by_source {
+        return Ok(());
+    }
+
+    for (i, target_row) in target_rows.iter().enumerate() {
+        if target_row.deleted || updated_target_rows[i].deleted {
+            continue;
+        }
+
+        let mut any_source_match = false;
+        for source_row in source_rows.iter() {
+            let mut combined_ctx = merge_target_context(
+                target_table,
+                target_alias.to_string(),
+                updated_target_rows[i].clone(),
+                Some(i),
+            );
+            combined_ctx.extend(merge_source_context(
+                &source_table_def,
+                source_alias.clone(),
+                StoredRow {
+                    values: source_row.clone(),
+                    deleted: false,
+                },
+                None,
+            ));
+
+            let on_matches_val = crate::executor::evaluator::eval_expr(
+                &stmt.on_condition,
+                &combined_ctx,
+                ctx,
+                catalog,
+                storage,
+                clock,
+            )?;
+
+            let on_matches = match on_matches_val {
+                Value::Bit(b) => b,
+                Value::Null => false,
+                _ => crate::executor::value_ops::truthy(&on_matches_val),
+            };
+
+            if on_matches {
+                any_source_match = true;
+                break;
+            }
+        }
+
+        if any_source_match {
+            continue;
+        }
+
+        let target_ctx = merge_target_context(
+            target_table,
+            target_alias.to_string(),
+            updated_target_rows[i].clone(),
+            Some(i),
+        );
+
+        for when_clause in &stmt.when_clauses {
+            if !matches!(when_clause.when, crate::ast::MergeWhen::NotMatchedBySource) {
+                continue;
+            }
+            if let Some(cond) = &when_clause.condition {
+                let cond_val = crate::executor::evaluator::eval_predicate(
+                    cond,
+                    &target_ctx,
+                    ctx,
+                    catalog,
+                    storage,
+                    clock,
+                )?;
+                if !cond_val {
+                    continue;
+                }
+            }
+
+            match &when_clause.action {
+                crate::ast::MergeAction::Update { assignments } => {
+                    let target_row_snapshot = updated_target_rows[i].clone();
+                    merge_apply_update_action(
+                        stmt,
+                        target_table,
+                        ctx,
+                        catalog,
+                        storage,
+                        clock,
+                        &target_ctx,
+                        &target_row_snapshot,
+                        assignments,
+                        updated_target_rows,
+                        i,
+                        merge_output_rows,
+                        inserted_rows_for_trigger,
+                        deleted_rows_for_trigger,
+                    )?;
+                }
+                crate::ast::MergeAction::Delete => {
+                    let target_row_snapshot = updated_target_rows[i].clone();
+                    merge_apply_delete_action(
+                        stmt,
+                        target_table,
+                        catalog,
+                        storage,
+                        &target_row_snapshot,
+                        updated_target_rows,
+                        i,
+                        merge_output_rows,
+                        deleted_rows_for_trigger,
+                    )?;
+                }
+                _ => {
+                    return Err(DbError::Execution(
+                        "only UPDATE or DELETE is allowed in WHEN NOT MATCHED BY SOURCE".into(),
                     ));
                 }
             }

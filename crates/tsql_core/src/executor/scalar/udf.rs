@@ -26,10 +26,7 @@ pub(crate) fn eval_user_scalar_function(
         ("dbo", name)
     };
     let Some(routine) = catalog.find_routine(schema, fname) else {
-        return Err(DbError::Execution(format!(
-            "function '{}' not supported",
-            name
-        )));
+        return Err(DbError::Execution(format!("function '{}' not found", name)));
     };
     let RoutineKind::Function { body, .. } = &routine.kind else {
         return Err(DbError::Execution(format!("'{}' is not a function", name)));

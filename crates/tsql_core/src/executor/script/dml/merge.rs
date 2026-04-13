@@ -1,6 +1,7 @@
 use super::super::ScriptExecutor;
 use super::merge_helpers::{
-    merge_process_matched_phase, merge_process_not_matched_phase, merge_source_rows,
+    merge_process_matched_phase, merge_process_not_matched_by_source_phase,
+    merge_process_not_matched_phase, merge_source_rows,
 };
 use crate::ast::MergeStmt;
 use crate::error::DbError;
@@ -80,23 +81,8 @@ impl<'a> ScriptExecutor<'a> {
             &mut deleted_rows_for_trigger,
         )?;
 
-        // Ensure all matched rows are updated in storage before NOT MATCHED
-        self.storage.clear_table(target_table.id)?;
-        if let Some(db) = &ctx.session.dirty_buffer {
-            db.lock().push_op(
-                ctx.session_id(),
-                target_table.name.clone(),
-                crate::executor::dirty_buffer::DirtyOp::Truncate,
-            );
-        }
-        for row in updated_target_rows {
-            if !row.deleted {
-                self.storage.insert_row(target_table.id, row.clone())?;
-                self.push_dirty_insert(ctx, &target_table.name, &row);
-            }
-        }
-
         // Process WHEN NOT MATCHED (source rows not matched to target)
+        let mut inserted_new_rows: Vec<crate::storage::StoredRow> = Vec::new();
         merge_process_not_matched_phase(
             &stmt,
             &target_table,
@@ -108,7 +94,43 @@ impl<'a> ScriptExecutor<'a> {
             &mut source_matched_to_target,
             &mut merge_output_rows,
             &mut inserted_rows_for_trigger,
+            &mut inserted_new_rows,
         )?;
+
+        // Process WHEN NOT MATCHED BY SOURCE (target rows not matched by any source row)
+        merge_process_not_matched_by_source_phase(
+            &stmt,
+            &target_table,
+            &target_alias,
+            &source_rows,
+            &target_rows,
+            ctx,
+            self.catalog,
+            self.storage,
+            self.clock,
+            &mut updated_target_rows,
+            &mut merge_output_rows,
+            &mut inserted_rows_for_trigger,
+            &mut deleted_rows_for_trigger,
+        )?;
+
+        // Write all changes to storage
+        self.storage.clear_table(target_table.id)?;
+        if let Some(db) = &ctx.session.dirty_buffer {
+            db.lock().push_op(
+                ctx.session_id(),
+                target_table.name.clone(),
+                crate::executor::dirty_buffer::DirtyOp::Truncate,
+            );
+        }
+        for row in updated_target_rows.iter() {
+            if !row.deleted {
+                self.storage.insert_row(target_table.id, row.clone())?;
+            }
+        }
+        for row in &inserted_new_rows {
+            self.storage.insert_row(target_table.id, row.clone())?;
+        }
 
         let mut mut_exec = crate::executor::mutation::MutationExecutor {
             catalog: self.catalog,

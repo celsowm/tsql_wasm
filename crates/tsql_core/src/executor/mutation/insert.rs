@@ -250,6 +250,10 @@ impl<'a> MutationExecutor<'a> {
                         DataType::SmallInt => Value::SmallInt(next_val as i16),
                         DataType::Int => Value::Int(next_val as i32),
                         DataType::BigInt => Value::BigInt(next_val),
+                        DataType::Decimal { scale, .. } => {
+                            let raw = next_val as i128 * 10i128.pow(*scale as u32);
+                            Value::Decimal(raw, *scale)
+                        }
                         _ => {
                             return Err(DbError::Execution(format!(
                                 "identity not supported for column type {:?}",

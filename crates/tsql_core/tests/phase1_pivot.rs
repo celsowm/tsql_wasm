@@ -340,21 +340,24 @@ fn test_pivot_with_subquery() {
     assert_eq!(r.rows[0][4], Value::Int(3000));
 }
 
-// ─── PIVOT error: unsupported aggregate ─────────────────────────────────
+// ─── PIVOT: STDEV aggregate (now supported) ──────────────────────────────────
 
 #[test]
-fn test_pivot_error_unsupported_aggregate() {
+fn test_pivot_stdev_aggregate() {
     let mut e = Engine::new();
     setup_sales(&mut e);
 
-    let stmt = parse_sql(
+    let r = query(
+        &mut e,
         "SELECT * FROM (SELECT region, quarter, amount FROM sales) AS s \
          PIVOT (STDEV(amount) FOR quarter IN (Q1)) AS p",
     );
-    let result = e.execute(stmt.expect("parse failed"));
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(err.to_string().contains("not supported"));
+    assert_eq!(r.rows.len(), 3);
+    // STDEV with sample of 1 should return NULL
+    assert!(r
+        .rows
+        .iter()
+        .any(|row| row[1] == Value::Null || matches!(row[1], Value::Float(_))));
 }
 
 // ─── PIVOT with non-matching pivot column values ────────────────────────

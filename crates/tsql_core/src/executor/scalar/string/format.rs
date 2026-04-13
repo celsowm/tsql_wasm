@@ -378,6 +378,19 @@ pub(crate) fn eval_string_escape(
             }
         }
         Ok(Value::NVarChar(result))
+    } else if escape_type == "CSV" {
+        let mut result = String::with_capacity(s.len());
+        for c in s.chars() {
+            match c {
+                ',' => result.push_str("\\,"),
+                '"' => result.push_str("\\\""),
+                '\n' => result.push_str("\\n"),
+                '\r' => result.push_str("\\r"),
+                '\\' => result.push_str("\\\\"),
+                _ => result.push(c),
+            }
+        }
+        Ok(Value::NVarChar(result))
     } else {
         Err(DbError::Execution(format!(
             "STRING_ESCAPE: unsupported escape type '{}'",
