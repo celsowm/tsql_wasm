@@ -18,37 +18,66 @@ pub(crate) fn choose_scan_strategy(
     if indexes.is_empty() {
         return ScanStrategy::TableScan;
     }
-    let Some(idx) = indexes.first() else {
-        return ScanStrategy::TableScan;
-    };
-    let Some(first_col_id) = idx.column_ids.first() else {
-        return ScanStrategy::TableScan;
-    };
-    let Some(first_col) = bound.table.columns.iter().find(|c| c.id == *first_col_id) else {
-        return ScanStrategy::TableScan;
-    };
 
-    if let Some(pred) = predicate {
-        if let Some((op, _)) =
-            extract_index_predicate_rhs(Some(pred), &bound.alias, &first_col.name)
-        {
-            if matches!(op, BinaryOp::Eq) {
-                return ScanStrategy::IndexSeek { index_id: idx.id };
-            }
-            return ScanStrategy::IndexScan { index_id: idx.id };
-        }
-    }
-    if order_by.len() == 1 {
-        if let Expr::QualifiedIdentifier(parts) = &order_by[0].expr {
-            if parts.len() >= 2
-                && parts[0].eq_ignore_ascii_case(&bound.alias)
-                && parts[1].eq_ignore_ascii_case(&first_col.name)
-                && order_by[0].asc
+    // P1: Try all indexes, not just the first one
+    for idx in &indexes {
+        let Some(first_col_id) = idx.column_ids.first() else {
+            continue;
+        };
+        let Some(first_col) = bound.table.columns.iter().find(|c| c.id == *first_col_id) else {
+            continue;
+        };
+
+        if let Some(pred) = predicate {
+            if let Some((op, _)) =
+                extract_index_predicate_rhs(Some(pred), &bound.alias, &first_col.name)
             {
+                if matches!(op, BinaryOp::Eq) {
+                    return ScanStrategy::IndexSeek { index_id: idx.id };
+                }
                 return ScanStrategy::IndexScan { index_id: idx.id };
             }
         }
     }
+
+    // P1: Check ORDER BY with any index
+    if order_by.len() == 1 {
+        if let Expr::QualifiedIdentifier(parts) = &order_by[0].expr {
+            for idx in &indexes {
+                let Some(first_col_id) = idx.column_ids.first() else {
+                    continue;
+                };
+                let Some(first_col) = bound.table.columns.iter().find(|c| c.id == *first_col_id)
+                else {
+                    continue;
+                };
+                if parts.len() >= 2
+                    && parts[0].eq_ignore_ascii_case(&bound.alias)
+                    && parts[1].eq_ignore_ascii_case(&first_col.name)
+                    && order_by[0].asc
+                {
+                    return ScanStrategy::IndexScan { index_id: idx.id };
+                }
+            }
+        }
+    }
+
+    // P1: Try any column in predicate with any index
+    if let Some(pred) = predicate {
+        for idx in &indexes {
+            for col in &bound.table.columns {
+                if let Some((op, _)) =
+                    extract_index_predicate_rhs(Some(pred), &bound.alias, &col.name)
+                {
+                    if matches!(op, BinaryOp::Eq) {
+                        return ScanStrategy::IndexSeek { index_id: idx.id };
+                    }
+                    return ScanStrategy::IndexScan { index_id: idx.id };
+                }
+            }
+        }
+    }
+
     ScanStrategy::TableScan
 }
 

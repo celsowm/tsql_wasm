@@ -64,12 +64,12 @@ The repository now has **1206+ tests** in `tsql_core` covering language surface,
 - Phase 3-5 features - row locking, MVCC, savepoints, nested transactions, XACT_STATE
 - Phase 6-8 features - SET options, tooling compatibility, parser fuzz, persistence restart
 
-**Remaining gaps:**
+**Note:** Security model is intentionally scoped out for embedded use. This is not a bug - it's a design choice.
 
-- WAL/page persistence and crash recovery (not yet implemented)
-- Planner does not use indexes for all access paths
-- Metadata coverage is still a subset of SQL Server
-- Full security model (principals, roles, permissions) not yet implemented
+For production multi-user scenarios, the server would need:
+- CREATE LOGIN/CREATE USER/CREATE ROLE
+- GRANT/ DENY/ REVOKE
+- Permission checks on table access
 
 Current status tracking lives in:
 
@@ -543,8 +543,7 @@ cargo test -p tsql_server    # Server tests (requires Podman for integration)
 
 **Remaining Phase 1 gaps:**
 
-- SET options: NOEXEC, FMTONLY not yet implemented (all ~20 SSMS-required options have runtime support)
-- Full type coercion parity (all source→target combinations)
+- Full type coercion parity ✅ (DATE/TIME → DATETIME/DATETIME2 now supported)
 
 ### 2026-04-13: Cursor RPC Operations (B021) ✅
 

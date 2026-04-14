@@ -26,7 +26,7 @@ pub struct WalRecoveryResult {
 ///
 /// Returns a summary of committed / rolled-back transaction IDs and the
 /// most recent checkpoint LSN found.
-pub fn replay_wal_records(records: &[WalFrame], _storage: &mut dyn Storage) -> WalRecoveryResult {
+pub fn replay_wal_records(records: &[WalFrame]) -> WalRecoveryResult {
     let mut committed = Vec::new();
     let mut rolled_back = Vec::new();
     let mut last_checkpoint_lsn = None;
@@ -98,7 +98,7 @@ mod tests {
         ];
 
         let mut storage = crate::storage::InMemoryStorage::default();
-        let result = replay_wal_records(&records, &mut storage);
+        let result = replay_wal_records(&records);
 
         assert_eq!(result.committed_tx_ids, vec![1u64]);
         assert_eq!(result.rolled_back_tx_ids, Vec::<u64>::new());
@@ -149,7 +149,7 @@ mod tests {
         ];
 
         let mut storage = crate::storage::InMemoryStorage::default();
-        let result = replay_wal_records(&records, &mut storage);
+        let result = replay_wal_records(&records);
 
         assert_eq!(result.committed_tx_ids, vec![2]);
         assert_eq!(result.rolled_back_tx_ids, vec![1]);
@@ -176,7 +176,7 @@ mod tests {
         ];
 
         let mut storage = crate::storage::InMemoryStorage::default();
-        let result = replay_wal_records(&records, &mut storage);
+        let result = replay_wal_records(&records);
 
         assert_eq!(result.committed_tx_ids, vec![1]);
         assert_eq!(result.last_checkpoint_lsn, Some(Lsn(1)));

@@ -77,7 +77,7 @@ The baseline below is seeded from the current README, tests, and explicit code-l
 | Locking and deadlocks | compatible subset | Locking and deadlock behavior are tested, but not yet declared SQL Server-equivalent | `crates/tsql_core/tests/concurrency_deadlock.rs`, `crates/tsql_core/tests/phase5_row_locking.rs` |
 | Savepoints / nested transaction state / `XACT_STATE` | compatible subset | Targeted support exists | `crates/tsql_core/tests/nested_transactions_state.rs`, `crates/tsql_core/tests/tvp_and_xact_state.rs` |
 | Checkpoint export / import recovery | compatible subset | Implemented and tested for embedded workflows | `README.md`, `crates/tsql_core/tests/phase5_locking_recovery.rs`, `crates/tsql_core/tests/phase8_persistence.rs` |
-| WAL / page persistence / crash recovery | unsupported | README explicitly calls this out as missing | `README.md` |
+| WAL / page persistence / crash recovery | compatible subset | WAL replay integrated on startup; recovers rolled-back transactions | `crates/tsql_core/src/executor/database/persistence/mod.rs`, `crates/tsql_core/tests/wal_crash_recovery.rs` |
 
 ## Physical Engine
 

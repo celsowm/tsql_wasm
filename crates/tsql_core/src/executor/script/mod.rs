@@ -73,6 +73,7 @@ impl<'a> ScriptExecutor<'a> {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub(crate) fn push_dirty_insert(
         &self,
         ctx: &mut ExecutionContext<'_>,

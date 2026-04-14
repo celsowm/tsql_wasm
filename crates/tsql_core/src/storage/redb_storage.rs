@@ -464,7 +464,7 @@ impl IndexStorage for RedbStorage {
         _key: Value,
         _row_index: usize,
     ) -> Result<(), DbError> {
-        let index = self
+        let _index = self
             .indexes
             .get_mut(&index_id)
             .ok_or_else(|| DbError::Storage(format!("index {} not found", index_id)))?;
@@ -478,7 +478,7 @@ impl IndexStorage for RedbStorage {
         _key: &Value,
         _row_index: usize,
     ) -> Result<(), DbError> {
-        let index = self
+        let _index = self
             .indexes
             .get_mut(&index_id)
             .ok_or_else(|| DbError::Storage(format!("index {} not found", index_id)))?;

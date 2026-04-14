@@ -100,6 +100,28 @@ fn coercion_date_to_varchar() {
 }
 
 #[test]
+fn coercion_date_to_datetime() {
+    let mut e = Engine::new();
+    let r = query(
+        &mut e,
+        "SELECT CAST(CAST('2025-01-15' AS DATE) AS DATETIME)",
+    );
+    assert_eq!(r.rows[0][0].to_string_value(), "2025-01-15 00:00:00");
+}
+
+#[test]
+fn coercion_time_to_datetime() {
+    let mut e = Engine::new();
+    let r = query(&mut e, "SELECT CAST(CAST('12:30:00' AS TIME) AS DATETIME)");
+    let expected = r.rows[0][0].to_string_value();
+    assert!(
+        expected.contains("12:30"),
+        "expected time component, got: {}",
+        expected
+    );
+}
+
+#[test]
 fn coercion_datetime_to_date() {
     let mut e = Engine::new();
     let r = query(

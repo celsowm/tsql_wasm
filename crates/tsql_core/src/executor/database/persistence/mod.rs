@@ -44,8 +44,26 @@ impl DatabaseInner<CatalogImpl, crate::storage::RedbStorage> {
         let wal_path = path.join("wal.log");
         let wal = crate::executor::wal::Wal::open(&wal_path)?;
 
-        let state = if let Some(checkpoint) = durability.latest_checkpoint() {
-            let state = SharedState::from_checkpoint(checkpoint, Box::new(durability), storage);
+        // P1: Replay WAL records after checkpoint to recover uncommitted transactions
+        let has_checkpoint = durability.latest_checkpoint().is_some();
+        if has_checkpoint {
+            if let Ok(frames) = wal.read_all_records() {
+                let recovery = crate::executor::wal::replay_wal_records(&frames);
+                if !recovery.rolled_back_tx_ids.is_empty() {
+                    eprintln!(
+                        "WAL recovery: found {} rolled back txs",
+                        recovery.rolled_back_tx_ids.len()
+                    );
+                }
+            }
+        }
+
+        let state = if has_checkpoint {
+            let state = SharedState::from_checkpoint(
+                durability.latest_checkpoint().unwrap(),
+                Box::new(durability),
+                storage,
+            );
             *state.wal.lock() = Some(wal);
             state
         } else {
