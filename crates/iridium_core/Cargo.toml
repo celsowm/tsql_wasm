@@ -1,0 +1,25 @@
+[package]
+name = "iridium_core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bincode = { version = "2", features = ["serde"] }
+thiserror = "1"
+hex = "0.4"
+winnow = "0.7"
+regex = "1.12.3"
+redb = "2.1"
+uuid = { version = "1", features = ["v4", "serde"] }
+parking_lot = "0.12"
+dashmap = "6.1.0"
+chrono = { version = "0.4", features = ["clock", "serde"] }
+
+[dev-dependencies]
+tempfile = "3"
+tiberius = { version = "0.12.3", default-features = false, features = ["tokio", "tds73", "chrono"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+

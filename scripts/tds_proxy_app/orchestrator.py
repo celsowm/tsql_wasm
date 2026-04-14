@@ -123,7 +123,7 @@ class Orchestrator:
         self._log_capture()
 
     def _phase_playground(self) -> None:
-        self.logger.line("=== PHASE 2: tsql-server playground ===")
+        self.logger.line("=== PHASE 2: iridium-server playground ===")
         if self.capture is not None:
             self.capture.stop()
             self.capture = None
@@ -246,3 +246,4 @@ def run_from_args(args: argparse.Namespace) -> int:
     finally:
         orchestrator.cleanup()
     return 0
+

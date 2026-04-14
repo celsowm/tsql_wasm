@@ -1,4 +1,4 @@
-# tsql_wasm Compatibility Roadmap
+# Iridium SQL Compatibility Roadmap
 
 ## Goal
 
@@ -29,7 +29,7 @@ A feature area is not done when syntax parses or when one happy-path test passes
 
 A feature area is done when all of the following are true:
 
-1. The behavior is implemented in `tsql_core` and exposed correctly through `tsql_server` and `tsql_wasm` where relevant.
+1. The behavior is implemented in `iridium_core` and exposed correctly through `iridium_server` and `iridium_wasm` where relevant.
 2. Differential tests compare behavior against Azure SQL Edge or SQL Server for results, rowcount, and error shape.
 3. Metadata shape matches for supported scenarios, including column names, types, and nullability.
 4. Client-facing behavior is validated for the clients covered by the phase.
@@ -53,7 +53,7 @@ Explicitly deferred until later phases:
 
 ## Current Baseline
 
-The repository now has **1206+ tests** in `tsql_core` covering language surface, metadata, transactions, and differential comparison. The `tsql_server` crate has **11 test files** covering TDS protocol, SSMS Object Explorer contract, cursors, and security.
+The repository now has **1206+ tests** in `iridium_core` covering language surface, metadata, transactions, and differential comparison. The `iridium_server` crate has **11 test files** covering TDS protocol, SSMS Object Explorer contract, cursors, and security.
 
 **Implemented since last roadmap update:**
 
@@ -81,9 +81,9 @@ Current status tracking lives in:
 The project needs explicit references for truth:
 
 - Semantic oracle: Azure SQL Edge via `scripts/test-compat.ps1` and `scripts/compat-runner`
-- Tooling oracle: SSMS Object Explorer contract replay in `crates/tsql_server/tests/ssms_object_explorer_contract.rs`
+- Tooling oracle: SSMS Object Explorer contract replay in `crates/iridium_server/tests/ssms_object_explorer_contract.rs`
 - Client oracle: `sqlcmd`, SSMS, Azure Data Studio, `tedious`, `tiberius`, and other drivers added phase by phase
-- Local regression oracle: `cargo test -p tsql_core`, `cargo test -p tsql_server`, and targeted integration suites
+- Local regression oracle: `cargo test -p iridium_core`, `cargo test -p iridium_server`, and targeted integration suites
 
 Important rule:
 
@@ -97,52 +97,52 @@ Ownership here means code boundaries, not specific people.
 
 Primary modules:
 
-- `crates/tsql_core/src/parser/*`
-- `crates/tsql_core/src/ast/*`
-- `crates/tsql_core/src/executor/query/*`
-- `crates/tsql_core/src/executor/script/*`
-- `crates/tsql_core/src/executor/scalar/*`
-- `crates/tsql_core/src/executor/mutation/*`
+- `crates/iridium_core/src/parser/*`
+- `crates/iridium_core/src/ast/*`
+- `crates/iridium_core/src/executor/query/*`
+- `crates/iridium_core/src/executor/script/*`
+- `crates/iridium_core/src/executor/scalar/*`
+- `crates/iridium_core/src/executor/mutation/*`
 
 ### Workstream B: Metadata and Catalog
 
 Primary modules:
 
-- `crates/tsql_core/src/catalog/*`
-- `crates/tsql_core/src/executor/metadata/*`
-- `crates/tsql_core/src/executor/scalar/metadata/*`
-- `crates/tsql_core/src/executor/scalar/system/*`
+- `crates/iridium_core/src/catalog/*`
+- `crates/iridium_core/src/executor/metadata/*`
+- `crates/iridium_core/src/executor/scalar/metadata/*`
+- `crates/iridium_core/src/executor/scalar/system/*`
 
 ### Workstream C: TDS and Clients
 
 Primary modules:
 
-- `crates/tsql_server/src/tds/*`
-- `crates/tsql_server/src/session/*`
-- `crates/tsql_server/src/server.rs`
-- `crates/tsql_server/tests/*`
+- `crates/iridium_server/src/tds/*`
+- `crates/iridium_server/src/session/*`
+- `crates/iridium_server/src/server.rs`
+- `crates/iridium_server/tests/*`
 - `scripts/tds_proxy_app/*`
 
 ### Workstream D: Transactions, Locking, Recovery
 
 Primary modules:
 
-- `crates/tsql_core/src/executor/transaction*`
-- `crates/tsql_core/src/executor/locks/*`
-- `crates/tsql_core/src/executor/deadlock.rs`
-- `crates/tsql_core/src/executor/journal.rs`
-- `crates/tsql_core/src/executor/durability.rs`
-- `crates/tsql_core/src/executor/database/persistence/*`
-- `crates/tsql_core/src/storage/*`
+- `crates/iridium_core/src/executor/transaction*`
+- `crates/iridium_core/src/executor/locks/*`
+- `crates/iridium_core/src/executor/deadlock.rs`
+- `crates/iridium_core/src/executor/journal.rs`
+- `crates/iridium_core/src/executor/durability.rs`
+- `crates/iridium_core/src/executor/database/persistence/*`
+- `crates/iridium_core/src/storage/*`
 
 ### Workstream E: Security and Visibility
 
 Primary modules:
 
-- `crates/tsql_server/src/session/*`
-- `crates/tsql_core/src/catalog/*`
-- `crates/tsql_core/src/executor/metadata/*`
-- future security / principal models in `tsql_core`
+- `crates/iridium_server/src/session/*`
+- `crates/iridium_core/src/catalog/*`
+- `crates/iridium_core/src/executor/metadata/*`
+- future security / principal models in `iridium_core`
 
 ## Phase 0: Freeze the Target and Build the Scoreboard
 
@@ -166,7 +166,7 @@ Primary owners:
 
 - `scripts/test-compat.ps1`
 - `scripts/compat-runner/*`
-- `crates/tsql_server/tests/ssms_object_explorer_contract.rs`
+- `crates/iridium_server/tests/ssms_object_explorer_contract.rs`
 
 Exit criteria:
 
@@ -499,47 +499,47 @@ Suggested status fields:
 - **Phase 8 (Hardening)**: COMPLETE - Parser exists, regression corpus (14 tests), STRING_AGG, CTE, MERGE, PIVOT, window functions, subqueries, UNION, EXISTS, LIKE
 
 **Test Coverage:**
-- 1255+ tests in tsql_core (now ~1315 with all new test files)
-- 12 test files in tsql_server (cursor, ssms_object_explorer, compatibility, security, basic, crud, playground, pool, catalog_rpc)
+- 1255+ tests in iridium_core (now ~1315 with all new test files)
+- 12 test files in iridium_server (cursor, ssms_object_explorer, compatibility, security, basic, crud, playground, pool, catalog_rpc)
 
 **Key Files:**
-- Cursor: `crates/tsql_server/tests/cursor_compat_test.rs`, `cursor_compare_test.rs`, `cursor_quick_test.rs`
-- SSMS: `crates/tsql_server/tests/ssms_object_explorer_contract.rs`, `fixtures/ssms_object_explorer_cases.json`
-- Phases: `crates/tsql_core/tests/phase*_*.rs`
-- SQL Server comparison: `crates/tsql_core/tests/sqlserver_*.rs`
-- SET options: `crates/tsql_core/tests/set_options_coverage.rs`
-- TVP edge cases: `crates/tsql_core/tests/tvp_edge_cases.rs`
-- Migration patterns: `crates/tsql_core/tests/migration_patterns.rs`
-- Procedural: `crates/tsql_core/tests/procedural_edge_cases.rs`
-- Parser: `crates/tsql_core/tests/parser_edge_cases.rs`
-- Type coercion: `crates/tsql_core/tests/type_coercion.rs`
-- Metadata: `crates/tsql_core/tests/metadata_differential.rs`
-- Isolation/Transactions: `crates/tsql_core/tests/isolation_transaction_tests.rs`
-- Physical/Storage: `crates/tsql_core/tests/phase5_physical_storage.rs`
-- Security/Principals: `crates/tsql_core/tests/phase6_security_principals.rs`
-- Admin Classification: `crates/tsql_core/tests/phase7_admin_classification.rs`
-- Hardening/Regression: `crates/tsql_core/tests/phase8_hardening_regression.rs`
+- Cursor: `crates/iridium_server/tests/cursor_compat_test.rs`, `cursor_compare_test.rs`, `cursor_quick_test.rs`
+- SSMS: `crates/iridium_server/tests/ssms_object_explorer_contract.rs`, `fixtures/ssms_object_explorer_cases.json`
+- Phases: `crates/iridium_core/tests/phase*_*.rs`
+- SQL Server comparison: `crates/iridium_core/tests/sqlserver_*.rs`
+- SET options: `crates/iridium_core/tests/set_options_coverage.rs`
+- TVP edge cases: `crates/iridium_core/tests/tvp_edge_cases.rs`
+- Migration patterns: `crates/iridium_core/tests/migration_patterns.rs`
+- Procedural: `crates/iridium_core/tests/procedural_edge_cases.rs`
+- Parser: `crates/iridium_core/tests/parser_edge_cases.rs`
+- Type coercion: `crates/iridium_core/tests/type_coercion.rs`
+- Metadata: `crates/iridium_core/tests/metadata_differential.rs`
+- Isolation/Transactions: `crates/iridium_core/tests/isolation_transaction_tests.rs`
+- Physical/Storage: `crates/iridium_core/tests/phase5_physical_storage.rs`
+- Security/Principals: `crates/iridium_core/tests/phase6_security_principals.rs`
+- Admin Classification: `crates/iridium_core/tests/phase7_admin_classification.rs`
+- Hardening/Regression: `crates/iridium_core/tests/phase8_hardening_regression.rs`
 
 **Test Commands:**
 ```bash
-cargo test -p tsql_core        # Core engine tests (recommended for dev)
-cargo test -p tsql_wasm       # WASM bindings tests
-cargo test -p tsql_server    # Server tests (requires Podman for integration)
+cargo test -p iridium_core        # Core engine tests (recommended for dev)
+cargo test -p iridium_wasm       # WASM bindings tests
+cargo test -p iridium_server    # Server tests (requires Podman for integration)
 ```
 
 ### 2026-04-13: Phase 1 Language Closure Progress ✅
 
 **Implemented:**
 
-- **MERGE `WHEN NOT MATCHED BY SOURCE`**: Full executor support for UPDATE and DELETE actions with conditions. Tests cover delete, update, conditional, and all-three-clauses scenarios. `crates/tsql_core/tests/merge_statement.rs`
-- **PIVOT statistical aggregates**: `STDEV`, `STDEVP`, `VAR`, `VARP` now work in PIVOT queries. Proper sample/population variance calculation and null handling. `crates/tsql_core/src/executor/query/transformer/pivot.rs`
-- **STRING_ESCAPE `CSV` type**: Added CSV escape type alongside existing JSON, HTML, XML support. `crates/tsql_core/src/executor/scalar/string/format.rs`
-- **Type coercion improvements**: `DATE`/`TIME` → `DATETIME`/`DATETIME2`, `BINARY` → `UNIQUEIDENTIFIER` (16-byte), `DECIMAL` identity columns. `crates/tsql_core/src/executor/value_ops/coercion.rs`
-- **UDF error message fix**: "not supported" → "not found" for missing UDFs. `crates/tsql_core/src/executor/scalar/udf.rs`
+- **MERGE `WHEN NOT MATCHED BY SOURCE`**: Full executor support for UPDATE and DELETE actions with conditions. Tests cover delete, update, conditional, and all-three-clauses scenarios. `crates/iridium_core/tests/merge_statement.rs`
+- **PIVOT statistical aggregates**: `STDEV`, `STDEVP`, `VAR`, `VARP` now work in PIVOT queries. Proper sample/population variance calculation and null handling. `crates/iridium_core/src/executor/query/transformer/pivot.rs`
+- **STRING_ESCAPE `CSV` type**: Added CSV escape type alongside existing JSON, HTML, XML support. `crates/iridium_core/src/executor/scalar/string/format.rs`
+- **Type coercion improvements**: `DATE`/`TIME` → `DATETIME`/`DATETIME2`, `BINARY` → `UNIQUEIDENTIFIER` (16-byte), `DECIMAL` identity columns. `crates/iridium_core/src/executor/value_ops/coercion.rs`
+- **UDF error message fix**: "not supported" → "not found" for missing UDFs. `crates/iridium_core/src/executor/scalar/udf.rs`
 
 **Confirmed already implemented:**
 
-- **Temp tables (`#temp`)**: CREATE TABLE #temp, INSERT/SELECT/DROP with session-scoped name mapping and cleanup. `crates/tsql_core/tests/phase4_programmability_closure.rs`
+- **Temp tables (`#temp`)**: CREATE TABLE #temp, INSERT/SELECT/DROP with session-scoped name mapping and cleanup. `crates/iridium_core/tests/phase4_programmability_closure.rs`
 
 **Remaining Phase 1 gaps:**
 
@@ -549,23 +549,23 @@ cargo test -p tsql_server    # Server tests (requires Podman for integration)
 
 **Implemented TDS cursor RPC support:**
 
-- **Parser** (`crates/tsql_server/src/tds/rpc/parser.rs`):
+- **Parser** (`crates/iridium_server/src/tds/rpc/parser.rs`):
   - Added `CursorOp` enum (Open, Fetch, Close, Prepare, Execute, Unprepare, Option)
   - Added `CursorRpcRequest` struct with cursor-specific parameters
   - `parse_cursor_rpc()` handles all cursor procedure variants
   - Supports procedure IDs: 1,2,3,4,5,7,9,12,13 and names: `sp_cursor`, `sp_cursoropen`, `sp_cursorclose`, `sp_cursorfetch`, `sp_cursorprepare`, `sp_cursorexecute`, `sp_cursorunprepare`, `sp_cursoroption`
 
-- **Core Engine** (`crates/tsql_core/src/executor/session.rs`, `execution.rs`):
+- **Core Engine** (`crates/iridium_core/src/executor/session.rs`, `execution.rs`):
   - Added `next_cursor_handle` and `handle_map` to `CursorState` for handle management
   - Added `cursor_rpc_open()`: parses SELECT, generates handle, materializes results
   - Added `cursor_rpc_fetch()`: supports FIRST/NEXT/PREV/LAST/ABSOLUTE/RELATIVE
   - Added `cursor_rpc_close()` and `cursor_rpc_deallocate()`
 
-- **TDS Tokens** (`crates/tsql_server/src/tds/tokens.rs`):
+- **TDS Tokens** (`crates/iridium_server/src/tds/tokens.rs`):
   - Added `OUTPUT_PARAM_TOKEN` (0x80)
   - Added `write_output_int()` for returning cursor handles
 
-- **Session Handler** (`crates/tsql_server/src/session/mod.rs`):
+- **Session Handler** (`crates/iridium_server/src/session/mod.rs`):
   - `CursorOp::Open`: returns OUTPUT_PARAM with handle + DONE
   - `CursorOp::Fetch`: returns COLMETADATA + ROW + DONE
   - `CursorOp::Close`: returns DONE
@@ -578,11 +578,11 @@ cargo test -p tsql_server    # Server tests (requires Podman for integration)
 
 **Implemented:**
 
-- **sys.all_objects view**: Mirrors sys.objects for SSMS Object Explorer compatibility. `crates/tsql_core/src/executor/metadata/sys/objects.rs`
-- **sys.identity_columns view**: Returns identity column metadata (object_id, column_id, name, seed_value, increment_value, last_value, is_not_for_replication). `crates/tsql_core/src/executor/metadata/sys/tables/identity_columns.rs`
-- **sys.computed_columns view**: Returns computed column metadata (object_id, column_id, name, is_computed, is_persisted, definition). `crates/tsql_core/src/executor/metadata/sys/tables/columns.rs`
-- **sys.sql_expression_dependencies stub**: View shape matches SQL Server; rows intentionally empty until cross-object dependency tracking is implemented. `crates/tsql_core/src/executor/metadata/sys/tables/objects_misc.rs`
-- **Partition metadata column enhancements**: Added type_desc, type, create_date, modify_date columns to sys.partition_functions and sys.partition_schemes for better compatibility. `crates/tsql_core/src/executor/metadata/sys/partition.rs`
+- **sys.all_objects view**: Mirrors sys.objects for SSMS Object Explorer compatibility. `crates/iridium_core/src/executor/metadata/sys/objects.rs`
+- **sys.identity_columns view**: Returns identity column metadata (object_id, column_id, name, seed_value, increment_value, last_value, is_not_for_replication). `crates/iridium_core/src/executor/metadata/sys/tables/identity_columns.rs`
+- **sys.computed_columns view**: Returns computed column metadata (object_id, column_id, name, is_computed, is_persisted, definition). `crates/iridium_core/src/executor/metadata/sys/tables/columns.rs`
+- **sys.sql_expression_dependencies stub**: View shape matches SQL Server; rows intentionally empty until cross-object dependency tracking is implemented. `crates/iridium_core/src/executor/metadata/sys/tables/objects_misc.rs`
+- **Partition metadata column enhancements**: Added type_desc, type, create_date, modify_date columns to sys.partition_functions and sys.partition_schemes for better compatibility. `crates/iridium_core/src/executor/metadata/sys/partition.rs`
 
 **SSMS Object Explorer Contract Expansion:**
 
@@ -612,9 +612,10 @@ cargo test -p tsql_server    # Server tests (requires Podman for integration)
 - Fixed `SET STATISTICS IO/TIME ON` and `SET SHOWPLAN_ALL ON` parsing (multi-word boolean options consumed wrong tokens)
 
 **Files:**
-- `crates/tsql_core/src/parser/parse/mod.rs` (lines 587-622) - parser fix for multi-word SET options
-- `crates/tsql_core/tests/set_options_coverage.rs` - new
-- `crates/tsql_core/tests/tvp_edge_cases.rs` - new
-- `crates/tsql_core/tests/migration_patterns.rs` - new
-- `crates/tsql_core/tests/procedural_edge_cases.rs` - new
-- `crates/tsql_core/tests/parser_edge_cases.rs` - new
+- `crates/iridium_core/src/parser/parse/mod.rs` (lines 587-622) - parser fix for multi-word SET options
+- `crates/iridium_core/tests/set_options_coverage.rs` - new
+- `crates/iridium_core/tests/tvp_edge_cases.rs` - new
+- `crates/iridium_core/tests/migration_patterns.rs` - new
+- `crates/iridium_core/tests/procedural_edge_cases.rs` - new
+- `crates/iridium_core/tests/parser_edge_cases.rs` - new
+

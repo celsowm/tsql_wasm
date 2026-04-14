@@ -1,4 +1,4 @@
-# tsql_core Code Review
+# iridium_core Code Review
 
 > Reviewed: 2026-04-05
 
@@ -190,3 +190,4 @@ Core execution paths depend on abstractions (`Catalog`, `Storage`, `Clock`, `Jou
 | L | ⚠️ Partial | Engine-only statements accepted by trait but rejected at runtime |
 | I | ⚠️ Partial | Wide catalog usage in practice; metadata API mixed into statement executor |
 | D | ✅ Good | Strong abstraction usage; some concrete-type coupling remains |
+

@@ -31,9 +31,9 @@ The practical symptom remains: batches without explicit semicolons can still fai
 
 Measured from the current tree:
 
-- Parser: 26 files, ~5,201 LOC (`crates/tsql_core/src/parser`)
-- AST: 9 files, ~833 LOC (`crates/tsql_core/src/ast`)
-- Tests: 134 files, ~12,365 LOC (`crates/tsql_core/tests`)
+- Parser: 26 files, ~5,201 LOC (`crates/iridium_core/src/parser`)
+- AST: 9 files, ~833 LOC (`crates/iridium_core/src/ast`)
+- Tests: 134 files, ~12,365 LOC (`crates/iridium_core/tests`)
 
 Compatibility constraints:
 
@@ -159,10 +159,10 @@ Dispatch model:
 Create a new tokenizer module without breaking the current expression tokenizer immediately:
 
 - New files:
-  - `crates/tsql_core/src/parser/token/keyword.rs`
-  - `crates/tsql_core/src/parser/token/token.rs`
-  - `crates/tsql_core/src/parser/token/tokenizer.rs`
-  - `crates/tsql_core/src/parser/token/span.rs`
+  - `crates/iridium_core/src/parser/token/keyword.rs`
+  - `crates/iridium_core/src/parser/token/token.rs`
+  - `crates/iridium_core/src/parser/token/tokenizer.rs`
+  - `crates/iridium_core/src/parser/token/span.rs`
 - Keep existing `parser/tokenizer.rs` temporarily as compatibility code for expression parsing.
 
 Core types:
@@ -221,7 +221,7 @@ pub struct Token<'a> {
 
 Exit criteria:
 
-- `cargo test -p tsql_core` green.
+- `cargo test -p iridium_core` green.
 - Baseline parser behavior captured in tests.
 
 ### Phase 1: Token-Aware Batch Boundary Engine (2-3 days)
@@ -311,7 +311,7 @@ Exit criteria:
 Exit criteria:
 
 - No remaining parser call sites for removed helpers.
-- `cargo test -p tsql_core` and `cargo test -p tsql_wasm` green.
+- `cargo test -p iridium_core` and `cargo test -p iridium_wasm` green.
 
 ## Optional Follow-Up: Borrowed/Generic AST
 
@@ -403,7 +403,7 @@ fn test_ssms_batch_without_semicolons() {
 2. Old scanner helpers are removed.
 3. Parser dispatch is token-based.
 4. Error messages include line/column.
-5. `cargo test -p tsql_core` and `cargo test -p tsql_wasm` pass.
+5. `cargo test -p iridium_core` and `cargo test -p iridium_wasm` pass.
 6. Targeted regression tests for non-semicolon batches pass.
 7. New statement parser extension path is registry-based and documented.
 8. Contract tests cover handler substitution + diagnostics adapter behavior.
@@ -417,3 +417,4 @@ fn test_ssms_batch_without_semicolons() {
 | Deliver boundary fix before full parser migration | Fast path to user-visible bug fix |
 | Make generic borrowed AST optional follow-up | Correctness first, optimization second |
 | Keep `DbError` as external contract | Prevents downstream API breakage |
+

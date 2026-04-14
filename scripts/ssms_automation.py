@@ -21,7 +21,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--server", default="tcp:127.0.0.1,1433")
     parser.add_argument("--user", default="sa")
-    parser.add_argument("--password", default="Tsql12345!")
+    parser.add_argument("--password", default="Iridium12345!")
     parser.add_argument("--connect-timeout", type=int, default=120)
     parser.add_argument("--launch-timeout", type=int, default=120)
     parser.add_argument("--post-connect-timeout", type=int, default=120)
@@ -780,3 +780,4 @@ def automate(args: argparse.Namespace) -> int:
 
 if __name__ == "__main__":
     sys.exit(automate(parse_args()))
+

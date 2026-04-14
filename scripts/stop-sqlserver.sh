@@ -1,3 +1,4 @@
 #!/bin/bash
-podman stop tsql_test_sqlserver
+podman stop iridium_test_sqlserver
 echo "SQL Server container stopped."
+

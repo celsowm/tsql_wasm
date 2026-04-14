@@ -12,16 +12,17 @@ LOG_DIR="$REPO_ROOT/logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/playground-sa.log"
 
-export RUST_LOG="tsql_server=debug,tsql_core=info"
+export RUST_LOG="iridium_server=debug,iridium_core=info"
 
-echo "Starting tsql-server playground on localhost:1433 with TLS and $SQL_USER / $SQL_PASSWORD..."
+echo "Starting iridium-server playground on localhost:1433 with TLS and $SQL_USER / $SQL_PASSWORD..."
 echo "Use Server Name = localhost in SSMS."
 echo "Writing server log to $LOG_FILE"
 
-cargo run --package tsql_server --bin tsql-server -- \
+cargo run --package iridium_server --bin iridium-server -- \
     --playground \
     --tls-gen \
     --host 127.0.0.1 \
     --port 1433 \
     --user "$SQL_USER" \
     --password "$SQL_PASSWORD" 2>&1 | tee -a "$LOG_FILE"
+

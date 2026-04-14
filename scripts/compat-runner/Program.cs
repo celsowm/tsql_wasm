@@ -676,13 +676,15 @@ static void WriteCompatReport(
     string compatBin
 )
 {
-    var reportDir = Environment.GetEnvironmentVariable("TSQL_COMPAT_REPORT_DIR");
+    var reportDir = Environment.GetEnvironmentVariable("IRIDIUM_COMPAT_REPORT_DIR")
+        ?? Environment.GetEnvironmentVariable("TSQL_COMPAT_REPORT_DIR");
     if (string.IsNullOrWhiteSpace(reportDir))
     {
         return;
     }
 
-    var reportStem = Environment.GetEnvironmentVariable("TSQL_COMPAT_REPORT_STEM");
+    var reportStem = Environment.GetEnvironmentVariable("IRIDIUM_COMPAT_REPORT_STEM")
+        ?? Environment.GetEnvironmentVariable("TSQL_COMPAT_REPORT_STEM");
     if (string.IsNullOrWhiteSpace(reportStem))
     {
         reportStem = $"compat-run-{DateTime.UtcNow:yyyyMMdd-HHmmss}";

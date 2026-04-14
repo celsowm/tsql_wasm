@@ -5,14 +5,14 @@ $logDir = Join-Path $repoRoot "logs"
 $pidFile = Join-Path $logDir "playground-sa.pid"
 
 if (-not (Test-Path $pidFile)) {
-    $proc = Get-Process tsql-server -ErrorAction SilentlyContinue | Select-Object -First 1
+    $proc = Get-Process iridium-server -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($null -eq $proc) {
-        Write-Host "No playground PID file found and no tsql-server process is running." -ForegroundColor Yellow
+        Write-Host "No playground PID file found and no iridium-server process is running." -ForegroundColor Yellow
         exit 0
     }
 
     Stop-Process -Id $proc.Id -Force
-    Write-Host "Stopped tsql-server process $($proc.Id)." -ForegroundColor Green
+    Write-Host "Stopped iridium-server process $($proc.Id)." -ForegroundColor Green
     exit 0
 }
 
@@ -31,3 +31,4 @@ if ($null -eq $proc) {
 Stop-Process -Id $playgroundPid -Force
 Remove-Item -LiteralPath $pidFile -Force
 Write-Host "Stopped playground process $playgroundPid." -ForegroundColor Green
+

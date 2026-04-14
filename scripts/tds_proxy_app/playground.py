@@ -30,9 +30,9 @@ class PlaygroundServerManager:
         cargo_path = Path(cargo)
         if not cargo_path.exists():
             raise RuntimeError(f"cargo not found at {cargo}")
-        self.runlog.line("Building tsql-server playground binary")
+        self.runlog.line("Building iridium-server playground binary")
         self._run(
-            [str(cargo_path), "build", "--package", "tsql_server", "--bin", "tsql-server"],
+            [str(cargo_path), "build", "--package", "iridium_server", "--bin", "iridium-server"],
             cwd=str(self.root),
         )
         self.binary = self._find_binary()
@@ -41,7 +41,7 @@ class PlaygroundServerManager:
         if self.proc is not None:
             self.stop()
         if self.binary is None:
-            raise RuntimeError("tsql-server playground binary not found")
+            raise RuntimeError("iridium-server playground binary not found")
         args = [
             str(self.binary),
             "--playground",
@@ -56,7 +56,7 @@ class PlaygroundServerManager:
         ]
         args.append("--tls-gen" if tls_enabled else "--no-tls")
         self.runlog.line(
-            f"Starting tsql-server playground on 127.0.0.1:{port} "
+            f"Starting iridium-server playground on 127.0.0.1:{port} "
             + ("with TLS" if tls_enabled else "without TLS")
         )
         self.runlog.line(
@@ -76,7 +76,7 @@ class PlaygroundServerManager:
     def stop(self) -> None:
         if self.proc is None:
             return
-        self.runlog.line("Stopping tsql-server playground")
+        self.runlog.line("Stopping iridium-server playground")
         proc = self.proc
         self.proc = None
         try:
@@ -97,7 +97,7 @@ class PlaygroundServerManager:
         self.stop()
 
     def _find_binary(self) -> Optional[Path]:
-        exe = "tsql-server.exe" if os.name == "nt" else "tsql-server"
+        exe = "iridium-server.exe" if os.name == "nt" else "iridium-server"
         for candidate in [self.root / "target" / "debug" / exe, self.root / "target" / "release" / exe]:
             if candidate.exists():
                 return candidate
@@ -144,3 +144,4 @@ class PlaygroundServerManager:
         thread = threading.Thread(target=reader, name="playground-log-reader", daemon=True)
         thread.start()
         return thread
+

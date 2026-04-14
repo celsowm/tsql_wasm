@@ -1,8 +1,9 @@
 [workspace]
 members = [
-  "crates/tsql_core",
-  "crates/tsql_wasm",
-  "crates/tsql_server",
-  "crates/tsql_server_test_support"
+  "crates/iridium_core",
+  "crates/iridium_wasm",
+  "crates/iridium_server",
+  "crates/iridium_server_test_support"
 ]
 resolver = "2"
+

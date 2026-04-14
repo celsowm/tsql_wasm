@@ -71,19 +71,19 @@ if (-not $machineStatus) {
     Start-Sleep -Seconds 3
 }
 
-Write-LogLine "Checking tsql_test_sqlserver container..." Yellow
-$existing = podman ps -a --filter "name=tsql_test_sqlserver" --format "{{.Names}}" 2>$null
+Write-LogLine "Checking iridium_test_sqlserver container..." Yellow
+$existing = podman ps -a --filter "name=iridium_test_sqlserver" --format "{{.Names}}" 2>$null
 if (-not $existing) {
     Write-LogLine "Creating container SQL Server..." Yellow
-    podman run -d --name tsql_test_sqlserver -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=$sqlPassword -p 11433:1433 --memory=512m mcr.microsoft.com/azure-sql-edge:latest 2>&1 | ForEach-Object {
+    podman run -d --name iridium_test_sqlserver -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=$sqlPassword -p 11433:1433 --memory=512m mcr.microsoft.com/azure-sql-edge:latest 2>&1 | ForEach-Object {
         Add-Content -LiteralPath $script:LogFile -Value $_.ToString() -Encoding utf8
         Write-Host $_
     }
 } else {
-    $running = podman ps --filter "name=tsql_test_sqlserver" --format "{{.Names}}" 2>$null
+    $running = podman ps --filter "name=iridium_test_sqlserver" --format "{{.Names}}" 2>$null
     if (-not $running) {
         Write-LogLine "Starting existing container..." Yellow
-        podman start tsql_test_sqlserver 2>&1 | ForEach-Object {
+        podman start iridium_test_sqlserver 2>&1 | ForEach-Object {
             Add-Content -LiteralPath $script:LogFile -Value $_.ToString() -Encoding utf8
             Write-Host $_
         }
@@ -101,7 +101,7 @@ $retry = 0
 do {
     Start-Sleep -Seconds 2
     $retry++
-    $result = podman exec tsql_test_sqlserver /opt/mssql-tools/bin/sqlcmd -S localhost -U $sqlUser -P $sqlPassword -Q "SELECT 1" 2>$null
+    $result = podman exec iridium_test_sqlserver /opt/mssql-tools/bin/sqlcmd -S localhost -U $sqlUser -P $sqlPassword -Q "SELECT 1" 2>$null
     if ($LASTEXITCODE -eq 0) {
         Write-LogLine "SQL Server ready on localhost:11433" Green
         exit 0
@@ -111,3 +111,4 @@ do {
 
 Write-LogLine "Timeout waiting for SQL Server" Red
 exit 1
+

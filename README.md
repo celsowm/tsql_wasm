@@ -1,16 +1,14 @@
-# tsql-wasm
+# Iridium SQL
 
-An embeddable, WASM-first T-SQL engine written in Rust — designed for test plans, local-first apps, and deterministic SQL execution without a server.
-
-> Like [PGlite](https://github.com/electric-sql/pglite) for Postgres, but for T-SQL.
+An open, SQL Server-compatible database engine written in Rust, with WASM support for embedding and native runtimes that persist by default.
 
 ---
 
 ## What It Is
 
-**tsql-wasm** is a from-scratch T-SQL engine that compiles to WebAssembly. It runs entirely in-memory, needs no server, and speaks enough T-SQL to execute real application scripts, migration batches, and procedural validation logic.
+**Iridium SQL** is a from-scratch T-SQL engine with a native TDS server, durable on-disk storage, and a WebAssembly embedding layer for browser and Node.js use cases.
 
-It targets **progressive SQL Server compatibility** — day-to-day T-SQL first, advanced features incrementally.
+It targets **progressive SQL Server compatibility** with a focus on application-facing behavior, metadata fidelity, and client/tooling parity.
 
 ---
 
@@ -291,8 +289,8 @@ NULL = NULL     → NULL (not TRUE)
 ```
 
 **Modules:**
-- `tsql_core` — the engine (parser, AST, executor, catalog, storage)
-- `tsql_wasm` — WASM wrapper via `wasm-bindgen`
+- `iridium_core` — the engine (parser, AST, executor, catalog, storage)
+- `iridium_wasm` — WASM wrapper via `wasm-bindgen`
 
 The engine uses a deterministic clock abstraction, making all time-dependent behavior testable.
 
@@ -316,14 +314,14 @@ cargo test
 ### WASM build
 
 ```bash
-wasm-pack build crates/tsql_wasm --target web --out-dir crates/tsql_wasm/pkg
+wasm-pack build crates/iridium_wasm --target web --out-dir crates/iridium_wasm/pkg
 ```
 
 ### Client & Playground
 
 ```bash
-cd packages/client && npm install && npm run build
-cd ../playground && npm install && npm run dev
+cd packages/iridium-client && npm install && npm run build
+cd ../iridium-playground && npm install && npm run dev
 ```
 
 ---
@@ -331,7 +329,7 @@ cd ../playground && npm install && npm run dev
 ## Usage (TypeScript)
 
 ```ts
-const db = await TsqlDatabase.create();
+const db = await IridiumDatabase.create();
 
 await db.exec(`
   CREATE TABLE dbo.Users (
@@ -358,7 +356,7 @@ const result = await db.query(`
 // result.rows    = [["Alice", "Active"]]
 
 const checkpoint = await db.exportCheckpoint();
-const restored = await TsqlDatabase.fromCheckpoint(checkpoint);
+const restored = await IridiumDatabase.fromCheckpoint(checkpoint);
 const restoredRows = await restored.query(`SELECT COUNT(*) FROM dbo.Users`);
 ```
 
@@ -366,7 +364,7 @@ const restoredRows = await restored.query(`SELECT COUNT(*) FROM dbo.Users`);
 
 ## Playground Mode
 
-**tsql-server** includes a **playground mode** that starts the server with pre-loaded sample tables, views, and data. This is useful for testing SQL Server clients without manual setup.
+**iridium-server** includes a **playground mode** that starts the server with pre-loaded sample tables, views, and data. This is useful for testing SQL Server clients without manual setup.
 
 ### Quick Start
 
@@ -455,7 +453,7 @@ Core and integration tests covering:
 - `EXEC` and `sp_executesql` subset with OUTPUT parameters
 - Identity scope functions (`SCOPE_IDENTITY()`, `@@IDENTITY`, `IDENT_CURRENT`)
 - Multi-session transactions and isolation anomaly simulations
-- Checkpoint export/import recovery surface (`tsql_core`, WASM, TS client)
+- Checkpoint export/import recovery surface (`iridium_core`, WASM, TS client)
 - MVCC-style deterministic commit conflict matrix scenarios
 - All built-in functions
 - Type coercion and NULL semantics
@@ -463,7 +461,7 @@ Core and integration tests covering:
 
 Compatibility is validated in two layers:
 - `scripts/test-compat.ps1`: semantic/result parity checks between Azure SQL Edge and `compat-query` (engine-focused).
-- `cargo test -p tsql_server ssms_object_explorer_`: SSMS Object Explorer contract replay (metadata/bootstrap/table-enumeration focused).
+- `cargo test -p iridium_server ssms_object_explorer_`: SSMS Object Explorer contract replay (metadata/bootstrap/table-enumeration focused).
 
 See also:
 - [docs/roadmap.md](docs/roadmap.md)
@@ -474,7 +472,7 @@ See also:
 
 ## Current Limitations
 
-- No on-disk WAL/page persistence (current recovery model is checkpoint export/import for embedded runtimes)
+- WASM persistence remains explicit and checkpoint-based
 - Indexes are catalog-only in this phase (planner still uses table scans)
 - Transaction fidelity is modeled and still partial vs SQL Server edge cases (see roadmap matrix)
 - Catalog coverage is still a subset of SQL Server metadata
@@ -487,3 +485,4 @@ See [`docs/compatibility-matrix.md`](docs/compatibility-matrix.md) for the curre
 ## License
 
 MIT
+

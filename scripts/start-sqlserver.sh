@@ -25,14 +25,14 @@ if ! podman machine list | grep -q "Currently running"; then
     sleep 3
 fi
 
-echo "Checking tsql_test_sqlserver container..."
-if ! podman ps -a --filter "name=tsql_test_sqlserver" --format "{{.Names}}" | grep -q "tsql_test_sqlserver"; then
+echo "Checking iridium_test_sqlserver container..."
+if ! podman ps -a --filter "name=iridium_test_sqlserver" --format "{{.Names}}" | grep -q "iridium_test_sqlserver"; then
     echo "Creating container SQL Server..."
-    podman run -d --name tsql_test_sqlserver -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD="$SQL_PASSWORD" -p 11433:1433 --memory=512m mcr.microsoft.com/azure-sql-edge:latest >> "$LOG_FILE" 2>&1
+    podman run -d --name iridium_test_sqlserver -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD="$SQL_PASSWORD" -p 11433:1433 --memory=512m mcr.microsoft.com/azure-sql-edge:latest >> "$LOG_FILE" 2>&1
 else
-    if ! podman ps --filter "name=tsql_test_sqlserver" --format "{{.Names}}" | grep -q "tsql_test_sqlserver"; then
+    if ! podman ps --filter "name=iridium_test_sqlserver" --format "{{.Names}}" | grep -q "iridium_test_sqlserver"; then
         echo "Starting existing container..."
-        podman start tsql_test_sqlserver >> "$LOG_FILE" 2>&1
+        podman start iridium_test_sqlserver >> "$LOG_FILE" 2>&1
     else
         echo "Container already running."
     fi
@@ -45,7 +45,7 @@ RETRY=0
 while [ $RETRY -lt $MAX_RETRIES ]; do
     sleep 2
     RETRY=$((RETRY+1))
-    if podman exec tsql_test_sqlserver /opt/mssql-tools/bin/sqlcmd -S localhost -U "$SQL_USER" -P "$SQL_PASSWORD" -Q "SELECT 1" > /dev/null 2>&1; then
+    if podman exec iridium_test_sqlserver /opt/mssql-tools/bin/sqlcmd -S localhost -U "$SQL_USER" -P "$SQL_PASSWORD" -Q "SELECT 1" > /dev/null 2>&1; then
         echo "SQL Server ready on localhost:11433"
         exit 0
     fi
@@ -54,3 +54,4 @@ done
 
 echo "Timeout waiting for SQL Server"
 exit 1
+

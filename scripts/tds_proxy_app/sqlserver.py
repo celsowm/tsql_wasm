@@ -2,7 +2,7 @@
 
 The real responsibilities now live in:
 - `azure.py` for Azure SQL Edge lifecycle
-- `playground.py` for tsql-server playground lifecycle
+- `playground.py` for iridium-server playground lifecycle
 """
 
 from .azure import AzureSqlEdgeManager
@@ -34,3 +34,4 @@ class SqlServerController:
     def cleanup(self) -> None:
         self.playground.cleanup()
         self.azure.cleanup()
+

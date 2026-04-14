@@ -22,20 +22,20 @@ if (-not $machineRunning) {
     Write-Host "Podman machine already running." -ForegroundColor Green
 }
 
-$existing = podman ps -a --filter "name=tsql_test_sqlserver" --format "{{.Names}}" 2>$null
+$existing = podman ps -a --filter "name=iridium_test_sqlserver" --format "{{.Names}}" 2>$null
 if (-not $existing) {
     Write-Host "Creating Azure SQL Edge container..." -ForegroundColor Yellow
-    podman run -d --name tsql_test_sqlserver `
+    podman run -d --name iridium_test_sqlserver `
         -e ACCEPT_EULA=Y `
         -e MSSQL_SA_PASSWORD=$sqlPassword `
         -p 11433:1433 `
         --memory=512m `
         mcr.microsoft.com/azure-sql-edge:latest | Out-Null
 } else {
-    $running = podman ps --filter "name=tsql_test_sqlserver" --format "{{.Names}}" 2>$null
+    $running = podman ps --filter "name=iridium_test_sqlserver" --format "{{.Names}}" 2>$null
     if (-not $running) {
         Write-Host "Starting existing container..." -ForegroundColor Yellow
-        podman start tsql_test_sqlserver | Out-Null
+        podman start iridium_test_sqlserver | Out-Null
     } else {
         Write-Host "Container already running." -ForegroundColor Green
     }
@@ -74,7 +74,7 @@ if (-not (Test-Path $cargo)) { $cargo = "cargo" }
 
 $prevPref = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
-& $cargo build --package tsql_server --bin compat-query 2>&1 | ForEach-Object { Write-Host $_ }
+& $cargo build --package iridium_server --bin compat-query 2>&1 | ForEach-Object { Write-Host $_ }
 $ErrorActionPreference = $prevPref
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Cargo build failed!" -ForegroundColor Red
@@ -98,8 +98,8 @@ if (-not (Test-Path $reportDir)) {
 }
 $reportStem = "compat-run-{0}" -f (Get-Date -Format "yyyyMMdd-HHmmss")
 $reportPath = Join-Path $reportDir ($reportStem + ".log")
-$env:TSQL_COMPAT_REPORT_DIR = $reportDir
-$env:TSQL_COMPAT_REPORT_STEM = $reportStem
+$env:IRIDIUM_COMPAT_REPORT_DIR = $reportDir
+$env:IRIDIUM_COMPAT_REPORT_STEM = $reportStem
 & dotnet run --project scripts/compat-runner 2>&1 | Tee-Object -FilePath $reportPath | ForEach-Object { Write-Host $_ }
 $testExit = $LASTEXITCODE
 $ErrorActionPreference = $prevPref
@@ -108,3 +108,5 @@ Write-Host "Compatibility report saved to $reportPath" -ForegroundColor Cyan
 Write-Host "Structured JSON report saved to $(Join-Path $reportDir ($reportStem + '.json'))" -ForegroundColor Cyan
 
 exit $testExit
+
+

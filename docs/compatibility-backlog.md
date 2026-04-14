@@ -53,8 +53,8 @@ Priority values:
 - Deliverables:
   - backlog item per explicit unsupported path
   - matrix row linked to each item
-  - unsupported parser branches tracked from `crates/tsql_core/src/parser/parse/mod.rs` and `crates/tsql_core/src/executor/tooling/session_options.rs`
-  - RPC fallback currently visible in `crates/tsql_server/src/session/mod.rs`:
+  - unsupported parser branches tracked from `crates/iridium_core/src/parser/parse/mod.rs` and `crates/iridium_core/src/executor/tooling/session_options.rs`
+  - RPC fallback currently visible in `crates/iridium_server/src/session/mod.rs`:
     unsupported RPC requests now return an explicit parse error
 - Exit criteria:
   - no explicit unsupported branch exists without a tracking item
@@ -65,8 +65,8 @@ Priority values:
 - Priority: P0
 - Goal: move beyond bootstrap and table listing
 - Primary areas:
-  - `crates/tsql_server/tests/ssms_object_explorer_contract.rs`
-  - `crates/tsql_server/tests/fixtures/ssms_object_explorer_cases.json`
+  - `crates/iridium_server/tests/ssms_object_explorer_contract.rs`
+  - `crates/iridium_server/tests/fixtures/ssms_object_explorer_cases.json`
 - Deliverables:
   - add contract cases for indexes
   - add contract cases for constraints
@@ -84,7 +84,7 @@ Priority values:
 - Priority: P1
 - Goal: keep the remaining grouped-join and pivoting corners visible and tested
 - Primary areas:
-  - `crates/tsql_core/src/parser/lower/dml.rs`
+  - `crates/iridium_core/src/parser/lower/dml.rs`
   - query executor / transformer modules
 - Deliverables:
   - end-to-end query tests against SQL Server reference behavior
@@ -98,8 +98,8 @@ Priority values:
 - Priority: P1
 - Goal: make unsupported RPC requests explicit and expand supported RPC coverage
 - Primary areas:
-  - `crates/tsql_server/src/tds/rpc/*`
-  - `crates/tsql_server/src/session/mod.rs`
+  - `crates/iridium_server/src/tds/rpc/*`
+  - `crates/iridium_server/src/session/mod.rs`
 - Deliverables:
   - supported RPC selector inventory
   - explicit support plan for SSMS / ADS / driver-required RPC procedures
@@ -114,7 +114,7 @@ Priority values:
 - Priority: P1
 - Goal: remove ambiguous empty-row behavior where tools probe these views
 - Primary areas:
-  - `crates/tsql_core/src/executor/metadata/sys/hadr.rs`
+  - `crates/iridium_core/src/executor/metadata/sys/hadr.rs`
 - Deliverables:
   - either real modeled data, or a deliberate documented shim contract
   - SSMS probe tests covering expected behavior
@@ -127,8 +127,8 @@ Priority values:
 - Priority: P1
 - Goal: reduce metadata-specific tool breakage
 - Primary areas:
-  - `crates/tsql_core/src/executor/metadata/*`
-  - `crates/tsql_core/src/executor/scalar/metadata/*`
+  - `crates/iridium_core/src/executor/metadata/*`
+  - `crates/iridium_core/src/executor/scalar/metadata/*`
 - Deliverables:
   - coverage for common `sys.*` and property-function probes
   - column-shape tests for metadata rowsets
@@ -153,9 +153,9 @@ Priority values:
 - Priority: P1
 - Goal: move from local concurrency behavior to SQL Server-aligned behavior
 - Primary areas:
-  - `crates/tsql_core/tests/phase5_transactions.rs`
-  - `crates/tsql_core/tests/phase5_row_locking.rs`
-  - `crates/tsql_core/tests/concurrency_deadlock.rs`
+  - `crates/iridium_core/tests/phase5_transactions.rs`
+  - `crates/iridium_core/tests/phase5_row_locking.rs`
+  - `crates/iridium_core/tests/concurrency_deadlock.rs`
 - Deliverables:
   - differential multi-session matrix
   - savepoint and nested transaction behavior matrix
@@ -171,8 +171,8 @@ Priority values:
 - Priority: P2
 - Goal: close the gap between index catalog support and actual execution behavior
 - Primary areas:
-  - `crates/tsql_core/src/catalog/index_registry.rs`
-  - `crates/tsql_core/src/executor/query/*`
+  - `crates/iridium_core/src/catalog/index_registry.rs`
+  - `crates/iridium_core/src/executor/query/*`
 - Deliverables:
   - physical index structures used by scans
   - tests proving seek / scan behavior for supported scenarios
@@ -185,9 +185,9 @@ Priority values:
 - Priority: P2
 - Goal: define a real recovery model
 - Primary areas:
-  - `crates/tsql_core/src/executor/database/persistence/*`
-  - `crates/tsql_core/src/executor/journal.rs`
-  - `crates/tsql_core/src/storage/*`
+  - `crates/iridium_core/src/executor/database/persistence/*`
+  - `crates/iridium_core/src/executor/journal.rs`
+  - `crates/iridium_core/src/storage/*`
 - Deliverables:
   - persistence architecture decision
   - WAL or equivalent logging model
@@ -265,7 +265,7 @@ Priority values:
 - Priority: P2
 - Goal: provide real metadata for standard INFORMATION_SCHEMA views
 - Primary areas:
-  - `crates/tsql_core/src/executor/metadata/info_schema_empty.rs`
+  - `crates/iridium_core/src/executor/metadata/info_schema_empty.rs`
 - Deliverables:
   - implementation for `COLUMN_DOMAIN_USAGE`, `DOMAINS`, `DOMAIN_CONSTRAINTS`
   - implementation for `TABLE_PRIVILEGES`, `COLUMN_PRIVILEGES`
@@ -280,8 +280,8 @@ Priority values:
 - Priority: P2
 - Goal: replace stubs for partitioning and availability groups with modeled data or documented shims
 - Primary areas:
-  - `crates/tsql_core/src/executor/metadata/sys/partition.rs`
-  - `crates/tsql_core/src/executor/metadata/sys/hadr.rs`
+  - `crates/iridium_core/src/executor/metadata/sys/partition.rs`
+  - `crates/iridium_core/src/executor/metadata/sys/hadr.rs`
 - Deliverables:
   - implementation for `partition_functions`, `partition_schemes`, etc.
   - implementation for `availability_replicas`, `availability_groups`, etc.
@@ -294,8 +294,8 @@ Priority values:
 - Priority: P2
 - Goal: move from silent "Unsupported" variant to explicit behavior for SET options
 - Primary areas:
-  - `crates/tsql_core/src/parser/parse/mod.rs`
-  - `crates/tsql_core/src/executor/tooling/session_options.rs`
+  - `crates/iridium_core/src/parser/parse/mod.rs`
+  - `crates/iridium_core/src/executor/tooling/session_options.rs`
 - Deliverables:
   - inventory of common `SET` options that hit the `Unsupported` branch
   - explicit implementation or `DbError::Unsupported` for each
@@ -309,9 +309,9 @@ Priority values:
 - Status: **done** (cursor RPCs + prepared statements + catalog procedures implemented)
 - Goal: support driver-level RPC calls beyond simple batch execution
 - Primary areas:
-  - `crates/tsql_server/src/tds/rpc/parser.rs`
-  - `crates/tsql_server/src/session/mod.rs`
-  - `crates/tsql_core/src/executor/database/execution.rs`
+  - `crates/iridium_server/src/tds/rpc/parser.rs`
+  - `crates/iridium_server/src/session/mod.rs`
+  - `crates/iridium_core/src/executor/database/execution.rs`
 - Deliverables:
   - ✅ support for `sp_cursoropen`, `sp_cursorfetch`, `sp_cursorclose`
   - ✅ support for `sp_cursorprepare`, `sp_cursorexecute`, `sp_cursorunprepare`, `sp_cursoroption`
@@ -334,7 +334,7 @@ Priority values:
   - `cursor_rpc_deallocate` implemented for sp_cursorunprepare
   - Prepared statements cache implemented in session
   - Catalog procedures execute SQL queries against sys.* virtual tables
-  - Test files: `crates/tsql_server/tests/cursor_compat_test.rs`, `cursor_compare_test.rs`, `cursor_quick_test.rs`
+  - Test files: `crates/iridium_server/tests/cursor_compat_test.rs`, `cursor_compare_test.rs`, `cursor_quick_test.rs`
 
 ## Suggested First Execution Slice
 
@@ -343,3 +343,4 @@ Priority values:
 3. Do B003 to expose the real unsupported backlog.
 4. Run B004 and B008 in parallel, because metadata and tooling compatibility are already active pressure points.
 5. Start B006 once the client matrix in B009 is defined, so protocol work is driven by actual client requirements.
+

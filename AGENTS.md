@@ -1,4 +1,4 @@
-# Agent Guidelines for tsql_wasm
+# Agent Guidelines for Iridium SQL
 
 ## Testing
 
@@ -6,15 +6,15 @@
 
 **Core Engine Tests (Recommended for development):**
 ```bash
-cargo test -p tsql_core
-cargo test -p tsql_wasm
+cargo test -p iridium_core
+cargo test -p iridium_wasm
 ```
 
 **Server Integration Tests (Requires Podman):**
 ```bash
 podman machine start
-podman start tsql_test_sqlserver
-cargo test -p tsql_server
+podman start iridium_test_sqlserver
+cargo test -p iridium_server
 ```
 
 ### Podman Container Setup
@@ -28,12 +28,12 @@ podman machine start
 
 **Start SQL Server Container:**
 ```bash
-podman start tsql_test_sqlserver
+podman start iridium_test_sqlserver
 ```
 
 **Container Details:**
 - Image: `mcr.microsoft.com/azure-sql-edge:latest`
-- Container Name: `tsql_test_sqlserver`
+- Container Name: `iridium_test_sqlserver`
 - Port: 11433 (host) -> 1433 (container)
 - SA Password: `Test@12345`
 
@@ -46,7 +46,7 @@ podman-compose start sqlserver
 
 ### Known Test Issues
 
-**tsql_server Integration Tests:**
+**iridium_server Integration Tests:**
 - Currently marked as `#[ignore]` due to TDS handshake incompatibility with tiberius 0.12
 - Tests fail with "early eof" during PRELOGIN/LOGIN handshake
 - Root cause: Client requests encryption (ENCRYPT_ON) but server has TLS disabled
@@ -54,7 +54,7 @@ podman-compose start sqlserver
 
 **Workaround:** Run integration tests with `--ignored` flag if you've fixed the TLS issue:
 ```bash
-cargo test -p tsql_server -- --ignored
+cargo test -p iridium_server -- --ignored
 ```
 
 ## Code Style
@@ -67,14 +67,14 @@ cargo test -p tsql_server -- --ignored
 
 ## Architecture
 
-- `tsql_core`: T-SQL engine (parser, executor, storage)
-- `tsql_server`: TDS 7.4 protocol server
-- `tsql_wasm`: WebAssembly bindings
+- `iridium_core`: T-SQL engine (parser, executor, storage)
+- `iridium_server`: TDS 7.4 protocol server
+- `iridium_wasm`: WebAssembly bindings
 
 ## Common Tasks
 
 **Fix compilation errors:**
-1. Check for missing exports in `tsql_core/src/lib.rs`
+1. Check for missing exports in `iridium_core/src/lib.rs`
 2. Verify all imports are used or marked with `#[allow(unused_imports)]`
 
 **Fix test failures:**
@@ -83,7 +83,8 @@ cargo test -p tsql_server -- --ignored
 3. Look for parser bugs in statement parsing logic
 
 **Add new features:**
-1. Add AST types in `tsql_core/src/ast/`
-2. Add parser in `tsql_core/src/parser/statements/`
-3. Add executor in `tsql_core/src/executor/`
-4. Update exports in `tsql_core/src/lib.rs`
+1. Add AST types in `iridium_core/src/ast/`
+2. Add parser in `iridium_core/src/parser/statements/`
+3. Add executor in `iridium_core/src/executor/`
+4. Update exports in `iridium_core/src/lib.rs`
+

@@ -1,18 +1,18 @@
-# Multi-stage build for tsql-server playground mode
+# Multi-stage build for iridium-server playground mode
 FROM rust:1.75-slim-bookworm AS builder
 
 WORKDIR /app
 
 # Copy just what's needed for dependencies first (layer caching)
 COPY Cargo.toml Cargo.lock ./
-COPY crates/tsql_core/Cargo.toml crates/tsql_core/
-COPY crates/tsql_server/Cargo.toml crates/tsql_server/
+COPY crates/iridium_core/Cargo.toml crates/iridium_core/
+COPY crates/iridium_server/Cargo.toml crates/iridium_server/
 
 # Dummy build to cache dependencies
-RUN mkdir -p crates/tsql_core/src crates/tsql_server/src
-RUN echo "fn main() {}" > crates/tsql_core/src/lib.rs
-RUN echo "fn main() {}" > crates/tsql_server/src/lib.rs
-RUN cargo build --release --package tsql_server --bin tsql-server || true
+RUN mkdir -p crates/iridium_core/src crates/iridium_server/src
+RUN echo "fn main() {}" > crates/iridium_core/src/lib.rs
+RUN echo "fn main() {}" > crates/iridium_server/src/lib.rs
+RUN cargo build --release --package iridium_server --bin iridium-server || true
 
 # Remove dummy files and copy real source
 RUN rm -rf crates
@@ -20,7 +20,7 @@ COPY crates crates
 COPY Cargo.toml Cargo.lock ./
 
 # Real build
-RUN cargo build --release --package tsql_server --bin tsql-server
+RUN cargo build --release --package iridium_server --bin iridium-server
 
 # Runtime image
 FROM debian:bookworm-slim
@@ -28,10 +28,10 @@ FROM debian:bookworm-slim
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /app/target/release/tsql-server /app/tsql-server
+COPY --from=builder /app/target/release/iridium-server /app/iridium-server
 
 # Expose default port
 EXPOSE 1433
 
 # Run in playground mode with TLS disabled for easy client testing
-CMD ["./tsql-server", "--playground", "--no-tls"]
+CMD ["./iridium-server", "--playground", "--no-tls"]

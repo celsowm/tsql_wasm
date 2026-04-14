@@ -1,0 +1,38 @@
+[package]
+name = "iridium_server"
+version = "0.1.0"
+edition = "2021"
+description = "TDS 7.4 server that emulates Microsoft SQL Server using the iridium_core engine"
+
+[dependencies]
+iridium_core = { path = "../iridium_core" }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macros", "sync"] }
+rustls = "0.23"
+rcgen = { version = "0.13", features = ["pem", "crypto"] }
+tokio-rustls = "0.26"
+rustls-pemfile = "2"
+bytes = "1"
+log = "0.4"
+env_logger = "0.11"
+parking_lot = "0.12"
+regex = "1"
+once_cell = "1"
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+iridium_server_test_support = { path = "../iridium_server_test_support" }
+tiberius = { version = "0.11", default-features = false, features = ["tokio", "tds73", "chrono", "rustls"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+chrono = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[[bin]]
+name = "iridium-server"
+path = "bin/main.rs"
+
+[[bin]]
+name = "compat-query"
+path = "bin/compat-query.rs"
+

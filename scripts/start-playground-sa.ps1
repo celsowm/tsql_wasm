@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-# Run the tsql_server playground with explicit SQL auth so SSMS can log in.
+# Run the iridium_server playground with explicit SQL auth so SSMS can log in.
 # SSMS Preview often defaults to encrypted connections, so we start with TLS enabled.
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
@@ -67,12 +67,12 @@ New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $script:LogFile = Join-Path $logDir "playground-sa.log"
 Rotate-LogFile -Path $script:LogFile
 
-$env:RUST_LOG = "tsql_server=debug,tsql_core=info"
+$env:RUST_LOG = "iridium_server=debug,iridium_core=info"
 
 $args = @(
     "run"
-    "--package", "tsql_server"
-    "--bin", "tsql-server"
+    "--package", "iridium_server"
+    "--bin", "iridium-server"
     "--"
     "--playground"
     "--tls-gen"
@@ -82,7 +82,7 @@ $args = @(
     "--password", $sqlPassword
 )
 
-Write-LogLine "Starting tsql-server playground on localhost:1433 with TLS and $sqlUser / $sqlPassword..." Green
+Write-LogLine "Starting iridium-server playground on localhost:1433 with TLS and $sqlUser / $sqlPassword..." Green
 Write-LogLine "Use Server Name = localhost in SSMS." Green
 Write-LogLine "Writing server log to $script:LogFile" Cyan
 Write-LogBlankLine
@@ -94,8 +94,9 @@ Write-LogBlankLine
 }
 
 if ($LASTEXITCODE -ne 0) {
-    Write-LogLine "tsql-server exited with code $LASTEXITCODE" Red
+    Write-LogLine "iridium-server exited with code $LASTEXITCODE" Red
     exit $LASTEXITCODE
 }
 
-Write-LogLine "tsql-server stopped normally." Green
+Write-LogLine "iridium-server stopped normally." Green
+

@@ -654,6 +654,75 @@ dependencies = [
 ]
 
 [[package]]
+name = "iridium_core"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "chrono",
+ "dashmap",
+ "hex",
+ "parking_lot",
+ "redb",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tiberius 0.12.3",
+ "tokio",
+ "tokio-util",
+ "uuid",
+ "winnow",
+]
+
+[[package]]
+name = "iridium_server"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "chrono",
+ "env_logger",
+ "iridium_core",
+ "iridium_server_test_support",
+ "log",
+ "once_cell",
+ "parking_lot",
+ "rcgen",
+ "regex",
+ "rustls 0.23.37",
+ "rustls-pemfile 2.2.0",
+ "serde",
+ "serde_json",
+ "tiberius 0.11.8",
+ "tokio",
+ "tokio-rustls 0.26.4",
+ "tokio-util",
+]
+
+[[package]]
+name = "iridium_server_test_support"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "iridium_core",
+ "iridium_server",
+ "log",
+ "tiberius 0.11.8",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "iridium_wasm"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "iridium_core",
+ "serde_json",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1431,74 +1500,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
-]
-
-[[package]]
-name = "tsql_core"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "chrono",
- "dashmap",
- "hex",
- "parking_lot",
- "redb",
- "regex",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "tiberius 0.12.3",
- "tokio",
- "tokio-util",
- "uuid",
- "winnow",
-]
-
-[[package]]
-name = "tsql_server"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "chrono",
- "env_logger",
- "log",
- "once_cell",
- "parking_lot",
- "rcgen",
- "regex",
- "rustls 0.23.37",
- "rustls-pemfile 2.2.0",
- "serde",
- "serde_json",
- "tiberius 0.11.8",
- "tokio",
- "tokio-rustls 0.26.4",
- "tokio-util",
- "tsql_core",
- "tsql_server_test_support",
-]
-
-[[package]]
-name = "tsql_server_test_support"
-version = "0.1.0"
-dependencies = [
- "env_logger",
- "log",
- "tiberius 0.11.8",
- "tokio",
- "tokio-util",
- "tsql_server",
-]
-
-[[package]]
-name = "tsql_wasm"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "serde_json",
- "tsql_core",
- "wasm-bindgen",
 ]
 
 [[package]]

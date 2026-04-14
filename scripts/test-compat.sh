@@ -19,18 +19,18 @@ else
     echo "Podman machine already running."
 fi
 
-if ! podman ps -a --filter "name=tsql_test_sqlserver" --format "{{.Names}}" | grep -q "tsql_test_sqlserver"; then
+if ! podman ps -a --filter "name=iridium_test_sqlserver" --format "{{.Names}}" | grep -q "iridium_test_sqlserver"; then
     echo "Creating Azure SQL Edge container..."
-    podman run -d --name tsql_test_sqlserver \
+    podman run -d --name iridium_test_sqlserver \
         -e ACCEPT_EULA=Y \
         -e MSSQL_SA_PASSWORD="$SQL_PASSWORD" \
         -p 11433:1433 \
         --memory=512m \
         mcr.microsoft.com/azure-sql-edge:latest
 else
-    if ! podman ps --filter "name=tsql_test_sqlserver" --format "{{.Names}}" | grep -q "tsql_test_sqlserver"; then
+    if ! podman ps --filter "name=iridium_test_sqlserver" --format "{{.Names}}" | grep -q "iridium_test_sqlserver"; then
         echo "Starting existing container..."
-        podman start tsql_test_sqlserver
+        podman start iridium_test_sqlserver
     else
         echo "Container already running."
     fi
@@ -58,7 +58,7 @@ echo "============================================="
 echo " STEP 2: Build"
 echo "============================================="
 
-if ! cargo build --package tsql_server --bin compat-query; then
+if ! cargo build --package iridium_server --bin compat-query; then
     echo "Cargo build failed!"
     exit 1
 fi
@@ -73,3 +73,5 @@ dotnet run --project scripts/compat-runner
 TEST_EXIT=$?
 
 exit $TEST_EXIT
+
+

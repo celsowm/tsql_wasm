@@ -10,7 +10,7 @@ from .common import RunLogger, load_sql_credentials, q
 class AzureSqlEdgeManager:
     def __init__(self, runlog: RunLogger) -> None:
         self.runlog = runlog
-        self.container_name = "tsql_test_sqlserver"
+        self.container_name = "iridium_test_sqlserver"
         self.credentials = load_sql_credentials()
         self.sa_password = self.credentials.password
 
@@ -54,7 +54,7 @@ class AzureSqlEdgeManager:
                 self.sa_password,
                 "-b",
                 "-Q",
-                "IF DB_ID(N'tsql_probe') IS NULL CREATE DATABASE [tsql_probe];",
+                "IF DB_ID(N'iridium_probe') IS NULL CREATE DATABASE [iridium_probe];",
             ]
         )
         self._run(
@@ -70,7 +70,7 @@ class AzureSqlEdgeManager:
                 "-P",
                 self.sa_password,
                 "-d",
-                "tsql_probe",
+                "iridium_probe",
                 "-b",
                 "-Q",
                 (
@@ -215,3 +215,4 @@ class AzureSqlEdgeManager:
         if proc.returncode != 0 and not allow_failure:
             raise RuntimeError(f"Command failed with exit code {proc.returncode}: {q(cmd)}")
         return proc
+
