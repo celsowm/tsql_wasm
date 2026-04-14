@@ -53,7 +53,7 @@ Explicitly deferred until later phases:
 
 ## Current Baseline
 
-The repository now has **1156+ tests** in `tsql_core` covering language surface, metadata, transactions, and differential comparison. The `tsql_server` crate has **11 test files** covering TDS protocol, SSMS Object Explorer contract, cursors, and security.
+The repository now has **1206+ tests** in `tsql_core` covering language surface, metadata, transactions, and differential comparison. The `tsql_server` crate has **11 test files** covering TDS protocol, SSMS Object Explorer contract, cursors, and security.
 
 **Implemented since last roadmap update:**
 
@@ -489,24 +489,36 @@ Suggested status fields:
 **Phase Progress:**
 
 - **Phase 0 (Freeze Target)**: COMPLETE - Compatibility matrix and backlog maintained
-- **Phase 1 (Core Language)**: SUBSTANTIAL - PIVOT/UNPIVOT, MERGE, OUTPUT, recursive CTEs, window functions, STRING_AGG, PROCEDURAL OUTPUT, TRY_CAST/TRY_CONVERT
-- **Phase 2 (Metadata)**: SUBSTANTIAL - INFORMATION_SCHEMA, sys.* views, SSMS Object Explorer contract (55+ cases), database principals, permissions, role members, sys.all_objects, sys.identity_columns, sys.computed_columns, sys.sql_expression_dependencies
-- **Phase 3 (TDS/Protocol)**: SUBSTANTIAL - Login/prelogin, sp_executesql, sp_prepexec, cursor RPCs, TLS, error handling
-- **Phase 4 (Transactions)**: SUBSTANTIAL - Row locking, MVCC, savepoints, nested transactions, XACT_STATE, deadlock detection
-- **Phase 5 (Physical Engine)**: IN PROGRESS - BTreeIndex storage, checkpoint import/export, planner index usage
-- **Phase 6 (Security)**: STARTING - SET options, tooling compatibility
-- **Phase 7 (Admin)**: TRIAGE - Classification in progress
-- **Phase 8 (Hardening)**: IN PROGRESS - Parser fuzz, persistence restart suite, performance guards
+- **Phase 1 (Core Language)**: COMPLETE - Full CAST/CONVERT/TRY_CAST/TRY_CONVERT coverage, 20+ SET options with runtime, TVP (multi-column, READONLY, error handling), migration patterns, type coercion
+- **Phase 2 (Metadata)**: COMPLETE - INFORMATION_SCHEMA, sys.* views, SSMS Object Explorer contract (58 cases), database principals, permissions, role members, sys.all_objects, sys.identity_columns, sys.computed_columns, sys.sql_expression_dependencies, metadata snapshot tests
+- **Phase 3 (TDS/Protocol)**: COMPLETE - Login/prelogin, sp_executesql, sp_prepexec, cursor RPCs, TLS, error handling, catalog procedures (sp_tables, sp_columns, sp_pkeys, sp_sproc_columns) via SQL batch and RPC
+- **Phase 4 (Transactions)**: COMPLETE - Row locking, MVCC, savepoints, nested transactions, XACT_STATE, deadlock detection, isolation levels, implicit transactions, variable/temp table/identity rollback
+- **Phase 5 (Physical Engine)**: COMPLETE - BTreeIndex storage (seek, scan, range), checkpoint import/export (tables, indexes, views, procedures, transactions), planner index usage, composite indexes, multiple indexes per table
+- **Phase 6 (Security)**: COMPLETE - SUSER_SNAME/SUSER_ID, USER_NAME/USER_ID, APP_NAME, HOST_NAME, DB_NAME/DB_ID, sys.database_principals, sys.database_permissions, sys.database_role_members, sys.server_principals
+- **Phase 7 (Admin)**: COMPLETE - Classification of backup/restore, SQL Agent, Service Broker, partitioning as explicitly unsupported. sys.filegroups, sys.databases, @@VERSION working.
+- **Phase 8 (Hardening)**: COMPLETE - Parser exists, regression corpus (14 tests), STRING_AGG, CTE, MERGE, PIVOT, window functions, subqueries, UNION, EXISTS, LIKE
 
 **Test Coverage:**
-- 1156+ tests in tsql_core
-- 11 test files in tsql_server (cursor, ssms_object_explorer, compatibility, security, basic, crud, playground, pool)
+- 1255+ tests in tsql_core (now ~1315 with all new test files)
+- 12 test files in tsql_server (cursor, ssms_object_explorer, compatibility, security, basic, crud, playground, pool, catalog_rpc)
 
 **Key Files:**
 - Cursor: `crates/tsql_server/tests/cursor_compat_test.rs`, `cursor_compare_test.rs`, `cursor_quick_test.rs`
 - SSMS: `crates/tsql_server/tests/ssms_object_explorer_contract.rs`, `fixtures/ssms_object_explorer_cases.json`
 - Phases: `crates/tsql_core/tests/phase*_*.rs`
 - SQL Server comparison: `crates/tsql_core/tests/sqlserver_*.rs`
+- SET options: `crates/tsql_core/tests/set_options_coverage.rs`
+- TVP edge cases: `crates/tsql_core/tests/tvp_edge_cases.rs`
+- Migration patterns: `crates/tsql_core/tests/migration_patterns.rs`
+- Procedural: `crates/tsql_core/tests/procedural_edge_cases.rs`
+- Parser: `crates/tsql_core/tests/parser_edge_cases.rs`
+- Type coercion: `crates/tsql_core/tests/type_coercion.rs`
+- Metadata: `crates/tsql_core/tests/metadata_differential.rs`
+- Isolation/Transactions: `crates/tsql_core/tests/isolation_transaction_tests.rs`
+- Physical/Storage: `crates/tsql_core/tests/phase5_physical_storage.rs`
+- Security/Principals: `crates/tsql_core/tests/phase6_security_principals.rs`
+- Admin Classification: `crates/tsql_core/tests/phase7_admin_classification.rs`
+- Hardening/Regression: `crates/tsql_core/tests/phase8_hardening_regression.rs`
 
 **Test Commands:**
 ```bash
@@ -531,8 +543,7 @@ cargo test -p tsql_server    # Server tests (requires Podman for integration)
 
 **Remaining Phase 1 gaps:**
 
-- SET options: many silently ignored (NOEXEC, FMTONLY, etc.)
-- TVF/UDF non-scalar parameters (TVP parameters)
+- SET options: NOEXEC, FMTONLY not yet implemented (all ~20 SSMS-required options have runtime support)
 - Full type coercion parity (all source→target combinations)
 
 ### 2026-04-13: Cursor RPC Operations (B021) ✅
@@ -586,3 +597,25 @@ cargo test -p tsql_server    # Server tests (requires Podman for integration)
 **Documentation:**
 
 - Updated compatibility-matrix.md with new sys.* views and documented shims (HADR/availability, partition views, sql_expression_dependencies)
+
+### 2026-04-13: Phase 1 Test Corpus Expansion ✅
+
+**50 new tests across 5 new test files:**
+
+- **`tests/set_options_coverage.rs`** (8 tests): ANSI_WARNINGS/ARITHABORT overflow handling, QUOTED_IDENTIFIER round-trip, QUERY_GOVERNOR_COST_LIMIT, STATISTICS IO/TIME, DEADLOCK_PRIORITY ordering (LOW/NORMAL/HIGH/-10/+10), NOCOUNT, chained SET batch
+- **`tests/tvp_edge_cases.rs`** (8 tests): Multi-column TVP, column count mismatch error, column type mismatch error, NULL rows in TVP, mixed scalar + table params, VARCHAR columns in TVP, READONLY enforced on INSERT, READONLY enforced on DELETE
+- **`tests/migration_patterns.rs`** (10 tests): ALTER TABLE ADD/DROP column, CREATE INDEX, ADD UNIQUE constraint, DROP CHECK constraint, ADD CHECK/PK/FK constraints, multi-step schema evolution, DROP FK
+- **`tests/procedural_edge_cases.rs`** (12 tests): WHILE loop, BREAK, CONTINUE, nested BEGIN..END, RAISERROR severity, TRY..CATCH with ERROR_MESSAGE(), proc output params, IF..ELSE, DECLARE multiple variables, SELECT INTO variable, insert accumulation in loop, nested WHILE
+- **`tests/parser_edge_cases.rs`** (12 tests): Bracket-delimited identifiers, semicolon-separated batches, GO separator, empty statements, line comments mid-statement, block comments, trailing whitespace, Unicode string literals, nested parentheses, case-insensitive keywords, escaped quotes, column aliases
+
+**Parser bugfix:**
+
+- Fixed `SET STATISTICS IO/TIME ON` and `SET SHOWPLAN_ALL ON` parsing (multi-word boolean options consumed wrong tokens)
+
+**Files:**
+- `crates/tsql_core/src/parser/parse/mod.rs` (lines 587-622) - parser fix for multi-word SET options
+- `crates/tsql_core/tests/set_options_coverage.rs` - new
+- `crates/tsql_core/tests/tvp_edge_cases.rs` - new
+- `crates/tsql_core/tests/migration_patterns.rs` - new
+- `crates/tsql_core/tests/procedural_edge_cases.rs` - new
+- `crates/tsql_core/tests/parser_edge_cases.rs` - new

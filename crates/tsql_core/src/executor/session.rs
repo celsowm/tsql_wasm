@@ -14,6 +14,7 @@ use super::journal::{Journal, NoopJournal};
 use super::locks::{LockTable, SessionId, TxWorkspace};
 use super::tooling::SessionOptions;
 use super::transaction::TransactionManager;
+use super::wal::Wal;
 
 pub trait SessionManager {
     fn create_session(&self) -> SessionId;
@@ -226,6 +227,8 @@ pub struct SharedState<C, S> {
     pub(crate) storage: parking_lot::RwLock<SharedStorage<C, S>>,
     pub(crate) table_locks: parking_lot::Mutex<LockTable>,
     pub(crate) durability: parking_lot::Mutex<Box<dyn DurabilitySink<C>>>,
+    pub(crate) wal: parking_lot::Mutex<Option<Wal>>,
+    pub(crate) next_tx_id: std::sync::atomic::AtomicU64,
     pub(crate) sessions: dashmap::DashMap<SessionId, parking_lot::Mutex<SessionRuntime<C, S>>>,
     pub(crate) deadlock_priorities: dashmap::DashMap<SessionId, i32>,
     pub(crate) next_session_id: std::sync::atomic::AtomicU64,
@@ -247,6 +250,8 @@ where
             }),
             table_locks: parking_lot::Mutex::new(LockTable::new()),
             durability: parking_lot::Mutex::new(Box::new(NoopDurability::default())),
+            wal: parking_lot::Mutex::new(None),
+            next_tx_id: std::sync::atomic::AtomicU64::new(1),
             sessions: dashmap::DashMap::new(),
             deadlock_priorities: dashmap::DashMap::new(),
             next_session_id: std::sync::atomic::AtomicU64::new(1),

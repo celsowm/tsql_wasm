@@ -588,18 +588,49 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
         let _ = parser.next();
         if parser.at_keyword(Keyword::Io) {
             let _ = parser.next();
-            return parse_bool_setting(parser, crate::parser::ast::SessionOption::StatisticsIo);
+            // IO already consumed; parse ON/OFF directly instead of parse_bool_setting
+            let val = match parser.next() {
+                Some(Token::Keyword(k)) if *k == Keyword::On => true,
+                Some(Token::Keyword(k)) if *k == Keyword::Off => false,
+                Some(Token::Identifier(id)) if id.eq_ignore_ascii_case("ON") => true,
+                Some(Token::Identifier(id)) if id.eq_ignore_ascii_case("OFF") => false,
+                _ => return parser.backtrack(Expected::Description("ON or OFF")),
+            };
+            return Ok(Statement::Session(SessionStatement::SetOption {
+                option: crate::parser::ast::SessionOption::StatisticsIo,
+                value: crate::parser::ast::SessionOptionValue::Bool(val),
+            }));
         }
         if parser.at_keyword(Keyword::Time) {
             let _ = parser.next();
-            return parse_bool_setting(parser, crate::parser::ast::SessionOption::StatisticsTime);
+            let val = match parser.next() {
+                Some(Token::Keyword(k)) if *k == Keyword::On => true,
+                Some(Token::Keyword(k)) if *k == Keyword::Off => false,
+                Some(Token::Identifier(id)) if id.eq_ignore_ascii_case("ON") => true,
+                Some(Token::Identifier(id)) if id.eq_ignore_ascii_case("OFF") => false,
+                _ => return parser.backtrack(Expected::Description("ON or OFF")),
+            };
+            return Ok(Statement::Session(SessionStatement::SetOption {
+                option: crate::parser::ast::SessionOption::StatisticsTime,
+                value: crate::parser::ast::SessionOptionValue::Bool(val),
+            }));
         }
     }
     if parser.at_keyword(Keyword::Showplan) {
         let _ = parser.next();
         if parser.at_keyword(Keyword::All) {
             let _ = parser.next();
-            return parse_bool_setting(parser, crate::parser::ast::SessionOption::ShowplanAll);
+            let val = match parser.next() {
+                Some(Token::Keyword(k)) if *k == Keyword::On => true,
+                Some(Token::Keyword(k)) if *k == Keyword::Off => false,
+                Some(Token::Identifier(id)) if id.eq_ignore_ascii_case("ON") => true,
+                Some(Token::Identifier(id)) if id.eq_ignore_ascii_case("OFF") => false,
+                _ => return parser.backtrack(Expected::Description("ON or OFF")),
+            };
+            return Ok(Statement::Session(SessionStatement::SetOption {
+                option: crate::parser::ast::SessionOption::ShowplanAll,
+                value: crate::parser::ast::SessionOptionValue::Bool(val),
+            }));
         }
     }
 

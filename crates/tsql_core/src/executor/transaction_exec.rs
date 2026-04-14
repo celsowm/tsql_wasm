@@ -40,9 +40,8 @@ where
                 };
                 tx_manager.commit_ts = commit_ts;
                 let extra = ctx.create_snapshot(session_options);
-                // P1 #17: No longer clones catalog/storage in TxState.
-                // The workspace holds the transaction state.
-                tx_manager.begin(name.clone(), commit_ts, extra)?;
+                let tx_id = state.allocate_tx_id();
+                tx_manager.begin(name.clone(), commit_ts, tx_id, extra)?;
                 *workspace_slot = Some(TxWorkspace {
                     catalog: workspace_catalog,
                     storage: workspace_storage,
@@ -51,6 +50,7 @@ where
                     write_tables: HashSet::new(),
                     acquired_locks: Vec::new(),
                 });
+                state.wal_begin(tx_id, &format!("{:?}", tx_manager.session_isolation_level));
                 journal.record(JournalEvent::Begin {
                     isolation_level: tx_manager.session_isolation_level,
                     name,
@@ -79,6 +79,7 @@ where
                 .active
                 .as_ref()
                 .ok_or_else(|| DbError::Execution("COMMIT without active transaction".into()))?;
+            let tx_id = tx.id;
             let workspace = workspace_slot.as_ref().ok_or_else(|| {
                 DbError::Execution("internal error: missing transaction workspace".into())
             })?;
@@ -110,6 +111,7 @@ where
                 table_versions: next_table_versions.clone(),
             };
             state.durability.lock().persist_checkpoint(&checkpoint)?;
+            state.wal_commit(tx_id);
 
             storage_guard.catalog = workspace.catalog.clone();
             storage_guard.storage = workspace.storage.clone();
@@ -137,11 +139,11 @@ where
         }
         Statement::Transaction(TransactionStatement::Rollback(savepoint)) => {
             {
+                let tx_id = tx_manager.active.as_ref().map(|tx| tx.id).unwrap_or(0);
                 let workspace = workspace_slot.as_mut().ok_or_else(|| {
                     DbError::Execution("ROLLBACK without active transaction".into())
                 })?;
                 let mut extra = ctx.create_snapshot(session_options);
-                // P1 #17: Rollback restores from savepoint snapshots or signals full rollback.
                 let full_rollback = tx_manager.rollback(
                     savepoint.clone(),
                     &mut workspace.catalog,
@@ -151,7 +153,21 @@ where
                 ctx.restore_snapshot(extra, session_options);
 
                 if full_rollback {
-                    // Full rollback: discard workspace and end transaction
+                    state.wal_rollback(tx_id);
+                    {
+                        let durability = state.durability.lock();
+                        if let Some(checkpoint) = durability.latest_checkpoint() {
+                            drop(durability);
+                            let mut storage_guard = state.storage.write();
+                            storage_guard.catalog = checkpoint.catalog;
+                            let _ = storage_guard
+                                .storage
+                                .restore_from_checkpoint(checkpoint.storage_data);
+                            storage_guard.commit_ts = checkpoint.commit_ts;
+                            storage_guard.table_versions = checkpoint.table_versions;
+                            drop(storage_guard);
+                        }
+                    }
                     tx_manager.active = None;
                     tx_manager.depth = 0;
                     tx_manager.xact_state = 0;
@@ -166,7 +182,9 @@ where
                     }
                     *workspace_slot = None;
                 } else {
-                    // Savepoint rollback: trim write_tables to match write_set
+                    if let Some(ref sp_name) = savepoint {
+                        state.wal_savepoint(tx_id, sp_name);
+                    }
                     if let Some(ref active_tx) = tx_manager.active {
                         let keep = active_tx.write_set.len();
                         if workspace.write_tables.len() > keep {
@@ -189,12 +207,13 @@ where
             Ok(None)
         }
         Statement::Transaction(TransactionStatement::Save(name)) => {
+            let tx_id = tx_manager.active.as_ref().map(|tx| tx.id).unwrap_or(0);
             let workspace = workspace_slot.as_ref().ok_or_else(|| {
                 DbError::Execution("SAVE TRANSACTION without active transaction".into())
             })?;
             let extra = ctx.create_snapshot(session_options);
-            // P1 #17: Savepoint records workspace catalog/storage snapshots.
             tx_manager.save(name.clone(), &workspace.catalog, &workspace.storage, &extra)?;
+            state.wal_savepoint(tx_id, &name);
             journal.record(JournalEvent::Savepoint { name });
             Ok(None)
         }
@@ -226,9 +245,9 @@ pub(crate) fn force_xact_abort<C, S>(
     if tx_manager.active.is_none() {
         return;
     }
+    let tx_id = tx_manager.active.as_ref().map(|tx| tx.id).unwrap_or(0);
     if let Some(workspace) = workspace_slot.as_mut() {
         let mut extra = ctx.create_snapshot(session_options);
-        // P1 #17: Full rollback — discard workspace entirely.
         let _ = tx_manager.rollback(
             None,
             &mut workspace.catalog,
@@ -237,6 +256,7 @@ pub(crate) fn force_xact_abort<C, S>(
         );
         ctx.restore_snapshot(extra, session_options);
     }
+    state.wal_rollback(tx_id);
     state
         .table_locks
         .lock()

@@ -58,6 +58,7 @@ impl WriteIntentTracker {
 /// The `begin_extra` stores the session state at BEGIN time for full rollback restoration.
 #[derive(Debug, Clone)]
 pub struct TxState<C, S, X> {
+    pub id: u64,
     pub isolation_level: IsolationLevel,
     pub savepoints: Vec<Savepoint<C, S, X>>,
     pub lock_manager: WriteIntentTracker,
@@ -67,8 +68,14 @@ pub struct TxState<C, S, X> {
 }
 
 impl<C, S, X> TxState<C, S, X> {
-    pub fn new(isolation_level: IsolationLevel, snapshot_ts: u64, begin_extra: X) -> Self {
+    pub fn new(
+        tx_id: u64,
+        isolation_level: IsolationLevel,
+        snapshot_ts: u64,
+        begin_extra: X,
+    ) -> Self {
         Self {
+            id: tx_id,
             isolation_level,
             savepoints: vec![],
             lock_manager: WriteIntentTracker::default(),
@@ -112,10 +119,11 @@ where
         &mut self,
         explicit_name: Option<String>,
         snapshot_ts: u64,
+        tx_id: u64,
         extra: X,
     ) -> Result<Option<String>, DbError> {
         if self.depth == 0 {
-            let tx = TxState::new(self.session_isolation_level, snapshot_ts, extra);
+            let tx = TxState::new(tx_id, self.session_isolation_level, snapshot_ts, extra);
             self.active = Some(tx);
             self.xact_state = 1;
         }

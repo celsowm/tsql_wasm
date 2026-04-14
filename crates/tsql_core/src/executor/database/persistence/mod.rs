@@ -7,6 +7,7 @@ use crate::executor::locks::SessionId;
 use crate::executor::result::QueryResult;
 use crate::executor::session::SessionManager as SessionManagerTrait;
 use crate::executor::tooling::{ExecutionTrace, ExplainPlan, SessionOptions};
+use crate::executor::wal::{Lsn, WalRecord};
 
 use super::super::durability::{DurabilitySink, RecoveryCheckpoint, RecoveryReader};
 use super::super::session::{SharedState, SharedStorage};
@@ -40,15 +41,21 @@ impl DatabaseInner<CatalogImpl, crate::storage::RedbStorage> {
         let storage = crate::storage::RedbStorage::new(path.join("data.redb"))?;
         let durability = super::super::durability::FileDurability::new(path.join("catalog.json"))?;
 
+        let wal_path = path.join("wal.log");
+        let wal = crate::executor::wal::Wal::open(&wal_path)?;
+
         let state = if let Some(checkpoint) = durability.latest_checkpoint() {
-            SharedState::from_checkpoint(checkpoint, Box::new(durability), storage)
+            let state = SharedState::from_checkpoint(checkpoint, Box::new(durability), storage);
+            *state.wal.lock() = Some(wal);
+            state
         } else {
             let mut state = SharedState::with_initial(CatalogImpl::new(), storage);
             *state.durability.get_mut() = Box::new(durability);
+            *state.wal.lock() = Some(wal);
             state
         };
         Ok(Self {
-            inner: Arc::new(state),
+            inner: std::sync::Arc::new(state),
         })
     }
 }
@@ -418,6 +425,8 @@ where
             }),
             table_locks: parking_lot::Mutex::new(super::super::locks::LockTable::new()),
             durability: parking_lot::Mutex::new(durability),
+            wal: parking_lot::Mutex::new(None),
+            next_tx_id: std::sync::atomic::AtomicU64::new(1),
             sessions: dashmap::DashMap::new(),
             deadlock_priorities: dashmap::DashMap::new(),
             next_session_id: std::sync::atomic::AtomicU64::new(1),
@@ -441,6 +450,8 @@ where
             durability: parking_lot::Mutex::new(Box::new(
                 super::super::durability::NoopDurability::default(),
             )),
+            wal: parking_lot::Mutex::new(None),
+            next_tx_id: std::sync::atomic::AtomicU64::new(1),
             sessions: dashmap::DashMap::new(),
             deadlock_priorities: dashmap::DashMap::new(),
             next_session_id: std::sync::atomic::AtomicU64::new(1),
@@ -476,5 +487,66 @@ where
             commit_ts: storage.commit_ts,
             table_versions: storage.table_versions.clone(),
         }
+    }
+
+    pub fn wal_begin(&self, tx_id: u64, isolation_level: &str) {
+        let mut wal_guard = self.wal.lock();
+        if let Some(ref mut wal) = *wal_guard {
+            let _ = wal.append(WalRecord::Begin {
+                tx_id,
+                isolation_level: isolation_level.to_string(),
+            });
+            let _ = wal.flush();
+        }
+    }
+
+    pub fn wal_commit(&self, tx_id: u64) {
+        let mut wal_guard = self.wal.lock();
+        if let Some(ref mut wal) = *wal_guard {
+            let lsn = wal.append(WalRecord::Commit { tx_id }).unwrap_or(Lsn(0));
+            let _ = wal.append(WalRecord::Checkpoint { lsn });
+            let _ = wal.flush();
+            let _ = wal.truncate();
+        }
+    }
+
+    pub fn wal_rollback(&self, tx_id: u64) {
+        let mut wal_guard = self.wal.lock();
+        if let Some(ref mut wal) = *wal_guard {
+            let _ = wal.append(WalRecord::Rollback { tx_id });
+            let _ = wal.flush();
+        }
+    }
+
+    pub fn wal_savepoint(&self, tx_id: u64, name: &str) {
+        let mut wal_guard = self.wal.lock();
+        if let Some(ref mut wal) = *wal_guard {
+            let _ = wal.append(WalRecord::Savepoint {
+                tx_id,
+                name: name.to_string(),
+            });
+            let _ = wal.flush();
+        }
+    }
+
+    pub fn wal_auto_commit(&self, tx_id: u64) {
+        let mut wal_guard = self.wal.lock();
+        if let Some(ref mut wal) = *wal_guard {
+            let lsn = wal
+                .append(WalRecord::Begin {
+                    tx_id,
+                    isolation_level: "AutoCommit".to_string(),
+                })
+                .unwrap_or(Lsn(0));
+            let _ = wal.append(WalRecord::Commit { tx_id });
+            let _ = wal.append(WalRecord::Checkpoint { lsn });
+            let _ = wal.flush();
+            let _ = wal.truncate();
+        }
+    }
+
+    pub fn allocate_tx_id(&self) -> u64 {
+        self.next_tx_id
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
     }
 }

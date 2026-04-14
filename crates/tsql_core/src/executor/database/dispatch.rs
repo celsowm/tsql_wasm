@@ -330,6 +330,8 @@ where
             state.table_locks.lock().release_all_for_session(session_id);
             return Err(e);
         }
+        let tx_id = state.allocate_tx_id();
+        state.wal_auto_commit(tx_id);
     }
     state.table_locks.lock().release_all_for_session(session_id);
     out
