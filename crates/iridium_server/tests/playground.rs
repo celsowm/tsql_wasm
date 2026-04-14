@@ -21,6 +21,7 @@ async fn test_playground_tables() {
         pool_min_size: 1,
         pool_max_size: 50,
         pool_idle_timeout_secs: 300,
+        data_dir: None,
     };
 
     let db = iridium_core::Database::new();
@@ -61,4 +62,3 @@ async fn test_playground_tables() {
     assert_eq!(cols[1], "TotalOrders");
     assert_eq!(rows.len(), 2);
 }
-

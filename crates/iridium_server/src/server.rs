@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
@@ -19,9 +18,10 @@ pub struct TdsServer {
 impl TdsServer {
     pub fn new(config: ServerConfig) -> Self {
         let session_pool = Arc::new(SessionPool::from_config(&config));
+        let data_dir = config.resolved_data_dir();
         Self {
             db: Arc::new(
-                PersistentDatabase::new_persistent(Path::new("iridium_sql_data"))
+                PersistentDatabase::new_persistent(&data_dir)
                     .expect("failed to initialize persistent database"),
             ),
             config: Arc::new(config),
@@ -114,4 +114,3 @@ impl TdsServer {
         Ok(())
     }
 }
-

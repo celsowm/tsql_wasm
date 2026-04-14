@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product
+    Id="*"
+    Name="Iridium SQL"
+    Language="1033"
+    Version="$(var.ProductVersion)"
+    Manufacturer="Iridium SQL"
+    UpgradeCode="D19E7E0B-0F3E-4A97-8E44-04C3B8BDBB2A">
+    <Package
+      InstallerVersion="500"
+      Compressed="yes"
+      InstallScope="perMachine" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Feature Id="MainFeature" Title="Iridium SQL" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+    </Feature>
+
+    <UIRef Id="WixUI_InstallDir" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <Property Id="ARPNOREPAIR" Value="yes" />
+    <Property Id="ARPNOMODIFY" Value="yes" />
+  </Product>
+
+  <Fragment>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="Iridium SQL" />
+      </Directory>
+      <Directory Id="CommonAppDataFolder">
+        <Directory Id="COMMONAPPDATAIRIDIUM" Name="Iridium SQL">
+          <Directory Id="COMMONAPPDATAIRIDIUMDATA" Name="iridium_sql_data" />
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="APPLICATIONPROGRAMS" Name="Iridium SQL" />
+      </Directory>
+    </Directory>
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="ProductComponents">
+      <ComponentRef Id="IridiumServerExeComponent" />
+      <ComponentRef Id="CompatQueryExeComponent" />
+      <ComponentRef Id="ReadmeComponent" />
+      <ComponentRef Id="LicenseComponent" />
+      <ComponentRef Id="InstallNotesComponent" />
+      <ComponentRef Id="DataDirectoryComponent" />
+      <ComponentRef Id="StartMenuComponent" />
+    </ComponentGroup>
+  </Fragment>
+
+  <Fragment>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="IridiumServerExeComponent" Guid="5A92D0EA-68C1-4B31-8A68-7B8F0E0EDC1B">
+        <File Id="IridiumServerExe" Source="$(var.SourceDir)\iridium-server.exe" KeyPath="yes" />
+      </Component>
+
+      <Component Id="CompatQueryExeComponent" Guid="3A347C3D-08B8-4E9D-90D7-196C0A3E1C5A">
+        <File Id="CompatQueryExe" Source="$(var.SourceDir)\compat-query.exe" KeyPath="yes" />
+      </Component>
+
+      <Component Id="ReadmeComponent" Guid="CCF0F4A1-1FBF-4D04-93B2-7F7EED3B38A7">
+        <File Id="ReadmeFile" Source="$(var.SourceDir)\README.md" KeyPath="yes" />
+      </Component>
+
+      <Component Id="LicenseComponent" Guid="B0DD23C8-1F66-4B56-A8FB-8F2D2D69A47A">
+        <File Id="LicenseFile" Source="$(var.SourceDir)\LICENSE" KeyPath="yes" />
+      </Component>
+
+      <Component Id="InstallNotesComponent" Guid="9B5F9D71-4E6B-4D5A-871A-4A6B0E9ED5C3">
+        <File Id="InstallNotesFile" Source="$(var.SourceDir)\INSTALL.txt" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="COMMONAPPDATAIRIDIUMDATA">
+      <Component Id="DataDirectoryComponent" Guid="E5E79E7C-4B56-41B5-9A95-DB0C9C0F8D2E">
+        <CreateFolder />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="APPLICATIONPROGRAMS">
+      <Component Id="StartMenuComponent" Guid="8E6E72A0-4B0B-48D7-8F49-6A0C6C8B8C6D">
+        <Shortcut
+          Id="StartServerShortcut"
+          Name="Iridium SQL Server"
+          Description="Start the Iridium SQL TDS server"
+          Target="[INSTALLFOLDER]iridium-server.exe"
+          WorkingDirectory="INSTALLFOLDER" />
+        <Shortcut
+          Id="CompatQueryShortcut"
+          Name="Iridium SQL Compatibility Query"
+          Description="Run a compatibility query against Iridium SQL"
+          Target="[INSTALLFOLDER]compat-query.exe"
+          WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="RemoveApplicationPrograms" Directory="APPLICATIONPROGRAMS" On="uninstall" />
+        <RegistryValue Root="HKLM" Key="Software\Iridium SQL" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+</Wix>

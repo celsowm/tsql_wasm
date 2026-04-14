@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 pub mod playground;
 pub mod pool;
 pub mod server;
@@ -33,6 +35,7 @@ pub struct ServerConfig {
     pub pool_min_size: usize,
     pub pool_max_size: usize,
     pub pool_idle_timeout_secs: u64,
+    pub data_dir: Option<PathBuf>,
 }
 
 impl Default for ServerConfig {
@@ -49,6 +52,7 @@ impl Default for ServerConfig {
             pool_min_size: 1,
             pool_max_size: 50,
             pool_idle_timeout_secs: 300,
+            data_dir: None,
         }
     }
 }
@@ -113,4 +117,26 @@ impl ServerConfig {
         self.pool_idle_timeout_secs = secs;
         self
     }
+
+    pub fn data_dir(mut self, path: impl Into<PathBuf>) -> Self {
+        self.data_dir = Some(path.into());
+        self
+    }
+
+    pub fn resolved_data_dir(&self) -> PathBuf {
+        self.data_dir.clone().unwrap_or_else(default_data_dir)
+    }
+}
+
+pub fn default_data_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(program_data) = std::env::var_os("ProgramData") {
+            return PathBuf::from(program_data)
+                .join("Iridium SQL")
+                .join("iridium_sql_data");
+        }
+    }
+
+    PathBuf::from("iridium_sql_data")
 }

@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::PathBuf;
 
 use iridium_core::{Database, PersistentDatabase};
 use iridium_server::{playground, Credentials, ServerConfig, TdsServer};
@@ -54,6 +54,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 i += 1;
                 config.database = args.get(i).cloned().unwrap_or_default();
                 database_arg_provided = true;
+            }
+            "--data-dir" => {
+                i += 1;
+                if let Some(path) = args.get(i) {
+                    config.data_dir = Some(PathBuf::from(path));
+                } else {
+                    eprintln!("Error: --data-dir requires a path argument.");
+                    std::process::exit(1);
+                }
             }
             "--pool-min" => {
                 i += 1;
@@ -157,14 +166,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     );
     log::info!("Database: {}", config.database);
-    log::info!(
-        "Storage: {}",
-        if memory_mode {
-            "memory (ephemeral)"
-        } else {
-            "persistent (./iridium_sql_data)"
-        }
-    );
+    let storage_description = if memory_mode {
+        "memory (ephemeral)".to_string()
+    } else {
+        format!("persistent ({})", config.resolved_data_dir().display())
+    };
+    log::info!("Storage: {}", storage_description);
     log::info!(
         "Session pool: min={}, max={}, idle_timeout={}s",
         config.pool_min_size,
@@ -186,7 +193,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         TdsServer::new_with_database(db, config)
     } else {
-        let db = PersistentDatabase::new_persistent(Path::new("iridium_sql_data"))?;
+        let db = PersistentDatabase::new_persistent(&config.resolved_data_dir())?;
         if playground_mode {
             log::info!("Starting in PLAYGROUND mode...");
             log::info!("Seeding database with sample tables, views, and data...");
@@ -272,6 +279,7 @@ fn print_help() {
     println!("  --user, -u <USER>       Username for authentication (optional)");
     println!("  --password, -P <PASS>   Password for authentication (optional)");
     println!("  --database, -d <DB>     Default database name (default: master)");
+    println!("  --data-dir <PATH>       Directory for persistent storage");
     println!("  --pool-min <N>          Minimum pooled sessions to keep ready (default: 1)");
     println!("  --pool-max <N>          Maximum pooled sessions allowed (default: 50)");
     println!("  --pool-idle-timeout <S> Idle timeout in seconds for extra sessions (default: 300)");
@@ -300,7 +308,7 @@ fn print_help() {
     println!();
     println!("NOTES:");
     println!("  - TLS is enabled by default");
-    println!("  - Storage defaults to ./iridium_sql_data unless --memory is set");
+    println!("  - Storage defaults to ProgramData on Windows and ./iridium_sql_data elsewhere");
+    println!("  - Use --data-dir to override the persistent storage path");
     println!("  - Use --tls-gen to generate a self-signed certificate for testing");
 }
-

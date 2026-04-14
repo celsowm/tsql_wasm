@@ -21,6 +21,7 @@ async fn test_session_pool_reuse_resets_session_state() {
         pool_min_size: 1,
         pool_max_size: 1,
         pool_idle_timeout_secs: 300,
+        data_dir: None,
     };
 
     let port = start_server_with_config(config).await;
@@ -59,6 +60,7 @@ async fn test_session_pool_max_size_enforced() {
         pool_min_size: 0,
         pool_max_size: 1,
         pool_idle_timeout_secs: 300,
+        data_dir: None,
     };
 
     let port = start_server_with_config(config).await;
@@ -80,4 +82,3 @@ async fn test_session_pool_max_size_enforced() {
 
     assert!(result.is_err());
 }
-

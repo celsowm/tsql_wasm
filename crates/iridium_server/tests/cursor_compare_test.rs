@@ -62,6 +62,7 @@ async fn start_local_server() -> u16 {
         pool_min_size: 1,
         pool_max_size: 50,
         pool_idle_timeout_secs: 300,
+        data_dir: None,
     };
 
     let mut server = TdsServer::new_with_database(Database::new(), config);
@@ -324,4 +325,3 @@ async fn test_compare_cursor_aggregation() {
     // Cleanup
     azure.execute("DROP TABLE dbo.agg_cursor", &[]).await.unwrap();
 }
-

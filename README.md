@@ -35,6 +35,10 @@ Run in ephemeral mode:
 cargo run --package iridium_server --bin iridium-server -- --memory
 ```
 
+On Windows, persistent data defaults to `%ProgramData%\Iridium SQL\iridium_sql_data`.
+Use `--data-dir <PATH>` to override it, or the portable ZIP's
+`start-iridium-server-portable.cmd` to keep data next to the extracted bundle.
+
 Build the WASM package:
 
 ```bash
