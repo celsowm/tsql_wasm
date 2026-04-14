@@ -473,6 +473,12 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
     if matches_set_name(parser.peek(), "XACT_ABORT") {
         return parse_bool_setting(parser, crate::parser::ast::SessionOption::XactAbort);
     }
+    if matches_set_name(parser.peek(), "FMTONLY") {
+        return parse_bool_setting(parser, crate::parser::ast::SessionOption::FmtOnly);
+    }
+    if matches_set_name(parser.peek(), "NOEXEC") {
+        return parse_bool_setting(parser, crate::parser::ast::SessionOption::NoExec);
+    }
     if matches_set_name(parser.peek(), "ANSI_NULL_DFLT_ON") {
         return parse_bool_setting(parser, crate::parser::ast::SessionOption::AnsiNullDfltOn);
     }

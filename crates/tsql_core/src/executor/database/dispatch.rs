@@ -4,6 +4,7 @@ use crate::error::{DbError, StmtOutcome, StmtResult};
 use crate::storage::Storage;
 
 use super::super::clock::Clock;
+use super::super::clock::SystemClock;
 use super::super::context::ExecutionContext;
 use super::super::dirty_buffer;
 use super::super::journal::{Journal, JournalEvent};
@@ -438,6 +439,20 @@ where
         return result;
     }
 
+    // P1 #23: Handle FMTONLY - return metadata without executing
+    if session_options.fmtonly {
+        if let Statement::Dml(DmlStatement::Select(select_stmt)) = &stmt {
+            return execute_fmt_only_select(state, select_stmt, ctx);
+        }
+    }
+
+    // P1 #23: Handle NOEXEC - compile query but don't execute (returns metadata like FMTONLY)
+    if session_options.noexec {
+        if let Statement::Dml(DmlStatement::Select(select_stmt)) = &stmt {
+            return execute_fmt_only_select(state, select_stmt, ctx);
+        }
+    }
+
     if tx_manager.active.is_none()
         && session_options.implicit_transactions
         && should_start_implicit_transaction(&stmt)
@@ -503,4 +518,52 @@ where
             )
         }
     }
+}
+
+/// P1 #23: Execute a SELECT statement under SET FMTONLY ON.
+/// Returns metadata (column names, types) without actually running the query.
+fn execute_fmt_only_select<C, S>(
+    state: &SharedState<C, S>,
+    select_stmt: &crate::ast::SelectStmt,
+    ctx: &mut ExecutionContext,
+) -> StmtResult<Option<QueryResult>>
+where
+    C: EngineCatalog,
+    S: EngineStorage,
+{
+    let storage_guard = state.storage.read();
+    let (catalog, storage) = storage_guard.get_refs();
+
+    let qe = super::super::query::QueryExecutor {
+        catalog,
+        storage,
+        clock: &SystemClock,
+    };
+
+    let query_plan = super::super::query::plan::RelationalQuery::from(select_stmt.clone());
+    let fake_rows = vec![];
+
+    let result = match super::super::query::pipeline::execute_rows_to_result(
+        &qe,
+        &query_plan,
+        fake_rows,
+        ctx,
+    ) {
+        Ok(mut r) => {
+            r.rows = vec![];
+            r
+        }
+        Err(_e) => {
+            return Ok(StmtOutcome::Ok(Some(QueryResult {
+                columns: vec![],
+                column_types: vec![],
+                column_nullabilities: vec![],
+                rows: vec![],
+                return_status: None,
+                is_procedure: false,
+            })));
+        }
+    };
+
+    Ok(StmtOutcome::Ok(Some(result)))
 }

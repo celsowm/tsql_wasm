@@ -11,6 +11,8 @@ pub struct SessionOptions {
     pub quoted_identifier: bool,
     pub nocount: bool,
     pub xact_abort: bool,
+    pub fmtonly: bool,
+    pub noexec: bool,
     pub ansi_null_dflt_on: bool,
     pub ansi_padding: bool,
     pub ansi_warnings: bool,
@@ -40,6 +42,8 @@ impl Default for SessionOptions {
             quoted_identifier: true,
             nocount: false,
             xact_abort: false,
+            fmtonly: false,
+            noexec: false,
             ansi_null_dflt_on: true,
             ansi_padding: true,
             ansi_warnings: true,
@@ -85,6 +89,12 @@ pub fn apply_set_option(
         }
         (SessionOption::XactAbort, SessionOptionValue::Bool(v)) => {
             options.xact_abort = *v;
+        }
+        (SessionOption::FmtOnly, SessionOptionValue::Bool(v)) => {
+            options.fmtonly = *v;
+        }
+        (SessionOption::NoExec, SessionOptionValue::Bool(v)) => {
+            options.noexec = *v;
         }
         (SessionOption::AnsiNullDfltOn, SessionOptionValue::Bool(v)) => {
             options.ansi_null_dflt_on = *v;

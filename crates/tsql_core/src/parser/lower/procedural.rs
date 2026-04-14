@@ -306,6 +306,8 @@ pub fn lower_session(session: ast::SessionStatement) -> Result<executor_ast::Sta
                         }
                         ast::SessionOption::NoCount => executor_ast::SessionOption::NoCount,
                         ast::SessionOption::XactAbort => executor_ast::SessionOption::XactAbort,
+                        ast::SessionOption::FmtOnly => executor_ast::SessionOption::FmtOnly,
+                        ast::SessionOption::NoExec => executor_ast::SessionOption::NoExec,
                         ast::SessionOption::DateFirst => executor_ast::SessionOption::DateFirst,
                         ast::SessionOption::Language => executor_ast::SessionOption::Language,
                         ast::SessionOption::DateFormat => executor_ast::SessionOption::DateFormat,

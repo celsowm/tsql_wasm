@@ -424,6 +424,8 @@ pub enum SessionOption {
     QuotedIdentifier,
     NoCount,
     XactAbort,
+    FmtOnly,
+    NoExec,
     DateFirst,
     Language,
     DateFormat,
