@@ -1,488 +1,98 @@
 # Iridium SQL
 
-An open, SQL Server-compatible database engine written in Rust, with WASM support for embedding and native runtimes that persist by default.
+An open SQL Server-compatible database engine with native persistence by default and WASM support for embedding.
 
----
+Iridium SQL is an independent Rust implementation built for application-facing compatibility, local-first persistence, and predictable behavior across native, server, and WASM runtimes.
 
 ## What It Is
 
-**Iridium SQL** is a from-scratch T-SQL engine with a native TDS server, durable on-disk storage, and a WebAssembly embedding layer for browser and Node.js use cases.
+- A T-SQL engine with a native TDS server.
+- A persistent database engine by default in native/server mode.
+- A WASM runtime for embedding, browser work, and lightweight local use.
+- A compatibility-driven project with behavior tracked in docs, not implied by the name.
 
-It targets **progressive SQL Server compatibility** with a focus on application-facing behavior, metadata fidelity, and client/tooling parity.
+## Why It Exists
 
----
+The goal is to provide an open alternative to SQL Server-style workflows without tying the project to a single runtime shape.
 
-## Features
+That means:
 
-### DDL
+- native/server usage defaults to durable storage on disk
+- `--memory` stays available for ephemeral and test-only scenarios
+- WASM stays memory-first, with explicit checkpoint/export/import flows when persistence is needed
 
-```sql
-CREATE TABLE dbo.Users (
-  Id INT IDENTITY(1,1) PRIMARY KEY,
-  Name NVARCHAR(100) NOT NULL,
-  Score DECIMAL(10,2) DEFAULT 0,
-  Email VARCHAR(200) UNIQUE,
-  IsActive BIT NOT NULL DEFAULT 1
-);
+## Quick Start
 
-ALTER TABLE dbo.Users ADD Age INT NULL;
-ALTER TABLE dbo.Users DROP COLUMN Age;
-TRUNCATE TABLE dbo.Users;
-DROP TABLE dbo.Users;
-
-CREATE SCHEMA app;
-DROP SCHEMA app;
-
-CREATE INDEX app.IX_Users_Name ON app.Users (Name);
-DROP INDEX app.IX_Users_Name ON app.Users;
-```
-
-### DML
-
-```sql
-INSERT INTO Users (Name, Score) VALUES ('Alice', 95.5), ('Bob', 87.0);
-INSERT INTO Users DEFAULT VALUES;
-UPDATE Users SET Score = Score * 1.1 WHERE Name = 'Alice';
-DELETE FROM Users WHERE Score < 50;
-SELECT * FROM Users;
-```
-
-### Queries
-
-```sql
-SELECT DISTINCT Name, UPPER(Name) AS NameUpper
-FROM Users
-WHERE Score BETWEEN 80 AND 100
-  AND Name LIKE 'A%'
-  AND IsActive IN (1, NULL)
-ORDER BY Score DESC;
-
-SELECT TOP 10 Name, Score FROM Users ORDER BY Score DESC;
-SELECT TOP(5) * FROM Users;
-```
-
-### Joins
-
-```sql
--- All four join types
-SELECT u.Name, o.Total
-FROM Users u
-INNER JOIN Orders o ON u.Id = o.UserId;
-
-SELECT u.Name, o.Total
-FROM Users u
-LEFT JOIN Orders o ON u.Id = o.UserId;
-
-SELECT u.Name, o.Total
-FROM Users u
-RIGHT JOIN Orders o ON u.Id = o.UserId;
-
-SELECT u.Name, o.Total
-FROM Users u
-FULL OUTER JOIN Orders o ON u.Id = o.UserId;
-```
-
-### Aggregates & Grouping
-
-```sql
-SELECT Category, COUNT(*) AS Cnt, SUM(Amount) AS Total, AVG(Amount) AS AvgAmt
-FROM Orders
-GROUP BY Category
-HAVING COUNT(*) > 5
-ORDER BY Total DESC;
-```
-
-### Set Operations
-
-```sql
-SELECT Name FROM ActiveUsers
-UNION
-SELECT Name FROM ArchivedUsers;
-
-SELECT Id FROM TableA
-INTERSECT
-SELECT Id FROM TableB;
-
-SELECT Id FROM TableA
-EXCEPT
-SELECT Id FROM TableB;
-```
-
-### CTEs
-
-```sql
-WITH TopUsers AS (
-  SELECT Name, SUM(Amount) AS Total
-  FROM Orders o JOIN Users u ON o.UserId = u.Id
-  GROUP BY Name
-  HAVING SUM(Amount) > 1000
-)
-SELECT * FROM TopUsers ORDER BY Total DESC;
-
--- Multiple CTEs
-WITH A AS (SELECT Id FROM T1), B AS (SELECT Id FROM T2)
-SELECT * FROM A INNER JOIN B ON A.Id = B.Id;
-```
-
-### Variables & Control Flow
-
-```sql
-DECLARE @threshold INT = 50;
-DECLARE @count INT;
-
-SET @count = (SELECT COUNT(*) FROM Users WHERE Score > @threshold);
-
-IF @count > 10
-BEGIN
-    PRINT 'Many high scorers';
-END
-ELSE
-BEGIN
-    PRINT 'Few high scorers';
-END
-```
-
-### While Loops
-
-```sql
-DECLARE @i INT = 1;
-DECLARE @sum INT = 0;
-
-WHILE @i <= 100
-BEGIN
-    SET @sum = @sum + @i;
-    SET @i = @i + 1;
-END
-
-SELECT @sum; -- 5050
-```
-
-### Batch Execution
-
-```sql
--- Semicolon-separated statements execute as a batch
-DECLARE @x INT = 10;
-SET @x = @x * 2 + 5;
-SELECT @x AS Result; -- 25
-```
-
-### Dynamic SQL
-
-```sql
-EXEC 'SELECT * FROM Users WHERE Score > 80';
-```
-
----
-
-## Data Types
-
-| Type | Description |
-|------|-------------|
-| `BIT` | Boolean (0/1) |
-| `TINYINT` | 0–255 |
-| `SMALLINT` | 16-bit integer |
-| `INT` | 32-bit integer |
-| `BIGINT` | 64-bit integer |
-| `DECIMAL(p,s)` / `NUMERIC(p,s)` | Fixed-precision decimal |
-| `CHAR(n)` | Fixed-length string |
-| `VARCHAR(n)` | Variable-length string |
-| `NCHAR(n)` | Fixed-length Unicode |
-| `NVARCHAR(n)` | Variable-length Unicode |
-| `DATE` | Date |
-| `TIME` | Time |
-| `DATETIME` | Date + time |
-| `DATETIME2` | Extended date + time |
-| `UNIQUEIDENTIFIER` | UUID/GUID |
-
----
-
-## Built-in Functions
-
-### String
-
-| Function | Example |
-|----------|---------|
-| `UPPER(s)` | `UPPER('hello')` → `'HELLO'` |
-| `LOWER(s)` | `LOWER('HELLO')` → `'hello'` |
-| `LEN(s)` | `LEN('hello  ')` → `5` |
-| `SUBSTRING(s, start, len)` | `SUBSTRING('hello', 2, 3)` → `'ell'` |
-| `LTRIM(s)` / `RTRIM(s)` / `TRIM(s)` | Trim whitespace |
-| `REPLACE(s, from, to)` | `REPLACE('abc', 'b', 'x')` → `'axc'` |
-| `CHARINDEX(search, target [, start])` | `CHARINDEX('l', 'hello')` → `3` |
-
-### Date/Time
-
-| Function | Description |
-|----------|-------------|
-| `GETDATE()` / `CURRENT_TIMESTAMP` | Current datetime |
-| `DATEADD(datepart, n, date)` | Add interval |
-| `DATEDIFF(datepart, start, end)` | Difference between dates |
-| `NEWID()` | Generate unique identifier |
-
-Supported `datepart` values: `year`, `month`, `day`, `hour`, `minute`, `second` (and abbreviations).
-
-### Math
-
-| Function | Description |
-|----------|-------------|
-| `ABS(x)` | Absolute value |
-| `ROUND(x [, precision])` | Round to precision |
-| `CEILING(x)` | Round up |
-| `FLOOR(x)` | Round down |
-
-### Null Handling
-
-| Function | Description |
-|----------|-------------|
-| `ISNULL(check, replacement)` | Replace NULL |
-| `COALESCE(a, b, ...)` | First non-NULL |
-
-### Type Conversion
-
-| Function | Example |
-|----------|---------|
-| `CAST(expr AS type)` | `CAST(42 AS NVARCHAR)` → `'42'` |
-| `CONVERT(type, expr)` | `CONVERT(NVARCHAR, 42)` → `'42'` |
-
----
-
-## Constraints
-
-| Constraint | Description |
-|------------|-------------|
-| `PRIMARY KEY` | Implies NOT NULL + UNIQUE |
-| `NOT NULL` | Rejects NULL values |
-| `UNIQUE` | Enforces uniqueness (NULLs allowed) |
-| `DEFAULT expr` | Default value |
-| `IDENTITY(seed, increment)` | Auto-increment |
-
----
-
-## Three-Valued Logic
-
-Proper SQL NULL semantics:
-
-```
-NULL AND TRUE   → NULL
-NULL AND FALSE  → FALSE
-NULL OR TRUE    → TRUE
-NULL OR FALSE   → NULL
-NOT NULL        → NULL
-NULL + 1        → NULL
-NULL = NULL     → NULL (not TRUE)
-1 / 0           → NULL
-```
-
----
-
-## Architecture
-
-```
-┌──────────────┐     ┌─────────┐     ┌──────────┐     ┌──────────┐
-│  WASM / TS   │────▶│ Parser  │────▶│  Binder  │────▶│ Executor │
-│  Boundary    │     └─────────┘     └──────────┘     └──────────┘
-└──────────────┘          │                              │
-                          ▼                              ▼
-                    ┌──────────┐                  ┌─────────────┐
-                    │   AST    │                  │   Storage   │
-                    └──────────┘                  └─────────────┘
-```
-
-**Modules:**
-- `iridium_core` — the engine (parser, AST, executor, catalog, storage)
-- `iridium_wasm` — WASM wrapper via `wasm-bindgen`
-
-The engine uses a deterministic clock abstraction, making all time-dependent behavior testable.
-
----
-
-## Build
-
-### Prerequisites
+Run the server with persistent storage:
 
 ```bash
-rustup target add wasm32-unknown-unknown
-cargo install wasm-pack
+cargo run --package iridium_server --bin iridium-server
 ```
 
-### Engine (Rust tests)
+Run in ephemeral mode:
 
 ```bash
-cargo test
+cargo run --package iridium_server --bin iridium-server -- --memory
 ```
 
-### WASM build
+Build the WASM package:
 
 ```bash
 wasm-pack build crates/iridium_wasm --target web --out-dir crates/iridium_wasm/pkg
 ```
 
-### Client & Playground
-
-```bash
-cd packages/iridium-client && npm install && npm run build
-cd ../iridium-playground && npm install && npm run dev
-```
-
----
-
-## Usage (TypeScript)
+## Minimal Example
 
 ```ts
+import { IridiumDatabase } from "@iridium-sql/client";
+
 const db = await IridiumDatabase.create();
 
 await db.exec(`
   CREATE TABLE dbo.Users (
     Id INT IDENTITY(1,1) PRIMARY KEY,
-    Name NVARCHAR(100) NOT NULL,
-    IsActive BIT NOT NULL DEFAULT 1
+    Name NVARCHAR(100) NOT NULL
   )
 `);
 
-await db.exec(`
-  INSERT INTO dbo.Users (Name, IsActive)
-  VALUES (N'Alice', 1), (N'Bob', 0), (N'Charlie', 1)
-`);
-
-const result = await db.query(`
-  SELECT TOP 2 Name,
-         CASE WHEN IsActive = 1 THEN 'Active' ELSE 'Inactive' END AS Status
-  FROM dbo.Users
-  WHERE Name LIKE 'A%'
-  ORDER BY Name ASC
-`);
-
-// result.columns = ["Name", "Status"]
-// result.rows    = [["Alice", "Active"]]
-
-const checkpoint = await db.exportCheckpoint();
-const restored = await IridiumDatabase.fromCheckpoint(checkpoint);
-const restoredRows = await restored.query(`SELECT COUNT(*) FROM dbo.Users`);
+const result = await db.query(`SELECT TOP 1 Name FROM dbo.Users`);
 ```
 
----
-
-## Playground Mode
-
-**iridium-server** includes a **playground mode** that starts the server with pre-loaded sample tables, views, and data. This is useful for testing SQL Server clients without manual setup.
-
-### Quick Start
-
-```bash
-.\scripts\start-playground-sa.ps1
-```
-
-### Sample Tables
-
-The playground includes the following tables:
-
-| Table | Description |
-|-------|-------------|
-| `dbo.Customers` | Customer information (name, email, phone) |
-| `dbo.Products` | Product catalog with prices and stock |
-| `dbo.Orders` | Order headers with status and totals |
-| `dbo.OrderItems` | Order line items |
-| `dbo.Employees` | Employee hierarchy with departments |
-| `dbo.Categories` | Category tree for products |
-
-### Sample Views
-
-| View | Description |
-|------|-------------|
-| `dbo.vCustomerOrders` | Customer order summary with totals |
-| `dbo.vOrderDetails` | Full order details with product info |
-| `dbo.vProductSales` | Product sales summary |
-| `dbo.vEmployeeHierarchy` | Employee list with manager names |
-| `dbo.vMonthlySales` | Monthly sales aggregation |
-
-### Connecting with SQL Server Clients
-
-Once the playground server is running, you can connect with any SQL Server client:
-
-#### Using `sqlcmd`
-
-```bash
-sqlcmd -S localhost -U sa -P '' -Q "SELECT * FROM dbo.vCustomerOrders"
-```
-
-#### Using Azure Data Studio / SSMS
-
-- Server: `localhost`
-- Authentication: SQL Server Authentication (or Windows if no auth configured)
-- Username: `sa` (if auth enabled)
-- Password: (any password if no auth configured)
-
-#### Using Node.js (tedious/tiberius)
+For checkpoint-based persistence in WASM or client flows:
 
 ```ts
-import { connect } from 'tedious';
-
-const config = {
-  server: 'localhost',
-  port: 1433,
-  authentication: { type: 'default', options: { userName: 'sa', password: '' } },
-  options: { encrypt: false, trustServerCertificate: true }
-};
-
-const connection = await connect(config);
+const checkpoint = await db.exportCheckpoint();
+const restored = await IridiumDatabase.fromCheckpoint(checkpoint);
 ```
 
-### PowerShell
+## Compatibility
 
-Use `scripts/start-playground-sa.ps1` to start the playground locally on `localhost:1433` with TLS and SQL auth for SSMS.
+Compatibility is measured, documented, and updated continuously.
 
----
+- [Compatibility Roadmap](docs/roadmap.md)
+- [Compatibility Matrix](docs/compatibility-matrix.md)
+- [Compatibility Backlog](docs/compatibility-backlog.md)
 
-## Test Coverage
+Current posture:
 
-Core and integration tests covering:
+- SQL Server compatibility is the target, not a claim of total parity.
+- Native/server persistence is the default.
+- WASM support is first-class, but intentionally memory-first.
 
-- DDL (CREATE/DROP/ALTER TABLE, schemas, constraints)
-- Metadata (`sys.*`, `INFORMATION_SCHEMA`)
-- Index catalog operations (`CREATE INDEX` / `DROP INDEX`)
-- DML (INSERT/UPDATE/DELETE with all expression types)
-- Joins (INNER, LEFT, RIGHT, FULL OUTER)
-- Aggregates (COUNT, SUM, AVG, MIN, MAX with GROUP BY/HAVING)
-- Set operations (UNION, UNION ALL, INTERSECT, EXCEPT)
-- CTEs (single and multiple)
-- Window Functions (ROW_NUMBER, RANK, DENSE_RANK, NTILE, LAG, LEAD, and Aggregates with OVER)
-- Variables, IF/ELSE, WHILE loops, BREAK/CONTINUE/RETURN
-- `SELECT @var = ...` assignments
-- Temporary tables (`#temp`) and table variables (`DECLARE @t TABLE (...)`)
-- Stored procedures (subset), scalar UDF (subset), inline TVF (subset)
-- `EXEC` and `sp_executesql` subset with OUTPUT parameters
-- Identity scope functions (`SCOPE_IDENTITY()`, `@@IDENTITY`, `IDENT_CURRENT`)
-- Multi-session transactions and isolation anomaly simulations
-- Checkpoint export/import recovery surface (`iridium_core`, WASM, TS client)
-- MVCC-style deterministic commit conflict matrix scenarios
-- All built-in functions
-- Type coercion and NULL semantics
-- Arithmetic, CASE, IN, BETWEEN, LIKE expressions
+## Project Surface
 
-Compatibility is validated in two layers:
-- `scripts/test-compat.ps1`: semantic/result parity checks between Azure SQL Edge and `compat-query` (engine-focused).
-- `cargo test -p iridium_server ssms_object_explorer_`: SSMS Object Explorer contract replay (metadata/bootstrap/table-enumeration focused).
+- `crates/iridium_core` - parser, binder, executor, storage, and compatibility logic
+- `crates/iridium_server` - TDS server and playground runtime
+- `crates/iridium_wasm` - WASM bindings
+- `packages/iridium-client` - TypeScript client API
+- `packages/iridium-playground` - browser playground
 
-See also:
-- [docs/roadmap.md](docs/roadmap.md)
-- [docs/compatibility-matrix.md](docs/compatibility-matrix.md)
-- [docs/compatibility-backlog.md](docs/compatibility-backlog.md)
+## Disclaimer
 
----
+Iridium SQL is an independent implementation and does not use Microsoft proprietary SQL Server code.
 
-## Current Limitations
-
-- WASM persistence remains explicit and checkpoint-based
-- Indexes are catalog-only in this phase (planner still uses table scans)
-- Transaction fidelity is modeled and still partial vs SQL Server edge cases (see roadmap matrix)
-- Catalog coverage is still a subset of SQL Server metadata
-
-See [`docs/roadmap.md`](docs/roadmap.md) for the full compatibility roadmap.
-See [`docs/compatibility-matrix.md`](docs/compatibility-matrix.md) for the current scoreboard and [`docs/compatibility-backlog.md`](docs/compatibility-backlog.md) for the prioritized follow-up work.
-
----
+Microsoft and SQL Server are trademarks of Microsoft Corporation. Any mention of SQL Server in this repository is for compatibility and interoperability description only.
 
 ## License
 
 MIT
-
