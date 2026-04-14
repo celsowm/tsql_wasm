@@ -24,6 +24,7 @@ async fn test_auth_reject() {
         pool_min_size: 1,
         pool_max_size: 50,
         pool_idle_timeout_secs: 300,
+        data_dir: None,
     };
 
     let mut server = TdsServer::new_with_database(Database::new(), config);
@@ -69,6 +70,7 @@ async fn test_auth_accept() {
         pool_min_size: 1,
         pool_max_size: 50,
         pool_idle_timeout_secs: 300,
+        data_dir: None,
     };
 
     let mut server = TdsServer::new_with_database(Database::new(), config);
@@ -100,4 +102,3 @@ async fn test_auth_accept() {
     let (_, rows) = query_sql(&mut client, "SELECT 99 as val").await;
     assert_eq!(rows[0][0], "99");
 }
-

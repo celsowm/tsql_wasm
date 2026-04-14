@@ -56,6 +56,7 @@ pub async fn start_server() -> u16 {
         pool_min_size: 1,
         pool_max_size: 50,
         pool_idle_timeout_secs: 300,
+        data_dir: None,
     };
     start_server_with_config(config).await
 }
@@ -148,4 +149,3 @@ pub async fn exec_sql(client: &mut Client<tokio_util::compat::Compat<TcpStream>>
         .await
         .expect(&format!("Execute failed: {}", sql));
 }
-

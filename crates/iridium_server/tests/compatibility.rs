@@ -122,6 +122,7 @@ async fn test_database_context_tracks_login_database() {
         pool_min_size: 1,
         pool_max_size: 50,
         pool_idle_timeout_secs: 300,
+        data_dir: None,
     })
     .await;
     let mut client = connect(port).await;
@@ -165,4 +166,3 @@ async fn test_object_explorer_srvrolemember_probe() {
     let roles_mask: i32 = rows[0].try_get(0).unwrap().unwrap();
     assert_eq!(roles_mask, 1);
 }
-

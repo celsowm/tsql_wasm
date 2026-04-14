@@ -1,0 +1,22 @@
+Iridium SQL for Windows
+
+This package contains:
+- iridium-server.exe
+- compat-query.exe
+- README.md
+- LICENSE
+- this install note
+
+MSI install behavior:
+- per-machine install under Program Files
+- Start Menu shortcuts for the server and compatibility query helper
+- persistent data defaults to %ProgramData%\Iridium SQL\iridium_sql_data
+
+Portable ZIP behavior:
+- unzip anywhere and run start-iridium-server-portable.cmd
+- that launcher keeps data inside the extracted folder under .\data
+
+Runtime notes:
+- use --memory for ephemeral storage
+- use --data-dir <PATH> to override the persistent storage location
+- the server remains SQL Server-compatible; SQL Server is a trademark of Microsoft
