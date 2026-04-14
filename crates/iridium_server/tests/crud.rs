@@ -1,4 +1,5 @@
-use iridium_server_test_support::*;
+mod common;
+use common::*;
 
 #[tokio::test]
 async fn test_create_table_and_insert() {

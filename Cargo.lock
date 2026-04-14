@@ -683,7 +683,6 @@ dependencies = [
  "chrono",
  "env_logger",
  "iridium_core",
- "iridium_server_test_support",
  "log",
  "once_cell",
  "parking_lot",

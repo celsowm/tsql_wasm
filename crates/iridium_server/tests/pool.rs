@@ -3,7 +3,9 @@ use tiberius::Config;
 use tokio::net::TcpStream;
 use tokio_util::compat::TokioAsyncWriteCompatExt;
 use iridium_server::ServerConfig;
-use iridium_server_test_support::*;
+
+mod common;
+use common::*;
 
 #[tokio::test]
 async fn test_session_pool_reuse_resets_session_state() {

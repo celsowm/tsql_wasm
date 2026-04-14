@@ -1,4 +1,5 @@
-use iridium_server_test_support::*;
+mod common;
+use common::*;
 
 #[tokio::test]
 async fn test_prelogin_and_login() {

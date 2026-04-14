@@ -2,10 +2,16 @@
 name = "iridium_server_test_support"
 version = "0.1.0"
 edition = "2021"
+description = "Test support helpers for Iridium SQL server integration tests"
+license = "MIT"
+repository = "https://github.com/celsowm/iridium-sql"
+homepage = "https://github.com/celsowm/iridium-sql"
+keywords = ["sql-server", "tds", "tests"]
+categories = ["database", "development-tools::testing"]
 
 [dependencies]
-iridium_core = { path = "../iridium_core" }
-iridium_server = { path = "../iridium_server" }
+iridium_core = { path = "../iridium_core", version = "0.1.0" }
+iridium_server = { path = "../iridium_server", version = "0.1.0" }
 tiberius = { version = "0.11", default-features = false, features = ["tokio", "tds73", "chrono", "rustls"] }
 tokio = { version = "1", features = ["net"] }
 tokio-util = { version = "0.7", features = ["compat"] }

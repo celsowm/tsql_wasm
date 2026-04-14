@@ -4,6 +4,13 @@ use tokio_util::compat::TokioAsyncWriteCompatExt;
 use iridium_core::Database;
 use iridium_server::{ServerConfig, TdsServer};
 
+pub fn init_test_logger() {
+    let mut logger = env_logger::builder();
+    logger.is_test(true);
+    logger.filter_module("tiberius", log::LevelFilter::Error);
+    let _ = logger.try_init();
+}
+
 pub fn row_to_strings(row: &Row) -> Vec<String> {
     (0..row.len())
         .map(|i| {

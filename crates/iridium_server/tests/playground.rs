@@ -1,7 +1,9 @@
 use iridium_server::playground;
 use iridium_server::ServerConfig;
 use iridium_server::TdsServer;
-use iridium_server_test_support::*;
+
+mod common;
+use common::*;
 
 #[tokio::test]
 async fn test_playground_tables() {

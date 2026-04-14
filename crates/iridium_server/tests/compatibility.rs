@@ -1,6 +1,8 @@
 use tiberius::Row;
 use iridium_server::ServerConfig;
-use iridium_server_test_support::*;
+
+mod common;
+use common::*;
 
 #[tokio::test]
 async fn test_sysdac_probe_returns_int() {

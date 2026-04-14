@@ -3,7 +3,9 @@ use tokio::net::TcpStream;
 use tokio_util::compat::TokioAsyncWriteCompatExt;
 use iridium_core::Database;
 use iridium_server::{Credentials, ServerConfig, TdsServer};
-use iridium_server_test_support::*;
+
+mod common;
+use common::*;
 
 #[tokio::test]
 async fn test_auth_reject() {
