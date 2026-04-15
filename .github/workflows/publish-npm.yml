@@ -31,6 +31,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Update npm CLI
+        run: npm install -g npm@^11.5.1
+
       - name: Install wasm-pack
         run: cargo install wasm-pack --locked
 
