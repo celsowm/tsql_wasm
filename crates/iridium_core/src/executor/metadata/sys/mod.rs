@@ -1,5 +1,6 @@
 mod constraints;
 mod database_principals;
+mod dm_os;
 mod hadr;
 mod host_info;
 mod indexes;
@@ -100,8 +101,12 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(objects::SysViews))
     } else if name.eq_ignore_ascii_case("dm_os_host_info") {
         Some(Box::new(host_info::SysHostInfo))
+    } else if name.eq_ignore_ascii_case("dm_os_sys_info") {
+        Some(Box::new(dm_os::SysDmOsSysInfo))
     } else if name.eq_ignore_ascii_case("dm_exec_sessions") {
         Some(Box::new(sessions::SysDmExecSessions))
+    } else if name.eq_ignore_ascii_case("dm_exec_requests") {
+        Some(Box::new(sessions::SysDmExecRequests))
     } else if name.eq_ignore_ascii_case("dm_exec_connections") {
         Some(Box::new(sessions::SysDmExecConnections))
     } else if name.eq_ignore_ascii_case("check_constraints") {

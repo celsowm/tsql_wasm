@@ -137,6 +137,14 @@ pub(crate) fn eval_host_name(args: &[Expr], ctx: &ExecutionContext) -> Result<Va
     ))
 }
 
+pub(crate) fn eval_host_id(args: &[Expr], _ctx: &ExecutionContext) -> Result<Value, DbError> {
+    if !args.is_empty() {
+        return Err(DbError::Execution("HOST_ID expects no arguments".into()));
+    }
+    // Return a fixed dummy host ID for now
+    Ok(Value::Int(12345))
+}
+
 pub(crate) fn eval_system_user(args: &[Expr], ctx: &ExecutionContext) -> Result<Value, DbError> {
     if !args.is_empty() {
         return Err(DbError::Execution(

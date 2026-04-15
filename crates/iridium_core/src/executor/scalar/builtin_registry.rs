@@ -160,6 +160,9 @@ const SYSTEM_FUNCTIONS: &[BuiltinScalarFunction] = &[
     builtin!("HOST_NAME" => |args, _row, ctx, _catalog, _storage, _clock| {
         system::identity::eval_host_name(args, ctx)
     }),
+    builtin!("HOST_ID" => |args, _row, ctx, _catalog, _storage, _clock| {
+        system::identity::eval_host_id(args, ctx)
+    }),
     builtin!("SYSTEM_USER" => |_args, _row, ctx, _catalog, _storage, _clock| {
         system::identity::eval_system_user(_args, ctx)
     }),
@@ -181,6 +184,7 @@ const SYSTEM_FUNCTIONS: &[BuiltinScalarFunction] = &[
     builtin!("SERVERPROPERTY" => system::properties::eval_serverproperty),
     builtin!("FULLTEXTSERVICEPROPERTY" => system::properties::eval_fulltextserviceproperty),
     builtin!("CONNECTIONPROPERTY" => system::properties::eval_connectionproperty),
+    builtin!("SESSIONPROPERTY" => system::properties::eval_sessionproperty),
     builtin!("IS_SRVROLEMEMBER" => system::identity::eval_is_srvrolemember),
     builtin!("HAS_DBACCESS" => system::identity::eval_has_dbaccess),
     builtin!("HAS_PERMS_BY_NAME" => system::identity::eval_has_perms_by_name),
