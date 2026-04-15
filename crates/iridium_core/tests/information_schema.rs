@@ -633,3 +633,143 @@ fn test_sys_partition_schemes_has_type_desc() {
 }
 
 
+
+// ─── sys.sql_modules ──────────────────────────────────────────────────
+
+#[test]
+fn test_sys_sql_modules_routine() {
+    let mut e = Engine::new();
+    let sql = "CREATE PROCEDURE dbo.sp_test AS SELECT 1";
+    exec(&mut e, sql);
+    let r = query(
+        &mut e,
+        "SELECT definition FROM sys.sql_modules WHERE object_id = OBJECT_ID('dbo.sp_test')",
+    );
+    assert_eq!(r.rows.len(), 1);
+    assert!(val(&r, 0, 0).to_lowercase().contains("sp_test"));
+}
+
+#[test]
+fn test_sys_sql_modules_view() {
+    let mut e = Engine::new();
+    let sql = "CREATE VIEW dbo.v_test AS SELECT 1 AS x";
+    exec(&mut e, sql);
+    let r = query(
+        &mut e,
+        "SELECT definition FROM sys.sql_modules WHERE object_id = OBJECT_ID('dbo.v_test')",
+    );
+    assert_eq!(r.rows.len(), 1);
+    assert!(val(&r, 0, 0).to_lowercase().contains("v_test"));
+}
+
+#[test]
+fn test_sys_sql_modules_trigger() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE t1 (id INT)");
+    let sql = "CREATE TRIGGER tr_test ON t1 FOR INSERT AS PRINT 'inserted'";
+    exec(&mut e, sql);
+    let r = query(
+        &mut e,
+        "SELECT definition FROM sys.sql_modules WHERE object_id = OBJECT_ID('tr_test')",
+    );
+    assert_eq!(r.rows.len(), 1);
+    assert!(val(&r, 0, 0).to_lowercase().contains("tr_test"));
+}
+
+// ─── sys.foreign_key_columns ──────────────────────────────────────────
+
+#[test]
+fn test_sys_foreign_key_columns() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE p (id1 INT, id2 INT, PRIMARY KEY (id1, id2))");
+    exec(&mut e, "CREATE TABLE c (c1 INT, c2 INT, CONSTRAINT fk_c_p FOREIGN KEY (c1, c2) REFERENCES p (id1, id2))");
+    let r = query(
+        &mut e,
+        "SELECT constraint_object_id, constraint_column_id, parent_object_id, referenced_object_id
+         FROM sys.foreign_key_columns
+         WHERE constraint_object_id = (SELECT object_id FROM sys.foreign_keys WHERE name = 'fk_c_p')
+         ORDER BY constraint_column_id",
+    );
+    assert_eq!(r.rows.len(), 2);
+    assert_eq!(val(&r, 0, 1), "1");
+    assert_eq!(val(&r, 1, 1), "2");
+
+    let pid = query(&mut e, "SELECT OBJECT_ID('dbo.c')").rows[0][0].to_string_value();
+    let rid = query(&mut e, "SELECT OBJECT_ID('dbo.p')").rows[0][0].to_string_value();
+
+    assert_eq!(val(&r, 0, 2), pid);
+    assert_eq!(val(&r, 0, 3), rid);
+}
+
+// ─── sys.trigger_events ───────────────────────────────────────────────
+
+#[test]
+fn test_sys_trigger_events() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE t1 (id INT)");
+    exec(&mut e, "CREATE TRIGGER tr_multi ON t1 FOR INSERT, UPDATE AS PRINT 'hi'");
+    let r = query(
+        &mut e,
+        "SELECT type, type_desc FROM sys.trigger_events WHERE object_id = OBJECT_ID('tr_multi') ORDER BY type",
+    );
+    assert_eq!(r.rows.len(), 2);
+    assert_eq!(val(&r, 0, 0), "1");
+    assert_eq!(val(&r, 0, 1), "INSERT");
+    assert_eq!(val(&r, 1, 0), "2");
+    assert_eq!(val(&r, 1, 1), "UPDATE");
+}
+
+// ─── sys.partitions ───────────────────────────────────────────────────
+
+#[test]
+fn test_sys_partitions() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE t1 (id INT PRIMARY KEY)");
+    let r = query(
+        &mut e,
+        "SELECT object_id, index_id, partition_number FROM sys.partitions WHERE object_id = OBJECT_ID('dbo.t1')",
+    );
+    assert!(r.rows.len() >= 1);
+    assert_eq!(val(&r, 0, 2), "1");
+}
+
+// ─── sys.allocation_units ───────────────────────────────────────────────
+
+#[test]
+fn test_sys_allocation_units() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE t1 (id INT PRIMARY KEY)");
+    let r = query(
+        &mut e,
+        "SELECT type_desc, container_id FROM sys.allocation_units
+         WHERE container_id IN (SELECT partition_id FROM sys.partitions WHERE object_id = OBJECT_ID('dbo.t1'))",
+    );
+    assert!(r.rows.len() >= 1);
+    assert_eq!(val(&r, 0, 0), "IN_ROW_DATA");
+}
+
+// ─── sys.stats_columns ────────────────────────────────────────────────
+
+#[test]
+fn test_sys_stats_columns() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE t1 (id INT PRIMARY KEY)");
+    let r = query(
+        &mut e,
+        "SELECT object_id, stats_id, stats_column_id, column_id FROM sys.stats_columns
+         WHERE stats_id = (SELECT stats_id FROM sys.stats WHERE object_id = OBJECT_ID('dbo.t1'))",
+    );
+    assert!(r.rows.len() >= 1);
+    assert_eq!(val(&r, 0, 2), "1");
+}
+
+// ─── sys.database_files ───────────────────────────────────────────────
+
+#[test]
+fn test_sys_database_files() {
+    let mut e = Engine::new();
+    let r = query(&mut e, "SELECT name, type_desc FROM sys.database_files");
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(val(&r, 0, 0), "iridium_sql");
+    assert_eq!(val(&r, 0, 1), "ROWS");
+}

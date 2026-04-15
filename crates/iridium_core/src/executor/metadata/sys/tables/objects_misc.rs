@@ -17,7 +17,9 @@ pub(crate) struct SysTriggers;
 pub(crate) struct SysSqlModules;
 pub(crate) struct SysSystemSqlModules;
 pub(crate) struct SysStats;
+pub(crate) struct SysStatsColumns;
 pub(crate) struct SysServerPrincipals;
+pub(crate) struct SysTriggerEvents;
 
 impl VirtualTable for SysDataSpaces {
     fn definition(&self) -> crate::catalog::TableDef {
@@ -46,6 +48,54 @@ impl VirtualTable for SysDataSpaces {
             ],
             deleted: false,
         }]
+    }
+}
+
+impl VirtualTable for SysTriggerEvents {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "trigger_events",
+            vec![
+                ("object_id", DataType::Int, false),
+                ("type", DataType::TinyInt, false),
+                ("type_desc", DataType::NVarChar { max_len: 60 }, false),
+                ("is_first", DataType::Bit, false),
+                ("is_last", DataType::Bit, false),
+                ("event_group_type", DataType::Int, true),
+                ("event_group_type_desc", DataType::NVarChar { max_len: 60 }, true),
+                ("is_trigger_event", DataType::Bit, false),
+            ],
+        )
+    }
+
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+        let mut rows = Vec::new();
+
+        for t in catalog.get_triggers() {
+            for event in &t.events {
+                let (ty, desc) = match event {
+                    crate::ast::TriggerEvent::Insert => (1, "INSERT"),
+                    crate::ast::TriggerEvent::Update => (2, "UPDATE"),
+                    crate::ast::TriggerEvent::Delete => (3, "DELETE"),
+                };
+
+                rows.push(StoredRow {
+                    values: vec![
+                        Value::Int(t.object_id),
+                        Value::TinyInt(ty),
+                        Value::NVarChar(desc.to_string()),
+                        Value::Bit(false),
+                        Value::Bit(false),
+                        Value::Null,
+                        Value::Null,
+                        Value::Bit(true),
+                    ],
+                    deleted: false,
+                });
+            }
+        }
+
+        rows
     }
 }
 
@@ -108,6 +158,8 @@ impl VirtualTable for SysForeignKeyColumns {
         virtual_table_def(
             "foreign_key_columns",
             vec![
+                ("constraint_object_id", DataType::Int, false),
+                ("constraint_column_id", DataType::Int, false),
                 ("parent_object_id", DataType::Int, false),
                 ("parent_column_id", DataType::Int, false),
                 ("referenced_object_id", DataType::Int, false),
@@ -118,8 +170,13 @@ impl VirtualTable for SysForeignKeyColumns {
 
     fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
+        let mut fk_idx = 0;
+
         for table in catalog.get_tables() {
             for fk in &table.foreign_keys {
+                let constraint_object_id = 4_000_000 + fk_idx;
+                fk_idx += 1;
+
                 let ref_schema = fk.referenced_table.schema_or_dbo();
                 let Some(ref_table) = catalog.find_table(ref_schema, &fk.referenced_table.name)
                 else {
@@ -143,6 +200,8 @@ impl VirtualTable for SysForeignKeyColumns {
                     };
                     rows.push(StoredRow {
                         values: vec![
+                            Value::Int(constraint_object_id),
+                            Value::Int((i + 1) as i32),
                             Value::Int(table.id as i32),
                             Value::Int(parent_col.id as i32),
                             Value::Int(ref_table.id as i32),
@@ -293,12 +352,76 @@ impl VirtualTable for SysSqlModules {
             vec![
                 ("object_id", DataType::Int, false),
                 ("definition", DataType::VarChar { max_len: 8000 }, true),
+                ("uses_ansi_nulls", DataType::Bit, true),
+                ("uses_quoted_identifier", DataType::Bit, true),
+                ("is_schema_bound", DataType::Bit, true),
+                ("uses_database_collation", DataType::Bit, true),
+                ("is_recompiled", DataType::Bit, true),
+                ("null_on_null_input", DataType::Bit, true),
+                ("execute_as_principal_id", DataType::Int, true),
+                ("uses_native_compilation", DataType::Bit, true),
             ],
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
-        Vec::new()
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+        let mut rows = Vec::new();
+
+        for r in catalog.get_routines() {
+            rows.push(StoredRow {
+                values: vec![
+                    Value::Int(r.object_id),
+                    Value::VarChar(r.definition_sql.clone()),
+                    Value::Bit(true),
+                    Value::Bit(true),
+                    Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Null,
+                    Value::Bit(false),
+                ],
+                deleted: false,
+            });
+        }
+
+        for v in catalog.get_views() {
+            rows.push(StoredRow {
+                values: vec![
+                    Value::Int(v.object_id),
+                    Value::VarChar(v.definition_sql.clone()),
+                    Value::Bit(true),
+                    Value::Bit(true),
+                    Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Null,
+                    Value::Bit(false),
+                ],
+                deleted: false,
+            });
+        }
+
+        for t in catalog.get_triggers() {
+            rows.push(StoredRow {
+                values: vec![
+                    Value::Int(t.object_id),
+                    Value::VarChar(t.definition_sql.clone()),
+                    Value::Bit(true),
+                    Value::Bit(true),
+                    Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Null,
+                    Value::Bit(false),
+                ],
+                deleted: false,
+            });
+        }
+
+        rows
     }
 }
 
@@ -332,19 +455,58 @@ impl VirtualTable for SysStats {
     }
 
     fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
-        catalog
-            .get_indexes()
-            .iter()
-            .map(|idx| StoredRow {
+        let mut rows = Vec::new();
+        let mut stats_idx = 0;
+        for idx in catalog.get_indexes() {
+            let stats_id = 100_000 + stats_idx;
+            stats_idx += 1;
+            rows.push(StoredRow {
                 values: vec![
                     Value::Int(idx.table_id as i32),
+                    Value::Int(stats_id),
                     Value::VarChar(idx.name.clone()),
                     Value::Bit(false),
                     Value::Bit(false),
                 ],
                 deleted: false,
-            })
-            .collect()
+            });
+        }
+        rows
+    }
+}
+
+impl VirtualTable for SysStatsColumns {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "stats_columns",
+            vec![
+                ("object_id", DataType::Int, false),
+                ("stats_id", DataType::Int, false),
+                ("stats_column_id", DataType::Int, false),
+                ("column_id", DataType::Int, false),
+            ],
+        )
+    }
+
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+        let mut rows = Vec::new();
+        let mut stats_idx = 0;
+        for idx in catalog.get_indexes() {
+            let stats_id = 100_000 + stats_idx;
+            stats_idx += 1;
+            for (i, col_id) in idx.column_ids.iter().enumerate() {
+                rows.push(StoredRow {
+                    values: vec![
+                        Value::Int(idx.table_id as i32),
+                        Value::Int(stats_id),
+                        Value::Int((i + 1) as i32),
+                        Value::Int(*col_id as i32),
+                    ],
+                    deleted: false,
+                });
+            }
+        }
+        rows
     }
 }
 

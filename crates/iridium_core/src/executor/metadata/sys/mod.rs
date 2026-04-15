@@ -61,6 +61,10 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(partition::SysPartitionParameters))
     } else if name.eq_ignore_ascii_case("partition_schemes") {
         Some(Box::new(partition::SysPartitionSchemes))
+    } else if name.eq_ignore_ascii_case("partitions") {
+        Some(Box::new(partition::SysPartitions))
+    } else if name.eq_ignore_ascii_case("allocation_units") {
+        Some(Box::new(partition::SysAllocationUnits))
     } else if name.eq_ignore_ascii_case("destination_data_spaces") {
         Some(Box::new(partition::SysDestinationDataSpaces))
     } else if name.eq_ignore_ascii_case("filegroups") {
@@ -71,6 +75,8 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(tables::SysAssemblyModules))
     } else if name.eq_ignore_ascii_case("triggers") {
         Some(Box::new(tables::SysTriggers))
+    } else if name.eq_ignore_ascii_case("trigger_events") {
+        Some(Box::new(tables::SysTriggerEvents))
     } else if name.eq_ignore_ascii_case("sql_modules") {
         Some(Box::new(tables::SysSqlModules))
     } else if name.eq_ignore_ascii_case("system_sql_modules") {
@@ -79,6 +85,8 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(tables::SysSqlExpressionDependencies))
     } else if name.eq_ignore_ascii_case("stats") {
         Some(Box::new(tables::SysStats))
+    } else if name.eq_ignore_ascii_case("stats_columns") {
+        Some(Box::new(tables::SysStatsColumns))
     } else if name.eq_ignore_ascii_case("types") {
         Some(Box::new(tables::SysTypes))
     } else if name.eq_ignore_ascii_case("parameters") {
@@ -131,6 +139,8 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(hadr::SysDatabaseMirroring))
     } else if name.eq_ignore_ascii_case("master_files") {
         Some(Box::new(hadr::SysMasterFiles))
+    } else if name.eq_ignore_ascii_case("database_files") {
+        Some(Box::new(hadr::SysDatabaseFiles))
     } else if name.eq_ignore_ascii_case("database_principals") {
         Some(Box::new(database_principals::SysDatabasePrincipals))
     } else if name.eq_ignore_ascii_case("database_permissions") {
