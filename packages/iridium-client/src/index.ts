@@ -1,4 +1,4 @@
-import init, { IridiumWasmDb } from "../../../crates/iridium_wasm/pkg/iridium_wasm.js";
+import init, { IridiumWasmDb } from "./wasm/iridium_wasm.js";
 
 export type QueryResult = {
   columns: string[];
@@ -149,17 +149,14 @@ export class IridiumSession {
 }
 
 async function initWasm(): Promise<void> {
-    if (isNodeRuntime()) {
-      const fs = await import(nodeFsPromisesSpecifier());
-      const wasmUrl = new URL(
-        "../../../crates/iridium_wasm/pkg/iridium_wasm_bg.wasm",
-        import.meta.url,
-      );
-      const wasmBytes = await fs.readFile(wasmUrl);
-      await init({ module_or_path: wasmBytes });
-    } else {
-      await init();
-    }
+  if (isNodeRuntime()) {
+    const fs = await import(nodeFsPromisesSpecifier());
+    const wasmUrl = new URL("./wasm/iridium_wasm_bg.wasm", import.meta.url);
+    const wasmBytes = await fs.readFile(wasmUrl);
+    await init({ module_or_path: wasmBytes });
+  } else {
+    await init();
+  }
 }
 
 function isNodeRuntime(): boolean {

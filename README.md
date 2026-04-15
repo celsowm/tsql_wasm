@@ -48,7 +48,7 @@ wasm-pack build crates/iridium_wasm --target web --out-dir crates/iridium_wasm/p
 ## Minimal Example
 
 ```ts
-import { IridiumDatabase } from "@iridium-sql/client";
+import { IridiumDatabase } from "@celsowm/iridium-sql-client";
 
 const db = await IridiumDatabase.create();
 

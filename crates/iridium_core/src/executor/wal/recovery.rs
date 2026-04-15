@@ -5,7 +5,6 @@
 //! and identifies committed vs rolled-back transactions so the caller can
 //! decide whether further replay is needed.
 
-
 use super::record::{Lsn, WalFrame, WalRecord};
 
 /// Result of WAL record replay containing recovered transaction state.

@@ -1,12 +1,30 @@
 {
-  "name": "@iridium-sql/client",
+  "name": "@celsowm/iridium-sql-client",
   "version": "0.1.0",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build:wasm": "node scripts/build-wasm.mjs",
+    "build:types": "tsc -p tsconfig.json",
+    "copy:wasm": "node scripts/copy-wasm.mjs",
+    "build": "npm run build:wasm && npm run build:types && npm run copy:wasm",
+    "prepack": "npm run build"
   },
   "devDependencies": {
     "typescript": "^5.6.3"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
 

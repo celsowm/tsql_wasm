@@ -24,6 +24,9 @@ parking_lot = "0.12"
 dashmap = "6.1.0"
 chrono = { version = "0.4", features = ["clock", "serde"] }
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+uuid = { version = "1", features = ["js"] }
+
 [dev-dependencies]
 tempfile = "3"
 tiberius = { version = "0.12.3", default-features = false, features = ["tokio", "tds73", "chrono"] }

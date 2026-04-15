@@ -6,7 +6,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@iridium-sql/client": "file:../iridium-client"
+    "@celsowm/iridium-sql-client": "file:../iridium-client"
   },
   "devDependencies": {
     "vitest": "^2.1.3"
