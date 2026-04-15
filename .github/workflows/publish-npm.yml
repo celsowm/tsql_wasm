@@ -30,7 +30,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
 
       - name: Install wasm-pack
         run: cargo install wasm-pack --locked
@@ -43,3 +42,5 @@ jobs:
 
       - name: Publish package
         run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ""
