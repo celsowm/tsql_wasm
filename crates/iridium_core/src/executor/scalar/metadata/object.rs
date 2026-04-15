@@ -250,3 +250,69 @@ pub(crate) fn eval_ident_current(
     }
     Ok(Value::Null)
 }
+
+pub(crate) fn eval_ident_seed(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("IDENT_SEED expects 1 argument".into()));
+    }
+    let val = eval_expr_to_value(&args[0], row, ctx, catalog, storage, clock)?;
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+    let raw = val.to_string_value();
+    let parts: Vec<&str> = raw.split('.').collect();
+    let (schema, name) = if parts.len() == 2 {
+        (parts[0].trim(), parts[1].trim())
+    } else {
+        ("dbo", raw.trim())
+    };
+    let Some(table) = catalog.find_table(schema, name) else {
+        return Ok(Value::Null);
+    };
+    for col in &table.columns {
+        if let Some(identity) = &col.identity {
+            return Ok(Value::BigInt(identity.seed));
+        }
+    }
+    Ok(Value::Null)
+}
+
+pub(crate) fn eval_ident_incr(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("IDENT_INCR expects 1 argument".into()));
+    }
+    let val = eval_expr_to_value(&args[0], row, ctx, catalog, storage, clock)?;
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+    let raw = val.to_string_value();
+    let parts: Vec<&str> = raw.split('.').collect();
+    let (schema, name) = if parts.len() == 2 {
+        (parts[0].trim(), parts[1].trim())
+    } else {
+        ("dbo", raw.trim())
+    };
+    let Some(table) = catalog.find_table(schema, name) else {
+        return Ok(Value::Null);
+    };
+    for col in &table.columns {
+        if let Some(identity) = &col.identity {
+            return Ok(Value::BigInt(identity.increment));
+        }
+    }
+    Ok(Value::Null)
+}

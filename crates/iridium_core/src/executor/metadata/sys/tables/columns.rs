@@ -2,6 +2,7 @@ use super::super::super::VirtualTable;
 use super::super::super::{system_type_id, type_max_length, virtual_table_def};
 use crate::ast::{DmlStatement, Expr, SelectItem, Statement};
 use crate::catalog::Catalog;
+use crate::executor::context::ExecutionContext;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
@@ -14,7 +15,7 @@ impl VirtualTable for SysColumns {
         column_table_def("columns", false)
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         column_rows(catalog, false)
     }
 }
@@ -24,7 +25,7 @@ impl VirtualTable for SysAllColumns {
         column_table_def("all_columns", true)
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         column_rows(catalog, true)
     }
 }
@@ -34,7 +35,7 @@ impl VirtualTable for SysViewColumns {
         view_column_table_def()
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         view_column_rows(catalog)
     }
 }
@@ -270,7 +271,7 @@ impl VirtualTable for SysComputedColumns {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
         for table in catalog.get_tables() {
             for col in &table.columns {

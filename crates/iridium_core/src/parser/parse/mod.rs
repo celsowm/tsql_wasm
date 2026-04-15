@@ -431,9 +431,10 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
                 while !is_set_boundary(parser.peek()) {
                     let Some(tok) = parser.next() else { break };
                     match tok {
-                        Token::Identifier(v) | Token::String(v) | Token::Variable(v) => {
-                            parts.push(v.clone())
-                        }
+                        Token::Identifier(v)
+                        | Token::String(v)
+                        | Token::NString(v)
+                        | Token::Variable(v) => parts.push(v.clone()),
                         Token::Keyword(k) => parts.push(k.as_ref().to_string()),
                         Token::Number { raw, .. } => parts.push(raw.clone()),
                         Token::Operator(op) => parts.push(op.clone()),

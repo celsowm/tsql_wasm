@@ -614,3 +614,35 @@ fn test_string_escape_in_query() {
         Value::NVarChar("He said \\\"hello\\\"".to_string())
     );
 }
+
+// ─── DATALENGTH ───────────────────────────────────────────────────────────
+
+#[test]
+fn test_datalength_basic() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT DATALENGTH('abc') AS v");
+    assert_eq!(r.rows[0][0], Value::Int(3));
+
+    let r = query(&mut engine, "SELECT DATALENGTH(N'abc') AS v");
+    assert_eq!(r.rows[0][0], Value::Int(6));
+}
+
+#[test]
+fn test_datalength_numeric() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT DATALENGTH(CAST(1 AS INT)) AS v");
+    assert_eq!(r.rows[0][0], Value::Int(4));
+
+    let r = query(&mut engine, "SELECT DATALENGTH(CAST(1 AS BIGINT)) AS v");
+    assert_eq!(r.rows[0][0], Value::Int(8));
+
+    let r = query(&mut engine, "SELECT DATALENGTH(CAST(1 AS TINYINT)) AS v");
+    assert_eq!(r.rows[0][0], Value::Int(1));
+}
+
+#[test]
+fn test_datalength_null() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT DATALENGTH(NULL) AS v");
+    assert!(r.rows[0][0].is_null());
+}

@@ -17,7 +17,7 @@ fn coercion_int_to_tinyint() {
 
 #[test]
 fn coercion_int_overflow_to_tinyint() {
-    let mut e = Engine::new();
+    let e = Engine::new();
     let result = e.exec("SELECT CAST(256 AS TINYINT)");
     assert!(result.is_err(), "256 exceeds TINYINT max (255)");
 }
@@ -56,7 +56,7 @@ fn coercion_varchar_to_int() {
 
 #[test]
 fn coercion_varchar_invalid_to_int() {
-    let mut e = Engine::new();
+    let e = Engine::new();
     let result = e.exec("SELECT CAST('abc' AS INT)");
     assert!(result.is_err(), "cannot parse 'abc' as INT");
 }
@@ -84,7 +84,7 @@ fn coercion_decimal_to_int() {
 
 #[test]
 fn coercion_decimal_to_tinyint_overflow() {
-    let mut e = Engine::new();
+    let e = Engine::new();
     let result = e.exec("SELECT CAST(300 AS DECIMAL(10,2)) AS TINYINT");
     assert!(result.is_err(), "300 exceeds TINYINT max (255)");
 }
@@ -298,4 +298,3 @@ fn coercion_update_implicit() {
     let r = query(&mut e, "SELECT val FROM dbo.coerce_test");
     assert_eq!(r.rows[0][0], Value::Int(123));
 }
-

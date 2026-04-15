@@ -1,6 +1,7 @@
 use super::VirtualTable;
 use super::{schema_name_by_id, virtual_table_def, DB_CATALOG};
 use crate::catalog::Catalog;
+use crate::executor::context::ExecutionContext;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
@@ -23,7 +24,7 @@ impl VirtualTable for TablePrivileges {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
         for t in catalog.get_tables() {
             rows.push(StoredRow {
@@ -60,7 +61,7 @@ impl VirtualTable for ColumnPrivileges {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
         for t in catalog.get_tables() {
             for c in &t.columns {

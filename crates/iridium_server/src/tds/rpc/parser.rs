@@ -363,7 +363,7 @@ impl<'a> RpcFrameParser<'a> {
 
     fn parse_execute_rpc(&mut self) -> io::Result<Option<RpcRequest>> {
         let mut stmt_handle: Option<i32> = None;
-        let mut params: Vec<RpcParam> = vec![];
+        let params: Vec<RpcParam> = vec![];
         let mut param_idx: usize = 0;
 
         while self.reader.remaining() > 0 {

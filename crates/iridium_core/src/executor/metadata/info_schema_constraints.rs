@@ -1,6 +1,7 @@
 use super::VirtualTable;
 use super::{schema_name_by_id, virtual_table_def, DB_CATALOG};
 use crate::catalog::{Catalog, ColumnDef};
+use crate::executor::context::ExecutionContext;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
@@ -59,7 +60,7 @@ impl VirtualTable for TableConstraints {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
         for t in catalog.get_tables() {
             let schema = schema_name_by_id(catalog, t.schema_id);
@@ -144,7 +145,7 @@ impl VirtualTable for CheckConstraints {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
         for t in catalog.get_tables() {
             let schema = schema_name_by_id(catalog, t.schema_id);
@@ -202,7 +203,7 @@ impl VirtualTable for ReferentialConstraints {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
         for t in catalog.get_tables() {
             let schema = schema_name_by_id(catalog, t.schema_id);
@@ -252,7 +253,7 @@ impl VirtualTable for KeyColumnUsage {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
         for t in catalog.get_tables() {
             let schema = schema_name_by_id(catalog, t.schema_id);
@@ -321,7 +322,7 @@ impl VirtualTable for ConstraintColumnUsage {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
         for t in catalog.get_tables() {
             let schema = schema_name_by_id(catalog, t.schema_id);
@@ -390,7 +391,7 @@ impl VirtualTable for ConstraintTableUsage {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
         for t in catalog.get_tables() {
             let schema = schema_name_by_id(catalog, t.schema_id);

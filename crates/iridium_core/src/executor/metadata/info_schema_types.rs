@@ -1,6 +1,7 @@
 use super::VirtualTable;
 use super::{virtual_table_def, DB_CATALOG};
 use crate::catalog::Catalog;
+use crate::executor::context::ExecutionContext;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
@@ -24,7 +25,7 @@ impl VirtualTable for Domains {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         catalog
             .get_table_types()
             .iter()
@@ -61,7 +62,7 @@ impl VirtualTable for ColumnDomainUsage {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         // Since we only support table types as domains for now, and they don't really
         // "usage" columns in the traditional SQL sense, we return empty or
         // we could eventually map columns that use these types.

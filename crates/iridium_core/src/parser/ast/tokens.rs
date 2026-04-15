@@ -12,6 +12,7 @@ pub enum Token {
         raw: String,
     },
     String(String),
+    NString(String),
     Operator(String),
     LParen,
     RParen,

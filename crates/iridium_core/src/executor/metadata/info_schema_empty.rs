@@ -1,6 +1,7 @@
 use super::virtual_table_def;
 use super::VirtualTable;
 use crate::catalog::Catalog;
+use crate::executor::context::ExecutionContext;
 use crate::storage::StoredRow;
 use crate::types::DataType;
 
@@ -42,7 +43,7 @@ impl VirtualTable for DomainConstraints {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         vec![]
     }
 }

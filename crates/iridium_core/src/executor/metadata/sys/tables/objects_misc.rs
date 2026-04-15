@@ -1,6 +1,7 @@
 use super::super::super::virtual_table_def;
 use super::super::super::VirtualTable;
 use crate::catalog::Catalog;
+use crate::executor::context::ExecutionContext;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
@@ -33,7 +34,7 @@ impl VirtualTable for SysDataSpaces {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         vec![StoredRow {
             values: vec![
                 Value::Int(1),
@@ -61,7 +62,7 @@ impl VirtualTable for SysExtendedProperties {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         Vec::new()
     }
 }
@@ -81,7 +82,7 @@ impl VirtualTable for SysIndexColumns {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
         for idx in catalog.get_indexes() {
             for (ordinal, col_id) in idx.column_ids.iter().enumerate() {
@@ -115,7 +116,7 @@ impl VirtualTable for SysForeignKeyColumns {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
         for table in catalog.get_tables() {
             for fk in &table.foreign_keys {
@@ -168,7 +169,7 @@ impl VirtualTable for SysXmlSchemaCollections {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         Vec::new()
     }
 }
@@ -186,7 +187,7 @@ impl VirtualTable for SysXmlIndexes {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         Vec::new()
     }
 }
@@ -203,7 +204,7 @@ impl VirtualTable for SysEdgeConstraints {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         Vec::new()
     }
 }
@@ -216,7 +217,7 @@ impl VirtualTable for SysAssemblyModules {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         Vec::new()
     }
 }
@@ -247,7 +248,7 @@ impl VirtualTable for SysTriggers {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let created = Value::DateTime(
             chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
                 .unwrap()
@@ -296,7 +297,7 @@ impl VirtualTable for SysSqlModules {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         Vec::new()
     }
 }
@@ -312,7 +313,7 @@ impl VirtualTable for SysSystemSqlModules {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         Vec::new()
     }
 }
@@ -330,7 +331,7 @@ impl VirtualTable for SysStats {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         catalog
             .get_indexes()
             .iter()
@@ -368,7 +369,7 @@ impl VirtualTable for SysServerPrincipals {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let created = Value::DateTime(
             chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
                 .unwrap()
@@ -441,7 +442,7 @@ impl VirtualTable for SysSqlExpressionDependencies {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         Vec::new()
     }
 }

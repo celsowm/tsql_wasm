@@ -18,6 +18,7 @@ pub(crate) use tables::SysTables;
 pub(crate) use types::{SysTableTypes, SysTypes};
 
 use super::super::virtual_table_def;
+use crate::executor::context::ExecutionContext;
 use super::super::VirtualTable;
 use crate::catalog::Catalog;
 use crate::storage::StoredRow;
@@ -37,7 +38,7 @@ impl VirtualTable for SysSchemas {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         catalog
             .get_schemas()
             .iter()

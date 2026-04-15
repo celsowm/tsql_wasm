@@ -32,6 +32,7 @@ fn setup_sales(engine: &mut Engine) {
     );
 }
 
+#[allow(dead_code)]
 fn setup_employees(engine: &mut Engine) {
     exec(
         engine,
@@ -421,4 +422,3 @@ fn test_pivot_with_region_example() {
     assert_eq!(r.rows[1][1], Value::Int(300));
     assert_eq!(r.rows[1][2], Value::Int(150));
 }
-

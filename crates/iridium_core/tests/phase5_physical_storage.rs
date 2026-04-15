@@ -14,6 +14,7 @@ fn query(engine: &mut Engine, sql: &str) -> iridium_core::QueryResult {
         .expect("result")
 }
 
+#[allow(dead_code)]
 fn query_value(engine: &mut Engine, sql: &str) -> Value {
     let result = query(engine, sql);
     assert_eq!(result.rows.len(), 1, "Expected 1 row for: {}", sql);
@@ -400,7 +401,7 @@ fn test_checkpoint_data_integrity() {
 
     let checkpoint = engine.export_checkpoint().expect("export");
 
-    let mut engine2 = Engine::new();
+    let engine2 = Engine::new();
     engine2.import_checkpoint(&checkpoint).expect("import");
 
     let result = engine2.execute(parse_sql("INSERT INTO t VALUES (2, -1)").unwrap());
@@ -430,4 +431,3 @@ fn test_dual_index_usage_different_queries() {
     let result2 = query(&mut engine, "SELECT * FROM t WHERE y = 200");
     assert_eq!(result2.rows.len(), 1);
 }
-

@@ -66,6 +66,8 @@ const SYSTEM_FUNCTIONS: &[BuiltinScalarFunction] = &[
     builtin!("COL_LENGTH" => tsql_metadata::eval_col_length),
     builtin!("DATABASEPROPERTYEX" => tsql_metadata::eval_databasepropertyex),
     builtin!("IDENT_CURRENT" => tsql_metadata::eval_ident_current),
+    builtin!("IDENT_SEED" => tsql_metadata::eval_ident_seed),
+    builtin!("IDENT_INCR" => tsql_metadata::eval_ident_incr),
     builtin!("SCOPE_IDENTITY" => |_args, _row, ctx, _catalog, _storage, _clock| {
         Ok(system::identity::eval_scope_identity(ctx))
     }),
@@ -150,6 +152,8 @@ const SYSTEM_FUNCTIONS: &[BuiltinScalarFunction] = &[
     builtin!("USER_ID" => |args, _row, ctx, _catalog, _storage, _clock| {
         system::identity::eval_user_id(args, ctx)
     }),
+    builtin!("DATABASE_PRINCIPAL_ID" => system::identity::eval_database_principal_id),
+    builtin!("DATABASE_PRINCIPAL_NAME" => system::identity::eval_database_principal_name),
     builtin!("APP_NAME" => |args, _row, ctx, _catalog, _storage, _clock| {
         system::identity::eval_app_name(args, ctx)
     }),
@@ -207,6 +211,7 @@ const DATETIME_FUNCTIONS: &[BuiltinScalarFunction] = &[
 
 const STRING_FUNCTIONS: &[BuiltinScalarFunction] = &[
     builtin!("LEN" => string::eval_len),
+    builtin!("DATALENGTH" => string::eval_datalength),
     builtin!("SUBSTRING" => string::eval_substring),
     builtin!("UPPER" => string::eval_upper),
     builtin!("LOWER" => string::eval_lower),

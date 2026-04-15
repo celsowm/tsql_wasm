@@ -2,6 +2,7 @@ use super::virtual_table_def;
 use super::VirtualTable;
 use crate::ast::{FromNode, SelectStmt, Statement, TableFactor};
 use crate::catalog::Catalog;
+use crate::executor::context::ExecutionContext;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 use std::collections::HashSet;
@@ -24,7 +25,7 @@ impl VirtualTable for ViewTableUsage {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
         for view in catalog.get_views() {
             let Some(select) = view_select(&view.query) else {
@@ -68,7 +69,7 @@ impl VirtualTable for ViewColumnUsage {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
         for view in catalog.get_views() {
             let Some(select) = view_select(&view.query) else {
