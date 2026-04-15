@@ -5,6 +5,7 @@
     "moduleResolution": "Bundler",
     "declaration": true,
     "outDir": "dist",
+    "types": ["node"],
     "strict": true,
     "skipLibCheck": true
   },
