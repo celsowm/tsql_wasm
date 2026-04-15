@@ -73,6 +73,7 @@ const restored = await IridiumDatabase.fromCheckpoint(checkpoint);
 
 Compatibility is measured, documented, and updated continuously.
 
+- [Frequently Asked Questions (FAQ)](docs/faq.md)
 - [Compatibility Roadmap](docs/roadmap.md)
 - [Compatibility Matrix](docs/compatibility-matrix.md)
 - [Compatibility Backlog](docs/compatibility-backlog.md)
