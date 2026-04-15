@@ -61,6 +61,10 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(partition::SysPartitionParameters))
     } else if name.eq_ignore_ascii_case("partition_schemes") {
         Some(Box::new(partition::SysPartitionSchemes))
+    } else if name.eq_ignore_ascii_case("partitions") {
+        Some(Box::new(partition::SysPartitions))
+    } else if name.eq_ignore_ascii_case("allocation_units") {
+        Some(Box::new(partition::SysAllocationUnits))
     } else if name.eq_ignore_ascii_case("destination_data_spaces") {
         Some(Box::new(partition::SysDestinationDataSpaces))
     } else if name.eq_ignore_ascii_case("filegroups") {

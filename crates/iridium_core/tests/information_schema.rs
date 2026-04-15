@@ -718,3 +718,32 @@ fn test_sys_trigger_events() {
     assert_eq!(val(&r, 1, 0), "2");
     assert_eq!(val(&r, 1, 1), "UPDATE");
 }
+
+// ─── sys.partitions ───────────────────────────────────────────────────
+
+#[test]
+fn test_sys_partitions() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE t1 (id INT PRIMARY KEY)");
+    let r = query(
+        &mut e,
+        "SELECT object_id, index_id, partition_number FROM sys.partitions WHERE object_id = OBJECT_ID('dbo.t1')",
+    );
+    assert!(r.rows.len() >= 1);
+    assert_eq!(val(&r, 0, 2), "1");
+}
+
+// ─── sys.allocation_units ───────────────────────────────────────────────
+
+#[test]
+fn test_sys_allocation_units() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE t1 (id INT PRIMARY KEY)");
+    let r = query(
+        &mut e,
+        "SELECT type_desc, container_id FROM sys.allocation_units
+         WHERE container_id IN (SELECT partition_id FROM sys.partitions WHERE object_id = OBJECT_ID('dbo.t1'))",
+    );
+    assert!(r.rows.len() >= 1);
+    assert_eq!(val(&r, 0, 0), "IN_ROW_DATA");
+}
