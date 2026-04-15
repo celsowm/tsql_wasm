@@ -71,6 +71,8 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(tables::SysAssemblyModules))
     } else if name.eq_ignore_ascii_case("triggers") {
         Some(Box::new(tables::SysTriggers))
+    } else if name.eq_ignore_ascii_case("trigger_events") {
+        Some(Box::new(tables::SysTriggerEvents))
     } else if name.eq_ignore_ascii_case("sql_modules") {
         Some(Box::new(tables::SysSqlModules))
     } else if name.eq_ignore_ascii_case("system_sql_modules") {
