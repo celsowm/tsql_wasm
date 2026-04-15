@@ -127,6 +127,7 @@ fn token_display(tok: &Token) -> String {
         Token::Variable(v) => format!("variable '{}'", v),
         Token::Number { value: n, .. } => format!("number {}", n),
         Token::String(s) => format!("string '{}'", s),
+        Token::NString(s) => format!("string N'{}'", s),
         Token::Operator(op) => format!("operator '{}'", op),
         Token::LParen => "'('".to_string(),
         Token::RParen => "')'".to_string(),

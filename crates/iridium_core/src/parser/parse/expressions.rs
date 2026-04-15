@@ -253,6 +253,11 @@ pub fn parse_primary(parser: &mut Parser) -> ParseResult<Expr> {
             let _ = parser.next();
             Ok(Expr::String(s))
         }
+        Some(Token::NString(s)) => {
+            let s = s.clone();
+            let _ = parser.next();
+            Ok(Expr::UnicodeString(s))
+        }
         Some(Token::Variable(v)) => {
             let v = v.clone();
             let _ = parser.next();

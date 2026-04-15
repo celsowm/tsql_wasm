@@ -25,7 +25,17 @@ pub fn lex(input: &mut &str, quoted_identifier: bool) -> ModalResult<Vec<Token>>
                     })
                 })
             },
-            parse_string.map(|s| Some(Token::String(unescape_string(s)))),
+            |input: &mut _| {
+                parse_string(input).map(|s| {
+                    let is_n = s.starts_with('N');
+                    let unescaped = unescape_string(s);
+                    Some(if is_n {
+                        Token::NString(unescaped)
+                    } else {
+                        Token::String(unescaped)
+                    })
+                })
+            },
             |i: &mut _| {
                 if !quoted_identifier {
                     parse_quoted_identifier(i)

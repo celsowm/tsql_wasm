@@ -275,6 +275,62 @@ pub(crate) fn eval_nchar(
     }
 }
 
+pub(crate) fn eval_datalength(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("DATALENGTH expects 1 argument".into()));
+    }
+    let val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    match val {
+        Value::Null => Ok(Value::Null),
+        Value::Bit(_) | Value::TinyInt(_) => Ok(Value::Int(1)),
+        Value::SmallInt(_) => Ok(Value::Int(2)),
+        Value::Int(_) => Ok(Value::Int(4)),
+        Value::BigInt(_) | Value::Float(_) | Value::DateTime(_) => Ok(Value::Int(8)),
+        Value::Decimal(_, _) => Ok(Value::Int(17)), // Max precision i128
+        Value::Money(_) => Ok(Value::Int(8)),
+        Value::SmallMoney(_) => Ok(Value::Int(4)),
+        Value::Char(s) | Value::VarChar(s) => Ok(Value::Int(s.len() as i32)),
+        Value::NChar(s) | Value::NVarChar(s) => Ok(Value::Int((s.len() * 2) as i32)),
+        Value::Binary(v) | Value::VarBinary(v) => Ok(Value::Int(v.len() as i32)),
+        Value::Date(_) => Ok(Value::Int(3)),
+        Value::Time(_) => Ok(Value::Int(5)), // Simplified
+        Value::DateTime2(_) => Ok(Value::Int(8)), // Simplified
+        Value::UniqueIdentifier(_) => Ok(Value::Int(16)),
+        Value::SqlVariant(inner) => {
+            // Recurse for SqlVariant
+            eval_datalength_internal(&inner)
+        }
+    }
+}
+
+fn eval_datalength_internal(val: &Value) -> Result<Value, DbError> {
+    match val {
+        Value::Null => Ok(Value::Null),
+        Value::Bit(_) | Value::TinyInt(_) => Ok(Value::Int(1)),
+        Value::SmallInt(_) => Ok(Value::Int(2)),
+        Value::Int(_) => Ok(Value::Int(4)),
+        Value::BigInt(_) | Value::Float(_) | Value::DateTime(_) => Ok(Value::Int(8)),
+        Value::Decimal(_, _) => Ok(Value::Int(17)),
+        Value::Money(_) => Ok(Value::Int(8)),
+        Value::SmallMoney(_) => Ok(Value::Int(4)),
+        Value::Char(s) | Value::VarChar(s) => Ok(Value::Int(s.len() as i32)),
+        Value::NChar(s) | Value::NVarChar(s) => Ok(Value::Int((s.len() * 2) as i32)),
+        Value::Binary(v) | Value::VarBinary(v) => Ok(Value::Int(v.len() as i32)),
+        Value::Date(_) => Ok(Value::Int(3)),
+        Value::Time(_) => Ok(Value::Int(5)),
+        Value::DateTime2(_) => Ok(Value::Int(8)),
+        Value::UniqueIdentifier(_) => Ok(Value::Int(16)),
+        Value::SqlVariant(inner) => eval_datalength_internal(inner),
+    }
+}
+
 pub(crate) fn eval_unicode(
     args: &[Expr],
     row: &[ContextTable],

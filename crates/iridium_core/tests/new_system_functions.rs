@@ -461,4 +461,29 @@ fn test_checksum_different_inputs() {
     assert_ne!(r1.rows[0][0], r2.rows[0][0]);
 }
 
+// ─── IDENTITY METADATA ────────────────────────────────────────────────────
+
+#[test]
+fn test_ident_seed_basic() {
+    let mut engine = Engine::new();
+    exec(&mut engine, "CREATE TABLE t1 (id INT IDENTITY(10, 5))");
+    let r = query(&mut engine, "SELECT IDENT_SEED('t1') AS v");
+    assert_eq!(r.rows[0][0], Value::BigInt(10));
+}
+
+#[test]
+fn test_ident_incr_basic() {
+    let mut engine = Engine::new();
+    exec(&mut engine, "CREATE TABLE t1 (id INT IDENTITY(10, 5))");
+    let r = query(&mut engine, "SELECT IDENT_INCR('t1') AS v");
+    assert_eq!(r.rows[0][0], Value::BigInt(5));
+}
+
+#[test]
+fn test_ident_metadata_null() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT IDENT_SEED('nonexistent') AS v");
+    assert!(r.rows[0][0].is_null());
+}
+
 
