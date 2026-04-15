@@ -1,6 +1,7 @@
 use super::super::{numeric_precision, numeric_scale_val, virtual_table_def, VirtualTable};
 use crate::ast::RoutineParamType;
 use crate::catalog::Catalog;
+use crate::executor::context::ExecutionContext;
 use crate::executor::type_mapping::data_type_spec_to_runtime;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
@@ -30,7 +31,7 @@ impl VirtualTable for SysParameters {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
         for r in catalog.get_routines() {
             for (i, p) in r.params.iter().enumerate() {

@@ -1,6 +1,7 @@
 use super::super::super::virtual_table_def;
 use super::super::super::VirtualTable;
 use crate::catalog::Catalog;
+use crate::executor::context::ExecutionContext;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
@@ -90,7 +91,7 @@ impl VirtualTable for SysDatabases {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let created = Value::DateTime(
             chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
                 .unwrap()
@@ -148,7 +149,7 @@ impl VirtualTable for SysConfigurations {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         vec![StoredRow {
             // configuration_id=16384 used by SSMS probe (contained db auth).
             values: vec![
@@ -185,7 +186,7 @@ impl VirtualTable for SysSysDatabases {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let created = Value::DateTime(
             chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
                 .unwrap()

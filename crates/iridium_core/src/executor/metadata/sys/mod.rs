@@ -8,6 +8,7 @@ mod parameters;
 mod partition;
 mod policy_configuration;
 mod routines;
+mod sessions;
 mod tables;
 
 use super::VirtualTable;
@@ -99,6 +100,10 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(objects::SysViews))
     } else if name.eq_ignore_ascii_case("dm_os_host_info") {
         Some(Box::new(host_info::SysHostInfo))
+    } else if name.eq_ignore_ascii_case("dm_exec_sessions") {
+        Some(Box::new(sessions::SysDmExecSessions))
+    } else if name.eq_ignore_ascii_case("dm_exec_connections") {
+        Some(Box::new(sessions::SysDmExecConnections))
     } else if name.eq_ignore_ascii_case("check_constraints") {
         Some(Box::new(constraints::SysCheckConstraints))
     } else if name.eq_ignore_ascii_case("routines") {

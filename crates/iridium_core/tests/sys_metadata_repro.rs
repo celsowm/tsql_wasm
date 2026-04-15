@@ -111,7 +111,7 @@ fn test_info_schema_fidelity() {
 
 #[test]
 fn test_sys_types_fidelity() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     // Verify system types are present
     let res = engine
         .query("SELECT name FROM sys.types WHERE name = 'int'")
@@ -132,4 +132,3 @@ fn test_sys_types_fidelity() {
     assert_eq!(res.rows[0][1], Value::Bit(true));
     assert_eq!(res.rows[0][2], Value::TinyInt(243));
 }
-

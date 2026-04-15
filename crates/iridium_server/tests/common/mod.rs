@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use tiberius::{Client, Config, Row};
 use tokio::net::TcpStream;
 use tokio_util::compat::TokioAsyncWriteCompatExt;

@@ -12,18 +12,20 @@ mod sys;
 pub(crate) mod system_vars;
 
 use crate::catalog::{Catalog, ColumnDef, TableDef};
+use crate::executor::context::ExecutionContext;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
 pub(crate) trait VirtualTable {
     fn definition(&self) -> TableDef;
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow>;
+    fn rows(&self, catalog: &dyn Catalog, ctx: &ExecutionContext) -> Vec<StoredRow>;
 }
 
 pub(crate) fn resolve_virtual_table(
     schema: &str,
     name: &str,
     catalog: &dyn Catalog,
+    ctx: &ExecutionContext,
 ) -> Option<(TableDef, Vec<StoredRow>)> {
     let vt: Option<Box<dyn VirtualTable>> = if let Some(vt) = sys::lookup(schema, name) {
         Some(vt)
@@ -32,7 +34,7 @@ pub(crate) fn resolve_virtual_table(
     } else {
         None
     };
-    vt.map(|v| (v.definition(), v.rows(catalog)))
+    vt.map(|v| (v.definition(), v.rows(catalog, ctx)))
 }
 
 pub(crate) const DB_CATALOG: &str = "iridium_sql";

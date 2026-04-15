@@ -1,6 +1,7 @@
 use super::VirtualTable;
 use super::{schema_name_by_id, virtual_table_def, DB_CATALOG};
 use crate::catalog::Catalog;
+use crate::executor::context::ExecutionContext;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
@@ -44,7 +45,7 @@ impl VirtualTable for Schemata {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         catalog
             .get_schemas()
             .iter()
@@ -76,7 +77,7 @@ impl VirtualTable for Tables {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows: Vec<StoredRow> = catalog
             .get_tables()
             .iter()
@@ -120,7 +121,7 @@ impl VirtualTable for Views {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         catalog
             .get_views()
             .iter()

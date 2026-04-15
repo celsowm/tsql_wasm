@@ -1,6 +1,7 @@
 use super::super::super::VirtualTable;
 use super::super::super::{builtin_types_rows, virtual_table_def};
 use crate::catalog::Catalog;
+use crate::executor::context::ExecutionContext;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
@@ -25,7 +26,7 @@ impl VirtualTable for SysTypes {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows: Vec<StoredRow> = builtin_types_rows()
             .into_iter()
             .map(|row| {
@@ -96,7 +97,7 @@ impl VirtualTable for SysTableTypes {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         catalog
             .get_table_types()
             .iter()

@@ -5,7 +5,6 @@
 //! and identifies committed vs rolled-back transactions so the caller can
 //! decide whether further replay is needed.
 
-use crate::storage::Storage;
 
 use super::record::{Lsn, WalFrame, WalRecord};
 
@@ -97,7 +96,6 @@ mod tests {
             },
         ];
 
-        let mut storage = crate::storage::InMemoryStorage::default();
         let result = replay_wal_records(&records);
 
         assert_eq!(result.committed_tx_ids, vec![1u64]);
@@ -148,7 +146,6 @@ mod tests {
             },
         ];
 
-        let mut storage = crate::storage::InMemoryStorage::default();
         let result = replay_wal_records(&records);
 
         assert_eq!(result.committed_tx_ids, vec![2]);
@@ -175,7 +172,6 @@ mod tests {
             },
         ];
 
-        let mut storage = crate::storage::InMemoryStorage::default();
         let result = replay_wal_records(&records);
 
         assert_eq!(result.committed_tx_ids, vec![1]);

@@ -3,6 +3,7 @@ use super::virtual_table_def;
 use super::VirtualTable;
 use crate::ast::{Expr, SelectStmt, TableFactor};
 use crate::catalog::{Catalog, RoutineKind};
+use crate::executor::context::ExecutionContext;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
@@ -26,7 +27,7 @@ impl VirtualTable for RoutineColumns {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
         for routine in catalog.get_routines() {
             let RoutineKind::Function {

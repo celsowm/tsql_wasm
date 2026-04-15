@@ -45,7 +45,7 @@ fn test_sp_add_job_unsupported() {
 
 #[test]
 fn test_sys_filegroups_exists() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     let result = engine
         .query("SELECT name FROM sys.filegroups")
         .expect("query");
@@ -54,8 +54,7 @@ fn test_sys_filegroups_exists() {
 
 #[test]
 fn test_server_property_version() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     let result = engine.query("SELECT @@VERSION AS version").expect("query");
     assert!(!result.rows[0][0].is_null());
 }
-

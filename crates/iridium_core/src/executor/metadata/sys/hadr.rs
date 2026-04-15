@@ -1,6 +1,7 @@
 use super::super::virtual_table_def;
 use super::super::VirtualTable;
 use crate::catalog::Catalog;
+use crate::executor::context::ExecutionContext;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
@@ -23,7 +24,7 @@ impl VirtualTable for SysAvailabilityReplicas {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         vec![]
     }
 }
@@ -42,7 +43,7 @@ impl VirtualTable for SysAvailabilityGroups {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         vec![]
     }
 }
@@ -64,7 +65,7 @@ impl VirtualTable for SysDmHadrDatabaseReplicaStates {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         vec![]
     }
 }
@@ -90,7 +91,7 @@ impl VirtualTable for SysMasterFiles {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         DATABASE_IDS
             .iter()
             .map(|&db_id| StoredRow {
@@ -173,7 +174,7 @@ impl VirtualTable for SysDatabaseMirroring {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         DATABASE_IDS
             .iter()
             .map(|&db_id| StoredRow {

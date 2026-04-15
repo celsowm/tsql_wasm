@@ -125,7 +125,7 @@ pub(super) fn bind_plain_table(
         });
     }
 
-    if let Some((table, rows)) = resolve_virtual_table(schema, name, catalog) {
+    if let Some((table, rows)) = resolve_virtual_table(schema, name, catalog, ctx) {
         return Ok(BoundTable {
             alias: tref.alias.clone().unwrap_or_else(|| name.to_string()),
             table,

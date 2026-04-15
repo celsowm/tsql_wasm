@@ -5,6 +5,8 @@
 //!
 //! Run with: cargo test -p iridium_server --test cursor_compare_test -- --ignored
 
+#![allow(dead_code)]
+
 use tiberius::{Client, Config};
 use tokio::net::TcpStream;
 use tokio_util::compat::TokioAsyncWriteCompatExt;

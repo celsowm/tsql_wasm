@@ -1,6 +1,7 @@
 use super::super::virtual_table_def;
 use super::super::VirtualTable;
 use crate::catalog::Catalog;
+use crate::executor::context::ExecutionContext;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
@@ -25,7 +26,7 @@ impl VirtualTable for SysViews {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let created = Value::DateTime(
             chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
                 .unwrap()
@@ -76,7 +77,7 @@ impl VirtualTable for SysObjects {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
         let created = Value::DateTime(
             chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
@@ -307,8 +308,8 @@ impl VirtualTable for SysAllObjects {
         SysObjects.definition()
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
-        SysObjects.rows(catalog)
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+        SysObjects.rows(catalog, _ctx)
     }
 }
 
@@ -333,7 +334,7 @@ impl VirtualTable for SysSystemViews {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         // Return empty for now so SSMS doesn't crash on extended_properties check
         Vec::new()
     }
@@ -352,9 +353,9 @@ impl VirtualTable for SysCompatSysObjects {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let base = SysObjects;
-        base.rows(catalog)
+        base.rows(catalog, _ctx)
             .into_iter()
             .map(|r| {
                 let object_id = r.values.first().cloned().unwrap_or(Value::Int(0));

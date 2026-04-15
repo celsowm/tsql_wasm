@@ -1,6 +1,7 @@
 use super::super::virtual_table_def;
 use super::super::VirtualTable;
 use crate::catalog::Catalog;
+use crate::executor::context::ExecutionContext;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
@@ -22,7 +23,7 @@ impl VirtualTable for SysPolicyConfiguration {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         vec![
             StoredRow {
                 values: vec![

@@ -152,6 +152,8 @@ const SYSTEM_FUNCTIONS: &[BuiltinScalarFunction] = &[
     builtin!("USER_ID" => |args, _row, ctx, _catalog, _storage, _clock| {
         system::identity::eval_user_id(args, ctx)
     }),
+    builtin!("DATABASE_PRINCIPAL_ID" => system::identity::eval_database_principal_id),
+    builtin!("DATABASE_PRINCIPAL_NAME" => system::identity::eval_database_principal_name),
     builtin!("APP_NAME" => |args, _row, ctx, _catalog, _storage, _clock| {
         system::identity::eval_app_name(args, ctx)
     }),

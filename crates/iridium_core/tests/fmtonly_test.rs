@@ -2,7 +2,7 @@ use iridium_core::Engine;
 
 #[test]
 fn test_set_fmtonly_on_returns_metadata_no_rows() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
 
     engine
         .exec("CREATE TABLE t (id INT, name VARCHAR(50))")
@@ -24,7 +24,7 @@ fn test_set_fmtonly_on_returns_metadata_no_rows() {
 
 #[test]
 fn test_set_fmtonly_with_join_metadata() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
 
     engine
         .exec("CREATE TABLE a (id INT, val VARCHAR(10))")
@@ -51,7 +51,7 @@ fn test_set_fmtonly_with_join_metadata() {
 
 #[test]
 fn test_set_noexec_on_skips_execution() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
 
     engine
         .exec("CREATE TABLE t (id INT, name VARCHAR(50))")
@@ -69,4 +69,3 @@ fn test_set_noexec_on_skips_execution() {
     let result2 = engine.query("SELECT id, name FROM t").unwrap();
     assert_eq!(result2.rows.len(), 1);
 }
-

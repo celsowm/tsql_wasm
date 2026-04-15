@@ -50,6 +50,69 @@ pub(crate) fn eval_user_id(args: &[Expr], _ctx: &ExecutionContext) -> Result<Val
     Ok(Value::Int(1))
 }
 
+pub(crate) fn eval_database_principal_id(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() > 1 {
+        return Err(DbError::Execution(
+            "DATABASE_PRINCIPAL_ID expects 0 or 1 arguments".into(),
+        ));
+    }
+    let name = if args.is_empty() {
+        ctx.metadata
+            .user
+            .clone()
+            .unwrap_or_else(|| "dbo".to_string())
+    } else {
+        let v = eval_expr(args.first().unwrap(), row, ctx, catalog, storage, clock)?;
+        if v.is_null() {
+            return Ok(Value::Null);
+        }
+        v.to_string_value()
+    };
+
+    Ok(match name.to_ascii_lowercase().as_str() {
+        "dbo" => Value::Int(1),
+        "guest" => Value::Int(2),
+        _ => Value::Null,
+    })
+}
+
+pub(crate) fn eval_database_principal_name(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() > 1 {
+        return Err(DbError::Execution(
+            "DATABASE_PRINCIPAL_NAME expects 0 or 1 arguments".into(),
+        ));
+    }
+    let id = if args.is_empty() {
+        Some(1)
+    } else {
+        let v = eval_expr(args.first().unwrap(), row, ctx, catalog, storage, clock)?;
+        if v.is_null() {
+            return Ok(Value::Null);
+        }
+        v.to_integer_i64()
+    };
+
+    Ok(match id {
+        Some(1) => Value::NVarChar("dbo".to_string()),
+        Some(2) => Value::NVarChar("guest".to_string()),
+        _ => Value::Null,
+    })
+}
+
 pub(crate) fn eval_app_name(args: &[Expr], ctx: &ExecutionContext) -> Result<Value, DbError> {
     if !args.is_empty() {
         return Err(DbError::Execution("APP_NAME expects no arguments".into()));

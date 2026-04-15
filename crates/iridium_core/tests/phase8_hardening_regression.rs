@@ -9,7 +9,7 @@ fn test_known_parser_bug_nested_comments() {
 
 #[test]
 fn test_known_type_coercion_date_to_datetime() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     let result = engine
         .query("SELECT CAST('2024-01-01' AS DATE) AS d")
         .unwrap();
@@ -18,7 +18,7 @@ fn test_known_type_coercion_date_to_datetime() {
 
 #[test]
 fn test_known_type_coercion_varchar_to_int() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     let result = engine.query("SELECT CAST('123' AS INT) AS i").unwrap();
     assert_eq!(result.rows[0][0], iridium_core::types::Value::Int(123));
 }
@@ -37,7 +37,7 @@ fn test_concurrent_session_basic() {
 
 #[test]
 fn test_regression_string_agg() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine
         .exec("CREATE TABLE t (id INT, val VARCHAR(10))")
         .unwrap();
@@ -51,7 +51,7 @@ fn test_regression_string_agg() {
 
 #[test]
 fn test_regression_cte_with_agg() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     let result = engine
         .query("WITH cte AS (SELECT 1 AS x) SELECT SUM(x) FROM cte")
         .unwrap();
@@ -60,7 +60,7 @@ fn test_regression_cte_with_agg() {
 
 #[test]
 fn test_regression_merge_statement() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine
         .exec("CREATE TABLE target (id INT, val INT)")
         .unwrap();
@@ -80,7 +80,7 @@ fn test_regression_merge_statement() {
 
 #[test]
 fn test_regression_pivot() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine
         .exec("CREATE TABLE sales (product VARCHAR(10), quarter INT, amount INT)")
         .unwrap();
@@ -94,7 +94,7 @@ fn test_regression_pivot() {
 
 #[test]
 fn test_regression_window_functions() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine
         .exec("CREATE TABLE emp (dept VARCHAR(10), salary INT)")
         .unwrap();
@@ -108,7 +108,7 @@ fn test_regression_window_functions() {
 
 #[test]
 fn test_regression_subquery_in_select() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine.exec("CREATE TABLE t (id INT)").unwrap();
     engine.exec("INSERT INTO t VALUES (1), (2)").unwrap();
 
@@ -120,7 +120,7 @@ fn test_regression_subquery_in_select() {
 
 #[test]
 fn test_regression_exists_subquery() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine.exec("CREATE TABLE a (id INT)").unwrap();
     engine.exec("CREATE TABLE b (id INT)").unwrap();
     engine.exec("INSERT INTO a VALUES (1), (2)").unwrap();
@@ -142,7 +142,7 @@ fn test_regression_like_escape() {
 
 #[test]
 fn test_regression_basic_cte() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine.exec("CREATE TABLE nums (n INT)").unwrap();
     engine
         .exec("INSERT INTO nums VALUES (1), (2), (3)")
@@ -156,7 +156,7 @@ fn test_regression_basic_cte() {
 
 #[test]
 fn test_regression_basic_union() {
-    let mut engine = Engine::new();
+    let engine = Engine::new();
     engine.exec("CREATE TABLE t (id INT)").unwrap();
     engine.exec("INSERT INTO t VALUES (1), (2)").unwrap();
 
@@ -165,4 +165,3 @@ fn test_regression_basic_union() {
         .unwrap();
     assert_eq!(result.rows.len(), 2);
 }
-

@@ -1,6 +1,7 @@
 use super::super::virtual_table_def;
 use super::super::VirtualTable;
 use crate::catalog::Catalog;
+use crate::executor::context::ExecutionContext;
 use crate::executor::tooling::formatting::format_expr;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
@@ -22,7 +23,7 @@ impl VirtualTable for SysCheckConstraints {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
         let mut object_id = 1_000_000i32;
         for t in catalog.get_tables() {
@@ -74,7 +75,7 @@ impl VirtualTable for SysForeignKeys {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
         let mut fk_idx = 0;
 
@@ -141,7 +142,7 @@ impl VirtualTable for SysKeyConstraints {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
         let mut object_id = 2_000_000i32;
 
@@ -200,7 +201,7 @@ impl VirtualTable for SysDefaultConstraints {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
 
         for table in catalog.get_tables() {
