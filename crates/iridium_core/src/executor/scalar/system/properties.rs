@@ -77,6 +77,40 @@ pub(crate) fn eval_serverproperty(
     })
 }
 
+pub(crate) fn eval_sessionproperty(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution(
+            "SESSIONPROPERTY expects 1 argument".into(),
+        ));
+    }
+
+    let property = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if property.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let name = property.to_string_value().to_uppercase();
+    Ok(match name.as_str() {
+        "ANSI_NULLS" => Value::Int(if ctx.options.ansi_nulls { 1 } else { 0 }),
+        "ANSI_PADDING" => Value::Int(if ctx.options.ansi_padding { 1 } else { 0 }),
+        "ANSI_WARNINGS" => Value::Int(if ctx.options.ansi_warnings { 1 } else { 0 }),
+        "ARITHABORT" => Value::Int(if ctx.options.arithabort { 1 } else { 0 }),
+        "CONCAT_NULL_YIELDS_NULL" => {
+            Value::Int(if ctx.options.concat_null_yields_null { 1 } else { 0 })
+        }
+        "NUMERIC_ROUNDABORT" => Value::Int(0),
+        "QUOTED_IDENTIFIER" => Value::Int(if ctx.options.quoted_identifier { 1 } else { 0 }),
+        _ => Value::Null,
+    })
+}
+
 pub(crate) fn eval_fulltextserviceproperty(
     args: &[Expr],
     row: &[ContextTable],
