@@ -11,8 +11,8 @@ pub(crate) use identity_columns::SysIdentityColumns;
 pub(crate) use objects_misc::{
     SysAssemblyModules, SysDataSpaces, SysEdgeConstraints, SysExtendedProperties,
     SysForeignKeyColumns, SysIndexColumns, SysServerPrincipals, SysSqlExpressionDependencies,
-    SysSqlModules, SysStats, SysSystemSqlModules, SysTriggerEvents, SysTriggers, SysXmlIndexes,
-    SysXmlSchemaCollections,
+    SysSqlModules, SysStats, SysStatsColumns, SysSystemSqlModules, SysTriggerEvents, SysTriggers,
+    SysXmlIndexes, SysXmlSchemaCollections,
 };
 pub(crate) use tables::SysTables;
 pub(crate) use types::{SysTableTypes, SysTypes};

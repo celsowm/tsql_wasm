@@ -17,6 +17,7 @@ pub(crate) struct SysTriggers;
 pub(crate) struct SysSqlModules;
 pub(crate) struct SysSystemSqlModules;
 pub(crate) struct SysStats;
+pub(crate) struct SysStatsColumns;
 pub(crate) struct SysServerPrincipals;
 pub(crate) struct SysTriggerEvents;
 
@@ -454,19 +455,58 @@ impl VirtualTable for SysStats {
     }
 
     fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
-        catalog
-            .get_indexes()
-            .iter()
-            .map(|idx| StoredRow {
+        let mut rows = Vec::new();
+        let mut stats_idx = 0;
+        for idx in catalog.get_indexes() {
+            let stats_id = 100_000 + stats_idx;
+            stats_idx += 1;
+            rows.push(StoredRow {
                 values: vec![
                     Value::Int(idx.table_id as i32),
+                    Value::Int(stats_id),
                     Value::VarChar(idx.name.clone()),
                     Value::Bit(false),
                     Value::Bit(false),
                 ],
                 deleted: false,
-            })
-            .collect()
+            });
+        }
+        rows
+    }
+}
+
+impl VirtualTable for SysStatsColumns {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "stats_columns",
+            vec![
+                ("object_id", DataType::Int, false),
+                ("stats_id", DataType::Int, false),
+                ("stats_column_id", DataType::Int, false),
+                ("column_id", DataType::Int, false),
+            ],
+        )
+    }
+
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+        let mut rows = Vec::new();
+        let mut stats_idx = 0;
+        for idx in catalog.get_indexes() {
+            let stats_id = 100_000 + stats_idx;
+            stats_idx += 1;
+            for (i, col_id) in idx.column_ids.iter().enumerate() {
+                rows.push(StoredRow {
+                    values: vec![
+                        Value::Int(idx.table_id as i32),
+                        Value::Int(stats_id),
+                        Value::Int((i + 1) as i32),
+                        Value::Int(*col_id as i32),
+                    ],
+                    deleted: false,
+                });
+            }
+        }
+        rows
     }
 }
 

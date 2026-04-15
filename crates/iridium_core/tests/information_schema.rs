@@ -747,3 +747,29 @@ fn test_sys_allocation_units() {
     assert!(r.rows.len() >= 1);
     assert_eq!(val(&r, 0, 0), "IN_ROW_DATA");
 }
+
+// ─── sys.stats_columns ────────────────────────────────────────────────
+
+#[test]
+fn test_sys_stats_columns() {
+    let mut e = Engine::new();
+    exec(&mut e, "CREATE TABLE t1 (id INT PRIMARY KEY)");
+    let r = query(
+        &mut e,
+        "SELECT object_id, stats_id, stats_column_id, column_id FROM sys.stats_columns
+         WHERE stats_id = (SELECT stats_id FROM sys.stats WHERE object_id = OBJECT_ID('dbo.t1'))",
+    );
+    assert!(r.rows.len() >= 1);
+    assert_eq!(val(&r, 0, 2), "1");
+}
+
+// ─── sys.database_files ───────────────────────────────────────────────
+
+#[test]
+fn test_sys_database_files() {
+    let mut e = Engine::new();
+    let r = query(&mut e, "SELECT name, type_desc FROM sys.database_files");
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(val(&r, 0, 0), "iridium_sql");
+    assert_eq!(val(&r, 0, 1), "ROWS");
+}
