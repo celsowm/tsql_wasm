@@ -39,7 +39,7 @@ Iridium SQL is currently in a phase-based development cycle. While it is highly 
 No. Iridium SQL is built from the ground up in Rust. It does not use code from SQL Server, Postgres, or any other existing engine.
 
 ### 7. What is the "Iridium" name about?
-Iridium is a dense, corrosion-resistant metal. The name reflects the project's goal of being a solid, reliable, and "hard" implementation of a complex specification.
+Iridium is the most corrosion-resistant metal known. It **does not rust**, even at high temperatures. The name is a play on the fact that this engine is built in the **Rust** programming language—it's a "Rust" project that aims for the ultimate stability and "corrosion-resistance" of Iridium.
 
 ---
 
