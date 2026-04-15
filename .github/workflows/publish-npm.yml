@@ -35,7 +35,7 @@ jobs:
         run: cargo install wasm-pack --locked
 
       - name: Install package dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build package
         run: npm run build
