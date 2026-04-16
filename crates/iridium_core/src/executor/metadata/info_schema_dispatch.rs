@@ -39,6 +39,9 @@ pub(super) fn lookup(name: &str) -> Option<Box<dyn VirtualTable>> {
     if name.eq_ignore_ascii_case("COLUMN_DOMAIN_USAGE") {
         return Some(Box::new(info_schema_types::ColumnDomainUsage));
     }
+    if name.eq_ignore_ascii_case("DOMAIN_CONSTRAINTS") {
+        return Some(Box::new(info_schema_types::DomainConstraints));
+    }
     if let Some(vt) = info_schema_empty::lookup(name) {
         return Some(vt);
     }

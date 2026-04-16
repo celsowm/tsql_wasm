@@ -344,6 +344,9 @@ pub fn lower_session(session: ast::SessionStatement) -> Result<executor_ast::Sta
                             executor_ast::SessionOption::StatisticsTime
                         }
                         ast::SessionOption::ShowplanAll => executor_ast::SessionOption::ShowplanAll,
+                        ast::SessionOption::AnsiDefaults => {
+                            executor_ast::SessionOption::AnsiDefaults
+                        }
                         ast::SessionOption::Unsupported(v) => {
                             executor_ast::SessionOption::Unsupported(v)
                         }

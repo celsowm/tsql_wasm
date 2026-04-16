@@ -26,7 +26,7 @@ fn test_parse_insert_bulk() {
     let res = db.execute_session_batch_sql(sid, sql).unwrap();
     assert!(res.is_none());
 
-    let (active, target, _cols) = db.get_bulk_load_state(sid);
+    let (active, target, _cols, _received_metadata) = db.get_bulk_load_state(sid);
     assert!(active);
     assert_eq!(target.as_ref().unwrap().name, "MyTable");
 }

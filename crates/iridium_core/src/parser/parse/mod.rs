@@ -467,6 +467,9 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
         }))
     }
 
+    if matches_set_name(parser.peek(), "ANSI_DEFAULTS") {
+        return parse_bool_setting(parser, crate::parser::ast::SessionOption::AnsiDefaults);
+    }
     if matches_set_name(parser.peek(), "ANSI_NULLS") {
         return parse_bool_setting(parser, crate::parser::ast::SessionOption::AnsiNulls);
     }

@@ -178,6 +178,15 @@ pub fn apply_set_option(
         (SessionOption::ShowplanAll, SessionOptionValue::Bool(v)) => {
             options.showplan_all = *v;
         }
+        (SessionOption::AnsiDefaults, SessionOptionValue::Bool(v)) => {
+            options.ansi_nulls = *v;
+            options.ansi_null_dflt_on = *v;
+            options.ansi_padding = *v;
+            options.ansi_warnings = *v;
+            options.cursor_close_on_commit = *v;
+            options.implicit_transactions = *v;
+            options.quoted_identifier = *v;
+        }
         (SessionOption::Unsupported(name), _) => {
             warnings.push(format!(
                 "SET {} is accepted but not modeled; no session state change applied",
