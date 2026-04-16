@@ -46,6 +46,15 @@ impl<'a> ScriptExecutor<'a> {
             self.assign_exec_return_value(&stmt.return_variable, Value::Int(0), ctx)?;
             return Ok(None);
         }
+        if stmt.name.name.eq_ignore_ascii_case("sp_set_session_context") {
+            let return_code = self.execute_sp_set_session_context(&stmt.args, ctx)?;
+            self.assign_exec_return_value(&stmt.return_variable, Value::Int(return_code), ctx)?;
+            return Ok(Some(QueryResult {
+                return_status: Some(return_code),
+                is_procedure: true,
+                ..Default::default()
+            }));
+        }
 
         let schema = stmt.name.schema_or_dbo().to_string();
         let Some(routine) = self.catalog.find_routine(&schema, &stmt.name.name).cloned() else {
@@ -238,5 +247,50 @@ impl<'a> ScriptExecutor<'a> {
             "3641190370" => Ok((None, -1)),
             _ => Ok((None, -1)),
         }
+    }
+
+    fn execute_sp_set_session_context(
+        &mut self,
+        args: &[crate::ast::ExecArgument],
+        ctx: &mut ExecutionContext<'_>,
+    ) -> Result<i32, DbError> {
+        let key = match args.get(0) {
+            Some(arg) => eval_expr(&arg.expr, &[], ctx, self.catalog, self.storage, self.clock)?
+                .to_string_value(),
+            None => {
+                return Err(DbError::Execution(
+                    "sp_set_session_context requires at least a key argument".into(),
+                ))
+            }
+        };
+
+        let value = match args.get(1) {
+            Some(arg) => eval_expr(&arg.expr, &[], ctx, self.catalog, self.storage, self.clock)?,
+            None => {
+                return Err(DbError::Execution(
+                    "sp_set_session_context requires a value argument".into(),
+                ))
+            }
+        };
+
+        let read_only = match args.get(2) {
+            Some(arg) => eval_expr(&arg.expr, &[], ctx, self.catalog, self.storage, self.clock)?
+                .to_bool()
+                .unwrap_or(false),
+            None => false,
+        };
+
+        if let Some((_, is_read_only)) = ctx.session.session_context.get(&key) {
+            if *is_read_only {
+                return Err(DbError::Execution(format!(
+                    "Cannot set session context for key '{}' because it is read-only.",
+                    key
+                )));
+            }
+        }
+
+        ctx.session.session_context.insert(key, (value, read_only));
+
+        Ok(0)
     }
 }

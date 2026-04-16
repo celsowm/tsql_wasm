@@ -347,6 +347,7 @@ pub fn lower_session(session: ast::SessionStatement) -> Result<executor_ast::Sta
                         ast::SessionOption::AnsiDefaults => {
                             executor_ast::SessionOption::AnsiDefaults
                         }
+                        ast::SessionOption::ContextInfo => executor_ast::SessionOption::ContextInfo,
                         ast::SessionOption::Unsupported(v) => {
                             executor_ast::SessionOption::Unsupported(v)
                         }

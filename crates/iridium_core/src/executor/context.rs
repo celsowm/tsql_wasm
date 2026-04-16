@@ -43,6 +43,8 @@ pub struct SessionStateRefs<'a> {
     pub(crate) bulk_load_table: &'a mut Option<crate::ast::ObjectName>,
     pub(crate) bulk_load_columns: &'a mut Option<Vec<crate::ast::statements::ddl::ColumnSpec>>,
     pub(crate) bulk_load_received_metadata: &'a mut bool,
+    pub(crate) context_info: &'a mut [u8; 128],
+    pub(crate) session_context: &'a mut HashMap<String, (Value, bool)>,
     pub(crate) dirty_buffer:
         Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>>,
     pub(crate) identity_insert: HashSet<String>,
@@ -183,6 +185,8 @@ impl<'a> SessionStateRefs<'a> {
             },
             options: options.clone(),
             random_state: *self.random_state,
+            context_info: *self.context_info,
+            session_context: self.session_context.clone(),
         }
     }
 
@@ -215,6 +219,8 @@ impl<'a> SessionStateRefs<'a> {
         *self.handle_map = snapshot.cursors.handle_map;
         *options = snapshot.options;
         *self.random_state = snapshot.random_state;
+        *self.context_info = snapshot.context_info;
+        *self.session_context = snapshot.session_context;
     }
 }
 
@@ -413,6 +419,8 @@ impl<'a> ExecutionContext<'a> {
                 bulk_load_table: &mut session.bulk_load_table,
                 bulk_load_columns: &mut session.bulk_load_columns,
                 bulk_load_received_metadata: &mut session.bulk_load_received_metadata,
+                context_info: &mut session.context_info,
+                session_context: &mut session.session_context,
                 dirty_buffer,
                 identity_insert: HashSet::new(),
             },
@@ -473,6 +481,8 @@ impl<'a> ExecutionContext<'a> {
         next_cursor_handle: &'a mut i32,
         handle_map: &'a mut HashMap<i32, String>,
         print_output: &'a mut Vec<String>,
+        context_info: &'a mut [u8; 128],
+        session_context: &'a mut HashMap<String, (Value, bool)>,
         dirty_buffer: Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>>,
         session_id: super::locks::SessionId,
         session_original_database: String,
@@ -498,6 +508,8 @@ impl<'a> ExecutionContext<'a> {
                 bulk_load_table,
                 bulk_load_columns,
                 bulk_load_received_metadata,
+                context_info,
+                session_context,
                 dirty_buffer,
                 identity_insert: HashSet::new(),
             },
@@ -657,6 +669,8 @@ impl<'a> ExecutionContext<'a> {
                 bulk_load_table: self.session.bulk_load_table,
                 bulk_load_columns: self.session.bulk_load_columns,
                 bulk_load_received_metadata: self.session.bulk_load_received_metadata,
+                context_info: self.session.context_info,
+                session_context: self.session.session_context,
                 dirty_buffer: self.session.dirty_buffer.clone(),
                 identity_insert: self.session.identity_insert.clone(),
             },

@@ -119,6 +119,8 @@ pub struct SessionSnapshot {
     pub cursors: CursorState,
     pub options: SessionOptions,
     pub random_state: u64,
+    pub context_info: [u8; 128],
+    pub session_context: HashMap<String, (crate::types::Value, bool)>,
 }
 
 #[derive(Debug, Clone)]
@@ -155,6 +157,8 @@ pub struct SessionRuntime<C, S> {
     pub(crate) workspace: Option<TxWorkspace<C, S>>,
     pub(crate) options: SessionOptions,
     pub(crate) random_state: u64,
+    pub(crate) context_info: [u8; 128],
+    pub(crate) session_context: HashMap<String, (crate::types::Value, bool)>,
     pub(crate) current_database: String,
     pub(crate) original_database: String,
     pub(crate) user: Option<String>,
@@ -184,6 +188,8 @@ where
             workspace: None,
             options: SessionOptions::default(),
             random_state: 1,
+            context_info: [0u8; 128],
+            session_context: HashMap::new(),
             current_database: "master".to_string(),
             original_database: "master".to_string(),
             user: None,
@@ -206,6 +212,8 @@ where
         self.workspace = None;
         self.options = SessionOptions::default();
         self.random_state = 1;
+        self.context_info = [0u8; 128];
+        self.session_context.clear();
         self.current_database = "master".to_string();
         self.original_database = "master".to_string();
         self.user = None;

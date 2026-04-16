@@ -395,6 +395,8 @@ where
         user,
         app_name,
         host_name,
+        context_info,
+        session_context,
     ) = (
         &mut session.clock,
         &mut session.tx_manager,
@@ -411,6 +413,8 @@ where
         &mut session.user,
         &mut session.app_name,
         &mut session.host_name,
+        &mut session.context_info,
+        &mut session.session_context,
     );
 
     let mut ctx = ExecutionContext::new(
@@ -432,6 +436,8 @@ where
         &mut cursors.next_cursor_handle,
         &mut cursors.handle_map,
         &mut diagnostics.print_output,
+        context_info,
+        session_context,
         dirty_buffer,
         session_id,
         original_database.clone(),

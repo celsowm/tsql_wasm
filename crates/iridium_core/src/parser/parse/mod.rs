@@ -467,6 +467,20 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
         }))
     }
 
+    if matches_set_name(parser.peek(), "CONTEXT_INFO") {
+        let _ = parser.next();
+        let value = match parser.next() {
+            Some(Token::BinaryLiteral(v)) => {
+                crate::parser::ast::SessionOptionValue::Text(v.clone())
+            }
+            Some(Token::Variable(v)) => crate::parser::ast::SessionOptionValue::Text(v.clone()),
+            _ => return parser.backtrack(Expected::Description("binary literal or variable")),
+        };
+        return Ok(Statement::Session(SessionStatement::SetOption {
+            option: crate::parser::ast::SessionOption::ContextInfo,
+            value,
+        }));
+    }
     if matches_set_name(parser.peek(), "ANSI_DEFAULTS") {
         return parse_bool_setting(parser, crate::parser::ast::SessionOption::AnsiDefaults);
     }
