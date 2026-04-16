@@ -55,6 +55,14 @@ pub fn is_json(json_str: &str) -> Result<Value, DbError> {
     Ok(Value::Bit(is_valid))
 }
 
+pub fn json_path_exists(json_str: &str, path: &str) -> Result<Value, DbError> {
+    let json = parse_json(json_str)?;
+    let normalized_path = normalize_json_path(path);
+
+    let exists = json_value_at_path(&json, &normalized_path).is_some();
+    Ok(Value::Bit(exists))
+}
+
 pub fn json_array_length(json_str: &str) -> Result<Value, DbError> {
     let json = parse_json(json_str)?;
     match json {

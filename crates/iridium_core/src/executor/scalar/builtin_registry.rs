@@ -326,6 +326,17 @@ const JSON_FUNCTIONS: &[BuiltinScalarFunction] = &[
             &new_val.to_string_value(),
         )
     }),
+    builtin!("JSON_PATH_EXISTS" => |args, row, ctx, catalog, storage, clock| {
+        if args.len() != 2 {
+            return Err(DbError::Execution("JSON_PATH_EXISTS expects 2 arguments".into()));
+        }
+        let json_val = crate::executor::evaluator::eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+        let path_val = crate::executor::evaluator::eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+        if json_val.is_null() || path_val.is_null() {
+            return Ok(Value::Null);
+        }
+        json::json_path_exists(&json_val.to_string_value(), &path_val.to_string_value())
+    }),
     builtin!("ISJSON" => |args, row, ctx, catalog, storage, clock| {
         if args.len() != 1 {
             return Err(DbError::Execution("ISJSON expects 1 argument".into()));

@@ -171,3 +171,66 @@ fn test_json_in_where() {
     assert_eq!(result.rows[0][0], Value::BigInt(1));
 }
 
+#[test]
+fn test_json_path_exists() {
+    let mut engine = Engine::new();
+    let result = query(
+        &mut engine,
+        r#"SELECT JSON_PATH_EXISTS('{"a": 1}', '$.a')"#,
+    );
+    assert_eq!(result.rows[0][0], Value::Bit(true));
+
+    let result = query(
+        &mut engine,
+        r#"SELECT JSON_PATH_EXISTS('{"a": 1}', '$.b')"#,
+    );
+    assert_eq!(result.rows[0][0], Value::Bit(false));
+}
+
+#[test]
+fn test_json_path_exists_null() {
+    let mut engine = Engine::new();
+    let result = query(
+        &mut engine,
+        r#"SELECT JSON_PATH_EXISTS(NULL, '$.a')"#,
+    );
+    assert!(result.rows[0][0].is_null());
+
+    let result = query(
+        &mut engine,
+        r#"SELECT JSON_PATH_EXISTS('{"a": 1}', NULL)"#,
+    );
+    assert!(result.rows[0][0].is_null());
+}
+
+#[test]
+fn test_json_path_exists_nested() {
+    let mut engine = Engine::new();
+    let result = query(
+        &mut engine,
+        r#"SELECT JSON_PATH_EXISTS('{"a": {"b": 1}}', '$.a.b')"#,
+    );
+    assert_eq!(result.rows[0][0], Value::Bit(true));
+
+    let result = query(
+        &mut engine,
+        r#"SELECT JSON_PATH_EXISTS('{"a": {"b": 1}}', '$.a.c')"#,
+    );
+    assert_eq!(result.rows[0][0], Value::Bit(false));
+}
+
+#[test]
+fn test_json_path_exists_array() {
+    let mut engine = Engine::new();
+    let result = query(
+        &mut engine,
+        r#"SELECT JSON_PATH_EXISTS('[1, 2, 3]', '$[0]')"#,
+    );
+    assert_eq!(result.rows[0][0], Value::Bit(true));
+
+    let result = query(
+        &mut engine,
+        r#"SELECT JSON_PATH_EXISTS('[1, 2, 3]', '$[5]')"#,
+    );
+    assert_eq!(result.rows[0][0], Value::Bit(false));
+}
