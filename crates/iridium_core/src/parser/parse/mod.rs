@@ -13,7 +13,7 @@ pub use crate::parser::parse::statements::ddl::{
     parse_create, parse_create_index, parse_create_schema, parse_create_type, parse_table_body,
 };
 pub use crate::parser::parse::statements::dml::{
-    parse_delete, parse_insert, parse_merge, parse_update,
+    parse_bulk_insert, parse_delete, parse_insert_dispatch, parse_merge, parse_update,
 };
 pub use crate::parser::parse::statements::drop::parse_drop;
 pub use crate::parser::parse::statements::other::{
@@ -75,9 +75,7 @@ fn parse_statement_inner(parser: &mut Parser) -> ParseResult<Statement> {
             }
             Keyword::Insert => {
                 let _ = parser.next();
-                Ok(Statement::Dml(DmlStatement::Insert(Box::new(
-                    parse_insert(parser)?,
-                ))))
+                Ok(Statement::Dml(parse_insert_dispatch(parser)?))
             }
             Keyword::Update => {
                 let _ = parser.next();
@@ -132,6 +130,13 @@ fn parse_statement_inner(parser: &mut Parser) -> ParseResult<Statement> {
                 Ok(Statement::Dml(DmlStatement::Merge(Box::new(parse_merge(
                     parser,
                 )?))))
+            }
+            Keyword::Bulk => {
+                let _ = parser.next();
+                parser.expect_keyword(Keyword::Insert)?;
+                Ok(Statement::Dml(DmlStatement::BulkInsert(Box::new(
+                    parse_bulk_insert(parser)?,
+                ))))
             }
             Keyword::Set => {
                 let _ = parser.next();

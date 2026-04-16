@@ -280,6 +280,9 @@ define_keywords! {
     Inserted => "INSERTED",
     Deleted => "DELETED",
 
+    // Bulk
+    Bulk => "BULK",
+
     // Misc
     Last => "LAST",
     First => "FIRST",

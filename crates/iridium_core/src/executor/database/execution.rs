@@ -313,6 +313,43 @@ where
             Ok(())
         })
     }
+
+    fn set_bulk_load_active(
+        &self,
+        session_id: SessionId,
+        active: bool,
+        table: crate::ast::ObjectName,
+        columns: Vec<crate::ast::statements::ddl::ColumnSpec>,
+        received_metadata: bool,
+    ) -> Result<(), DbError> {
+        with_session(&self.state, session_id, |session| {
+            session.bulk_load_active = active;
+            session.bulk_load_table = Some(table);
+            session.bulk_load_columns = Some(columns);
+            session.bulk_load_received_metadata = received_metadata;
+            Ok(())
+        })
+    }
+
+    fn get_bulk_load_state(
+        &self,
+        session_id: SessionId,
+    ) -> (
+        bool,
+        Option<crate::ast::ObjectName>,
+        Option<Vec<crate::ast::statements::ddl::ColumnSpec>>,
+        bool,
+    ) {
+        with_session(&self.state, session_id, |session| {
+            Ok((
+                session.bulk_load_active,
+                session.bulk_load_table.clone(),
+                session.bulk_load_columns.clone(),
+                session.bulk_load_received_metadata,
+            ))
+        })
+        .unwrap_or((false, None, None, false))
+    }
 }
 
 #[allow(deprecated)]
@@ -378,6 +415,10 @@ where
 
     let mut ctx = ExecutionContext::new(
         variables,
+        &mut session.bulk_load_active,
+        &mut session.bulk_load_table,
+        &mut session.bulk_load_columns,
+        &mut session.bulk_load_received_metadata,
         &mut identities.last_identity,
         &mut identities.scope_stack,
         &mut tables.temp_map,

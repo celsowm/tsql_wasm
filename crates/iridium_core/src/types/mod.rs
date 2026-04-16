@@ -167,6 +167,32 @@ impl Value {
         matches!(self, Value::Null)
     }
 
+    pub fn to_sql_literal(&self) -> String {
+        match self {
+            Value::Null => "NULL".to_string(),
+            Value::Bit(v) => (if *v { 1 } else { 0 }).to_string(),
+            Value::TinyInt(v) => v.to_string(),
+            Value::SmallInt(v) => v.to_string(),
+            Value::Int(v) => v.to_string(),
+            Value::BigInt(v) => v.to_string(),
+            Value::Float(v) => format_float(f64::from_bits(*v)),
+            Value::Decimal(raw, scale) => format_decimal(*raw, *scale),
+            Value::Money(v) => format_money(*v),
+            Value::SmallMoney(v) => format_money(*v as i128),
+            Value::Char(v) | Value::VarChar(v) | Value::NChar(v) | Value::NVarChar(v) => {
+                format!("'{}'", v.replace("'", "''"))
+            }
+            Value::Date(v) => format!("'{}'", v.format("%Y-%m-%d")),
+            Value::Time(v) => format!("'{}'", v.format("%H:%M:%S%.f")),
+            Value::DateTime(v) | Value::DateTime2(v) => {
+                format!("'{}'", v.format("%Y-%m-%d %H:%M:%S%.f"))
+            }
+            Value::UniqueIdentifier(v) => format!("'{}'", v),
+            Value::Binary(v) | Value::VarBinary(v) => format!("0x{}", hex::encode(v)),
+            Value::SqlVariant(v) => v.to_sql_literal(),
+        }
+    }
+
     pub fn data_type(&self) -> Option<DataType> {
         match self {
             Value::Null => None,

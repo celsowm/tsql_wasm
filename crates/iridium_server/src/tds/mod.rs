@@ -1,4 +1,5 @@
 pub mod batch;
+pub mod bulk;
 pub mod login;
 pub mod packet;
 pub mod prelogin;

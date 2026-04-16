@@ -160,6 +160,10 @@ pub struct SessionRuntime<C, S> {
     pub(crate) user: Option<String>,
     pub(crate) app_name: Option<String>,
     pub(crate) host_name: Option<String>,
+    pub(crate) bulk_load_active: bool,
+    pub(crate) bulk_load_table: Option<crate::ast::ObjectName>,
+    pub(crate) bulk_load_columns: Option<Vec<crate::ast::statements::ddl::ColumnSpec>>,
+    pub(crate) bulk_load_received_metadata: bool,
 }
 
 impl<C, S> SessionRuntime<C, S>
@@ -185,6 +189,10 @@ where
             user: None,
             app_name: None,
             host_name: None,
+            bulk_load_active: false,
+            bulk_load_table: None,
+            bulk_load_columns: None,
+            bulk_load_received_metadata: false,
         }
     }
 
@@ -203,6 +211,10 @@ where
         self.user = None;
         self.app_name = None;
         self.host_name = None;
+        self.bulk_load_active = false;
+        self.bulk_load_table = None;
+        self.bulk_load_columns = None;
+        self.bulk_load_received_metadata = false;
     }
 }
 
