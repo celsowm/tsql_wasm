@@ -259,15 +259,16 @@ Priority values:
 - Exit criteria:
   - supported scenarios have guardrails, not just correctness tests
 
-### B018: Implement missing INFORMATION_SCHEMA views
+### B018: Implement missing INFORMATION_SCHEMA views ✅
 
 - Phase: 2
 - Priority: P2
+- Status: **partially done** (domain views implemented)
 - Goal: provide real metadata for standard INFORMATION_SCHEMA views
 - Primary areas:
   - `crates/iridium_core/src/executor/metadata/info_schema_empty.rs`
 - Deliverables:
-  - implementation for `COLUMN_DOMAIN_USAGE`, `DOMAINS`, `DOMAIN_CONSTRAINTS`
+  - ✅ implementation for `COLUMN_DOMAIN_USAGE`, `DOMAINS`, `DOMAIN_CONSTRAINTS`
   - implementation for `TABLE_PRIVILEGES`, `COLUMN_PRIVILEGES`
   - implementation for `VIEW_COLUMN_USAGE`, `VIEW_TABLE_USAGE`
   - implementation for `ROUTINE_COLUMNS`
@@ -288,16 +289,18 @@ Priority values:
 - Exit criteria:
   - metadata probes for partitioning and HADR behave predictably for tools
 
-### B020: Handle or explicitly reject unsupported session options
+### B020: Handle or explicitly reject unsupported session options ✅
 
 - Phase: 1
 - Priority: P2
+- Status: **in progress** (`ANSI_DEFAULTS` implemented)
 - Goal: move from silent "Unsupported" variant to explicit behavior for SET options
 - Primary areas:
   - `crates/iridium_core/src/parser/parse/mod.rs`
   - `crates/iridium_core/src/executor/tooling/session_options.rs`
 - Deliverables:
   - inventory of common `SET` options that hit the `Unsupported` branch
+  - ✅ explicit implementation for `ANSI_DEFAULTS`
   - explicit implementation or `DbError::Unsupported` for each
 - Exit criteria:
   - no unknown `SET` option is silently captured as an internal `Unsupported` enum without a user-visible result
