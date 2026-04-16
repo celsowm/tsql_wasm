@@ -19,9 +19,11 @@ use self::compat::{
 };
 use self::response::{build_single_int_result, build_use_database_response};
 use super::tds::batch::{build_error_response, parse_sql_batch};
+use super::tds::bulk::parse_bulk_load_data;
 use super::tds::login::parse_login7;
 use super::tds::packet::{
-    self, PacketBuilder, ATTENTION, RPC, SQL_BATCH, TABULAR_RESULT, TDS7_LOGIN, TDS7_PRELOGIN,
+    self, PacketBuilder, ATTENTION, BULK_LOAD, RPC, SQL_BATCH, TABULAR_RESULT, TDS7_LOGIN,
+    TDS7_PRELOGIN,
 };
 use super::tds::prelogin::{
     build_prelogin_response, parse_prelogin, ENCRYPT_NOT_SUP, ENCRYPT_OFF, ENCRYPT_ON,
@@ -747,6 +749,135 @@ impl TdsSession {
                                 .await;
                             }
                         },
+                        BULK_LOAD => {
+                            log::info!("[conn={}] BULK_LOAD received", self.connection_id);
+                            if let Some(session_id) = self.session_id {
+                                let (active, target, columns, received_metadata) = self
+                                    .db
+                                    .session_options(session_id)
+                                    .map(|_opts| self.db.get_bulk_load_state(session_id))
+                                    .unwrap_or((false, None, None, false));
+
+                                if active && target.is_some() && columns.is_some() {
+                                    let target = target.unwrap();
+                                    let columns = columns.unwrap();
+
+                                    let mut reader = packet::PacketReader::new(&data);
+                                    let mut column_types = Vec::new();
+
+                                    if !received_metadata {
+                                        let token = reader.read_u8().map_err(|e| e.to_string())?;
+                                        if token != tokens::COLMETADATA_TOKEN {
+                                            return Err(format!(
+                                                "Expected COLMETADATA (0x81), got 0x{:02X}",
+                                                token
+                                            ));
+                                        }
+                                        let count =
+                                            reader.read_u16_le().map_err(|e| e.to_string())?
+                                                as usize;
+                                        for _ in 0..count {
+                                            reader.skip(4).map_err(|e| e.to_string())?; // UserType
+                                            let _flags =
+                                                reader.read_u16_le().map_err(|e| e.to_string())?;
+                                            let ti = super::tds::type_mapping::read_type_info(
+                                                &mut reader,
+                                            )
+                                            .map_err(|e| e.to_string())?;
+                                            column_types.push(ti);
+                                            let name_len =
+                                                reader.read_u8().map_err(|e| e.to_string())?
+                                                    as usize;
+                                            let _name = reader
+                                                .read_utf16le(name_len)
+                                                .map_err(|e| e.to_string())?;
+                                        }
+                                        // Mark metadata as received
+                                        self.db
+                                            .set_bulk_load_active(
+                                                session_id,
+                                                true,
+                                                target.clone(),
+                                                columns.clone(),
+                                                true,
+                                            )
+                                            .map_err(|e| e.to_string())?;
+                                    }
+
+                                    // For now, we still assume the first packet has both metadata and some rows,
+                                    // or we'd need to store column_types in the session state to handle subsequent row-only packets.
+
+                                    match parse_bulk_load_data(&data, &columns) {
+                                        Ok(bulk_data) => {
+                                            log::info!(
+                                                "[conn={}] Parsed {} bulk rows for table {}",
+                                                self.connection_id,
+                                                bulk_data.rows.len(),
+                                                target.name
+                                            );
+
+                                            // Construct INSERT statements or use MutationExecutor directly.
+                                            // For simplicity, we'll build a batch of INSERTs.
+                                            let mut sql = String::new();
+                                            let col_names: Vec<String> =
+                                                columns.iter().map(|c| c.name.clone()).collect();
+                                            let col_list = col_names.join(", ");
+
+                                            for row in bulk_data.rows {
+                                                let vals: Vec<String> = row
+                                                    .iter()
+                                                    .map(|v| v.to_sql_literal())
+                                                    .collect();
+                                                sql.push_str(&format!(
+                                                    "INSERT INTO {}.{} ({}) VALUES ({});\n",
+                                                    target.schema_or_dbo(),
+                                                    target.name,
+                                                    col_list,
+                                                    vals.join(", ")
+                                                ));
+                                            }
+
+                                            // Reset bulk state before executing to avoid recursion/loops
+                                            self.db.set_bulk_load_active(
+                                                session_id,
+                                                false,
+                                                target.clone(),
+                                                columns.clone(),
+                                                false,
+                                            )
+                                            .map_err(|e| e.to_string())?;
+
+                                            match self.execute_sql(&sql, &mut writer).await {
+                                                Ok(_) => {}
+                                                Err(e) => {
+                                                    log::error!("Bulk insert execution error: {}", e);
+                                                    let err_resp = build_error_response(&e);
+                                                    let _ = packet::write_packet(
+                                                        &mut writer,
+                                                        TABULAR_RESULT,
+                                                        &err_resp.data,
+                                                    )
+                                                    .await;
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            log::error!("Bulk data parse error: {}", e);
+                                            let err = DbError::Parse(e.to_string());
+                                            let err_resp = build_error_response(&err);
+                                            let _ = packet::write_packet(
+                                                &mut writer,
+                                                TABULAR_RESULT,
+                                                &err_resp.data,
+                                            )
+                                            .await;
+                                        }
+                                    }
+                                } else {
+                                    log::warn!("[conn={}] Received BULK_LOAD but bulk load was not expected", self.connection_id);
+                                }
+                            }
+                        }
                         ATTENTION => {
                             log::debug!("[conn={}] ATTENTION received", self.connection_id);
                             let mut attn = PacketBuilder::new();

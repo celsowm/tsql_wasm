@@ -366,6 +366,30 @@ where
     fn cursor_rpc_deallocate(&self, session_id: SessionId, handle: i32) -> Result<(), DbError> {
         self.executor().cursor_rpc_deallocate(session_id, handle)
     }
+
+    fn set_bulk_load_active(
+        &self,
+        session_id: SessionId,
+        active: bool,
+        table: crate::ast::ObjectName,
+        columns: Vec<crate::ast::statements::ddl::ColumnSpec>,
+        received_metadata: bool,
+    ) -> Result<(), DbError> {
+        self.executor()
+            .set_bulk_load_active(session_id, active, table, columns, received_metadata)
+    }
+
+    fn get_bulk_load_state(
+        &self,
+        session_id: SessionId,
+    ) -> (
+        bool,
+        Option<crate::ast::ObjectName>,
+        Option<Vec<crate::ast::statements::ddl::ColumnSpec>>,
+        bool,
+    ) {
+        self.executor().get_bulk_load_state(session_id)
+    }
 }
 
 impl<C, S> SqlAnalyzerTrait for DatabaseInner<C, S>

@@ -10,6 +10,8 @@ pub fn statement_kind(stmt: &Statement) -> &'static str {
             crate::ast::DmlStatement::Merge(_) => "MERGE",
             crate::ast::DmlStatement::SelectAssign(_) => "SELECT_ASSIGN",
             crate::ast::DmlStatement::SetOp(_) => "QUERY",
+            crate::ast::DmlStatement::BulkInsert(_) => "BULK_INSERT",
+            crate::ast::DmlStatement::InsertBulk(_) => "INSERT_BULK",
         },
         Statement::Ddl(s) => match s {
             crate::ast::DdlStatement::CreateTable(_) => "CREATE_TABLE",

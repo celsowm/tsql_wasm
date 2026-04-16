@@ -40,6 +40,16 @@ fn is_statement_starter(tok: Option<&Token>) -> bool {
     }
 }
 
+pub fn parse_insert_dispatch(parser: &mut Parser) -> ParseResult<DmlStatement> {
+    if let Some(Token::Keyword(Keyword::Bulk)) = parser.peek() {
+        let _ = parser.next();
+        return Ok(DmlStatement::InsertBulk(Box::new(parse_insert_bulk(
+            parser,
+        )?)));
+    }
+    Ok(DmlStatement::Insert(Box::new(parse_insert(parser)?)))
+}
+
 pub fn parse_insert(parser: &mut Parser) -> ParseResult<InsertStmt> {
     if let Some(Token::Keyword(Keyword::Into)) = parser.peek() {
         let _ = parser.next();
@@ -330,6 +340,195 @@ pub fn parse_output_clause(
         output_into = Some(super::parse_multipart_name(parser)?);
     }
     Ok((columns, output_into))
+}
+
+pub fn parse_bulk_insert(parser: &mut Parser) -> ParseResult<BulkInsertStmt> {
+    let table = super::parse_multipart_name(parser)?;
+    parser.expect_keyword(Keyword::From)?;
+    let from = match parser.next() {
+        Some(Token::String(s)) | Some(Token::NString(s)) => s.clone(),
+        _ => return parser.backtrack(Expected::Description("file path string")),
+    };
+
+    let mut options = Vec::new();
+    if matches!(parser.peek(), Some(Token::Keyword(Keyword::With))) {
+        let _ = parser.next();
+        parser.expect_lparen()?;
+        options = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
+            let opt_name = if let Some(tok) = p.next() {
+                match tok {
+                    Token::Identifier(id) => id.clone(),
+                    Token::Keyword(kw) => kw.as_ref().to_string(),
+                    _ => return p.backtrack(Expected::Description("option name")),
+                }
+            } else {
+                return p.backtrack(Expected::Description("option name"));
+            };
+
+            match opt_name.to_uppercase().as_str() {
+                "CHECK_CONSTRAINTS" => Ok(BulkInsertOption::CheckConstraints),
+                "FIRE_TRIGGERS" => Ok(BulkInsertOption::FireTriggers),
+                "KEEPIDENTITY" => Ok(BulkInsertOption::KeepIdentity),
+                "KEEPNULLS" => Ok(BulkInsertOption::KeepNulls),
+                "TABLOCK" => Ok(BulkInsertOption::TabLock),
+                "FORMAT" => {
+                    if let Some(Token::Operator(op)) = p.next() {
+                        if op != "=" {
+                            return p.backtrack(Expected::Description("="));
+                        }
+                    }
+                    match p.next() {
+                        Some(Token::String(s)) | Some(Token::NString(s)) => {
+                            Ok(BulkInsertOption::Format(s.clone()))
+                        }
+                        _ => p.backtrack(Expected::Description("format string")),
+                    }
+                }
+                "DATA_SOURCE" => {
+                    // Placeholder for DATA_SOURCE, we'll just skip it for now or handle as part of FORMAT
+                    if let Some(Token::Operator(op)) = p.next() {
+                        if op != "=" {
+                            return p.backtrack(Expected::Description("="));
+                        }
+                    }
+                    let _ = p.next(); // skip value
+                    Ok(BulkInsertOption::Format("DATA_SOURCE".to_string()))
+                }
+                "DATAFILETYPE" => {
+                    if let Some(Token::Operator(op)) = p.next() {
+                        if op != "=" {
+                            return p.backtrack(Expected::Description("="));
+                        }
+                    }
+                    match p.next() {
+                        Some(Token::String(s)) | Some(Token::NString(s)) => {
+                            Ok(BulkInsertOption::DataFiletype(s.clone()))
+                        }
+                        _ => p.backtrack(Expected::Description("datafiletype string")),
+                    }
+                }
+                "FIELDTERMINATOR" => {
+                    if let Some(Token::Operator(op)) = p.next() {
+                        if op != "=" {
+                            return p.backtrack(Expected::Description("="));
+                        }
+                    }
+                    match p.next() {
+                        Some(Token::String(s)) | Some(Token::NString(s)) => {
+                            Ok(BulkInsertOption::FieldTerminator(s.clone()))
+                        }
+                        _ => p.backtrack(Expected::Description("fieldterminator string")),
+                    }
+                }
+                "ROWTERMINATOR" => {
+                    if let Some(Token::Operator(op)) = p.next() {
+                        if op != "=" {
+                            return p.backtrack(Expected::Description("="));
+                        }
+                    }
+                    match p.next() {
+                        Some(Token::String(s)) | Some(Token::NString(s)) => {
+                            Ok(BulkInsertOption::RowTerminator(s.clone()))
+                        }
+                        _ => p.backtrack(Expected::Description("rowterminator string")),
+                    }
+                }
+                "FIRSTROW" => {
+                    if let Some(Token::Operator(op)) = p.next() {
+                        if op != "=" {
+                            return p.backtrack(Expected::Description("="));
+                        }
+                    }
+                    match p.next() {
+                        Some(Token::Number { value, .. }) => {
+                            Ok(BulkInsertOption::FirstRow(*value as i64))
+                        }
+                        _ => p.backtrack(Expected::Description("firstrow number")),
+                    }
+                }
+                "LASTROW" => {
+                    if let Some(Token::Operator(op)) = p.next() {
+                        if op != "=" {
+                            return p.backtrack(Expected::Description("="));
+                        }
+                    }
+                    match p.next() {
+                        Some(Token::Number { value, .. }) => {
+                            Ok(BulkInsertOption::LastRow(*value as i64))
+                        }
+                        _ => p.backtrack(Expected::Description("lastrow number")),
+                    }
+                }
+                "ERRORFILE" => {
+                    if let Some(Token::Operator(op)) = p.next() {
+                        if op != "=" {
+                            return p.backtrack(Expected::Description("="));
+                        }
+                    }
+                    match p.next() {
+                        Some(Token::String(s)) | Some(Token::NString(s)) => {
+                            Ok(BulkInsertOption::ErrorFile(s.clone()))
+                        }
+                        _ => p.backtrack(Expected::Description("errorfile string")),
+                    }
+                }
+                _ => p.backtrack(Expected::Description("supported BULK INSERT option")),
+            }
+        })?;
+        parser.expect_rparen()?;
+    }
+
+    Ok(BulkInsertStmt {
+        table,
+        from,
+        options,
+    })
+}
+
+pub fn parse_insert_bulk(parser: &mut Parser) -> ParseResult<InsertBulkStmt> {
+    let table = super::parse_multipart_name(parser)?;
+    parser.expect_lparen()?;
+    let columns = crate::parser::parse::expressions::parse_comma_list(parser, |p| {
+        let name = if let Some(tok) = p.next() {
+            match tok {
+                Token::Identifier(id) => id.clone(),
+                Token::Keyword(kw) => kw.as_ref().to_string(),
+                _ => return p.backtrack(Expected::Description("column name")),
+            }
+        } else {
+            return p.backtrack(Expected::Description("column name"));
+        };
+        let data_type = crate::parser::parse::expressions::parse_data_type(p)?;
+        // Handle optional NULL/NOT NULL
+        let mut is_nullable = None;
+        if matches!(p.peek(), Some(Token::Keyword(Keyword::Null))) {
+            let _ = p.next();
+            is_nullable = Some(true);
+        } else if matches!(p.peek(), Some(Token::Keyword(Keyword::Not))) {
+            let _ = p.next();
+            p.expect_keyword(Keyword::Null)?;
+            is_nullable = Some(false);
+        }
+
+        Ok(ColumnDef {
+            name,
+            data_type,
+            is_nullable,
+            is_identity: false,
+            identity_spec: None,
+            is_primary_key: false,
+            is_unique: false,
+            default_expr: None,
+            default_constraint_name: None,
+            check_expr: None,
+            check_constraint_name: None,
+            computed_expr: None,
+            foreign_key: None,
+        })
+    })?;
+    parser.expect_rparen()?;
+
+    Ok(InsertBulkStmt { table, columns })
 }
 
 pub fn parse_merge(parser: &mut Parser) -> ParseResult<MergeStmt> {

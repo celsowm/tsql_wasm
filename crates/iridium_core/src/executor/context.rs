@@ -39,6 +39,10 @@ pub struct SessionStateRefs<'a> {
     pub(crate) next_cursor_handle: &'a mut i32,
     pub(crate) handle_map: &'a mut HashMap<i32, String>,
     pub(crate) print_output: &'a mut Vec<String>,
+    pub(crate) bulk_load_active: &'a mut bool,
+    pub(crate) bulk_load_table: &'a mut Option<crate::ast::ObjectName>,
+    pub(crate) bulk_load_columns: &'a mut Option<Vec<crate::ast::statements::ddl::ColumnSpec>>,
+    pub(crate) bulk_load_received_metadata: &'a mut bool,
     pub(crate) dirty_buffer:
         Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>>,
     pub(crate) identity_insert: HashSet<String>,
@@ -180,6 +184,18 @@ impl<'a> SessionStateRefs<'a> {
             options: options.clone(),
             random_state: *self.random_state,
         }
+    }
+
+    pub fn set_bulk_load_active(
+        &mut self,
+        active: bool,
+        table: crate::ast::ObjectName,
+        columns: Vec<crate::ast::statements::ddl::ColumnSpec>,
+    ) {
+        *self.bulk_load_active = active;
+        *self.bulk_load_table = Some(table);
+        *self.bulk_load_columns = Some(columns);
+        *self.bulk_load_received_metadata = false;
     }
 
     pub fn restore_snapshot(
@@ -393,6 +409,10 @@ impl<'a> ExecutionContext<'a> {
                 next_cursor_handle: &mut session.cursors.next_cursor_handle,
                 handle_map: &mut session.cursors.handle_map,
                 print_output: &mut session.diagnostics.print_output,
+                bulk_load_active: &mut session.bulk_load_active,
+                bulk_load_table: &mut session.bulk_load_table,
+                bulk_load_columns: &mut session.bulk_load_columns,
+                bulk_load_received_metadata: &mut session.bulk_load_received_metadata,
                 dirty_buffer,
                 identity_insert: HashSet::new(),
             },
@@ -436,6 +456,10 @@ impl<'a> ExecutionContext<'a> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         variables: &'a mut Variables,
+        bulk_load_active: &'a mut bool,
+        bulk_load_table: &'a mut Option<crate::ast::ObjectName>,
+        bulk_load_columns: &'a mut Option<Vec<crate::ast::statements::ddl::ColumnSpec>>,
+        bulk_load_received_metadata: &'a mut bool,
         session_last_identity: &'a mut Option<i64>,
         scope_identity_stack: &'a mut Vec<Option<i64>>,
         temp_table_map: &'a mut HashMap<String, String>,
@@ -470,6 +494,10 @@ impl<'a> ExecutionContext<'a> {
                 next_cursor_handle,
                 handle_map,
                 print_output,
+                bulk_load_active,
+                bulk_load_table,
+                bulk_load_columns,
+                bulk_load_received_metadata,
                 dirty_buffer,
                 identity_insert: HashSet::new(),
             },
@@ -625,6 +653,10 @@ impl<'a> ExecutionContext<'a> {
                 next_cursor_handle: self.session.next_cursor_handle,
                 handle_map: self.session.handle_map,
                 print_output: self.session.print_output,
+                bulk_load_active: self.session.bulk_load_active,
+                bulk_load_table: self.session.bulk_load_table,
+                bulk_load_columns: self.session.bulk_load_columns,
+                bulk_load_received_metadata: self.session.bulk_load_received_metadata,
                 dirty_buffer: self.session.dirty_buffer.clone(),
                 identity_insert: self.session.identity_insert.clone(),
             },
@@ -685,6 +717,15 @@ impl<'a> ExecutionContext<'a> {
 
     pub fn set_last_identity(&mut self, val: i64) {
         self.session.set_last_identity(val);
+    }
+
+    pub fn set_bulk_load_active(
+        &mut self,
+        active: bool,
+        table: crate::ast::ObjectName,
+        columns: Vec<crate::ast::statements::ddl::ColumnSpec>,
+    ) {
+        self.session.set_bulk_load_active(active, table, columns);
     }
 
     pub fn current_scope_identity(&self) -> Option<i64> {

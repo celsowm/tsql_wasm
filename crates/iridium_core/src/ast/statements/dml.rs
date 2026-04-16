@@ -114,3 +114,32 @@ pub enum OutputSource {
     Inserted,
     Deleted,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BulkInsertStmt {
+    pub table: ObjectName,
+    pub from: String,
+    pub options: Vec<BulkInsertOption>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum BulkInsertOption {
+    CheckConstraints,
+    FireTriggers,
+    KeepIdentity,
+    KeepNulls,
+    TabLock,
+    Format(String),
+    DataFiletype(String),
+    FieldTerminator(String),
+    RowTerminator(String),
+    FirstRow(i64),
+    LastRow(i64),
+    ErrorFile(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InsertBulkStmt {
+    pub table: ObjectName,
+    pub columns: Vec<crate::ast::statements::ddl::ColumnSpec>,
+}

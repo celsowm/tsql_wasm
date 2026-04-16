@@ -30,6 +30,12 @@ impl<'a> ScriptExecutor<'a> {
             DmlStatement::SelectAssign(stmt) => {
                 self.execute_select_assign(stmt, ctx).map(StmtOutcome::Ok)
             }
+            DmlStatement::BulkInsert(stmt) => {
+                self.execute_bulk_insert(stmt, ctx).map(StmtOutcome::Ok)
+            }
+            DmlStatement::InsertBulk(stmt) => {
+                self.execute_insert_bulk(stmt, ctx).map(StmtOutcome::Ok)
+            }
             DmlStatement::SetOp(stmt) => {
                 let left_outcome = self.execute(*stmt.left, ctx)?;
                 let right_outcome = self.execute(*stmt.right, ctx)?;
@@ -184,5 +190,31 @@ impl<'a> ScriptExecutor<'a> {
             clock: self.clock,
         };
         mut_exec.execute_delete_with_context(stmt, ctx)
+    }
+
+    pub(crate) fn execute_bulk_insert(
+        &mut self,
+        stmt: crate::ast::BulkInsertStmt,
+        ctx: &mut ExecutionContext<'_>,
+    ) -> Result<Option<QueryResult>, DbError> {
+        let mut mut_exec = MutationExecutor {
+            catalog: self.catalog,
+            storage: self.storage,
+            clock: self.clock,
+        };
+        mut_exec.execute_bulk_insert(stmt, ctx)
+    }
+
+    pub(crate) fn execute_insert_bulk(
+        &mut self,
+        stmt: crate::ast::InsertBulkStmt,
+        ctx: &mut ExecutionContext<'_>,
+    ) -> Result<Option<QueryResult>, DbError> {
+        let mut mut_exec = MutationExecutor {
+            catalog: self.catalog,
+            storage: self.storage,
+            clock: self.clock,
+        };
+        mut_exec.execute_insert_bulk(stmt, ctx)
     }
 }

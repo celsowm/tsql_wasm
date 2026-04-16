@@ -79,6 +79,23 @@ pub trait StatementExecutor {
     ) -> Result<CursorFetchResult, DbError>;
     fn cursor_rpc_close(&self, session_id: SessionId, handle: i32) -> Result<(), DbError>;
     fn cursor_rpc_deallocate(&self, session_id: SessionId, handle: i32) -> Result<(), DbError>;
+    fn set_bulk_load_active(
+        &self,
+        session_id: SessionId,
+        active: bool,
+        table: crate::ast::ObjectName,
+        columns: Vec<crate::ast::statements::ddl::ColumnSpec>,
+        received_metadata: bool,
+    ) -> Result<(), DbError>;
+    fn get_bulk_load_state(
+        &self,
+        session_id: SessionId,
+    ) -> (
+        bool,
+        Option<crate::ast::ObjectName>,
+        Option<Vec<crate::ast::statements::ddl::ColumnSpec>>,
+        bool,
+    );
 }
 
 pub trait SqlAnalyzer {
@@ -330,6 +347,28 @@ macro_rules! delegate_db_traits {
             }
             fn cursor_rpc_deallocate(&self, sid: SessionId, handle: i32) -> Result<(), DbError> {
                 self.0.cursor_rpc_deallocate(sid, handle)
+            }
+            fn set_bulk_load_active(
+                &self,
+                session_id: SessionId,
+                active: bool,
+                table: crate::ast::ObjectName,
+                columns: Vec<crate::ast::statements::ddl::ColumnSpec>,
+                received_metadata: bool,
+            ) -> Result<(), DbError> {
+                self.0
+                    .set_bulk_load_active(session_id, active, table, columns, received_metadata)
+            }
+            fn get_bulk_load_state(
+                &self,
+                session_id: SessionId,
+            ) -> (
+                bool,
+                Option<crate::ast::ObjectName>,
+                Option<Vec<crate::ast::statements::ddl::ColumnSpec>>,
+                bool,
+            ) {
+                self.0.get_bulk_load_state(session_id)
             }
         }
         impl SqlAnalyzer for $wrapper {

@@ -1,4 +1,6 @@
 use iridium_core::types::Value;
+use std::io;
+use super::packet::PacketReader;
 
 pub const INTNTYPE: u8 = 0x26;
 pub const GUIDTYPE: u8 = 0x24;
@@ -677,3 +679,100 @@ pub fn infer_column_types(columns: &[String], rows: &[Vec<Value>]) -> Vec<TypeIn
         .collect()
 }
 
+pub fn read_type_info(reader: &mut PacketReader) -> io::Result<TypeInfo> {
+    let tds_type = reader.read_u8()?;
+    let mut length_prefix = Vec::new();
+    let mut scale = None;
+    let mut precision = None;
+    let mut collation = None;
+
+    match tds_type {
+        0x26 | 0x68 | 0x6D | 0x6E | 0x6F | 0x24 | 0x28 => {
+            length_prefix.push(reader.read_u8()?);
+        }
+        0x29 | 0x2A | 0x2B => {
+            let s = reader.read_u8()?;
+            length_prefix.push(s);
+            scale = Some(s);
+        }
+        0x6A | 0x6C => {
+            length_prefix.push(reader.read_u8()?);
+            precision = Some(reader.read_u8()?);
+            scale = Some(reader.read_u8()?);
+        }
+        0xA7 | 0xAF | 0xE7 | 0xEF | 0xA5 | 0xAD => {
+            length_prefix.extend_from_slice(reader.read_bytes(2)?);
+            if matches!(tds_type, 0xA7 | 0xAF | 0xE7 | 0xEF) {
+                let mut coll = [0u8; 5];
+                coll.copy_from_slice(reader.read_bytes(5)?);
+                collation = Some(coll);
+            }
+        }
+        _ => {
+            // Fix-length types
+            match tds_type {
+                0x30 | 0x32 | 0x34 | 0x38 | 0x3B | 0x3C | 0x3D | 0x7A | 0x7E => {}
+                _ => return Err(io::Error::new(io::ErrorKind::InvalidData, format!("Unsupported TDS type: 0x{:02X}", tds_type))),
+            }
+        }
+    }
+
+    Ok(TypeInfo {
+        tds_type,
+        length_prefix,
+        collation,
+        scale,
+        precision,
+        flags: 0,
+    })
+}
+
+pub fn read_value(reader: &mut PacketReader, ti: &TypeInfo) -> io::Result<Value> {
+    match ti.tds_type {
+        INTNTYPE => {
+            let len = reader.read_u8()?;
+            match len {
+                0 => Ok(Value::Null),
+                1 => Ok(Value::TinyInt(reader.read_u8()?)),
+                2 => Ok(Value::SmallInt(reader.read_u16_le()? as i16)),
+                4 => Ok(Value::Int(reader.read_u32_le()? as i32)),
+                8 => Ok(Value::BigInt(reader.read_u64_le()? as i64)),
+                _ => Err(io::Error::new(io::ErrorKind::InvalidData, format!("Invalid INTN length: {}", len))),
+            }
+        }
+        BITNTYPE => {
+            let len = reader.read_u8()?;
+            match len {
+                0 => Ok(Value::Null),
+                1 => Ok(Value::Bit(reader.read_u8()? != 0)),
+                _ => Err(io::Error::new(io::ErrorKind::InvalidData, format!("Invalid BITN length: {}", len))),
+            }
+        }
+        NVARCHARTYPE | NCHARTYPE => {
+            let len = reader.read_u16_le()?;
+            if len == 0xFFFF {
+                Ok(Value::Null)
+            } else {
+                Ok(Value::NVarChar(reader.read_utf16le(len as usize / 2)?))
+            }
+        }
+        BIGVARCHARTYPE | BIGCHARTYPE => {
+            let len = reader.read_u16_le()?;
+            if len == 0xFFFF {
+                Ok(Value::Null)
+            } else {
+                let bytes = reader.read_bytes(len as usize)?;
+                Ok(Value::VarChar(String::from_utf8_lossy(bytes).into_owned()))
+            }
+        }
+        0x30 => Ok(Value::TinyInt(reader.read_u8()?)),
+        0x32 => Ok(Value::Bit(reader.read_u8()? != 0)),
+        0x34 => Ok(Value::SmallInt(reader.read_u16_le()? as i16)),
+        0x38 => Ok(Value::Int(reader.read_u32_le()? as i32)),
+        0x7E => Ok(Value::BigInt(reader.read_u64_le()? as i64)),
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Unsupported TDS type for bulk read: 0x{:02X}", ti.tds_type),
+        )),
+    }
+}

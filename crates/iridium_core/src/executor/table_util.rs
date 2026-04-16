@@ -147,6 +147,12 @@ pub(crate) fn collect_write_tables(stmt: &Statement) -> HashSet<String> {
                 out.insert(normalize_table_name(name));
             }
         }
+        Statement::Dml(DmlStatement::BulkInsert(s)) => {
+            out.insert(normalize_table_name(&s.table));
+        }
+        Statement::Dml(DmlStatement::InsertBulk(s)) => {
+            out.insert(normalize_table_name(&s.table));
+        }
         _ => {}
     }
     out

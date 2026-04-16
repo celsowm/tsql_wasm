@@ -1,3 +1,4 @@
+mod bulk;
 mod delete;
 mod insert;
 mod insert_source;

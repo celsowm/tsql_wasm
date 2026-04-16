@@ -50,6 +50,12 @@ pub fn lower_dml(dml: ast::DmlStatement) -> Result<executor_ast::Statement, DbEr
         ast::DmlStatement::Merge(s) => Ok(executor_ast::Statement::Dml(
             executor_ast::statements::DmlStatement::Merge(lower_merge(*s)?),
         )),
+        ast::DmlStatement::BulkInsert(s) => Ok(executor_ast::Statement::Dml(
+            executor_ast::statements::DmlStatement::BulkInsert(lower_bulk_insert(*s)?),
+        )),
+        ast::DmlStatement::InsertBulk(s) => Ok(executor_ast::Statement::Dml(
+            executor_ast::statements::DmlStatement::InsertBulk(lower_insert_bulk(*s)?),
+        )),
         ast::DmlStatement::SelectAssign {
             assignments,
             from,
@@ -681,6 +687,92 @@ pub fn lower_delete(
             .output
             .map(|cols| cols.into_iter().map(lower_output_column).collect()),
         output_into: s.output_into.map(lower_object_name),
+    })
+}
+
+pub fn lower_bulk_insert(
+    s: ast::BulkInsertStmt,
+) -> Result<executor_ast::statements::dml::BulkInsertStmt, DbError> {
+    Ok(executor_ast::statements::dml::BulkInsertStmt {
+        table: lower_object_name(s.table),
+        from: s.from,
+        options: s
+            .options
+            .into_iter()
+            .map(|opt| match opt {
+                ast::BulkInsertOption::CheckConstraints => {
+                    executor_ast::statements::dml::BulkInsertOption::CheckConstraints
+                }
+                ast::BulkInsertOption::FireTriggers => {
+                    executor_ast::statements::dml::BulkInsertOption::FireTriggers
+                }
+                ast::BulkInsertOption::KeepIdentity => {
+                    executor_ast::statements::dml::BulkInsertOption::KeepIdentity
+                }
+                ast::BulkInsertOption::KeepNulls => {
+                    executor_ast::statements::dml::BulkInsertOption::KeepNulls
+                }
+                ast::BulkInsertOption::TabLock => {
+                    executor_ast::statements::dml::BulkInsertOption::TabLock
+                }
+                ast::BulkInsertOption::Format(s) => {
+                    executor_ast::statements::dml::BulkInsertOption::Format(s)
+                }
+                ast::BulkInsertOption::DataFiletype(s) => {
+                    executor_ast::statements::dml::BulkInsertOption::DataFiletype(s)
+                }
+                ast::BulkInsertOption::FieldTerminator(s) => {
+                    executor_ast::statements::dml::BulkInsertOption::FieldTerminator(s)
+                }
+                ast::BulkInsertOption::RowTerminator(s) => {
+                    executor_ast::statements::dml::BulkInsertOption::RowTerminator(s)
+                }
+                ast::BulkInsertOption::FirstRow(i) => {
+                    executor_ast::statements::dml::BulkInsertOption::FirstRow(i)
+                }
+                ast::BulkInsertOption::LastRow(i) => {
+                    executor_ast::statements::dml::BulkInsertOption::LastRow(i)
+                }
+                ast::BulkInsertOption::ErrorFile(s) => {
+                    executor_ast::statements::dml::BulkInsertOption::ErrorFile(s)
+                }
+            })
+            .collect(),
+    })
+}
+
+pub fn lower_insert_bulk(
+    s: ast::InsertBulkStmt,
+) -> Result<executor_ast::statements::dml::InsertBulkStmt, DbError> {
+    Ok(executor_ast::statements::dml::InsertBulkStmt {
+        table: lower_object_name(s.table),
+        columns: s
+            .columns
+            .into_iter()
+            .map(|c| {
+                Ok(executor_ast::statements::ddl::ColumnSpec {
+                    name: c.name,
+                    data_type: super::common::lower_data_type(c.data_type)?,
+                    nullable: c.is_nullable.unwrap_or(true),
+                    nullable_explicit: c.is_nullable.is_some(),
+                    identity: c.identity_spec,
+                    primary_key: c.is_primary_key,
+                    unique: c.is_unique,
+                    default: c.default_expr.map(lower_expr).transpose()?,
+                    default_constraint_name: c.default_constraint_name,
+                    check: c.check_expr.map(lower_expr).transpose()?,
+                    check_constraint_name: c.check_constraint_name,
+                    computed_expr: c.computed_expr.map(lower_expr).transpose()?,
+                    foreign_key: c.foreign_key.map(|fk| executor_ast::statements::ddl::ForeignKeyRef {
+                        referenced_table: lower_object_name(fk.ref_table),
+                        referenced_columns: fk.ref_columns,
+                        on_delete: fk.on_delete.map(super::ddl::lower_referential_action),
+                        on_update: fk.on_update.map(super::ddl::lower_referential_action),
+                    }),
+                    ansi_padding_on: true,
+                })
+            })
+            .collect::<Result<Vec<_>, DbError>>()?,
     })
 }
 

@@ -27,6 +27,8 @@ pub enum DmlStatement {
     Update(Box<UpdateStmt>),
     Delete(Box<DeleteStmt>),
     Merge(Box<MergeStmt>),
+    BulkInsert(Box<BulkInsertStmt>),
+    InsertBulk(Box<InsertBulkStmt>),
     SelectAssign {
         assignments: Vec<SelectAssignTarget>,
         from: Option<TableRef>,
@@ -215,6 +217,35 @@ pub enum InsertSource {
         args: Vec<Expr>,
     },
     DefaultValues,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct BulkInsertStmt {
+    pub table: Vec<String>,
+    pub from: String,
+    pub options: Vec<BulkInsertOption>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum BulkInsertOption {
+    CheckConstraints,
+    FireTriggers,
+    KeepIdentity,
+    KeepNulls,
+    TabLock,
+    Format(String),
+    DataFiletype(String),
+    FieldTerminator(String),
+    RowTerminator(String),
+    FirstRow(i64),
+    LastRow(i64),
+    ErrorFile(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct InsertBulkStmt {
+    pub table: Vec<String>,
+    pub columns: Vec<ColumnDef>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

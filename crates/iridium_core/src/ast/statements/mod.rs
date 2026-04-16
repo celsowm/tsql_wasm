@@ -36,6 +36,8 @@ pub enum DmlStatement {
     Merge(MergeStmt),
     SetOp(SetOpStmt),
     SelectAssign(SelectAssignStmt),
+    BulkInsert(BulkInsertStmt),
+    InsertBulk(InsertBulkStmt),
 }
 
 #[allow(clippy::large_enum_variant)]
