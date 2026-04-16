@@ -7,6 +7,7 @@ use crate::types::{DataType, Value};
 
 pub(crate) struct Domains;
 pub(crate) struct ColumnDomainUsage;
+pub(crate) struct DomainConstraints;
 
 impl VirtualTable for Domains {
     fn definition(&self) -> crate::catalog::TableDef {
@@ -67,5 +68,39 @@ impl VirtualTable for ColumnDomainUsage {
         // "usage" columns in the traditional SQL sense, we return empty or
         // we could eventually map columns that use these types.
         Vec::new()
+    }
+}
+
+impl VirtualTable for DomainConstraints {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "DOMAIN_CONSTRAINTS",
+            vec![
+                (
+                    "CONSTRAINT_CATALOG",
+                    DataType::VarChar { max_len: 128 },
+                    false,
+                ),
+                (
+                    "CONSTRAINT_SCHEMA",
+                    DataType::VarChar { max_len: 128 },
+                    false,
+                ),
+                ("CONSTRAINT_NAME", DataType::VarChar { max_len: 128 }, false),
+                ("DOMAIN_CATALOG", DataType::VarChar { max_len: 128 }, false),
+                ("DOMAIN_SCHEMA", DataType::VarChar { max_len: 128 }, false),
+                ("DOMAIN_NAME", DataType::VarChar { max_len: 128 }, false),
+                ("IS_DEFERRABLE", DataType::VarChar { max_len: 2 }, false),
+                (
+                    "INITIALLY_DEFERRED",
+                    DataType::VarChar { max_len: 2 },
+                    false,
+                ),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+        vec![]
     }
 }
