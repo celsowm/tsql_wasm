@@ -69,6 +69,37 @@ fn handle_session_statement<C, S>(
     journal: &mut dyn Journal,
 ) -> Option<StmtResult<Option<QueryResult>>> {
     if let Statement::Session(SessionStatement::SetOption(opt)) = stmt {
+        if opt.option == crate::ast::SessionOption::ContextInfo {
+            let val = match &opt.value {
+                crate::ast::SessionOptionValue::Text(v) => {
+                    if v.starts_with('@') {
+                        if let Some((_, val)) = ctx.session.variables.get(v) {
+                            val.clone()
+                        } else {
+                            return Some(Err(DbError::Execution(format!(
+                                "variable {} not found",
+                                v
+                            ))));
+                        }
+                    } else {
+                        crate::types::Value::VarBinary(hex::decode(v.strip_prefix("0x").unwrap_or(v)).unwrap_or_default())
+                    }
+                }
+                _ => return Some(Err(DbError::Execution("invalid CONTEXT_INFO value".into()))),
+            };
+
+            let bytes = match val {
+                crate::types::Value::VarBinary(b) | crate::types::Value::Binary(b) => b,
+                _ => val.to_string_value().into_bytes(),
+            };
+
+            let mut new_context = [0u8; 128];
+            let len = bytes.len().min(128);
+            new_context[..len].copy_from_slice(&bytes[..len]);
+            *ctx.session.context_info = new_context;
+            return Some(Ok(StmtOutcome::Ok(None)));
+        }
+
         match apply_set_option(opt, session_options) {
             Ok(apply) => {
                 ctx.options = session_options.clone();

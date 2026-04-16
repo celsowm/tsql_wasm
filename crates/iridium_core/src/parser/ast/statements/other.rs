@@ -476,6 +476,7 @@ pub enum SessionOption {
     StatisticsTime,
     ShowplanAll,
     AnsiDefaults,
+    ContextInfo,
     Unsupported(String),
 }
 

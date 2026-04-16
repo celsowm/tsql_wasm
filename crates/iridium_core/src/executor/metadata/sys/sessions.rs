@@ -62,6 +62,7 @@ impl VirtualTable for SysDmExecSessions {
                 ("database_id", DataType::SmallInt, false),
                 ("authenticating_database_id", DataType::Int, true),
                 ("open_transaction_count", DataType::Int, false),
+                ("context_info", DataType::VarBinary { max_len: 128 }, true),
             ],
         )
     }
@@ -131,6 +132,7 @@ impl VirtualTable for SysDmExecSessions {
                 Value::SmallInt(5), // iridium_sql
                 Value::Int(5),
                 Value::Int(ctx.frame.trancount as i32),
+                Value::VarBinary(ctx.session.context_info.to_vec()),
             ],
             deleted: false,
         }]
