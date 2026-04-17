@@ -22,6 +22,7 @@ pub(crate) fn format_data_type_spec(dt: &DataTypeSpec) -> String {
         DataTypeSpec::NVarChar(n) => format!("NVARCHAR({})", n),
         DataTypeSpec::Binary(n) => format!("BINARY({})", n),
         DataTypeSpec::VarBinary(n) => format!("VARBINARY({})", n),
+        DataTypeSpec::Vector(n) => format!("VECTOR({})", n),
         DataTypeSpec::Date => "DATE".to_string(),
         DataTypeSpec::Time => "TIME".to_string(),
         DataTypeSpec::DateTime => "DATETIME".to_string(),

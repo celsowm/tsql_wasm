@@ -301,6 +301,7 @@ pub(crate) fn eval_datalength(
         Value::Char(s) | Value::VarChar(s) => Ok(Value::Int(s.len() as i32)),
         Value::NChar(s) | Value::NVarChar(s) => Ok(Value::Int((s.len() * 2) as i32)),
         Value::Binary(v) | Value::VarBinary(v) => Ok(Value::Int(v.len() as i32)),
+        Value::Vector(v) => Ok(Value::Int((v.len() * 4) as i32)),
         Value::Date(_) => Ok(Value::Int(3)),
         Value::Time(_) => Ok(Value::Int(5)), // Simplified
         Value::SmallDateTime(_) => Ok(Value::Int(4)),
@@ -328,6 +329,7 @@ fn eval_datalength_internal(val: &Value) -> Result<Value, DbError> {
         Value::Char(s) | Value::VarChar(s) => Ok(Value::Int(s.len() as i32)),
         Value::NChar(s) | Value::NVarChar(s) => Ok(Value::Int((s.len() * 2) as i32)),
         Value::Binary(v) | Value::VarBinary(v) => Ok(Value::Int(v.len() as i32)),
+        Value::Vector(v) => Ok(Value::Int((v.len() * 4) as i32)),
         Value::Date(_) => Ok(Value::Int(3)),
         Value::Time(_) => Ok(Value::Int(5)),
         Value::SmallDateTime(_) => Ok(Value::Int(4)),

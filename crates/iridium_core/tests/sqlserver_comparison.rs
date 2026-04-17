@@ -69,6 +69,21 @@ async fn get_sqlserver_client() -> Client<tokio_util::compat::Compat<TcpStream>>
         .expect("Failed to connect TDS")
 }
 
+async fn sqlserver_supports_vector() -> bool {
+    let mut client = get_sqlserver_client().await;
+    let stream = client
+        .query("SELECT CASE WHEN TYPE_ID('vector') IS NULL THEN 0 ELSE 1 END", &[])
+        .await
+        .expect("Failed to probe SQL Server VECTOR support");
+    let rows = stream
+        .into_first_result()
+        .await
+        .expect("Failed to read VECTOR support probe");
+    rows.first()
+        .and_then(|row| row.try_get::<i32, _>(0).ok().flatten())
+        == Some(1)
+}
+
 async fn compare(sql: &str) {
     let engine = Engine::new();
     let mut client = get_sqlserver_client().await;
@@ -208,4 +223,57 @@ async fn test_compare_alter_column() {
     );
 
     compare_after_setup(&[&create_sql, &insert_sql, &alter_sql], &select_sql).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_compare_vector_cast_and_distance() {
+    if !sqlserver_supports_vector().await {
+        println!("Skipping vector parity test: SQL Server does not support VECTOR");
+        return;
+    }
+    compare("SELECT DATALENGTH(CAST('[1,2,3]' AS VECTOR(3))) AS bytes").await;
+    compare(
+        "SELECT VECTOR_DISTANCE('euclidean', CAST('[1,0]' AS VECTOR(2)), CAST('[0,0]' AS VECTOR(2))) AS e, VECTOR_DISTANCE('cosine', CAST('[1,0]' AS VECTOR(2)), CAST('[0,1]' AS VECTOR(2))) AS c, VECTOR_DISTANCE('dot', CAST('[1,2]' AS VECTOR(2)), CAST('[3,4]' AS VECTOR(2))) AS d",
+    )
+    .await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_compare_vector_metadata() {
+    if !sqlserver_supports_vector().await {
+        println!("Skipping vector parity test: SQL Server does not support VECTOR");
+        return;
+    }
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time before unix epoch")
+        .as_nanos();
+    let table_name_1 = format!("VectorMetadataTestInfo_{}", suffix);
+    let full_table_name_1 = format!("dbo.{}", table_name_1);
+    let table_name_2 = format!("VectorMetadataTestSys_{}", suffix);
+    let full_table_name_2 = format!("dbo.{}", table_name_2);
+
+    let create_sql_1 = format!(
+        "CREATE TABLE {} (id INT NOT NULL, embedding VECTOR(3) NOT NULL)",
+        full_table_name_1
+    );
+
+    let info_schema_sql = format!(
+        "SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH, NUMERIC_PRECISION, NUMERIC_PRECISION_RADIX, NUMERIC_SCALE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = '{}' AND COLUMN_NAME = 'embedding'",
+        table_name_1
+    );
+    compare_after_setup(&[&create_sql_1], &info_schema_sql).await;
+
+    let create_sql_2 = format!(
+        "CREATE TABLE {} (id INT NOT NULL, embedding VECTOR(3) NOT NULL)",
+        full_table_name_2
+    );
+
+    let sys_columns_sql = format!(
+        "SELECT system_type_id, max_length, vector_dimensions, vector_base_type, vector_base_type_desc FROM sys.columns WHERE object_id = OBJECT_ID('{}') AND name = 'embedding'",
+        full_table_name_2
+    );
+    compare_after_setup(&[&create_sql_2], &sys_columns_sql).await;
 }

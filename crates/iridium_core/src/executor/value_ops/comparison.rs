@@ -1,5 +1,5 @@
 use super::super::value_helpers::{rescale_raw, value_to_f64};
-use crate::types::Value;
+use crate::types::{format_vector, Value};
 use chrono::{NaiveDate, NaiveDateTime};
 use std::cmp::Ordering;
 
@@ -11,6 +11,7 @@ pub enum ValueCategory {
     Money,
     String,
     Binary,
+    Vector,
     DateTime,
     Uuid,
     Null,
@@ -31,6 +32,7 @@ pub fn categorize(v: &Value) -> ValueCategory {
             ValueCategory::String
         }
         Value::Binary(_) | Value::VarBinary(_) => ValueCategory::Binary,
+        Value::Vector(_) => ValueCategory::Vector,
         Value::Date(_)
         | Value::Time(_)
         | Value::DateTime(_)
@@ -126,6 +128,7 @@ pub fn compare_values(a: &Value, b: &Value) -> Ordering {
         (ValueCategory::Uuid, ValueCategory::Uuid) => extract_string(&a).cmp(&extract_string(&b)),
 
         (ValueCategory::Binary, ValueCategory::Binary) => extract_bytes(&a).cmp(extract_bytes(&b)),
+        (ValueCategory::Vector, ValueCategory::Vector) => extract_vector(&a).cmp(extract_vector(&b)),
 
         _ => value_key(&a).cmp(&value_key(&b)),
     }
@@ -145,6 +148,7 @@ pub fn truthy(value: &Value) -> bool {
         Value::SmallMoney(v) => *v != 0,
         Value::Char(v) | Value::VarChar(v) | Value::NChar(v) | Value::NVarChar(v) => !v.is_empty(),
         Value::Binary(v) | Value::VarBinary(v) => !v.is_empty(),
+        Value::Vector(v) => !v.is_empty(),
         Value::Date(_)
         | Value::Time(_)
         | Value::DateTime(_)
@@ -174,6 +178,7 @@ pub fn value_key(v: &Value) -> String {
         Value::NVarChar(v) => format!("NVARCHAR:{}", v),
         Value::Binary(v) => format!("BINARY:{}", crate::types::format_binary(v)),
         Value::VarBinary(v) => format!("VARBINARY:{}", crate::types::format_binary(v)),
+        Value::Vector(v) => format!("VECTOR:{}", format_vector(v)),
         Value::Date(v) => format!("DATE:{}", v),
         Value::Time(v) => format!("TIME:{}", v),
         Value::DateTime(v) => format!("DATETIME:{}", v),
@@ -220,6 +225,13 @@ fn extract_string(v: &Value) -> String {
 fn extract_bytes(v: &Value) -> &[u8] {
     match v {
         Value::Binary(b) | Value::VarBinary(b) => b,
+        _ => &[],
+    }
+}
+
+fn extract_vector(v: &Value) -> &[u32] {
+    match v {
+        Value::Vector(bits) => bits,
         _ => &[],
     }
 }

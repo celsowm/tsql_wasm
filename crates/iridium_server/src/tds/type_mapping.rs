@@ -196,7 +196,7 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
             precision: None,
             flags: 0x0001,
         },
-        Value::Null | Value::SqlVariant(_) => TypeInfo {
+        Value::Null | Value::SqlVariant(_) | Value::Vector(_) => TypeInfo {
             tds_type: NVARCHARTYPE,
             length_prefix: 510u16.to_le_bytes().to_vec(),
             collation: Some(DEFAULT_COLLATION),
@@ -650,6 +650,14 @@ pub fn runtime_type_to_tds(ty: &iridium_core::types::DataType) -> TypeInfo {
             tds_type: GUIDTYPE,
             length_prefix: vec![0x10],
             collation: None,
+            scale: None,
+            precision: None,
+            flags: 0x0001,
+        },
+        iridium_core::types::DataType::Vector { .. } => TypeInfo {
+            tds_type: NVARCHARTYPE,
+            length_prefix: 510u16.to_le_bytes().to_vec(),
+            collation: Some(DEFAULT_COLLATION),
             scale: None,
             precision: None,
             flags: 0x0001,

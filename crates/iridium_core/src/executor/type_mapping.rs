@@ -21,6 +21,9 @@ pub(crate) fn data_type_spec_to_runtime(spec: &DataTypeSpec) -> DataType {
         DataTypeSpec::NVarChar(max_len) => DataType::NVarChar { max_len: *max_len },
         DataTypeSpec::Binary(len) => DataType::Binary { len: *len },
         DataTypeSpec::VarBinary(max_len) => DataType::VarBinary { max_len: *max_len },
+        DataTypeSpec::Vector(dimensions) => DataType::Vector {
+            dimensions: *dimensions,
+        },
         DataTypeSpec::Date => DataType::Date,
         DataTypeSpec::Time => DataType::Time,
         DataTypeSpec::DateTime => DataType::DateTime,

@@ -31,6 +31,7 @@ pub enum DataType {
     NVarChar(Option<u32>),
     Binary(Option<u32>),
     VarBinary(Option<u32>),
+    Vector(u16),
     Date,
     Time,
     DateTime,

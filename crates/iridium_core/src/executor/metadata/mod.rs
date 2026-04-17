@@ -95,6 +95,7 @@ pub(crate) fn system_type_id(dt: &DataType) -> i32 {
         DataType::NVarChar { .. } => 231,
         DataType::Binary { .. } => 173,
         DataType::VarBinary { .. } => 165,
+        DataType::Vector { .. } => 242,
         DataType::Date => 40,
         DataType::Time => 41,
         DataType::DateTime => 61,
@@ -124,6 +125,7 @@ pub(crate) fn type_name(dt: &DataType) -> String {
         DataType::NVarChar { .. } => "nvarchar".to_string(),
         DataType::Binary { .. } => "binary".to_string(),
         DataType::VarBinary { .. } => "varbinary".to_string(),
+        DataType::Vector { .. } => "vector".to_string(),
         DataType::Date => "date".to_string(),
         DataType::Time => "time".to_string(),
         DataType::DateTime => "datetime".to_string(),
@@ -142,6 +144,7 @@ pub(crate) fn type_max_length(dt: &DataType) -> i16 {
         DataType::VarChar { max_len } | DataType::NVarChar { max_len } => *max_len as i16,
         DataType::Binary { len } => *len as i16,
         DataType::VarBinary { max_len } => *max_len as i16,
+        DataType::Vector { dimensions } => (*dimensions as i16) * 4,
         DataType::Xml => -1,
         DataType::Bit => 1,
         DataType::TinyInt => 1,
@@ -277,6 +280,7 @@ pub(super) fn builtin_types_rows() -> Vec<StoredRow> {
         (231, "nvarchar", 4000, 0, 0),
         (173, "binary", 8000, 0, 0),
         (165, "varbinary", 8000, 0, 0),
+        (242, "vector", -1, 0, 0),
         (40, "date", 3, 10, 0),
         (41, "time", 5, 16, 7),
         (61, "datetime", 8, 23, 3),
@@ -300,4 +304,3 @@ pub(super) fn builtin_types_rows() -> Vec<StoredRow> {
         })
         .collect()
 }
-

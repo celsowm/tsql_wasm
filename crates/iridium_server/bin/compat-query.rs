@@ -39,6 +39,7 @@ fn format_compat_type(value: &DataType) -> String {
         DataType::NVarChar { .. } => "nvarchar".to_string(),
         DataType::Binary { .. } => "binary".to_string(),
         DataType::VarBinary { .. } => "varbinary".to_string(),
+        DataType::Vector { .. } => "vector".to_string(),
         DataType::Date => "date".to_string(),
         DataType::Time => "time".to_string(),
         DataType::DateTime => "datetime".to_string(),

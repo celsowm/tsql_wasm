@@ -1,5 +1,5 @@
 use crate::error::DbError;
-use crate::types::{DataType, Value};
+use crate::types::{parse_vector_literal, DataType, Value};
 use std::fmt::Debug;
 use uuid::Uuid;
 
@@ -16,6 +16,15 @@ pub fn coerce_value_to_type_with_dateformat(
     dateformat: &str,
 ) -> Result<Value, DbError> {
     if matches!(ty, DataType::SqlVariant) {
+        let nested = match &value {
+            Value::SqlVariant(inner) => inner.as_ref(),
+            other => other,
+        };
+        if matches!(nested, Value::Vector(_)) {
+            return Err(DbError::Execution(
+                "cannot convert VECTOR to SQL_VARIANT".into(),
+            ));
+        }
         return Ok(match value {
             Value::Null => Value::Null,
             Value::SqlVariant(inner) => Value::SqlVariant(inner),
@@ -43,6 +52,7 @@ pub fn coerce_value_to_type_with_dateformat(
             coerce_string(&v, ty, dateformat)
         }
         Value::Binary(v) | Value::VarBinary(v) => coerce_binary(&v, ty),
+        Value::Vector(bits) => coerce_vector(Value::Vector(bits), ty),
         Value::Date(v) => coerce_date_value(v, ty),
         Value::Time(v) => coerce_time_value(v, ty),
         Value::DateTime(v) => coerce_datetime_value(v, ty),
@@ -83,6 +93,10 @@ fn coerce_bit(v: bool, ty: &DataType) -> Result<Value, DbError> {
         DataType::UniqueIdentifier => Err(DbError::Execution(
             "cannot convert bit to UNIQUEIDENTIFIER".into(),
         )),
+        DataType::Vector { .. } => Err(DbError::Execution(format!(
+            "cannot convert bit to {:?}",
+            ty
+        ))),
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Bit(v)))),
         DataType::Xml => Ok(Value::VarChar(int_val.to_string())),
     }
@@ -117,6 +131,10 @@ fn coerce_int(v: i64, ty: &DataType) -> Result<Value, DbError> {
         DataType::UniqueIdentifier => Err(DbError::Execution(
             "cannot convert integer to UNIQUEIDENTIFIER".into(),
         )),
+        DataType::Vector { .. } => Err(DbError::Execution(format!(
+            "cannot convert integer to {:?}",
+            ty
+        ))),
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::BigInt(v)))),
         DataType::Xml => Ok(Value::VarChar(v.to_string())),
     }
@@ -434,6 +452,17 @@ fn coerce_string(v: &str, ty: &DataType, dateformat: &str) -> Result<Value, DbEr
             };
             Ok(Value::VarBinary(bytes))
         }
+        DataType::Vector { dimensions } => {
+            let bits = parse_vector_literal(v)?;
+            if bits.len() != *dimensions as usize {
+                return Err(DbError::Execution(format!(
+                    "vector dimension mismatch: expected {}, got {}",
+                    dimensions,
+                    bits.len()
+                )));
+            }
+            Ok(Value::Vector(bits))
+        }
         DataType::Date => {
             let parsed = parse_date_string(v, dateformat)
                 .or_else(|_| parse_datetime_string(v, dateformat).map(|dt| dt.date()));
@@ -468,6 +497,45 @@ fn coerce_string(v: &str, ty: &DataType, dateformat: &str) -> Result<Value, DbEr
         }
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::VarChar(v.to_string())))),
         DataType::Xml => Ok(Value::VarChar(v.to_string())),
+    }
+}
+
+fn coerce_vector(value: Value, ty: &DataType) -> Result<Value, DbError> {
+    match (value, ty) {
+        (Value::Vector(bits), DataType::Vector { dimensions }) => {
+            if bits.len() != *dimensions as usize {
+                Err(DbError::Execution(format!(
+                    "vector dimension mismatch: expected {}, got {}",
+                    dimensions,
+                    bits.len()
+                )))
+            } else {
+                Ok(Value::Vector(bits))
+            }
+        }
+        (Value::Vector(bits), DataType::Char { len }) => {
+            Ok(Value::Char(pad_right(&crate::types::format_vector(&bits), *len as usize)))
+        }
+        (Value::Vector(bits), DataType::VarChar { .. }) => {
+            Ok(Value::VarChar(crate::types::format_vector(&bits)))
+        }
+        (Value::Vector(bits), DataType::NChar { len }) => {
+            Ok(Value::NChar(pad_right(&crate::types::format_vector(&bits), *len as usize)))
+        }
+        (Value::Vector(bits), DataType::NVarChar { .. }) => {
+            Ok(Value::NVarChar(crate::types::format_vector(&bits)))
+        }
+        (Value::Vector(_), DataType::SqlVariant) => Err(DbError::Execution(
+            "cannot convert VECTOR to SQL_VARIANT".into(),
+        )),
+        (Value::Vector(_), other) => Err(DbError::Execution(format!(
+            "cannot convert VECTOR to {:?}",
+            other
+        ))),
+        (other, _) => Err(DbError::Execution(format!(
+            "cannot convert {:?} to VECTOR",
+            other.data_type()
+        ))),
     }
 }
 

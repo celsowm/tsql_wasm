@@ -59,6 +59,9 @@ fn column_table_def(name: &str, include_sparse: bool) -> crate::catalog::TableDe
         ("graph_type", DataType::Int, true),
         ("default_object_id", DataType::Int, false),
         ("is_dropped_ledger_column", DataType::Bit, false),
+        ("vector_dimensions", DataType::Int, true),
+        ("vector_base_type", DataType::TinyInt, true),
+        ("vector_base_type_desc", DataType::VarChar { max_len: 10 }, true),
     ];
     if include_sparse {
         cols.push(("is_sparse", DataType::Bit, false));
@@ -82,10 +85,23 @@ fn column_rows(catalog: &dyn Catalog, include_sparse: bool) -> Vec<StoredRow> {
         }
     }
 
+    fn vector_metadata(dt: &DataType) -> (Value, Value, Value) {
+        match dt {
+            DataType::Vector { dimensions } => (
+                Value::Int(*dimensions as i32),
+                Value::TinyInt(0),
+                Value::VarChar("float32".to_string()),
+            ),
+            _ => (Value::Null, Value::Null, Value::Null),
+        }
+    }
+
     let mut rows = Vec::new();
     for t in catalog.get_tables() {
         for c in &t.columns {
             let (precision, scale) = precision_scale(&c.data_type);
+            let (vector_dimensions, vector_base_type, vector_base_type_desc) =
+                vector_metadata(&c.data_type);
             let mut values = vec![
                 Value::Int(t.id as i32),
                 Value::Int(c.id as i32),
@@ -109,6 +125,9 @@ fn column_rows(catalog: &dyn Catalog, include_sparse: bool) -> Vec<StoredRow> {
                     0
                 }),
                 Value::Bit(false),
+                vector_dimensions,
+                vector_base_type,
+                vector_base_type_desc,
             ];
             if include_sparse {
                 values.push(Value::Bit(false));
@@ -124,6 +143,8 @@ fn column_rows(catalog: &dyn Catalog, include_sparse: bool) -> Vec<StoredRow> {
         for (i, c) in tt.columns.iter().enumerate() {
             let dt = crate::executor::type_mapping::data_type_spec_to_runtime(&c.data_type);
             let (precision, scale) = precision_scale(&dt);
+            let (vector_dimensions, vector_base_type, vector_base_type_desc) =
+                vector_metadata(&dt);
             let mut values = vec![
                 Value::Int(tt.object_id),
                 Value::Int((i + 1) as i32),
@@ -142,6 +163,9 @@ fn column_rows(catalog: &dyn Catalog, include_sparse: bool) -> Vec<StoredRow> {
                 Value::Null,
                 Value::Int(0),
                 Value::Bit(false),
+                vector_dimensions,
+                vector_base_type,
+                vector_base_type_desc,
             ];
             if include_sparse {
                 values.push(Value::Bit(false));
@@ -176,6 +200,9 @@ fn view_column_table_def() -> crate::catalog::TableDef {
             ("graph_type", DataType::Int, true),
             ("default_object_id", DataType::Int, false),
             ("is_dropped_ledger_column", DataType::Bit, false),
+            ("vector_dimensions", DataType::Int, true),
+            ("vector_base_type", DataType::TinyInt, true),
+            ("vector_base_type_desc", DataType::VarChar { max_len: 10 }, true),
         ],
     )
 }
@@ -212,6 +239,9 @@ fn view_column_rows(catalog: &dyn Catalog) -> Vec<StoredRow> {
                     Value::Null,        // graph_type
                     Value::Int(0),      // default_object_id
                     Value::Bit(false),  // is_dropped_ledger_column
+                    Value::Null,        // vector_dimensions
+                    Value::Null,        // vector_base_type
+                    Value::Null,        // vector_base_type_desc
                 ],
                 deleted: false,
             });

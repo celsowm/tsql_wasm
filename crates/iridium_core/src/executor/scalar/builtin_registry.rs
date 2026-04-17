@@ -11,6 +11,7 @@ use crate::executor::clock::Clock;
 use crate::executor::context::ExecutionContext;
 use crate::executor::model::ContextTable;
 use crate::executor::scalar::{datetime, logic, math, metadata as tsql_metadata, string, system};
+use crate::executor::scalar::vector;
 use crate::executor::{fuzzy, json, metadata as exec_metadata, regexp};
 
 pub(crate) type ScalarHandler = for<'a> fn(
@@ -260,6 +261,7 @@ const MATH_FUNCTIONS: &[BuiltinScalarFunction] = &[
     builtin!("SQRT" => math::eval_sqrt),
     builtin!("SQUARE" => math::eval_square),
     builtin!("POWER" => math::eval_power),
+    builtin!("VECTOR_DISTANCE" => vector::eval_vector_distance),
     builtin!("EXP" => math::eval_exp),
     builtin!("LOG" => math::eval_log),
     builtin!("LOG10" => math::eval_log10),
@@ -431,4 +433,3 @@ pub(crate) fn lookup_system_variable(
         Err(err) => Some(Err(err)),
     }
 }
-

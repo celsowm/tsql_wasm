@@ -884,6 +884,43 @@ pub fn parse_data_type(parser: &mut Parser) -> ParseResult<DataType> {
                     }
                     Ok(DataType::VarBinary(size))
                 }
+                "VECTOR" => {
+                    parser.expect_lparen()?;
+                    let dimensions = if let Some(Token::Number { value: d, .. }) = parser.next()
+                    {
+                        if *d < 1.0
+                            || *d > crate::types::VECTOR_MAX_DIMENSIONS as f64
+                            || d.fract() != 0.0
+                        {
+                            return parser.backtrack(Expected::Description(
+                                "VECTOR dimension count between 1 and 1998",
+                            ));
+                        }
+                        *d as u16
+                    } else {
+                        return parser.backtrack(Expected::Description("number"));
+                    };
+                    if dimensions == 0 || dimensions > crate::types::VECTOR_MAX_DIMENSIONS {
+                        return parser.backtrack(Expected::Description(
+                            "VECTOR dimension count between 1 and 1998",
+                        ));
+                    }
+                    if matches!(parser.peek(), Some(Token::Comma)) {
+                        let _ = parser.next();
+                        let base_type = match parser.next() {
+                            Some(Token::Identifier(id)) => id.to_uppercase(),
+                            Some(Token::Keyword(k)) => k.as_ref().to_uppercase(),
+                            _ => return parser.backtrack(Expected::Description("identifier")),
+                        };
+                        if base_type != "FLOAT32" {
+                            return parser.backtrack(Expected::Description(
+                                "VECTOR currently only supports FLOAT32",
+                            ));
+                        }
+                    }
+                    parser.expect_rparen()?;
+                    Ok(DataType::Vector(dimensions))
+                }
                 "MONEY" => Ok(DataType::Money),
                 "SMALLMONEY" => Ok(DataType::SmallMoney),
                 "UNIQUEIDENTIFIER" => Ok(DataType::UniqueIdentifier),

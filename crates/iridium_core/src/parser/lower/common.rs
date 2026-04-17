@@ -331,6 +331,9 @@ pub fn lower_data_type(
         ast::DataType::VarBinary(n) => Ok(executor_ast::data_types::DataTypeSpec::VarBinary(
             n.unwrap_or(u16::MAX as u32) as u16,
         )),
+        ast::DataType::Vector(dimensions) => {
+            Ok(executor_ast::data_types::DataTypeSpec::Vector(dimensions))
+        }
         ast::DataType::Date => Ok(executor_ast::data_types::DataTypeSpec::Date),
         ast::DataType::Time => Ok(executor_ast::data_types::DataTypeSpec::Time),
         ast::DataType::DateTime => Ok(executor_ast::data_types::DataTypeSpec::DateTime),

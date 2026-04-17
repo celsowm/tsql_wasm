@@ -17,6 +17,7 @@ pub enum DataTypeSpec {
     NVarChar(u16),
     Binary(u16),
     VarBinary(u16),
+    Vector(u16),
     Date,
     Time,
     DateTime,

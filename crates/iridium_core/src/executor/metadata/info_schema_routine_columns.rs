@@ -213,6 +213,7 @@ fn data_type_name(dt: &DataType) -> String {
         DataType::NVarChar { .. } => "nvarchar",
         DataType::Binary { .. } => "binary",
         DataType::VarBinary { .. } => "varbinary",
+        DataType::Vector { .. } => "vector",
         DataType::Date => "date",
         DataType::Time => "time",
         DataType::DateTime => "datetime",
@@ -235,6 +236,7 @@ fn char_max_length(dt: &DataType) -> Value {
         DataType::Binary { len } => Value::Int(*len as i32),
         DataType::VarBinary { max_len } => Value::Int(*max_len as i32),
         DataType::Xml => Value::Int(-1),
+        DataType::Vector { .. } => Value::Null,
         DataType::SmallDateTime => Value::Int(4),
         DataType::DateTimeOffset => Value::Int(10),
         _ => Value::Null,
@@ -263,4 +265,3 @@ fn format_values(values: &[Value]) -> String {
 }
 
 const DB_CATALOG: &str = "iridium_sql";
-

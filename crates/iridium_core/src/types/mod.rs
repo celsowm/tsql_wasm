@@ -2,6 +2,10 @@ use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::error::DbError;
+
+pub const VECTOR_MAX_DIMENSIONS: u16 = 1998;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DataType {
     Bit,
@@ -19,6 +23,7 @@ pub enum DataType {
     NVarChar { max_len: u16 },
     Binary { len: u16 },
     VarBinary { max_len: u16 },
+    Vector { dimensions: u16 },
     Date,
     Time,
     DateTime,
@@ -54,6 +59,7 @@ impl DataType {
             DataType::Bit => 1,
             DataType::Binary { .. } => 19,
             DataType::VarBinary { .. } => 20,
+            DataType::Vector { .. } => 22,
             DataType::SqlVariant => 16,
             DataType::Xml => 21,
         }
@@ -96,6 +102,7 @@ pub enum Value {
     NVarChar(String),
     Binary(Vec<u8>),
     VarBinary(Vec<u8>),
+    Vector(Vec<u32>),
     Date(NaiveDate),
     Time(NaiveTime),
     DateTime(NaiveDateTime),
@@ -158,6 +165,7 @@ impl Value {
                 JsonValue::String(v.clone())
             }
             Value::Binary(v) | Value::VarBinary(v) => JsonValue::String(format_binary(v)),
+            Value::Vector(v) => JsonValue::String(format_vector(v)),
             Value::Date(v) => JsonValue::String(v.format("%Y-%m-%d").to_string()),
             Value::Time(v) => JsonValue::String(v.format("%H:%M:%S%.f").to_string()),
             Value::DateTime(v) | Value::DateTime2(v) | Value::SmallDateTime(v) => {
@@ -196,6 +204,7 @@ impl Value {
             Value::DateTimeOffset(v) => format!("'{}'", v.replace("'", "''")),
             Value::UniqueIdentifier(v) => format!("'{}'", v),
             Value::Binary(v) | Value::VarBinary(v) => format!("0x{}", hex::encode(v)),
+            Value::Vector(v) => format!("'{}'", format_vector(v).replace("'", "''")),
             Value::SqlVariant(v) => v.to_sql_literal(),
         }
     }
@@ -233,6 +242,9 @@ impl Value {
             Value::VarBinary(v) => Some(DataType::VarBinary {
                 max_len: v.len() as u16,
             }),
+            Value::Vector(v) => Some(DataType::Vector {
+                dimensions: v.len() as u16,
+            }),
             Value::Date(_) => Some(DataType::Date),
             Value::Time(_) => Some(DataType::Time),
             Value::DateTime(_) => Some(DataType::DateTime),
@@ -265,6 +277,7 @@ impl Value {
             Value::DateTimeOffset(v) => v.clone(),
             Value::UniqueIdentifier(v) => v.to_string(),
             Value::Binary(v) | Value::VarBinary(v) => format_binary(v),
+            Value::Vector(v) => format_vector(v),
             Value::SqlVariant(v) => v.to_string_value(),
         }
     }
@@ -336,6 +349,48 @@ impl Value {
             _ => (0, 0),
         }
     }
+}
+
+pub fn parse_vector_literal(s: &str) -> Result<Vec<u32>, DbError> {
+    let trimmed = s.trim();
+    let values: Vec<f64> = serde_json::from_str(trimmed)
+        .map_err(|e| DbError::Execution(format!("invalid vector literal: {}", e)))?;
+
+    if values.is_empty() {
+        return Err(DbError::Execution(
+            "vector must have at least one dimension".into(),
+        ));
+    }
+    if values.len() > VECTOR_MAX_DIMENSIONS as usize {
+        return Err(DbError::Execution(format!(
+            "vector exceeds maximum dimension count of {}",
+            VECTOR_MAX_DIMENSIONS
+        )));
+    }
+
+    let mut out = Vec::with_capacity(values.len());
+    for value in values {
+        let as_f32 = value as f32;
+        if !as_f32.is_finite() || (value != 0.0 && as_f32 == 0.0) {
+            return Err(DbError::Execution(
+                "vector element is out of range for float32".into(),
+            ));
+        }
+        out.push(as_f32.to_bits());
+    }
+    Ok(out)
+}
+
+pub fn format_vector(values: &[u32]) -> String {
+    let parts = values
+        .iter()
+        .map(|bits| format_float(f64::from(f32::from_bits(*bits))))
+        .collect::<Vec<_>>();
+    format!("[{}]", parts.join(","))
+}
+
+pub fn vector_to_f32(values: &[u32]) -> Vec<f32> {
+    values.iter().map(|bits| f32::from_bits(*bits)).collect()
 }
 
 fn binary_to_i64(data: &[u8]) -> Option<i64> {
