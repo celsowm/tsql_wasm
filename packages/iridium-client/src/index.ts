@@ -52,6 +52,20 @@ export type ExecutionTrace = {
   stopped_on_error: boolean;
 };
 
+export type AnalyzeEntry = {
+  index: number;
+  sql: string;
+  normalized_sql: string;
+  status: "Partial" | "Unsupported";
+  warnings: string[];
+  error: string | null;
+  row_count: number | null;
+};
+
+export type AnalyzeReport = {
+  entries: AnalyzeEntry[];
+};
+
 export class IridiumDatabase {
   private db: IridiumWasmDb;
 
@@ -95,6 +109,40 @@ export class IridiumDatabase {
   async explain(sql: string): Promise<ExplainPlan> {
     const json = (this.db as any).explain_sql(sql);
     return JSON.parse(json) as ExplainPlan;
+  }
+
+  async analyze(sql: string): Promise<AnalyzeReport> {
+    const statements = splitSqlBatch(sql);
+    return {
+      entries: await Promise.all(
+        statements.map(async (statement, index) => {
+          try {
+            const trace = await this.traceExecBatch(statement);
+            const event = trace.events[0];
+            return {
+              index,
+              sql: statement,
+              normalized_sql: statement.trim(),
+              status:
+                event && event.status === "unsupported" ? "Unsupported" : "Partial",
+              warnings: event?.warnings ?? [],
+              error: event?.error ?? null,
+              row_count: event?.row_count ?? null,
+            } as AnalyzeEntry;
+          } catch (error) {
+            return {
+              index,
+              sql: statement,
+              normalized_sql: statement.trim(),
+              status: "Unsupported",
+              warnings: [],
+              error: error instanceof Error ? error.message : String(error),
+              row_count: null,
+            } as AnalyzeEntry;
+          }
+        }),
+      ),
+    };
   }
 
   async traceExecBatch(sql: string): Promise<ExecutionTrace> {
@@ -167,3 +215,49 @@ function nodeFsPromisesSpecifier(): string {
   return "node:fs/promises";
 }
 
+function splitSqlBatch(sql: string): string[] {
+  const statements: string[] = [];
+  let current = "";
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+
+  for (let i = 0; i < sql.length; i += 1) {
+    const ch = sql[i];
+    const next = sql[i + 1];
+
+    if (ch === "'" && !inDoubleQuote) {
+      if (inSingleQuote && next === "'") {
+        current += "''";
+        i += 1;
+        continue;
+      }
+      inSingleQuote = !inSingleQuote;
+      current += ch;
+      continue;
+    }
+
+    if (ch === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      current += ch;
+      continue;
+    }
+
+    if (ch === ";" && !inSingleQuote && !inDoubleQuote) {
+      const trimmed = current.trim();
+      if (trimmed) {
+        statements.push(trimmed);
+      }
+      current = "";
+      continue;
+    }
+
+    current += ch;
+  }
+
+  const trimmed = current.trim();
+  if (trimmed) {
+    statements.push(trimmed);
+  }
+
+  return statements;
+}

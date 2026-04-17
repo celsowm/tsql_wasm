@@ -164,7 +164,7 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
             precision: None,
             flags: 0x0001,
         },
-        Value::DateTime(_) => TypeInfo {
+        Value::DateTime(_) | Value::SmallDateTime(_) => TypeInfo {
             tds_type: DATETIMNTYPE,
             length_prefix: vec![0x08],
             collation: None,
@@ -177,6 +177,14 @@ pub fn value_to_type_info(value: &Value) -> TypeInfo {
             length_prefix: vec![0x08],
             collation: None,
             scale: Some(7),
+            precision: None,
+            flags: 0x0001,
+        },
+        Value::DateTimeOffset(_) => TypeInfo {
+            tds_type: NVARCHARTYPE,
+            length_prefix: 510u16.to_le_bytes().to_vec(),
+            collation: Some(DEFAULT_COLLATION),
+            scale: None,
             precision: None,
             flags: 0x0001,
         },
@@ -614,7 +622,7 @@ pub fn runtime_type_to_tds(ty: &iridium_core::types::DataType) -> TypeInfo {
             precision: None,
             flags: 0x0001,
         },
-        iridium_core::types::DataType::DateTime => TypeInfo {
+        iridium_core::types::DataType::DateTime | iridium_core::types::DataType::SmallDateTime => TypeInfo {
             tds_type: DATETIMNTYPE,
             length_prefix: vec![0x08],
             collation: None,
@@ -627,6 +635,14 @@ pub fn runtime_type_to_tds(ty: &iridium_core::types::DataType) -> TypeInfo {
             length_prefix: vec![0x08],
             collation: None,
             scale: Some(7),
+            precision: None,
+            flags: 0x0001,
+        },
+        iridium_core::types::DataType::DateTimeOffset => TypeInfo {
+            tds_type: NVARCHARTYPE,
+            length_prefix: 510u16.to_le_bytes().to_vec(),
+            collation: Some(DEFAULT_COLLATION),
+            scale: None,
             precision: None,
             flags: 0x0001,
         },

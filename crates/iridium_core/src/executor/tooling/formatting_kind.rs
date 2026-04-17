@@ -35,6 +35,7 @@ pub fn statement_kind(stmt: &Statement) -> &'static str {
             crate::ast::ProceduralStatement::Return(_) => "RETURN",
             crate::ast::ProceduralStatement::Print(_) => "PRINT",
             crate::ast::ProceduralStatement::Raiserror(_) => "RAISERROR",
+            crate::ast::ProceduralStatement::Throw(_) => "THROW",
             crate::ast::ProceduralStatement::BeginEnd(_) => "BEGIN_END",
             crate::ast::ProceduralStatement::If(_) => "IF",
             crate::ast::ProceduralStatement::While(_) => "WHILE",

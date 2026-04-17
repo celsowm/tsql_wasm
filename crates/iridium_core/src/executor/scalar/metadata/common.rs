@@ -288,6 +288,8 @@ pub(super) fn storage_length(dt: &DataType) -> i32 {
         DataType::Time => 5,
         DataType::DateTime => 8,
         DataType::DateTime2 => 8,
+        DataType::SmallDateTime => 4,
+        DataType::DateTimeOffset => 10,
         DataType::UniqueIdentifier => 16,
         DataType::SqlVariant => 8016,
         DataType::Xml => -1,

@@ -13,6 +13,32 @@ use super::table_util::{collect_read_tables, collect_write_tables};
 use row_locks::RowLockManager;
 use table_locks::TableLockManager;
 
+#[cfg(not(target_arch = "wasm32"))]
+type LockStart = std::time::Instant;
+
+#[cfg(target_arch = "wasm32")]
+type LockStart = f64;
+
+#[cfg(not(target_arch = "wasm32"))]
+fn lock_start() -> LockStart {
+    std::time::Instant::now()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn lock_start() -> LockStart {
+    js_sys::Date::now()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn elapsed_millis_since(start: &LockStart) -> u128 {
+    start.elapsed().as_millis()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn elapsed_millis_since(start: &LockStart) -> u128 {
+    (js_sys::Date::now() - *start) as u128
+}
+
 /// Unified lock manager that delegates to table-level and row-level sub-managers.
 pub struct LockTable {
     tables: TableLockManager,
@@ -137,7 +163,7 @@ impl LockTable {
             return Ok(());
         }
 
-        let start = std::time::Instant::now();
+        let start = lock_start();
         let mut guard = state_lock.lock();
 
         loop {
@@ -204,8 +230,8 @@ impl LockTable {
                 guard.mark_deadlock_victim(victim);
             }
 
-            let elapsed = start.elapsed();
-            if timeout_ms > 0 && elapsed.as_millis() >= timeout_ms as u128 {
+            let elapsed_ms = elapsed_millis_since(&start);
+            if timeout_ms > 0 && elapsed_ms >= timeout_ms as u128 {
                 guard.wait_for_graph.remove_waiter(session_id);
                 let (table, mode) = conflict_info.ok_or_else(|| {
                     DbError::Execution("lock timeout without conflict info".into())
@@ -220,8 +246,8 @@ impl LockTable {
             if timeout_ms < 0 {
                 condvar.wait(&mut guard);
             } else {
-                let remaining =
-                    std::time::Duration::from_millis(timeout_ms as u64).saturating_sub(elapsed);
+                let remaining = std::time::Duration::from_millis(timeout_ms as u64)
+                    .saturating_sub(std::time::Duration::from_millis(elapsed_ms as u64));
                 if condvar.wait_for(&mut guard, remaining).timed_out() {
                     guard.wait_for_graph.remove_waiter(session_id);
                     let (table, mode) = conflict_info.ok_or_else(|| {
@@ -322,7 +348,7 @@ impl LockTable {
         deadlock_priority: i32,
         priority_lookup: &dyn Fn(SessionId) -> i32,
     ) -> Result<(), DbError> {
-        let start = std::time::Instant::now();
+        let start = lock_start();
         let mut guard = state_lock.lock();
 
         loop {
@@ -368,8 +394,8 @@ impl LockTable {
                 guard.mark_deadlock_victim(victim);
             }
 
-            let elapsed = start.elapsed();
-            if timeout_ms > 0 && elapsed.as_millis() >= timeout_ms as u128 {
+            let elapsed_ms = elapsed_millis_since(&start);
+            if timeout_ms > 0 && elapsed_ms >= timeout_ms as u128 {
                 guard.wait_for_graph.remove_waiter(session_id);
                 return Err(DbError::Execution(format!(
                     "lock timeout ({}ms): {:?} row lock on '{}' row {} is blocked",
@@ -381,8 +407,8 @@ impl LockTable {
             if timeout_ms < 0 {
                 condvar.wait(&mut guard);
             } else {
-                let remaining =
-                    std::time::Duration::from_millis(timeout_ms as u64).saturating_sub(elapsed);
+                let remaining = std::time::Duration::from_millis(timeout_ms as u64)
+                    .saturating_sub(std::time::Duration::from_millis(elapsed_ms as u64));
                 if condvar.wait_for(&mut guard, remaining).timed_out() {
                     guard.wait_for_graph.remove_waiter(session_id);
                     return Err(DbError::Execution(format!(

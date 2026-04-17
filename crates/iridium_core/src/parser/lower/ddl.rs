@@ -301,6 +301,13 @@ pub fn lower_alter_action(
         ast::AlterTableAction::DropColumn(c) => Ok(
             executor_ast::statements::ddl::AlterTableAction::DropColumn(c),
         ),
+        ast::AlterTableAction::AlterColumn { name, data_type, nullable } => Ok(
+            executor_ast::statements::ddl::AlterTableAction::AlterColumn {
+                name,
+                data_type: lower_data_type(data_type)?,
+                nullable,
+            },
+        ),
         ast::AlterTableAction::AddConstraint(c) => Ok(
             executor_ast::statements::ddl::AlterTableAction::AddConstraint(lower_table_constraint(
                 c,

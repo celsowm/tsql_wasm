@@ -217,6 +217,8 @@ fn data_type_name(dt: &DataType) -> String {
         DataType::Time => "time",
         DataType::DateTime => "datetime",
         DataType::DateTime2 => "datetime2",
+        DataType::SmallDateTime => "smalldatetime",
+        DataType::DateTimeOffset => "datetimeoffset",
         DataType::UniqueIdentifier => "uniqueidentifier",
         DataType::SqlVariant => "sql_variant",
         DataType::Xml => "xml",
@@ -233,6 +235,8 @@ fn char_max_length(dt: &DataType) -> Value {
         DataType::Binary { len } => Value::Int(*len as i32),
         DataType::VarBinary { max_len } => Value::Int(*max_len as i32),
         DataType::Xml => Value::Int(-1),
+        DataType::SmallDateTime => Value::Int(4),
+        DataType::DateTimeOffset => Value::Int(10),
         _ => Value::Null,
     }
 }
@@ -259,5 +263,4 @@ fn format_values(values: &[Value]) -> String {
 }
 
 const DB_CATALOG: &str = "iridium_sql";
-
 

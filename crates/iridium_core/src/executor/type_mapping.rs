@@ -25,6 +25,8 @@ pub(crate) fn data_type_spec_to_runtime(spec: &DataTypeSpec) -> DataType {
         DataTypeSpec::Time => DataType::Time,
         DataTypeSpec::DateTime => DataType::DateTime,
         DataTypeSpec::DateTime2 => DataType::DateTime2,
+        DataTypeSpec::SmallDateTime => DataType::SmallDateTime,
+        DataTypeSpec::DateTimeOffset => DataType::DateTimeOffset,
         DataTypeSpec::UniqueIdentifier => DataType::UniqueIdentifier,
         DataTypeSpec::SqlVariant => DataType::SqlVariant,
         DataTypeSpec::Numeric(p, s) => DataType::Decimal {

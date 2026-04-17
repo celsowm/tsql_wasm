@@ -26,6 +26,8 @@ pub(crate) fn format_data_type_spec(dt: &DataTypeSpec) -> String {
         DataTypeSpec::Time => "TIME".to_string(),
         DataTypeSpec::DateTime => "DATETIME".to_string(),
         DataTypeSpec::DateTime2 => "DATETIME2".to_string(),
+        DataTypeSpec::SmallDateTime => "SMALLDATETIME".to_string(),
+        DataTypeSpec::DateTimeOffset => "DATETIMEOFFSET".to_string(),
         DataTypeSpec::UniqueIdentifier => "UNIQUEIDENTIFIER".to_string(),
         DataTypeSpec::SqlVariant => "SQL_VARIANT".to_string(),
         DataTypeSpec::Numeric(p, s) => format!("NUMERIC({},{})", p, s),
@@ -45,9 +47,27 @@ pub(crate) fn format_expr(expr: &Expr) -> String {
         Expr::String(s) => format!("'{}'", s),
         Expr::UnicodeString(s) => format!("N'{}'", s),
         Expr::Null => "NULL".to_string(),
-        Expr::FunctionCall { name, args } => {
+        Expr::FunctionCall {
+            name,
+            args,
+            within_group,
+        } => {
             let args_str: Vec<String> = args.iter().map(format_expr).collect();
-            format!("{}({})", name, args_str.join(", "))
+            let mut out = format!("{}({})", name, args_str.join(", "));
+            if !within_group.is_empty() {
+                let order_by = within_group
+                    .iter()
+                    .map(|oe| {
+                        let dir = if oe.asc { "" } else { " DESC" };
+                        format!("{}{}", format_expr(&oe.expr), dir)
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                out.push_str(" WITHIN GROUP (ORDER BY ");
+                out.push_str(&order_by);
+                out.push(')');
+            }
+            out
         }
         Expr::Binary { left, op, right } => {
             let op_str = match op {

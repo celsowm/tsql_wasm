@@ -7,8 +7,10 @@ pub(crate) mod print;
 pub(crate) mod procedure;
 pub(crate) mod raiserror;
 pub(crate) mod routine;
+pub(crate) mod throw;
 pub(crate) mod shared;
 pub(crate) mod sp_executesql;
+pub(crate) mod system_procedures;
 pub(crate) mod try_catch;
 pub(crate) mod variable;
 
@@ -54,6 +56,9 @@ impl<'a> ScriptExecutor<'a> {
             ProceduralStatement::Print(expr) => self.execute_print(expr, ctx).map(StmtOutcome::Ok),
             ProceduralStatement::Raiserror(stmt) => {
                 self.execute_raiserror(stmt, ctx).map(StmtOutcome::Ok)
+            }
+            ProceduralStatement::Throw(stmt) => {
+                self.execute_throw(stmt, ctx).map(StmtOutcome::Ok)
             }
             ProceduralStatement::TryCatch(stmt) => self.execute_try_catch(stmt, ctx),
             ProceduralStatement::DeclareCursor(stmt) => self.execute_declare_cursor(stmt, ctx),

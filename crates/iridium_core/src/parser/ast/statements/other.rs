@@ -104,6 +104,11 @@ pub enum ProceduralStatement {
         severity: Expr,
         state: Expr,
     },
+    Throw {
+        error_number: Option<Expr>,
+        message: Option<Expr>,
+        state: Option<Expr>,
+    },
     TryCatch {
         try_body: Vec<Statement>,
         catch_body: Vec<Statement>,
@@ -362,6 +367,11 @@ pub struct ForeignKeyRef {
 pub enum AlterTableAction {
     AddColumn(ColumnDef),
     DropColumn(String),
+    AlterColumn {
+        name: String,
+        data_type: DataType,
+        nullable: Option<bool>,
+    },
     AddConstraint(TableConstraint),
     DropConstraint(String),
 }

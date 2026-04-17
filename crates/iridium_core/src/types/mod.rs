@@ -23,6 +23,8 @@ pub enum DataType {
     Time,
     DateTime,
     DateTime2,
+    SmallDateTime,
+    DateTimeOffset,
     UniqueIdentifier,
     SqlVariant,
     Xml,
@@ -32,8 +34,9 @@ impl DataType {
     pub fn precedence(&self) -> u8 {
         match self {
             DataType::UniqueIdentifier => 15,
+            DataType::DateTimeOffset => 16,
             DataType::DateTime2 => 14,
-            DataType::DateTime => 13,
+            DataType::SmallDateTime | DataType::DateTime => 13,
             DataType::Date => 12,
             DataType::Time => 11,
             DataType::NVarChar { .. } => 10,
@@ -97,6 +100,8 @@ pub enum Value {
     Time(NaiveTime),
     DateTime(NaiveDateTime),
     DateTime2(NaiveDateTime),
+    SmallDateTime(NaiveDateTime),
+    DateTimeOffset(String),
     UniqueIdentifier(Uuid),
     SqlVariant(Box<Value>),
 }
@@ -155,9 +160,10 @@ impl Value {
             Value::Binary(v) | Value::VarBinary(v) => JsonValue::String(format_binary(v)),
             Value::Date(v) => JsonValue::String(v.format("%Y-%m-%d").to_string()),
             Value::Time(v) => JsonValue::String(v.format("%H:%M:%S%.f").to_string()),
-            Value::DateTime(v) | Value::DateTime2(v) => {
+            Value::DateTime(v) | Value::DateTime2(v) | Value::SmallDateTime(v) => {
                 JsonValue::String(v.format("%Y-%m-%d %H:%M:%S%.f").to_string())
             }
+            Value::DateTimeOffset(v) => JsonValue::String(v.clone()),
             Value::UniqueIdentifier(v) => JsonValue::String(v.to_string()),
             Value::SqlVariant(v) => v.to_json(),
         }
@@ -184,9 +190,10 @@ impl Value {
             }
             Value::Date(v) => format!("'{}'", v.format("%Y-%m-%d")),
             Value::Time(v) => format!("'{}'", v.format("%H:%M:%S%.f")),
-            Value::DateTime(v) | Value::DateTime2(v) => {
+            Value::DateTime(v) | Value::DateTime2(v) | Value::SmallDateTime(v) => {
                 format!("'{}'", v.format("%Y-%m-%d %H:%M:%S%.f"))
             }
+            Value::DateTimeOffset(v) => format!("'{}'", v.replace("'", "''")),
             Value::UniqueIdentifier(v) => format!("'{}'", v),
             Value::Binary(v) | Value::VarBinary(v) => format!("0x{}", hex::encode(v)),
             Value::SqlVariant(v) => v.to_sql_literal(),
@@ -230,6 +237,8 @@ impl Value {
             Value::Time(_) => Some(DataType::Time),
             Value::DateTime(_) => Some(DataType::DateTime),
             Value::DateTime2(_) => Some(DataType::DateTime2),
+            Value::SmallDateTime(_) => Some(DataType::SmallDateTime),
+            Value::DateTimeOffset(_) => Some(DataType::DateTimeOffset),
             Value::UniqueIdentifier(_) => Some(DataType::UniqueIdentifier),
             Value::SqlVariant(_) => Some(DataType::SqlVariant),
         }
@@ -250,9 +259,10 @@ impl Value {
             Value::Char(v) | Value::VarChar(v) | Value::NChar(v) | Value::NVarChar(v) => v.clone(),
             Value::Date(v) => v.format("%Y-%m-%d").to_string(),
             Value::Time(v) => v.format("%H:%M:%S%.f").to_string(),
-            Value::DateTime(v) | Value::DateTime2(v) => {
+            Value::DateTime(v) | Value::DateTime2(v) | Value::SmallDateTime(v) => {
                 v.format("%Y-%m-%d %H:%M:%S%.f").to_string()
             }
+            Value::DateTimeOffset(v) => v.clone(),
             Value::UniqueIdentifier(v) => v.to_string(),
             Value::Binary(v) | Value::VarBinary(v) => format_binary(v),
             Value::SqlVariant(v) => v.to_string_value(),

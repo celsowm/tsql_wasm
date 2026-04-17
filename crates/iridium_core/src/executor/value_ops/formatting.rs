@@ -14,7 +14,8 @@ pub fn convert_with_style(
         Value::Null => Ok(Value::Null),
         Value::Date(v) => convert_date_to_string(v, ty, style),
         Value::Time(v) => convert_time_to_string(v, ty, style),
-        Value::DateTime(v) | Value::DateTime2(v) => convert_datetime_to_string(v, ty, style),
+        Value::DateTime(v) | Value::DateTime2(v) | Value::SmallDateTime(v) => convert_datetime_to_string(v, ty, style),
+        Value::DateTimeOffset(ref s) => convert_string_to_datetime(s, ty, style, dateformat),
         Value::VarChar(ref s)
         | Value::NVarChar(ref s)
         | Value::Char(ref s)
@@ -61,7 +62,8 @@ fn convert_datetime_to_string(
         DataType::VarChar { .. } => Ok(Value::VarChar(formatted)),
         DataType::NChar { len } => Ok(Value::NChar(pad_right(&formatted, *len as usize))),
         DataType::NVarChar { .. } => Ok(Value::NVarChar(formatted)),
-        DataType::DateTime | DataType::DateTime2 => Ok(Value::DateTime(dt)),
+        DataType::DateTime | DataType::DateTime2 | DataType::SmallDateTime => Ok(Value::DateTime(dt)),
+        DataType::DateTimeOffset => Ok(Value::DateTimeOffset(formatted)),
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::DateTime(dt)))),
         _ => coerce_value_to_type(Value::VarChar(formatted), ty),
     }
@@ -146,13 +148,14 @@ fn convert_string_to_datetime(
                 Err(_) => Err(DbError::Execution(format!("invalid time: {}", s))),
             }
         }
-        DataType::DateTime | DataType::DateTime2 => {
+        DataType::DateTime | DataType::DateTime2 | DataType::SmallDateTime => {
             let parsed = parse_datetime_string(s, dateformat);
             match parsed {
                 Ok(dt) => Ok(Value::DateTime(dt)),
                 Err(_) => Err(DbError::Execution(format!("invalid datetime: {}", s))),
             }
         }
+        DataType::DateTimeOffset => Ok(Value::DateTimeOffset(s.to_string())),
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::VarChar(s.to_string())))),
         _ => coerce_value_to_type(Value::VarChar(s.to_string()), ty),
     }

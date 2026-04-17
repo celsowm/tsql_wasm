@@ -23,6 +23,32 @@ pub fn parse_alter(parser: &mut Parser) -> ParseResult<Statement> {
                     action: AlterTableAction::AddColumn(col),
                 }))
             }
+        } else if parser.at_keyword(Keyword::Alter) {
+            let _ = parser.next();
+            parser.expect_keyword(Keyword::Column)?;
+            let col_name = match parser.next() {
+                Some(Token::Identifier(id)) => id.clone(),
+                Some(Token::Keyword(k)) => k.as_ref().to_string(),
+                _ => return parser.backtrack(Expected::Description("column name")),
+            };
+            let data_type = crate::parser::parse::expressions::parse_data_type(parser)?;
+            let mut nullable = None;
+            if parser.at_keyword(Keyword::Not) {
+                let _ = parser.next();
+                parser.expect_keyword(Keyword::Null)?;
+                nullable = Some(false);
+            } else if parser.at_keyword(Keyword::Null) {
+                let _ = parser.next();
+                nullable = Some(true);
+            }
+            Ok(Statement::Ddl(DdlStatement::AlterTable {
+                table,
+                action: AlterTableAction::AlterColumn {
+                    name: col_name,
+                    data_type,
+                    nullable,
+                },
+            }))
         } else if parser.at_keyword(Keyword::Drop) {
             let _ = parser.next();
             if parser.at_keyword(Keyword::Column) {

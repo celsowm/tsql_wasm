@@ -545,9 +545,25 @@ fn parse_identifier_or_function(parser: &mut Parser, name: String) -> ParseResul
         if parser.at_keyword(Keyword::Over) {
             return parse_window_over(parser, function_name, args);
         }
+        let within_group = if parser.at_keyword(Keyword::Within) {
+            let _ = parser.next();
+            parser.expect_keyword(Keyword::Group)?;
+            parser.expect_lparen()?;
+            parser.expect_keyword(Keyword::Order)?;
+            parser.expect_keyword(Keyword::By)?;
+            let order_by = parse_comma_list(
+                parser,
+                crate::parser::parse::statements::query::parse_order_by_expr,
+            )?;
+            parser.expect_rparen()?;
+            order_by
+        } else {
+            vec![]
+        };
         Ok(Expr::FunctionCall {
             name: function_name,
             args,
+            within_group,
         })
     } else if parts.len() == 1 {
         let upper = parts[0].to_uppercase();
@@ -558,6 +574,7 @@ fn parse_identifier_or_function(parser: &mut Parser, name: String) -> ParseResul
             Ok(Expr::FunctionCall {
                 name: parts.remove(0),
                 args: vec![],
+                within_group: vec![],
             })
         } else {
             Ok(Expr::Identifier(parts.remove(0)))

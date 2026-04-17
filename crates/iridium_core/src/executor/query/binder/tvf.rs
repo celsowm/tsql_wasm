@@ -29,6 +29,10 @@ pub(super) fn bind_builtin_tvf(
     };
     let upper = name.to_uppercase();
 
+    if upper.starts_with("OPENJSON(") {
+        return bind_openjson(catalog, storage, clock, tref, ctx, name);
+    }
+
     if !upper.starts_with("STRING_SPLIT(") {
         return Ok(None);
     }
@@ -253,6 +257,280 @@ pub(super) fn bind_inline_tvf(
         fname.to_string(),
         result,
     )))
+}
+
+fn bind_openjson(
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+    tref: &TableRef,
+    ctx: &mut ExecutionContext,
+    name: &str,
+) -> Result<Option<BoundTable>, DbError> {
+    let inner = name
+        .find('(')
+        .and_then(|start| {
+            let s = &name[start + 1..];
+            s.strip_suffix(')').map(|s| s.to_string())
+        })
+        .ok_or_else(|| DbError::Parse("OPENJSON requires (json_expr[, path])".into()))?;
+
+    let parts = crate::parser::utils::split_csv_top_level(&inner);
+    if parts.is_empty() || parts.len() > 2 {
+        return Err(DbError::Parse(
+            "OPENJSON requires 1 or 2 arguments".into(),
+        ));
+    }
+
+    let json_expr = parse_expr_subquery_aware(&parts[0])?;
+    let json_val = eval_expr(&json_expr, &[], ctx, catalog, storage, clock)?;
+
+    let json_str = match &json_val {
+        Value::VarChar(s) | Value::NVarChar(s) | Value::Char(s) | Value::NChar(s) => s.clone(),
+        _ => {
+            return Err(DbError::Execution(
+                "OPENJSON first argument must be a string".into(),
+            ))
+        }
+    };
+
+    let parsed: serde_json::Value = serde_json::from_str(&json_str)
+        .map_err(|e| DbError::Execution(format!("OPENJSON: invalid JSON: {}", e)))?;
+
+    // If a path argument is provided, navigate to that path
+    let target = if parts.len() == 2 {
+        let path_expr = parse_expr_subquery_aware(&parts[1])?;
+        let path_val = eval_expr(&path_expr, &[], ctx, catalog, storage, clock)?;
+        let path_str = match &path_val {
+            Value::VarChar(s) | Value::NVarChar(s) | Value::Char(s) | Value::NChar(s) => {
+                s.clone()
+            }
+            _ => {
+                return Err(DbError::Execution(
+                    "OPENJSON second argument (path) must be a string".into(),
+                ))
+            }
+        };
+        navigate_json_path(&parsed, &path_str)?
+    } else {
+        parsed
+    };
+
+    let rows = openjson_to_rows(&target);
+
+    let columns = vec![
+        ColumnDef {
+            id: 1,
+            name: "key".to_string(),
+            data_type: crate::types::DataType::VarChar { max_len: 4000 },
+            nullable: false,
+            primary_key: false,
+            unique: false,
+            identity: None,
+            default: None,
+            default_constraint_name: None,
+            check: None,
+            check_constraint_name: None,
+            computed_expr: None,
+            ansi_padding_on: true,
+        },
+        ColumnDef {
+            id: 2,
+            name: "value".to_string(),
+            data_type: crate::types::DataType::VarChar { max_len: 4000 },
+            nullable: true,
+            primary_key: false,
+            unique: false,
+            identity: None,
+            default: None,
+            default_constraint_name: None,
+            check: None,
+            check_constraint_name: None,
+            computed_expr: None,
+            ansi_padding_on: true,
+        },
+        ColumnDef {
+            id: 3,
+            name: "type".to_string(),
+            data_type: crate::types::DataType::Int,
+            nullable: false,
+            primary_key: false,
+            unique: false,
+            identity: None,
+            default: None,
+            default_constraint_name: None,
+            check: None,
+            check_constraint_name: None,
+            computed_expr: None,
+            ansi_padding_on: true,
+        },
+    ];
+
+    let table_def = TableDef {
+        id: 0,
+        schema_id: 1,
+        schema_name: "dbo".to_string(),
+        name: "OPENJSON".to_string(),
+        columns,
+        check_constraints: vec![],
+        foreign_keys: vec![],
+    };
+
+    Ok(Some(BoundTable {
+        table: table_def,
+        alias: tref.alias.clone().unwrap_or_else(|| "OPENJSON".into()),
+        virtual_rows: Some(rows),
+    }))
+}
+
+/// Returns the MSSQL OPENJSON type code for a JSON value.
+/// 0=null, 1=string, 2=number, 3=bool, 4=array, 5=object
+fn openjson_type_code(v: &serde_json::Value) -> i32 {
+    match v {
+        serde_json::Value::Null => 0,
+        serde_json::Value::String(_) => 1,
+        serde_json::Value::Number(_) => 2,
+        serde_json::Value::Bool(_) => 3,
+        serde_json::Value::Array(_) => 4,
+        serde_json::Value::Object(_) => 5,
+    }
+}
+
+/// Converts a JSON value (object or array) into OPENJSON result rows.
+fn openjson_to_rows(val: &serde_json::Value) -> Vec<StoredRow> {
+    match val {
+        serde_json::Value::Object(map) => map
+            .iter()
+            .map(|(k, v)| {
+                let type_code = openjson_type_code(v);
+                let value_str = match v {
+                    serde_json::Value::Null => Value::Null,
+                    serde_json::Value::String(s) => Value::NVarChar(s.clone()),
+                    serde_json::Value::Number(n) => Value::NVarChar(n.to_string()),
+                    serde_json::Value::Bool(b) => Value::NVarChar(if *b { "true" } else { "false" }.to_string()),
+                    serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
+                        Value::NVarChar(v.to_string())
+                    }
+                };
+                StoredRow {
+                    values: vec![
+                        Value::NVarChar(k.clone()),
+                        value_str,
+                        Value::Int(type_code),
+                    ],
+                    deleted: false,
+                }
+            })
+            .collect(),
+        serde_json::Value::Array(arr) => arr
+            .iter()
+            .enumerate()
+            .map(|(i, v)| {
+                let type_code = openjson_type_code(v);
+                let value_str = match v {
+                    serde_json::Value::Null => Value::Null,
+                    serde_json::Value::String(s) => Value::NVarChar(s.clone()),
+                    serde_json::Value::Number(n) => Value::NVarChar(n.to_string()),
+                    serde_json::Value::Bool(b) => Value::NVarChar(if *b { "true" } else { "false" }.to_string()),
+                    serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
+                        Value::NVarChar(v.to_string())
+                    }
+                };
+                StoredRow {
+                    values: vec![
+                        Value::NVarChar(i.to_string()),
+                        value_str,
+                        Value::Int(type_code),
+                    ],
+                    deleted: false,
+                }
+            })
+            .collect(),
+        _ => vec![StoredRow {
+            values: vec![
+                Value::Null,
+                match val {
+                    serde_json::Value::Null => Value::Null,
+                    serde_json::Value::String(s) => Value::NVarChar(s.clone()),
+                    serde_json::Value::Number(n) => Value::NVarChar(n.to_string()),
+                    serde_json::Value::Bool(b) => Value::NVarChar(if *b { "true" } else { "false" }.to_string()),
+                    _ => Value::Null,
+                },
+                Value::Int(openjson_type_code(val)),
+            ],
+            deleted: false,
+        }],
+    }
+}
+
+/// Navigate a JSON value using a SQL Server JSON path like '$.key.subkey' or '$[0]'.
+fn navigate_json_path(
+    root: &serde_json::Value,
+    path: &str,
+) -> Result<serde_json::Value, DbError> {
+    let path = path.trim();
+    if path == "$" {
+        return Ok(root.clone());
+    }
+
+    let rest = path.strip_prefix('$').unwrap_or(path);
+    let mut current = root.clone();
+
+    let mut chars = rest.chars().peekable();
+    while chars.peek().is_some() {
+        match chars.peek() {
+            Some('.') => {
+                chars.next(); // consume '.'
+                let mut key = String::new();
+                while let Some(&c) = chars.peek() {
+                    if c == '.' || c == '[' {
+                        break;
+                    }
+                    key.push(c);
+                    chars.next();
+                }
+                if key.is_empty() {
+                    return Err(DbError::Execution(
+                        "OPENJSON: empty key in JSON path".into(),
+                    ));
+                }
+                current = current
+                    .get(&key)
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+            }
+            Some('[') => {
+                chars.next(); // consume '['
+                let mut idx_str = String::new();
+                while let Some(&c) = chars.peek() {
+                    if c == ']' {
+                        chars.next();
+                        break;
+                    }
+                    idx_str.push(c);
+                    chars.next();
+                }
+                let idx: usize = idx_str.parse().map_err(|_| {
+                    DbError::Execution(format!(
+                        "OPENJSON: invalid array index '{}' in path",
+                        idx_str
+                    ))
+                })?;
+                current = current
+                    .get(idx)
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+            }
+            _ => {
+                return Err(DbError::Execution(format!(
+                    "OPENJSON: unexpected character in path '{}'",
+                    path
+                )));
+            }
+        }
+    }
+
+    Ok(current)
 }
 
 pub(super) fn split_csv_top_level_local(input: &str) -> Vec<String> {

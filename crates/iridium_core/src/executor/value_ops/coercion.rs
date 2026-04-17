@@ -47,6 +47,8 @@ pub fn coerce_value_to_type_with_dateformat(
         Value::Time(v) => coerce_time_value(v, ty),
         Value::DateTime(v) => coerce_datetime_value(v, ty),
         Value::DateTime2(v) => coerce_datetime_value(v, ty),
+        Value::SmallDateTime(v) => coerce_datetime_value(v, ty),
+        Value::DateTimeOffset(v) => coerce_string(&v, ty, dateformat),
         Value::UniqueIdentifier(v) => coerce_uuid_value(v, ty),
         Value::SqlVariant(inner) => coerce_value_to_type_with_dateformat(*inner, ty, dateformat),
     }
@@ -70,7 +72,12 @@ fn coerce_bit(v: bool, ty: &DataType) -> Result<Value, DbError> {
         }
         DataType::Binary { .. } => Ok(Value::Binary(int_val.to_le_bytes().to_vec())),
         DataType::VarBinary { .. } => Ok(Value::VarBinary(int_val.to_le_bytes().to_vec())),
-        DataType::DateTime | DataType::DateTime2 | DataType::Date | DataType::Time => Err(
+        DataType::DateTime
+        | DataType::DateTime2
+        | DataType::SmallDateTime
+        | DataType::DateTimeOffset
+        | DataType::Date
+        | DataType::Time => Err(
             DbError::Execution(format!("cannot convert bit to {:?}", ty)),
         ),
         DataType::UniqueIdentifier => Err(DbError::Execution(
@@ -99,7 +106,12 @@ fn coerce_int(v: i64, ty: &DataType) -> Result<Value, DbError> {
         DataType::NChar { .. } | DataType::NVarChar { .. } => Ok(Value::NVarChar(v.to_string())),
         DataType::Binary { .. } => Ok(Value::Binary(v.to_le_bytes().to_vec())),
         DataType::VarBinary { .. } => Ok(Value::VarBinary(v.to_le_bytes().to_vec())),
-        DataType::DateTime | DataType::DateTime2 | DataType::Date | DataType::Time => Err(
+        DataType::DateTime
+        | DataType::DateTime2
+        | DataType::SmallDateTime
+        | DataType::DateTimeOffset
+        | DataType::Date
+        | DataType::Time => Err(
             DbError::Execution(format!("cannot convert integer to {:?}", ty)),
         ),
         DataType::UniqueIdentifier => Err(DbError::Execution(
@@ -438,10 +450,14 @@ fn coerce_string(v: &str, ty: &DataType, dateformat: &str) -> Result<Value, DbEr
                 Err(_) => Err(DbError::Execution(format!("invalid time: {}", v))),
             }
         }
-        DataType::DateTime | DataType::DateTime2 => {
+        DataType::DateTime | DataType::DateTime2 | DataType::SmallDateTime | DataType::DateTimeOffset => {
             let parsed = parse_datetime_string(v, dateformat);
             match parsed {
-                Ok(dt) => Ok(Value::DateTime(dt)),
+                Ok(dt) => Ok(match ty {
+                    DataType::DateTimeOffset => Value::DateTimeOffset(v.to_string()),
+                    DataType::SmallDateTime => Value::SmallDateTime(dt),
+                    _ => Value::DateTime(dt),
+                }),
                 Err(_) => Err(DbError::Execution(format!("invalid datetime: {}", v))),
             }
         }
@@ -468,6 +484,14 @@ fn coerce_date_value(v: chrono::NaiveDate, ty: &DataType) -> Result<Value, DbErr
             let dt = v.and_hms_opt(0, 0, 0).unwrap();
             Ok(Value::DateTime(dt))
         }
+        DataType::SmallDateTime => {
+            let dt = v.and_hms_opt(0, 0, 0).unwrap();
+            Ok(Value::SmallDateTime(dt))
+        }
+        DataType::DateTimeOffset => {
+            let dt = v.and_hms_opt(0, 0, 0).unwrap();
+            Ok(Value::DateTimeOffset(dt.format("%Y-%m-%dT%H:%M:%S").to_string()))
+        }
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Date(v)))),
         _ => Err(DbError::Execution(format!(
             "cannot convert DATE value to {:?}",
@@ -491,6 +515,15 @@ fn coerce_time_value(v: chrono::NaiveTime, ty: &DataType) -> Result<Value, DbErr
                 .and_time(v);
             Ok(Value::DateTime(dt))
         }
+        DataType::SmallDateTime => {
+            let dt = chrono::NaiveDate::from_ymd_opt(1900, 1, 1)
+                .unwrap()
+                .and_time(v);
+            Ok(Value::SmallDateTime(dt))
+        }
+        DataType::DateTimeOffset => Ok(Value::DateTimeOffset(
+            format!("1900-01-01T{}", v.format("%H:%M:%S%.f")),
+        )),
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Time(v)))),
         _ => Err(DbError::Execution(format!(
             "cannot convert TIME value to {:?}",
@@ -508,6 +541,10 @@ fn coerce_datetime_value(v: chrono::NaiveDateTime, ty: &DataType) -> Result<Valu
             v.format("%Y-%m-%d %H:%M:%S%.f").to_string(),
         )),
         DataType::DateTime | DataType::DateTime2 => Ok(Value::DateTime(v)),
+        DataType::SmallDateTime => Ok(Value::SmallDateTime(v)),
+        DataType::DateTimeOffset => Ok(Value::DateTimeOffset(
+            v.format("%Y-%m-%dT%H:%M:%S%.f").to_string(),
+        )),
         DataType::Date => Ok(Value::Date(v.date())),
         DataType::Time => Ok(Value::Time(v.time())),
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::DateTime(v)))),
@@ -586,7 +623,7 @@ fn coerce_binary(data: &[u8], ty: &DataType) -> Result<Value, DbError> {
                 ))
             }
         }
-        DataType::DateTime | DataType::DateTime2 | DataType::Date | DataType::Time => Err(
+        DataType::DateTime | DataType::DateTime2 | DataType::SmallDateTime | DataType::DateTimeOffset | DataType::Date | DataType::Time => Err(
             DbError::Execution(format!("cannot convert BINARY to {:?}", ty)),
         ),
         _ => Err(DbError::Execution(format!(

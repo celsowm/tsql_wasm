@@ -139,6 +139,13 @@ pub struct RaiserrorStmt {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThrowStmt {
+    pub error_number: Option<Expr>,
+    pub message: Option<Expr>,
+    pub state: Option<Expr>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TryCatchStmt {
     pub try_body: Vec<crate::ast::Statement>,
     pub catch_body: Vec<crate::ast::Statement>,

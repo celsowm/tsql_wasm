@@ -50,13 +50,9 @@ impl RandomProvider for ThreadRng {
     fn next_f64(&self) -> f64 {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
-        use std::time::{SystemTime, UNIX_EPOCH};
 
         let mut hasher = DefaultHasher::new();
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
+        let nanos = system_time_nanos();
         nanos.hash(&mut hasher);
         let bits = hasher.finish() >> 33;
         bits as f64 / (1u64 << 31) as f64
@@ -65,14 +61,24 @@ impl RandomProvider for ThreadRng {
     fn next_u64(&self) -> u64 {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
-        use std::time::{SystemTime, UNIX_EPOCH};
 
         let mut hasher = DefaultHasher::new();
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
+        let nanos = system_time_nanos();
         nanos.hash(&mut hasher);
         hasher.finish()
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn system_time_nanos() -> u128 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn system_time_nanos() -> u128 {
+    (js_sys::Date::now() * 1_000_000.0) as u128
 }

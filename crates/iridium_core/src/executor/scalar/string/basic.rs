@@ -292,7 +292,9 @@ pub(crate) fn eval_datalength(
         Value::Bit(_) | Value::TinyInt(_) => Ok(Value::Int(1)),
         Value::SmallInt(_) => Ok(Value::Int(2)),
         Value::Int(_) => Ok(Value::Int(4)),
-        Value::BigInt(_) | Value::Float(_) | Value::DateTime(_) => Ok(Value::Int(8)),
+        Value::BigInt(_) | Value::Float(_) | Value::DateTime(_) | Value::DateTime2(_) => {
+            Ok(Value::Int(8))
+        }
         Value::Decimal(_, _) => Ok(Value::Int(17)), // Max precision i128
         Value::Money(_) => Ok(Value::Int(8)),
         Value::SmallMoney(_) => Ok(Value::Int(4)),
@@ -301,7 +303,8 @@ pub(crate) fn eval_datalength(
         Value::Binary(v) | Value::VarBinary(v) => Ok(Value::Int(v.len() as i32)),
         Value::Date(_) => Ok(Value::Int(3)),
         Value::Time(_) => Ok(Value::Int(5)), // Simplified
-        Value::DateTime2(_) => Ok(Value::Int(8)), // Simplified
+        Value::SmallDateTime(_) => Ok(Value::Int(4)),
+        Value::DateTimeOffset(_) => Ok(Value::Int(10)),
         Value::UniqueIdentifier(_) => Ok(Value::Int(16)),
         Value::SqlVariant(inner) => {
             // Recurse for SqlVariant
@@ -316,7 +319,9 @@ fn eval_datalength_internal(val: &Value) -> Result<Value, DbError> {
         Value::Bit(_) | Value::TinyInt(_) => Ok(Value::Int(1)),
         Value::SmallInt(_) => Ok(Value::Int(2)),
         Value::Int(_) => Ok(Value::Int(4)),
-        Value::BigInt(_) | Value::Float(_) | Value::DateTime(_) => Ok(Value::Int(8)),
+        Value::BigInt(_) | Value::Float(_) | Value::DateTime(_) | Value::DateTime2(_) => {
+            Ok(Value::Int(8))
+        }
         Value::Decimal(_, _) => Ok(Value::Int(17)),
         Value::Money(_) => Ok(Value::Int(8)),
         Value::SmallMoney(_) => Ok(Value::Int(4)),
@@ -325,7 +330,8 @@ fn eval_datalength_internal(val: &Value) -> Result<Value, DbError> {
         Value::Binary(v) | Value::VarBinary(v) => Ok(Value::Int(v.len() as i32)),
         Value::Date(_) => Ok(Value::Int(3)),
         Value::Time(_) => Ok(Value::Int(5)),
-        Value::DateTime2(_) => Ok(Value::Int(8)),
+        Value::SmallDateTime(_) => Ok(Value::Int(4)),
+        Value::DateTimeOffset(_) => Ok(Value::Int(10)),
         Value::UniqueIdentifier(_) => Ok(Value::Int(16)),
         Value::SqlVariant(inner) => eval_datalength_internal(inner),
     }

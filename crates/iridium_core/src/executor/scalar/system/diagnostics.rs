@@ -12,14 +12,14 @@ pub(crate) fn eval_error_message(ctx: &ExecutionContext) -> Result<Value, DbErro
 
 pub(crate) fn eval_error_number(ctx: &ExecutionContext) -> Result<Value, DbError> {
     Ok(match &ctx.frame.last_error {
-        Some(_) => Value::Int(50000), // Default error number
+        Some(err) => Value::Int(err.number()),
         None => Value::Null,
     })
 }
 
 pub(crate) fn eval_error_severity(ctx: &ExecutionContext) -> Result<Value, DbError> {
     Ok(match &ctx.frame.last_error {
-        Some(_) => Value::Int(16), // Default severity
+        Some(err) => Value::Int(err.class_severity() as i32),
         None => Value::Null,
     })
 }

@@ -154,6 +154,7 @@ define_keywords! {
     Try => "TRY",
     Catch => "CATCH",
     RaiseError => "RAISERROR",
+    Throw => "THROW",
 
     // Transactions
     Tran => "TRAN",

@@ -391,6 +391,21 @@ impl<'a> SchemaExecutor<'a> {
                 }
                 self.storage.replace_table(table_id, rows_vec)?;
             }
+            AlterTableAction::AlterColumn { name, data_type, nullable } => {
+                let table_mut = self
+                    .catalog
+                    .find_table_mut(&schema_name, &stmt.table.name)
+                    .ok_or_else(|| DbError::table_not_found(&schema_name, &stmt.table.name))?;
+                let col = table_mut
+                    .columns
+                    .iter_mut()
+                    .find(|c| c.name.eq_ignore_ascii_case(&name))
+                    .ok_or_else(|| DbError::column_not_found(&name))?;
+                col.data_type = data_type_spec_to_runtime(&data_type);
+                if let Some(n) = nullable {
+                    col.nullable = n;
+                }
+            }
             AlterTableAction::AddConstraint(constraint) => {
                 let table_mut = self
                     .catalog

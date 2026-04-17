@@ -81,6 +81,7 @@ pub enum ProceduralStatement {
     CreateView(CreateViewStmt),
     CreateTrigger(CreateTriggerStmt),
     Raiserror(RaiserrorStmt),
+    Throw(ThrowStmt),
     TryCatch(TryCatchStmt),
 }
 

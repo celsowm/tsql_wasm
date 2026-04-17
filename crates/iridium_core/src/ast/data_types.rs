@@ -21,6 +21,8 @@ pub enum DataTypeSpec {
     Time,
     DateTime,
     DateTime2,
+    SmallDateTime,
+    DateTimeOffset,
     UniqueIdentifier,
     SqlVariant,
     Numeric(u8, u8),

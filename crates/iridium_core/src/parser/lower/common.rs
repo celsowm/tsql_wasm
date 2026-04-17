@@ -141,12 +141,20 @@ pub fn lower_expr(parser_expr: ast::Expr) -> Result<executor_ast::expressions::E
         ast::Expr::Subquery(s) => Ok(executor_ast::expressions::Expr::Subquery(Box::new(
             lower_select(*s)?,
         ))),
-        ast::Expr::FunctionCall { name, args } => {
+        ast::Expr::FunctionCall {
+            name,
+            args,
+            within_group,
+        } => {
             Ok(executor_ast::expressions::Expr::FunctionCall {
                 name,
                 args: args
                     .into_iter()
                     .map(lower_expr)
+                    .collect::<Result<Vec<_>, _>>()?,
+                within_group: within_group
+                    .into_iter()
+                    .map(lower_order_by_expr)
                     .collect::<Result<Vec<_>, _>>()?,
             })
         }
@@ -334,8 +342,8 @@ pub fn lower_data_type(
         }
         ast::DataType::SqlVariant => Ok(executor_ast::data_types::DataTypeSpec::SqlVariant),
         ast::DataType::Xml => Ok(executor_ast::data_types::DataTypeSpec::Xml),
-        ast::DataType::DateTimeOffset => Ok(executor_ast::data_types::DataTypeSpec::VarChar(255)),
-        ast::DataType::SmallDateTime => Ok(executor_ast::data_types::DataTypeSpec::DateTime),
+        ast::DataType::DateTimeOffset => Ok(executor_ast::data_types::DataTypeSpec::DateTimeOffset),
+        ast::DataType::SmallDateTime => Ok(executor_ast::data_types::DataTypeSpec::SmallDateTime),
         ast::DataType::Image => Ok(executor_ast::data_types::DataTypeSpec::VarBinary(8000)),
         ast::DataType::Text => Ok(executor_ast::data_types::DataTypeSpec::VarChar(8000)),
         ast::DataType::NText => Ok(executor_ast::data_types::DataTypeSpec::NVarChar(4000)),

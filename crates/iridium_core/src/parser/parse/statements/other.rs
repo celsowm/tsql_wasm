@@ -35,6 +35,7 @@ fn is_statement_starter(tok: Option<&Token>) -> bool {
                 | Keyword::Deallocate
                 | Keyword::Fetch
                 | Keyword::With
+                | Keyword::Throw
         ),
         _ => false,
     }

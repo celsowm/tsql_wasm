@@ -180,6 +180,30 @@ fn parse_statement_inner(parser: &mut Parser) -> ParseResult<Statement> {
                     state,
                 }))
             }
+            Keyword::Throw => {
+                let _ = parser.next();
+                if parser.is_empty()
+                    || matches!(parser.peek(), Some(Token::Semicolon) | Some(Token::Go))
+                    || matches!(parser.peek(), Some(Token::Keyword(Keyword::End)))
+                {
+                    Ok(Statement::Procedural(ProceduralStatement::Throw {
+                        error_number: None,
+                        message: None,
+                        state: None,
+                    }))
+                } else {
+                    let error_number = parse_expr(parser)?;
+                    parser.expect_comma()?;
+                    let message = parse_expr(parser)?;
+                    parser.expect_comma()?;
+                    let state = parse_expr(parser)?;
+                    Ok(Statement::Procedural(ProceduralStatement::Throw {
+                        error_number: Some(error_number),
+                        message: Some(message),
+                        state: Some(state),
+                    }))
+                }
+            }
             Keyword::Break => {
                 let _ = parser.next();
                 Ok(Statement::Procedural(ProceduralStatement::Break))

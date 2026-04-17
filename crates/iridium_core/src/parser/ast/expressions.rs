@@ -47,6 +47,7 @@ pub enum Expr {
     FunctionCall {
         name: String,
         args: Vec<Expr>,
+        within_group: Vec<OrderByExpr>,
     },
     Binary {
         left: Box<Expr>,

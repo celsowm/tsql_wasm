@@ -285,6 +285,8 @@ const LOGIC_FUNCTIONS: &[BuiltinScalarFunction] = &[
     builtin!("IIF" => logic::eval_iif),
     builtin!("NULLIF" => logic::eval_nullif),
     builtin!("CHOOSE" => logic::eval_choose),
+    builtin!("GREATEST" => logic::eval_greatest),
+    builtin!("LEAST" => logic::eval_least),
 ];
 
 const JSON_FUNCTIONS: &[BuiltinScalarFunction] = &[

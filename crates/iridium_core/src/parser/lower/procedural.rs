@@ -166,6 +166,19 @@ pub fn lower_procedural(
                 },
             ),
         )),
+        ast::ProceduralStatement::Throw {
+            error_number,
+            message,
+            state,
+        } => Ok(executor_ast::Statement::Procedural(
+            executor_ast::statements::ProceduralStatement::Throw(
+                executor_ast::statements::procedural::ThrowStmt {
+                    error_number: error_number.map(lower_expr).transpose()?,
+                    message: message.map(lower_expr).transpose()?,
+                    state: state.map(lower_expr).transpose()?,
+                },
+            ),
+        )),
         ast::ProceduralStatement::TryCatch {
             try_body,
             catch_body,

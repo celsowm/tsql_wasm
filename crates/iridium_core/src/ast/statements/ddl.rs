@@ -55,6 +55,11 @@ pub struct AlterTableStmt {
 pub enum AlterTableAction {
     AddColumn(ColumnSpec),
     DropColumn(String),
+    AlterColumn {
+        name: String,
+        data_type: DataTypeSpec,
+        nullable: Option<bool>,
+    },
     AddConstraint(TableConstraintSpec),
     DropConstraint(String),
 }

@@ -14,7 +14,10 @@ fn format_compat_value(value: &Value) -> String {
     match value {
         Value::Null => "NULL".to_string(),
         Value::Date(v) => format!("{} 00:00:00", v.format("%Y-%m-%d")),
-        Value::DateTime(v) | Value::DateTime2(v) => v.format("%Y-%m-%d %H:%M:%S").to_string(),
+        Value::DateTime(v)
+        | Value::DateTime2(v)
+        | Value::SmallDateTime(v) => v.format("%Y-%m-%d %H:%M:%S").to_string(),
+        Value::DateTimeOffset(v) => v.clone(),
         other => other.to_string_value(),
     }
 }
@@ -40,6 +43,8 @@ fn format_compat_type(value: &DataType) -> String {
         DataType::Time => "time".to_string(),
         DataType::DateTime => "datetime".to_string(),
         DataType::DateTime2 => "datetime2".to_string(),
+        DataType::SmallDateTime => "smalldatetime".to_string(),
+        DataType::DateTimeOffset => "datetimeoffset".to_string(),
         DataType::UniqueIdentifier => "uniqueidentifier".to_string(),
         DataType::SqlVariant => "sql_variant".to_string(),
         DataType::Xml => "xml".to_string(),
@@ -219,4 +224,3 @@ struct ResultSetEnvelope {
     rows: Vec<Vec<String>>,
     row_count: usize,
 }
-

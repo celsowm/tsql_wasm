@@ -1,6 +1,7 @@
 use super::super::ScriptExecutor;
 use super::routine::{execute_xp_msver, procedure_return_value};
 use super::shared::{resolve_table_identifier, validate_table_matches_type};
+use super::system_procedures::{execute_system_procedure, is_system_procedure};
 use crate::ast::{ExecProcedureStmt, RoutineParamType};
 use crate::catalog::RoutineKind;
 use crate::error::DbError;
@@ -45,6 +46,11 @@ impl<'a> ScriptExecutor<'a> {
         {
             self.assign_exec_return_value(&stmt.return_variable, Value::Int(0), ctx)?;
             return Ok(None);
+        }
+
+        if is_system_procedure(&stmt.name.name) {
+            self.assign_exec_return_value(&stmt.return_variable, Value::Int(0), ctx)?;
+            return execute_system_procedure(self, &stmt, ctx);
         }
 
         let schema = stmt.name.schema_or_dbo().to_string();

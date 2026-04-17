@@ -78,7 +78,7 @@ pub(super) fn schema_name_by_id(catalog: &dyn Catalog, id: u32) -> String {
         .unwrap_or_else(|| "dbo".to_string())
 }
 
-pub(super) fn system_type_id(dt: &DataType) -> i32 {
+pub(crate) fn system_type_id(dt: &DataType) -> i32 {
     match dt {
         DataType::Bit => 104,
         DataType::TinyInt => 48,
@@ -99,13 +99,15 @@ pub(super) fn system_type_id(dt: &DataType) -> i32 {
         DataType::Time => 41,
         DataType::DateTime => 61,
         DataType::DateTime2 => 42,
+        DataType::SmallDateTime => 58,
+        DataType::DateTimeOffset => 43,
         DataType::UniqueIdentifier => 36,
         DataType::SqlVariant => 98,
         DataType::Xml => 241,
     }
 }
 
-pub(super) fn type_name(dt: &DataType) -> String {
+pub(crate) fn type_name(dt: &DataType) -> String {
     match dt {
         DataType::Bit => "bit".to_string(),
         DataType::TinyInt => "tinyint".to_string(),
@@ -126,13 +128,15 @@ pub(super) fn type_name(dt: &DataType) -> String {
         DataType::Time => "time".to_string(),
         DataType::DateTime => "datetime".to_string(),
         DataType::DateTime2 => "datetime2".to_string(),
+        DataType::SmallDateTime => "smalldatetime".to_string(),
+        DataType::DateTimeOffset => "datetimeoffset".to_string(),
         DataType::UniqueIdentifier => "uniqueidentifier".to_string(),
         DataType::SqlVariant => "sql_variant".to_string(),
         DataType::Xml => "xml".to_string(),
     }
 }
 
-pub(super) fn type_max_length(dt: &DataType) -> i16 {
+pub(crate) fn type_max_length(dt: &DataType) -> i16 {
     match dt {
         DataType::Char { len } | DataType::NChar { len } => *len as i16,
         DataType::VarChar { max_len } | DataType::NVarChar { max_len } => *max_len as i16,
@@ -152,6 +156,8 @@ pub(super) fn type_max_length(dt: &DataType) -> i16 {
         DataType::Time => 5,
         DataType::DateTime => 8,
         DataType::DateTime2 => 8,
+        DataType::SmallDateTime => 4,
+        DataType::DateTimeOffset => 10,
         DataType::UniqueIdentifier => 16,
         DataType::SqlVariant => 8016,
     }
@@ -294,5 +300,4 @@ pub(super) fn builtin_types_rows() -> Vec<StoredRow> {
         })
         .collect()
 }
-
 

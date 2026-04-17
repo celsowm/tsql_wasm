@@ -132,7 +132,7 @@ fn eval_expr_inner(
         Expr::String(v) => Ok(Value::VarChar(v.clone())),
         Expr::UnicodeString(v) => Ok(Value::NVarChar(v.clone())),
         Expr::Null => Ok(Value::Null),
-        Expr::FunctionCall { name, args } => {
+        Expr::FunctionCall { name, args, .. } => {
             eval_function(name, args, row, ctx, catalog, storage, clock)
         }
         Expr::Binary { left, op, right } => {

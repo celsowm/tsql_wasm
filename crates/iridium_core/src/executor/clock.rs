@@ -9,7 +9,7 @@ pub struct SystemClock;
 
 impl Clock for SystemClock {
     fn now_datetime_literal(&self) -> NaiveDateTime {
-        Utc::now().naive_utc()
+        system_now_naive_utc()
     }
 }
 
@@ -28,4 +28,17 @@ impl Clock for FixedClock {
     fn now_datetime_literal(&self) -> NaiveDateTime {
         self.value
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn system_now_naive_utc() -> NaiveDateTime {
+    Utc::now().naive_utc()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn system_now_naive_utc() -> NaiveDateTime {
+    let millis = js_sys::Date::now() as i64;
+    chrono::DateTime::<Utc>::from_timestamp_millis(millis)
+        .unwrap_or(chrono::DateTime::<Utc>::UNIX_EPOCH)
+        .naive_utc()
 }

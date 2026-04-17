@@ -31,9 +31,14 @@ pub fn categorize(v: &Value) -> ValueCategory {
             ValueCategory::String
         }
         Value::Binary(_) | Value::VarBinary(_) => ValueCategory::Binary,
-        Value::Date(_) | Value::Time(_) | Value::DateTime(_) | Value::DateTime2(_) => {
+        Value::Date(_)
+        | Value::Time(_)
+        | Value::DateTime(_)
+        | Value::DateTime2(_)
+        | Value::SmallDateTime(_) => {
             ValueCategory::DateTime
         }
+        Value::DateTimeOffset(_) => ValueCategory::String,
         Value::UniqueIdentifier(_) => ValueCategory::Uuid,
         Value::SqlVariant(inner) => categorize(inner),
     }
@@ -144,6 +149,8 @@ pub fn truthy(value: &Value) -> bool {
         | Value::Time(_)
         | Value::DateTime(_)
         | Value::DateTime2(_)
+        | Value::SmallDateTime(_)
+        | Value::DateTimeOffset(_)
         | Value::UniqueIdentifier(_) => true,
         Value::SqlVariant(inner) => truthy(inner),
     }
@@ -171,6 +178,8 @@ pub fn value_key(v: &Value) -> String {
         Value::Time(v) => format!("TIME:{}", v),
         Value::DateTime(v) => format!("DATETIME:{}", v),
         Value::DateTime2(v) => format!("DATETIME2:{}", v),
+        Value::SmallDateTime(v) => format!("SMALLDATETIME:{}", v),
+        Value::DateTimeOffset(v) => format!("DATETIMEOFFSET:{}", v),
         Value::UniqueIdentifier(v) => format!("UNIQUEIDENTIFIER:{}", v),
         Value::SqlVariant(inner) => format!("SQL_VARIANT:{}", value_key(inner)),
     }
@@ -200,7 +209,10 @@ fn extract_string(v: &Value) -> String {
         Value::Char(s) | Value::VarChar(s) | Value::NChar(s) | Value::NVarChar(s) => s.clone(),
         Value::Date(d) => d.format("%Y-%m-%d").to_string(),
         Value::Time(t) => t.format("%H:%M:%S%.f").to_string(),
-        Value::DateTime(dt) | Value::DateTime2(dt) => dt.format("%Y-%m-%d %H:%M:%S%.f").to_string(),
+        Value::DateTime(dt) | Value::DateTime2(dt) | Value::SmallDateTime(dt) => {
+            dt.format("%Y-%m-%d %H:%M:%S%.f").to_string()
+        }
+        Value::DateTimeOffset(s) => s.clone(),
         _ => String::new(),
     }
 }
@@ -216,7 +228,7 @@ fn normalize_datetime(v: &Value) -> Option<NaiveDateTime> {
     match v {
         Value::Date(d) => d.and_hms_opt(0, 0, 0),
         Value::Time(t) => NaiveDate::from_ymd_opt(1900, 1, 1).map(|d| d.and_time(*t)),
-        Value::DateTime(dt) | Value::DateTime2(dt) => Some(*dt),
+        Value::DateTime(dt) | Value::DateTime2(dt) | Value::SmallDateTime(dt) => Some(*dt),
         Value::SqlVariant(inner) => normalize_datetime(inner),
         _ => None,
     }

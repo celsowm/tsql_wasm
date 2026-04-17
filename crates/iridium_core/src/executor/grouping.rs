@@ -31,7 +31,7 @@ fn eval_having_expr(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     match expr {
-        Expr::FunctionCall { name, args } => {
+        Expr::FunctionCall { name, args, .. } => {
             if let Some(res) = dispatch_aggregate(name, args, group, ctx, catalog, storage, clock) {
                 res
             } else {

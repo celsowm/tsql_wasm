@@ -661,6 +661,7 @@ dependencies = [
  "chrono",
  "dashmap",
  "hex",
+ "js-sys",
  "parking_lot",
  "redb",
  "regex",
