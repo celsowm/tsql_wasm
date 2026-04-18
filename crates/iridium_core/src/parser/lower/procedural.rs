@@ -65,6 +65,40 @@ pub fn lower_procedural(
                 },
             ),
         )),
+        ast::ProceduralStatement::Synonym { name, base_object } => {
+            Ok(executor_ast::Statement::Ddl(
+                executor_ast::statements::DdlStatement::CreateSynonym(
+                    executor_ast::statements::ddl::CreateSynonymStmt {
+                        name: lower_object_name(name),
+                        base_object: lower_object_name(base_object),
+                    },
+                ),
+            ))
+        }
+        ast::ProceduralStatement::Sequence {
+            name,
+            data_type,
+            start_with,
+            increment_by,
+            min_value,
+            max_value,
+            cycle,
+        } => Ok(executor_ast::Statement::Ddl(
+            executor_ast::statements::DdlStatement::CreateSequence(
+                executor_ast::statements::ddl::CreateSequenceStmt {
+                    name: lower_object_name(name),
+                    data_type: data_type
+                        .map(lower_data_type)
+                        .transpose()?
+                        .unwrap_or(executor_ast::data_types::DataTypeSpec::BigInt),
+                    start_value: start_with.unwrap_or(1),
+                    increment: increment_by.unwrap_or(1),
+                    minimum_value: min_value.unwrap_or(i64::MIN),
+                    maximum_value: max_value.unwrap_or(i64::MAX),
+                    is_cycling: cycle,
+                },
+            ),
+        )),
         ast::ProceduralStatement::DeclareCursor { name, query } => {
             Ok(executor_ast::Statement::Procedural(
                 executor_ast::statements::ProceduralStatement::DeclareCursor(

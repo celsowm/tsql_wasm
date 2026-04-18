@@ -3,6 +3,8 @@ mod index_registry;
 mod object_resolver;
 mod routine_registry;
 mod schema_registry;
+mod sequence_registry;
+mod synonym_registry;
 mod table_registry;
 mod trigger_registry;
 mod type_registry;
@@ -168,6 +170,30 @@ pub struct TriggerDef {
     pub definition_sql: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SynonymDef {
+    #[serde(default)]
+    pub object_id: i32,
+    pub schema: String,
+    pub name: String,
+    pub base_object: crate::ast::ObjectName,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SequenceDef {
+    #[serde(default)]
+    pub object_id: i32,
+    pub schema: String,
+    pub name: String,
+    pub data_type: DataType,
+    pub start_value: i64,
+    pub increment: i64,
+    pub current_value: i64,
+    pub minimum_value: i64,
+    pub maximum_value: i64,
+    pub is_cycling: bool,
+}
+
 pub trait IdAllocator {
     fn alloc_table_id(&mut self) -> u32;
     fn alloc_object_id(&mut self) -> i32;
@@ -259,6 +285,21 @@ pub trait TriggerRegistry {
     fn drop_trigger(&mut self, schema: &str, name: &str) -> Result<(), DbError>;
 }
 
+pub trait SynonymRegistry {
+    fn get_synonyms(&self) -> &[SynonymDef];
+    fn find_synonym(&self, schema: &str, name: &str) -> Option<&SynonymDef>;
+    fn create_synonym(&mut self, synonym: SynonymDef) -> Result<(), DbError>;
+    fn drop_synonym(&mut self, schema: &str, name: &str) -> Result<(), DbError>;
+}
+
+pub trait SequenceRegistry {
+    fn get_sequences(&self) -> &[SequenceDef];
+    fn find_sequence(&self, schema: &str, name: &str) -> Option<&SequenceDef>;
+    fn create_sequence(&mut self, sequence: SequenceDef) -> Result<(), DbError>;
+    fn drop_sequence(&mut self, schema: &str, name: &str) -> Result<(), DbError>;
+    fn next_sequence_value(&mut self, schema: &str, name: &str) -> Result<i64, DbError>;
+}
+
 pub trait ObjectResolver {
     fn object_id(&self, schema: &str, name: &str) -> Option<i32>;
 }
@@ -279,6 +320,8 @@ pub trait Catalog:
     + TypeRegistry
     + ViewRegistry
     + TriggerRegistry
+    + SynonymRegistry
+    + SequenceRegistry
     + ObjectResolver
     + std::fmt::Debug
     + Send
@@ -299,6 +342,8 @@ pub struct CatalogImpl {
     table_types: Vec<TableTypeDef>,
     views: Vec<ViewDef>,
     triggers: Vec<TriggerDef>,
+    synonyms: Vec<SynonymDef>,
+    sequences: Vec<SequenceDef>,
     next_schema_id: u32,
     next_table_id: u32,
     next_column_id: u32,
@@ -318,6 +363,10 @@ pub struct CatalogImpl {
     view_map: HashMap<(String, String), usize>,
     #[serde(skip)]
     trigger_map: HashMap<(String, String), usize>,
+    #[serde(skip)]
+    synonym_map: HashMap<(String, String), usize>,
+    #[serde(skip)]
+    sequence_map: HashMap<(String, String), usize>,
     #[serde(skip)]
     index_map: HashMap<(u32, String), usize>,
 }
@@ -370,6 +419,34 @@ impl CatalogImpl {
                     (
                         normalize_identifier(&t.schema),
                         normalize_identifier(&t.name),
+                    ),
+                    i,
+                )
+            })
+            .collect();
+        self.synonym_map = self
+            .synonyms
+            .iter()
+            .enumerate()
+            .map(|(i, s)| {
+                (
+                    (
+                        normalize_identifier(&s.schema),
+                        normalize_identifier(&s.name),
+                    ),
+                    i,
+                )
+            })
+            .collect();
+        self.sequence_map = self
+            .sequences
+            .iter()
+            .enumerate()
+            .map(|(i, s)| {
+                (
+                    (
+                        normalize_identifier(&s.schema),
+                        normalize_identifier(&s.name),
                     ),
                     i,
                 )
@@ -448,6 +525,8 @@ impl Default for CatalogImpl {
             table_types: Vec::new(),
             views: Vec::new(),
             triggers: Vec::new(),
+            synonyms: Vec::new(),
+            sequences: Vec::new(),
             next_schema_id: 1,
             next_table_id: 1234567890,
             next_column_id: 1,
@@ -459,6 +538,8 @@ impl Default for CatalogImpl {
             type_map: HashMap::new(),
             view_map: HashMap::new(),
             trigger_map: HashMap::new(),
+            synonym_map: HashMap::new(),
+            sequence_map: HashMap::new(),
             index_map: HashMap::new(),
         }
     }

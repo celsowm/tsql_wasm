@@ -58,6 +58,22 @@ impl<'a> ScriptExecutor<'a> {
             DdlStatement::TruncateTable(stmt) => self.execute_truncate_table(stmt, ctx),
             DdlStatement::AlterTable(stmt) => self.execute_alter_table(stmt, ctx),
             DdlStatement::DropView(stmt) => self.execute_drop_view(stmt, ctx),
+            DdlStatement::CreateSynonym(stmt) => {
+                self.schema(ctx).create_synonym(stmt)?;
+                Ok(None)
+            }
+            DdlStatement::DropSynonym(stmt) => {
+                self.schema(ctx).drop_synonym(stmt)?;
+                Ok(None)
+            }
+            DdlStatement::CreateSequence(stmt) => {
+                self.schema(ctx).create_sequence(stmt)?;
+                Ok(None)
+            }
+            DdlStatement::DropSequence(stmt) => {
+                self.schema(ctx).drop_sequence(stmt)?;
+                Ok(None)
+            }
         }
     }
 

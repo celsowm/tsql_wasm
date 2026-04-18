@@ -56,6 +56,21 @@ pub enum DdlStatement {
     },
     DropType(Vec<String>),
     DropSchema(String),
+    CreateSynonym {
+        name: Vec<String>,
+        base_object: Vec<String>,
+    },
+    DropSynonym(Vec<String>),
+    CreateSequence {
+        name: Vec<String>,
+        data_type: Option<DataType>,
+        start_with: Option<i64>,
+        increment_by: Option<i64>,
+        min_value: Option<i64>,
+        max_value: Option<i64>,
+        cycle: bool,
+    },
+    DropSequence(Vec<String>),
     CreateIndex {
         name: Vec<String>,
         table: Vec<String>,
@@ -76,6 +91,19 @@ pub enum ProceduralStatement {
         name: String,
         columns: Vec<ColumnDef>,
         constraints: Vec<TableConstraint>,
+    },
+    Synonym {
+        name: Vec<String>,
+        base_object: Vec<String>,
+    },
+    Sequence {
+        name: Vec<String>,
+        data_type: Option<DataType>,
+        start_with: Option<i64>,
+        increment_by: Option<i64>,
+        min_value: Option<i64>,
+        max_value: Option<i64>,
+        cycle: bool,
     },
     DeclareCursor {
         name: String,

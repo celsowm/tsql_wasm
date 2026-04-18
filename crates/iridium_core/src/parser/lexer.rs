@@ -156,7 +156,7 @@ fn parse_string<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
 fn parse_identifier<'a>(input: &mut &'a str) -> ModalResult<&'a str> {
     let start = *input;
     let _: char = any
-        .verify(|c: &char| c.is_ascii_alphabetic() || *c == '_' || *c == '#')
+        .verify(|c: &char| c.is_ascii_alphabetic() || *c == '_' || *c == '#' || *c == '@')
         .parse_next(input)?;
     let _: &str = take_while(0.., |c: char| {
         c.is_ascii_alphanumeric() || c == '_' || c == '#' || c == '$'

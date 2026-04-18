@@ -54,6 +54,10 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(tables::SysXmlSchemaCollections))
     } else if name.eq_ignore_ascii_case("xml_indexes") {
         Some(Box::new(tables::SysXmlIndexes))
+    } else if name.eq_ignore_ascii_case("synonyms") {
+        Some(Box::new(tables::SysSynonyms))
+    } else if name.eq_ignore_ascii_case("sequences") {
+        Some(Box::new(tables::SysSequences))
     } else if name.eq_ignore_ascii_case("table_types") {
         Some(Box::new(tables::SysTableTypes))
     } else if name.eq_ignore_ascii_case("partition_functions") {

@@ -299,6 +299,40 @@ impl VirtualTable for SysObjects {
                 deleted: false,
             });
         }
+        for synonym in catalog.get_synonyms() {
+            rows.push(StoredRow {
+                values: vec![
+                    Value::Int(synonym.object_id),
+                    Value::VarChar(synonym.name.clone()),
+                    Value::Int(catalog.get_schema_id(&synonym.schema).unwrap_or(1) as i32),
+                    Value::Null,
+                    Value::Int(0),
+                    Value::Char("SN".to_string()),
+                    Value::VarChar("SYNONYM".to_string()),
+                    created.clone(),
+                    created.clone(),
+                    Value::Bit(false),
+                ],
+                deleted: false,
+            });
+        }
+        for sequence in catalog.get_sequences() {
+            rows.push(StoredRow {
+                values: vec![
+                    Value::Int(sequence.object_id),
+                    Value::VarChar(sequence.name.clone()),
+                    Value::Int(catalog.get_schema_id(&sequence.schema).unwrap_or(1) as i32),
+                    Value::Null,
+                    Value::Int(0),
+                    Value::Char("SO".to_string()),
+                    Value::VarChar("SEQUENCE_OBJECT".to_string()),
+                    created.clone(),
+                    created.clone(),
+                    Value::Bit(false),
+                ],
+                deleted: false,
+            });
+        }
         rows
     }
 }

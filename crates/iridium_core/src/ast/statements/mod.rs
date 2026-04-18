@@ -57,6 +57,10 @@ pub enum DdlStatement {
     DropSchema(DropSchemaStmt),
     TruncateTable(TruncateTableStmt),
     AlterTable(AlterTableStmt),
+    CreateSynonym(CreateSynonymStmt),
+    DropSynonym(DropSynonymStmt),
+    CreateSequence(CreateSequenceStmt),
+    DropSequence(DropSequenceStmt),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

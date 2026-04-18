@@ -13,6 +13,7 @@ const SYSTEM_PROCEDURES: &[&str] = &[
     "sp_helptext",
     "sp_columns",
     "sp_tables",
+    "sp_helpindex",
 ];
 
 pub(crate) fn is_system_procedure(name: &str) -> bool {
@@ -39,6 +40,8 @@ pub(crate) fn execute_system_procedure(
         execute_sp_columns(exec, &args)?
     } else if name.eq_ignore_ascii_case("sp_tables") {
         execute_sp_tables(exec)?
+    } else if name.eq_ignore_ascii_case("sp_helpindex") {
+        execute_sp_helpindex(exec, &args)?
     } else {
         return Err(DbError::Execution(format!(
             "unknown system procedure '{}'",
@@ -309,6 +312,81 @@ fn execute_sp_columns(
             DataType::Int,
         ],
         column_nullabilities: vec![false, false, false, true, true, true, false],
+        rows,
+        ..Default::default()
+    })
+}
+
+fn execute_sp_helpindex(
+    exec: &mut ScriptExecutor<'_>,
+    args: &[String],
+) -> Result<QueryResult, DbError> {
+    if args.is_empty() {
+        return Err(DbError::Execution(
+            "sp_helpindex requires 1 argument: table name".into(),
+        ));
+    }
+    let table_name_raw = &args[0];
+    let parts: Vec<&str> = table_name_raw.rsplitn(2, '.').collect();
+    let (schema, table_name) = if parts.len() == 2 {
+        (parts[1], parts[0])
+    } else {
+        ("dbo", parts[0])
+    };
+
+    let table = exec
+        .catalog
+        .find_table(schema, table_name)
+        .ok_or_else(|| DbError::object_not_found(format!("table '{}.{}'", schema, table_name)))?;
+
+    let indexes = exec.catalog.get_indexes();
+    let table_indexes: Vec<_> = indexes.iter().filter(|idx| idx.table_id == table.id).collect();
+
+    let mut rows = Vec::new();
+    for idx in table_indexes {
+        let mut desc = Vec::new();
+        if idx.is_clustered {
+            desc.push("clustered");
+        } else {
+            desc.push("nonclustered");
+        }
+        if idx.is_unique {
+            desc.push("unique");
+        }
+        desc.push("located on PRIMARY");
+
+        let column_names: Vec<String> = idx
+            .column_ids
+            .iter()
+            .map(|&cid| {
+                table
+                    .columns
+                    .iter()
+                    .find(|c| c.id == cid)
+                    .map(|c| c.name.clone())
+                    .unwrap_or_else(|| "unknown".to_string())
+            })
+            .collect();
+
+        rows.push(vec![
+            Value::NVarChar(idx.name.clone()),
+            Value::NVarChar(desc.join(", ")),
+            Value::NVarChar(column_names.join(", ")),
+        ]);
+    }
+
+    Ok(QueryResult {
+        columns: vec![
+            "index_name".into(),
+            "index_description".into(),
+            "index_keys".into(),
+        ],
+        column_types: vec![
+            DataType::NVarChar { max_len: 128 },
+            DataType::NVarChar { max_len: 256 },
+            DataType::NVarChar { max_len: 2048 },
+        ],
+        column_nullabilities: vec![false, false, false],
         rows,
         ..Default::default()
     })

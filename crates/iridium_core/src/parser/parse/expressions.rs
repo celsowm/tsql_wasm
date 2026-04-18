@@ -354,6 +354,13 @@ pub fn parse_primary(parser: &mut Parser) -> ParseResult<Expr> {
                 })
             }
         }
+        Some(Token::Keyword(Keyword::Next)) => {
+            let _ = parser.next();
+            parser.expect_keyword(Keyword::Value)?;
+            parser.expect_keyword(Keyword::For)?;
+            let sequence_name = crate::parser::parse::statements::query::parse_multipart_name(parser)?;
+            Ok(Expr::NextValueFor { sequence_name })
+        }
         Some(Token::Keyword(k)) if matches!(parser.peek_at(1), Some(Token::LParen)) => {
             let name = k.as_ref().to_string();
             let _ = parser.next();

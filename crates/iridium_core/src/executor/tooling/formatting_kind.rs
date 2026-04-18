@@ -28,6 +28,10 @@ pub fn statement_kind(stmt: &Statement) -> &'static str {
             crate::ast::DdlStatement::DropProcedure(_) => "DROP_PROCEDURE",
             crate::ast::DdlStatement::DropFunction(_) => "DROP_FUNCTION",
             crate::ast::DdlStatement::DropTrigger(_) => "DROP_TRIGGER",
+            crate::ast::DdlStatement::CreateSynonym(_) => "CREATE_SYNONYM",
+            crate::ast::DdlStatement::DropSynonym(_) => "DROP_SYNONYM",
+            crate::ast::DdlStatement::CreateSequence(_) => "CREATE_SEQUENCE",
+            crate::ast::DdlStatement::DropSequence(_) => "DROP_SEQUENCE",
         },
         Statement::Procedural(s) => match s {
             crate::ast::ProceduralStatement::Set(_) => "SET",

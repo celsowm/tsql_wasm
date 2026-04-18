@@ -86,6 +86,9 @@ pub enum Expr {
         subquery: Box<crate::ast::statements::query::SelectStmt>,
         negated: bool,
     },
+    NextValueFor {
+        sequence_name: crate::ast::ObjectName,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

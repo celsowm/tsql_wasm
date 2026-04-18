@@ -12,6 +12,33 @@ pub struct CreateTableStmt {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateSynonymStmt {
+    pub name: ObjectName,
+    pub base_object: ObjectName,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DropSynonymStmt {
+    pub name: ObjectName,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateSequenceStmt {
+    pub name: ObjectName,
+    pub data_type: DataTypeSpec,
+    pub start_value: i64,
+    pub increment: i64,
+    pub minimum_value: i64,
+    pub maximum_value: i64,
+    pub is_cycling: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DropSequenceStmt {
+    pub name: ObjectName,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DropTableStmt {
     pub name: ObjectName,
 }

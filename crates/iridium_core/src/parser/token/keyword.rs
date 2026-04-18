@@ -163,6 +163,14 @@ define_keywords! {
     Rollback => "ROLLBACK",
     Save => "SAVE",
     Mark => "MARK",
+    Synonym => "SYNONYM",
+    Sequence => "SEQUENCE",
+    Value => "VALUE",
+    Increment => "INCREMENT",
+    Minvalue => "MINVALUE",
+    Maxvalue => "MAXVALUE",
+    Cycle => "CYCLE",
+    Start => "START",
     Distributed => "DISTRIBUTED",
 
     // Cursors
