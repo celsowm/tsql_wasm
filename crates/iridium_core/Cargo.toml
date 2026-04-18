@@ -1,11 +1,12 @@
 [package]
 name = "iridium_core"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 description = "SQL Server-compatible Rust engine core for Iridium SQL"
 license = "MIT"
 repository = "https://github.com/celsowm/iridium-sql"
 homepage = "https://github.com/celsowm/iridium-sql"
+readme = "README.md"
 keywords = ["sql-server", "tds", "database", "wasm"]
 categories = ["database", "web-programming"]
 exclude = ["check_output*.txt", "final_check.txt"]

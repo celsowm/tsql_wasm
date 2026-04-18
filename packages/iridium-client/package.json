@@ -1,7 +1,8 @@
 {
   "name": "@celsowm/iridium-sql-client",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/celsowm/iridium-sql.git",
