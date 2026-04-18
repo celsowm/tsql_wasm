@@ -330,6 +330,21 @@ impl Value {
         }
     }
 
+    pub fn to_bool(&self) -> Option<bool> {
+        match self {
+            Value::Bit(v) => Some(*v),
+            Value::TinyInt(v) => Some(*v != 0),
+            Value::SmallInt(v) => Some(*v != 0),
+            Value::Int(v) => Some(*v != 0),
+            Value::BigInt(v) => Some(*v != 0),
+            Value::Float(v) => Some(f64::from_bits(*v) != 0.0),
+            Value::Decimal(v, _) => Some(*v != 0),
+            Value::Money(v) => Some(*v != 0),
+            Value::SmallMoney(v) => Some(*v != 0),
+            _ => None,
+        }
+    }
+
     pub fn to_decimal_parts(&self) -> (i128, u8) {
         match self {
             Value::Decimal(raw, scale) => (*raw, *scale),

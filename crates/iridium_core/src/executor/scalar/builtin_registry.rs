@@ -150,18 +150,14 @@ const SYSTEM_FUNCTIONS: &[BuiltinScalarFunction] = &[
     builtin!("SUSER_NAME" => |args, _row, ctx, _catalog, _storage, _clock| {
         system::identity::eval_suser_sname(args, ctx)
     }),
-    builtin!("SUSER_SID" => |_args, _row, _ctx, _catalog, _storage, _clock| {
-        Ok(Value::VarBinary(vec![0x01, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x15, 0x00, 0x00, 0x00]))
-    }),
+    builtin!("SUSER_SID" => system::identity::eval_suser_sid),
     builtin!("USER_NAME" => |args, _row, ctx, _catalog, _storage, _clock| {
         system::identity::eval_user_name(args, ctx)
     }),
     builtin!("USER_ID" => |args, _row, ctx, _catalog, _storage, _clock| {
         system::identity::eval_user_id(args, ctx)
     }),
-    builtin!("USER_SID" => |_args, _row, _ctx, _catalog, _storage, _clock| {
-        Ok(Value::VarBinary(vec![0x01, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x15, 0x00, 0x00, 0x00]))
-    }),
+    builtin!("USER_SID" => system::identity::eval_user_sid),
     builtin!("DATABASE_PRINCIPAL_ID" => system::identity::eval_database_principal_id),
     builtin!("DATABASE_PRINCIPAL_NAME" => system::identity::eval_database_principal_name),
     builtin!("APP_NAME" => |args, _row, ctx, _catalog, _storage, _clock| {
@@ -195,6 +191,8 @@ const SYSTEM_FUNCTIONS: &[BuiltinScalarFunction] = &[
     builtin!("FULLTEXTSERVICEPROPERTY" => system::properties::eval_fulltextserviceproperty),
     builtin!("CONNECTIONPROPERTY" => system::properties::eval_connectionproperty),
     builtin!("SESSIONPROPERTY" => system::properties::eval_sessionproperty),
+    builtin!("CONTEXT_INFO" => system::properties::eval_context_info),
+    builtin!("SESSION_CONTEXT" => system::properties::eval_session_context),
     builtin!("IS_SRVROLEMEMBER" => system::identity::eval_is_srvrolemember),
     builtin!("HAS_DBACCESS" => system::identity::eval_has_dbaccess),
     builtin!("HAS_PERMS_BY_NAME" => system::identity::eval_has_perms_by_name),

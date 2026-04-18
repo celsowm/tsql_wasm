@@ -330,4 +330,52 @@ pub(crate) fn eval_identity(ctx: &ExecutionContext) -> Value {
         .unwrap_or(Value::Null)
 }
 
+pub(crate) fn eval_suser_sid(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() > 1 {
+        return Err(DbError::Execution(
+            "SUSER_SID expects 0 or 1 arguments".into(),
+        ));
+    }
+    if !args.is_empty() {
+        let v = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+        if v.is_null() {
+            return Ok(Value::Null);
+        }
+    }
+    // Return a standard dummy SID: S-1-5-18 (LocalSystem) or similar
+    Ok(Value::VarBinary(vec![
+        0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x12, 0x00, 0x00, 0x00,
+    ]))
+}
+
+pub(crate) fn eval_user_sid(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() > 1 {
+        return Err(DbError::Execution(
+            "USER_SID expects 0 or 1 arguments".into(),
+        ));
+    }
+    if !args.is_empty() {
+        let v = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+        if v.is_null() {
+            return Ok(Value::Null);
+        }
+    }
+    Ok(Value::VarBinary(vec![
+        0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x12, 0x00, 0x00, 0x00,
+    ]))
+}
 

@@ -165,7 +165,13 @@ fn parse_statement_inner(parser: &mut Parser) -> ParseResult<Statement> {
             }
             Keyword::Set => {
                 let _ = parser.next();
-                parse_set_dispatch(parser)
+                if parser.at_keyword(Keyword::ContextInfo) {
+                    let _ = parser.next();
+                    let expr = parse_expr(parser)?;
+                    Ok(Statement::Session(SessionStatement::SetContextInfo(expr)))
+                } else {
+                    parse_set_dispatch(parser)
+                }
             }
             Keyword::If => {
                 let _ = parser.next();

@@ -2,6 +2,7 @@ use crate::ast::{DmlStatement, IsolationLevel, SessionStatement, Statement};
 use crate::catalog::Catalog;
 use crate::error::{DbError, StmtOutcome, StmtResult};
 use crate::storage::Storage;
+use crate::types::Value;
 
 use super::super::clock::Clock;
 use super::super::clock::SystemClock;
@@ -60,7 +61,7 @@ where
 }
 
 /// S3: Extract session option handling from the main dispatch function.
-fn handle_session_statement<C, S>(
+fn handle_session_statement<C: Catalog, S: Storage>(
     state: &SharedState<C, S>,
     session_id: SessionId,
     stmt: &Statement,
@@ -93,6 +94,36 @@ fn handle_session_statement<C, S>(
         }
         ctx.options.identity_insert = session_options.identity_insert.clone();
         Some(Ok(StmtOutcome::Ok(None)))
+    } else if let Statement::Session(SessionStatement::SetContextInfo(ref expr)) = stmt {
+        let storage_guard = state.storage.read();
+        let (catalog, storage) = storage_guard.get_refs();
+        match crate::executor::evaluator::eval_expr(expr, &[], ctx, catalog as &dyn Catalog, storage as &dyn Storage, &SystemClock) {
+            Ok(val) => {
+                let bytes = match val {
+                    Value::Null => vec![0u8; 128],
+                    Value::Binary(mut b) | Value::VarBinary(mut b) => {
+                        if b.len() > 128 {
+                            b.truncate(128);
+                        } else {
+                            b.resize(128, 0);
+                        }
+                        b
+                    }
+                    _ => {
+                        let mut b = val.to_string_value().into_bytes();
+                        if b.len() > 128 {
+                            b.truncate(128);
+                        } else {
+                            b.resize(128, 0);
+                        }
+                        b
+                    }
+                };
+                *ctx.session.context_info = bytes;
+                Some(Ok(StmtOutcome::Ok(None)))
+            }
+            Err(e) => Some(Err(e)),
+        }
     } else {
         None
     }

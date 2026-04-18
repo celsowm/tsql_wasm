@@ -110,6 +110,7 @@ pub enum SessionStatement {
     SetTransactionIsolationLevel(IsolationLevel),
     SetOption(SetOptionStmt),
     SetIdentityInsert(SetIdentityInsertStmt),
+    SetContextInfo(Expr),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]

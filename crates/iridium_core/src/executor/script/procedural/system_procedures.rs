@@ -14,6 +14,7 @@ const SYSTEM_PROCEDURES: &[&str] = &[
     "sp_columns",
     "sp_tables",
     "sp_helpindex",
+    "sp_set_session_context",
 ];
 
 pub(crate) fn is_system_procedure(name: &str) -> bool {
@@ -42,6 +43,8 @@ pub(crate) fn execute_system_procedure(
         execute_sp_tables(exec)?
     } else if name.eq_ignore_ascii_case("sp_helpindex") {
         execute_sp_helpindex(exec, &args)?
+    } else if name.eq_ignore_ascii_case("sp_set_session_context") {
+        execute_sp_set_session_context(stmt, ctx, exec)?
     } else {
         return Err(DbError::Execution(format!(
             "unknown system procedure '{}'",
@@ -390,6 +393,49 @@ fn execute_sp_helpindex(
         rows,
         ..Default::default()
     })
+}
+
+fn execute_sp_set_session_context(
+    stmt: &ExecProcedureStmt,
+    ctx: &mut ExecutionContext<'_>,
+    exec: &mut ScriptExecutor<'_>,
+) -> Result<QueryResult, DbError> {
+    let mut key = String::new();
+    let mut value = Value::Null;
+    let mut read_only = false;
+
+    for arg in &stmt.args {
+        let val = eval_expr(&arg.expr, &[], ctx, exec.catalog, exec.storage, exec.clock)?;
+        match arg.name.as_ref().map(|s| s.to_ascii_lowercase()) {
+            Some(ref n) if n == "@key" => key = val.to_string_value(),
+            Some(ref n) if n == "@value" => value = val,
+            Some(ref n) if n == "@read_only" => read_only = val.to_bool().unwrap_or(false),
+            _ => {
+                // Positional arguments fallback if needed, but MSSQL usually uses named for this
+            }
+        }
+    }
+
+    if key.is_empty() {
+        return Err(DbError::Execution(
+            "sp_set_session_context: @key is required".into(),
+        ));
+    }
+
+    if let Some((_, is_ro)) = ctx.session.session_context.get(&key) {
+        if *is_ro {
+            return Err(DbError::Execution(format!(
+                "Cannot set value for read-only session context key '{}'",
+                key
+            )));
+        }
+    }
+
+    ctx.session
+        .session_context
+        .insert(key, (value, read_only));
+
+    Ok(QueryResult::default())
 }
 
 fn execute_sp_tables(exec: &mut ScriptExecutor<'_>) -> Result<QueryResult, DbError> {

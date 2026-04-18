@@ -284,6 +284,7 @@ define_keywords! {
 
     // SET options
     NoCount => "NOCOUNT",
+    ContextInfo => "CONTEXT_INFO",
 
     // DML pseudo-tables
     Inserted => "INSERTED",

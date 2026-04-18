@@ -432,6 +432,8 @@ where
         &mut cursors.next_cursor_handle,
         &mut cursors.handle_map,
         &mut diagnostics.print_output,
+        &mut session.context_info,
+        &mut session.session_context,
         dirty_buffer,
         session_id,
         original_database.clone(),

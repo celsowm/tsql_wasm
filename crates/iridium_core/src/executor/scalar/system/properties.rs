@@ -170,3 +170,45 @@ pub(crate) fn eval_connectionproperty(
 pub(crate) fn eval_microsoft_version() -> Value {
     Value::Int(0x1000_1009)
 }
+
+pub(crate) fn eval_context_info(
+    args: &[Expr],
+    _row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    _catalog: &dyn Catalog,
+    _storage: &dyn Storage,
+    _clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if !args.is_empty() {
+        return Err(DbError::Execution(
+            "CONTEXT_INFO expects no arguments".into(),
+        ));
+    }
+    Ok(Value::VarBinary(ctx.session.context_info.clone()))
+}
+
+pub(crate) fn eval_session_context(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution(
+            "SESSION_CONTEXT expects 1 argument".into(),
+        ));
+    }
+    let key_val = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if key_val.is_null() {
+        return Ok(Value::Null);
+    }
+    let key = key_val.to_string_value();
+    Ok(ctx
+        .session
+        .session_context
+        .get(&key)
+        .map(|(v, _)| v.clone())
+        .unwrap_or(Value::Null))
+}

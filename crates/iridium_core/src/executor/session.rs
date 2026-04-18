@@ -6,6 +6,7 @@ use serde::Serialize;
 use crate::catalog::Catalog;
 use crate::error::DbError;
 use crate::storage::Storage;
+use crate::types::Value;
 
 use super::clock::{Clock, SystemClock};
 use super::context::Variables;
@@ -119,6 +120,8 @@ pub struct SessionSnapshot {
     pub cursors: CursorState,
     pub options: SessionOptions,
     pub random_state: u64,
+    pub context_info: Vec<u8>,
+    pub session_context: HashMap<String, (Value, bool)>,
 }
 
 #[derive(Debug, Clone)]
@@ -160,6 +163,8 @@ pub struct SessionRuntime<C, S> {
     pub(crate) user: Option<String>,
     pub(crate) app_name: Option<String>,
     pub(crate) host_name: Option<String>,
+    pub(crate) context_info: Vec<u8>,
+    pub(crate) session_context: HashMap<String, (Value, bool)>,
     pub(crate) bulk_load_active: bool,
     pub(crate) bulk_load_table: Option<crate::ast::ObjectName>,
     pub(crate) bulk_load_columns: Option<Vec<crate::ast::statements::ddl::ColumnSpec>>,
@@ -189,6 +194,8 @@ where
             user: None,
             app_name: None,
             host_name: None,
+            context_info: vec![0u8; 128],
+            session_context: HashMap::new(),
             bulk_load_active: false,
             bulk_load_table: None,
             bulk_load_columns: None,
@@ -211,6 +218,8 @@ where
         self.user = None;
         self.app_name = None;
         self.host_name = None;
+        self.context_info = vec![0u8; 128];
+        self.session_context.clear();
         self.bulk_load_active = false;
         self.bulk_load_table = None;
         self.bulk_load_columns = None;
