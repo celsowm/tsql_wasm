@@ -88,3 +88,7 @@ cargo test -p iridium_server -- --ignored
 3. Add executor in `iridium_core/src/executor/`
 4. Update exports in `iridium_core/src/lib.rs`
 
+**Keep versions synchronized before commits:**
+1. Run `pwsh scripts/install-hooks.ps1` once per clone to enable the local pre-commit hook.
+2. The hook runs `scripts/version-sync.mjs bump` so npm and crate versions stay aligned automatically.
+
