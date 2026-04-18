@@ -3,15 +3,41 @@ name: Publish npm package
 on:
   workflow_dispatch:
   push:
-    tags:
-      - "iridium-client-v*"
+    branches:
+      - main
 
 permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: publish-npm-main
+  cancel-in-progress: false
+
 jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      npm_local_version: ${{ steps.status.outputs.npm_local_version }}
+      npm_remote_version: ${{ steps.status.outputs.npm_remote_version }}
+      npm_should_publish: ${{ steps.status.outputs.npm_should_publish }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Check npm registry status
+        id: status
+        run: node scripts/release-status.mjs
+
   publish:
+    needs: detect
+    if: needs.detect.outputs.npm_should_publish == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -30,6 +56,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
+          registry-url: https://registry.npmjs.org
 
       - name: Install wasm-pack
         run: cargo install wasm-pack --locked
@@ -41,6 +68,4 @@ jobs:
         run: npm run build
 
       - name: Publish package
-        run: npm publish --access public --provenance --ignore-scripts
-        env:
-          NODE_AUTH_TOKEN: ""
+        run: npm publish --access public --ignore-scripts
