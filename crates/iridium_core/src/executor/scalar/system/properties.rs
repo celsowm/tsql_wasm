@@ -169,6 +169,42 @@ pub(crate) fn eval_connectionproperty(
     })
 }
 
+pub(crate) fn eval_collationproperty(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution(
+            "COLLATIONPROPERTY expects 2 arguments".into(),
+        ));
+    }
+
+    let collation = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let property = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+    if collation.is_null() || property.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let collation_name = collation.to_string_value().to_ascii_uppercase();
+    let property_name = property.to_string_value().to_ascii_uppercase();
+
+    match property_name.as_str() {
+        "LCID" => Ok(match collation_name.as_str() {
+            "SQL_LATIN1_GENERAL_CP1_CI_AS" | "LATIN1_GENERAL_CI_AS" => Value::Int(1033),
+            _ => Value::Null,
+        }),
+        "COMPARISONSTYLE" => Ok(match collation_name.as_str() {
+            "SQL_LATIN1_GENERAL_CP1_CI_AS" | "LATIN1_GENERAL_CI_AS" => Value::Int(196609),
+            _ => Value::Null,
+        }),
+        _ => Ok(Value::Null),
+    }
+}
+
 pub(crate) fn eval_microsoft_version() -> Value {
     Value::Int(0x1000_1009)
 }

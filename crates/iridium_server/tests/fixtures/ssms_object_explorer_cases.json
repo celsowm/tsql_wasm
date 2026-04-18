@@ -190,6 +190,22 @@
       ]
     },
     {
+      "name": "bootstrap_collation_property_probe",
+      "scope": "bootstrap",
+      "sql": "DECLARE @dbname nvarchar(11) = N'iridium_sql'; SELECT COLLATIONPROPERTY((select collation_name from sys.databases where name = ISNULL(@dbname, db_name())), 'LCID') AS [Lcid], COLLATIONPROPERTY((select collation_name from sys.databases where name = ISNULL(@dbname, db_name())), 'ComparisonStyle') AS [ComparisonStyle]",
+      "must_succeed": true,
+      "result_set_count": 1,
+      "result_sets": [
+        {
+          "required_columns": [
+            "Lcid",
+            "ComparisonStyle"
+          ],
+          "min_rows": 1
+        }
+      ]
+    },
+    {
       "name": "database_property_collation_probe",
       "scope": "database_properties",
       "sql": "SELECT DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS [DatabaseCollation], DATABASEPROPERTYEX(DB_NAME(), 'IsReadOnly') AS [DatabaseIsReadOnly]",

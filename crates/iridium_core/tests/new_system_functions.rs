@@ -118,6 +118,18 @@ fn test_sql_server_handshake_probe_functions() {
 }
 
 #[test]
+fn test_collationproperty_probe() {
+    let mut engine = Engine::new();
+    let r = query(
+        &mut engine,
+        "SELECT COLLATIONPROPERTY(N'SQL_Latin1_General_CP1_CI_AS', 'LCID') AS lcid, COLLATIONPROPERTY(N'SQL_Latin1_General_CP1_CI_AS', 'ComparisonStyle') AS comparison_style",
+    );
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0][0], Value::Int(1033));
+    assert_eq!(r.rows[0][1], Value::Int(196609));
+}
+
+#[test]
 fn test_serverproperty_is_hadr_enabled_probe() {
     let mut engine = Engine::new();
     let r = query(

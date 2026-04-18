@@ -190,6 +190,7 @@ const SYSTEM_FUNCTIONS: &[BuiltinScalarFunction] = &[
     builtin!("SERVERPROPERTY" => system::properties::eval_serverproperty),
     builtin!("FULLTEXTSERVICEPROPERTY" => system::properties::eval_fulltextserviceproperty),
     builtin!("CONNECTIONPROPERTY" => system::properties::eval_connectionproperty),
+    builtin!("COLLATIONPROPERTY" => system::properties::eval_collationproperty),
     builtin!("SESSIONPROPERTY" => system::properties::eval_sessionproperty),
     builtin!("CONTEXT_INFO" => system::properties::eval_context_info),
     builtin!("SESSION_CONTEXT" => system::properties::eval_session_context),

@@ -1,7 +1,9 @@
+mod change_tracking;
 mod constraints;
 mod database_principals;
 mod dm_db;
 mod dm_os;
+mod fulltext_indexes;
 mod hadr;
 mod host_info;
 mod indexes;
@@ -158,6 +160,12 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(database_principals::SysDatabasePermissions))
     } else if name.eq_ignore_ascii_case("database_role_members") {
         Some(Box::new(database_principals::SysDatabaseRoleMembers))
+    } else if name.eq_ignore_ascii_case("change_tracking_tables") {
+        Some(Box::new(change_tracking::SysChangeTrackingTables))
+    } else if name.eq_ignore_ascii_case("fulltext_indexes") {
+        Some(Box::new(fulltext_indexes::SysFullTextIndexes))
+    } else if name.eq_ignore_ascii_case("fulltext_catalogs") {
+        Some(Box::new(fulltext_indexes::SysFullTextCatalogs))
     } else {
         None
     }
