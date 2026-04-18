@@ -192,4 +192,3 @@ fn test_top() {
     let result = engine.execute(stmt).unwrap().unwrap();
     assert_eq!(result.rows.len(), 3);
 }
-

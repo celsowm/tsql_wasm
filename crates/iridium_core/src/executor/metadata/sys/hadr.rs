@@ -243,4 +243,3 @@ impl VirtualTable for SysDatabaseFiles {
         }]
     }
 }
-

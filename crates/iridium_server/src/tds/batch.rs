@@ -1,7 +1,7 @@
 use super::packet::{PacketBuilder, PacketReader};
 use super::type_mapping::infer_column_types;
-use std::io;
 use iridium_core::error::DbError;
+use std::io;
 
 pub fn parse_sql_batch(data: &[u8]) -> io::Result<String> {
     let mut reader = PacketReader::new(data);
@@ -91,4 +91,3 @@ pub fn build_error_response(err: &DbError) -> BatchResult {
 
     BatchResult { data: b.into_vec() }
 }
-

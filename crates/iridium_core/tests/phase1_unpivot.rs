@@ -464,4 +464,3 @@ fn test_unpivot_no_source_alias() {
     assert_eq!(r.rows[0][0], Value::VarChar("East".to_string()));
     assert_eq!(r.rows[0][1], Value::VarChar("Q1".to_string()));
 }
-

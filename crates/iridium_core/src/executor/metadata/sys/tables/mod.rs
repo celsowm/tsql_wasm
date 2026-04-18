@@ -18,9 +18,9 @@ pub(crate) use tables::SysTables;
 pub(crate) use types::{SysTableTypes, SysTypes};
 
 use super::super::virtual_table_def;
-use crate::executor::context::ExecutionContext;
 use super::super::VirtualTable;
 use crate::catalog::Catalog;
+use crate::executor::context::ExecutionContext;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 

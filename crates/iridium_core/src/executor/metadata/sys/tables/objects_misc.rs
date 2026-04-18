@@ -62,7 +62,11 @@ impl VirtualTable for SysTriggerEvents {
                 ("is_first", DataType::Bit, false),
                 ("is_last", DataType::Bit, false),
                 ("event_group_type", DataType::Int, true),
-                ("event_group_type_desc", DataType::NVarChar { max_len: 60 }, true),
+                (
+                    "event_group_type_desc",
+                    DataType::NVarChar { max_len: 60 },
+                    true,
+                ),
                 ("is_trigger_event", DataType::Bit, false),
             ],
         )
@@ -627,7 +631,11 @@ impl VirtualTable for SysSynonyms {
                 ("is_ms_shipped", DataType::Bit, false),
                 ("is_published", DataType::Bit, false),
                 ("is_schema_published", DataType::Bit, false),
-                ("base_object_name", DataType::NVarChar { max_len: 1035 }, true),
+                (
+                    "base_object_name",
+                    DataType::NVarChar { max_len: 1035 },
+                    true,
+                ),
             ],
         )
     }
@@ -644,11 +652,7 @@ impl VirtualTable for SysSynonyms {
             .get_synonyms()
             .iter()
             .map(|s| {
-                let base_name = format!(
-                    "{}.{}",
-                    s.base_object.schema_or_dbo(),
-                    s.base_object.name
-                );
+                let base_name = format!("{}.{}", s.base_object.schema_or_dbo(), s.base_object.name);
                 StoredRow {
                     values: vec![
                         Value::VarChar(s.name.clone()),

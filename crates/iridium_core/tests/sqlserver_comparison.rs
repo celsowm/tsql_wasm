@@ -1,7 +1,7 @@
+use iridium_core::{parse_sql, types::Value, Engine};
 use tiberius::{Client, Config, Row};
 use tokio::net::TcpStream;
 use tokio_util::compat::TokioAsyncWriteCompatExt;
-use iridium_core::{parse_sql, types::Value, Engine};
 
 /// Helper to convert engine Value to a string representation that matches SQL Server's TDS output
 fn engine_val_to_string(val: &Value) -> String {
@@ -72,7 +72,10 @@ async fn get_sqlserver_client() -> Client<tokio_util::compat::Compat<TcpStream>>
 async fn sqlserver_supports_vector() -> bool {
     let mut client = get_sqlserver_client().await;
     let stream = client
-        .query("SELECT CASE WHEN TYPE_ID('vector') IS NULL THEN 0 ELSE 1 END", &[])
+        .query(
+            "SELECT CASE WHEN TYPE_ID('vector') IS NULL THEN 0 ELSE 1 END",
+            &[],
+        )
         .await
         .expect("Failed to probe SQL Server VECTOR support");
     let rows = stream
@@ -121,10 +124,7 @@ async fn compare_after_setup(setup_sqls: &[&str], sql: &str) {
 
     for setup_sql in setup_sqls {
         engine.exec(setup_sql).expect(setup_sql);
-        client
-            .execute(*setup_sql, &[])
-            .await
-            .expect(setup_sql);
+        client.execute(*setup_sql, &[]).await.expect(setup_sql);
     }
 
     let stmt = parse_sql(sql).expect("Failed to parse SQL for engine");
@@ -148,7 +148,11 @@ async fn compare_after_setup(setup_sqls: &[&str], sql: &str) {
         .expect("Failed to get results from SQL Server");
     let ss_rows: Vec<Vec<String>> = ss_rows_raw.iter().map(tiberius_row_to_strings).collect();
 
-    assert_eq!(engine_rows, ss_rows, "Mismatch for SQL after setup: {}", sql);
+    assert_eq!(
+        engine_rows, ss_rows,
+        "Mismatch for SQL after setup: {}",
+        sql
+    );
     println!("Success comparing after setup: {}", sql);
 }
 
@@ -207,10 +211,7 @@ async fn test_compare_greatest_least() {
 #[tokio::test]
 #[ignore]
 async fn test_compare_string_split_with_ordinal() {
-    compare(
-        "SELECT value, ordinal FROM STRING_SPLIT('a,b,c', ',', 1) ORDER BY ordinal",
-    )
-    .await;
+    compare("SELECT value, ordinal FROM STRING_SPLIT('a,b,c', ',', 1) ORDER BY ordinal").await;
 }
 
 #[tokio::test]

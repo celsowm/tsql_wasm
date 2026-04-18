@@ -61,7 +61,11 @@ fn column_table_def(name: &str, include_sparse: bool) -> crate::catalog::TableDe
         ("is_dropped_ledger_column", DataType::Bit, false),
         ("vector_dimensions", DataType::Int, true),
         ("vector_base_type", DataType::TinyInt, true),
-        ("vector_base_type_desc", DataType::VarChar { max_len: 10 }, true),
+        (
+            "vector_base_type_desc",
+            DataType::VarChar { max_len: 10 },
+            true,
+        ),
     ];
     if include_sparse {
         cols.push(("is_sparse", DataType::Bit, false));
@@ -143,8 +147,7 @@ fn column_rows(catalog: &dyn Catalog, include_sparse: bool) -> Vec<StoredRow> {
         for (i, c) in tt.columns.iter().enumerate() {
             let dt = crate::executor::type_mapping::data_type_spec_to_runtime(&c.data_type);
             let (precision, scale) = precision_scale(&dt);
-            let (vector_dimensions, vector_base_type, vector_base_type_desc) =
-                vector_metadata(&dt);
+            let (vector_dimensions, vector_base_type, vector_base_type_desc) = vector_metadata(&dt);
             let mut values = vec![
                 Value::Int(tt.object_id),
                 Value::Int((i + 1) as i32),
@@ -202,7 +205,11 @@ fn view_column_table_def() -> crate::catalog::TableDef {
             ("is_dropped_ledger_column", DataType::Bit, false),
             ("vector_dimensions", DataType::Int, true),
             ("vector_base_type", DataType::TinyInt, true),
-            ("vector_base_type_desc", DataType::VarChar { max_len: 10 }, true),
+            (
+                "vector_base_type_desc",
+                DataType::VarChar { max_len: 10 },
+                true,
+            ),
         ],
     )
 }
@@ -314,9 +321,9 @@ impl VirtualTable for SysComputedColumns {
                             Value::Bit(true),
                             Value::Bit(false),
                             Value::NVarChar(
-                                col.computed_expr
-                                    .as_ref()
-                                    .map_or(String::new(), |e| crate::executor::tooling::formatting::format_expr(e)),
+                                col.computed_expr.as_ref().map_or(String::new(), |e| {
+                                    crate::executor::tooling::formatting::format_expr(e)
+                                }),
                             ),
                         ],
                         deleted: false,

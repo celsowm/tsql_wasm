@@ -10,8 +10,8 @@ use std::sync::OnceLock;
 use crate::executor::clock::Clock;
 use crate::executor::context::ExecutionContext;
 use crate::executor::model::ContextTable;
-use crate::executor::scalar::{datetime, logic, math, metadata as tsql_metadata, string, system};
 use crate::executor::scalar::vector;
+use crate::executor::scalar::{datetime, logic, math, metadata as tsql_metadata, string, system};
 use crate::executor::{fuzzy, json, metadata as exec_metadata, regexp};
 
 pub(crate) type ScalarHandler = for<'a> fn(

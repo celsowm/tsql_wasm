@@ -7,10 +7,10 @@ use crate::types::Value;
 use super::super::clock::Clock;
 use super::super::clock::SystemClock;
 use super::super::context::ExecutionContext;
+use super::super::database_catalog::{database_id_for_name, database_name_for_id};
 use super::super::dirty_buffer;
 use super::super::journal::{Journal, JournalEvent};
 use super::super::locks::{LockTable, SessionId, TxWorkspace};
-use super::super::metadata::database_catalog::{database_id_for_name, database_name_for_id};
 use super::super::result::QueryResult;
 use super::super::script::ScriptExecutor;
 use super::super::session::{SessionSnapshot, SharedState};
@@ -112,7 +112,14 @@ fn handle_session_statement<C: Catalog, S: Storage>(
     } else if let Statement::Session(SessionStatement::SetContextInfo(ref expr)) = stmt {
         let storage_guard = state.storage.read();
         let (catalog, storage) = storage_guard.get_refs();
-        match crate::executor::evaluator::eval_expr(expr, &[], ctx, catalog as &dyn Catalog, storage as &dyn Storage, &SystemClock) {
+        match crate::executor::evaluator::eval_expr(
+            expr,
+            &[],
+            ctx,
+            catalog as &dyn Catalog,
+            storage as &dyn Storage,
+            &SystemClock,
+        ) {
             Ok(val) => {
                 let bytes = match val {
                     Value::Null => vec![0u8; 128],

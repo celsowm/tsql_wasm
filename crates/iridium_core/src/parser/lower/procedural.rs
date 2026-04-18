@@ -65,16 +65,14 @@ pub fn lower_procedural(
                 },
             ),
         )),
-        ast::ProceduralStatement::Synonym { name, base_object } => {
-            Ok(executor_ast::Statement::Ddl(
-                executor_ast::statements::DdlStatement::CreateSynonym(
-                    executor_ast::statements::ddl::CreateSynonymStmt {
-                        name: lower_object_name(name),
-                        base_object: lower_object_name(base_object),
-                    },
-                ),
-            ))
-        }
+        ast::ProceduralStatement::Synonym { name, base_object } => Ok(
+            executor_ast::Statement::Ddl(executor_ast::statements::DdlStatement::CreateSynonym(
+                executor_ast::statements::ddl::CreateSynonymStmt {
+                    name: lower_object_name(name),
+                    base_object: lower_object_name(base_object),
+                },
+            )),
+        ),
         ast::ProceduralStatement::Sequence {
             name,
             data_type,

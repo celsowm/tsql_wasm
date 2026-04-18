@@ -400,4 +400,3 @@ mod tests {
         assert!(bytes.windows(4).any(|w| w == [0x02, 0x00, 0x01, 0x02]));
     }
 }
-

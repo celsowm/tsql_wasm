@@ -202,4 +202,3 @@ fn test_outer_apply_multiple_rows() {
     // Alice: 2 rows (100, 200), Bob: 1 row (50), Charlie: 1 row (NULL) → 4 rows
     assert_eq!(r.rows.len(), 4);
 }
-

@@ -263,4 +263,3 @@ fn migration_drop_foreign_key() {
     );
     assert_eq!(r.rows.len(), 0);
 }
-

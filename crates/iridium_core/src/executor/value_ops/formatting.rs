@@ -14,7 +14,9 @@ pub fn convert_with_style(
         Value::Null => Ok(Value::Null),
         Value::Date(v) => convert_date_to_string(v, ty, style),
         Value::Time(v) => convert_time_to_string(v, ty, style),
-        Value::DateTime(v) | Value::DateTime2(v) | Value::SmallDateTime(v) => convert_datetime_to_string(v, ty, style),
+        Value::DateTime(v) | Value::DateTime2(v) | Value::SmallDateTime(v) => {
+            convert_datetime_to_string(v, ty, style)
+        }
         Value::DateTimeOffset(ref s) => convert_string_to_datetime(s, ty, style, dateformat),
         Value::VarChar(ref s)
         | Value::NVarChar(ref s)
@@ -62,7 +64,9 @@ fn convert_datetime_to_string(
         DataType::VarChar { .. } => Ok(Value::VarChar(formatted)),
         DataType::NChar { len } => Ok(Value::NChar(pad_right(&formatted, *len as usize))),
         DataType::NVarChar { .. } => Ok(Value::NVarChar(formatted)),
-        DataType::DateTime | DataType::DateTime2 | DataType::SmallDateTime => Ok(Value::DateTime(dt)),
+        DataType::DateTime | DataType::DateTime2 | DataType::SmallDateTime => {
+            Ok(Value::DateTime(dt))
+        }
         DataType::DateTimeOffset => Ok(Value::DateTimeOffset(formatted)),
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::DateTime(dt)))),
         _ => coerce_value_to_type(Value::VarChar(formatted), ty),

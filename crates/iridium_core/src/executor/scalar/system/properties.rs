@@ -102,9 +102,11 @@ pub(crate) fn eval_sessionproperty(
         "ANSI_PADDING" => Value::Int(if ctx.options.ansi_padding { 1 } else { 0 }),
         "ANSI_WARNINGS" => Value::Int(if ctx.options.ansi_warnings { 1 } else { 0 }),
         "ARITHABORT" => Value::Int(if ctx.options.arithabort { 1 } else { 0 }),
-        "CONCAT_NULL_YIELDS_NULL" => {
-            Value::Int(if ctx.options.concat_null_yields_null { 1 } else { 0 })
-        }
+        "CONCAT_NULL_YIELDS_NULL" => Value::Int(if ctx.options.concat_null_yields_null {
+            1
+        } else {
+            0
+        }),
         "NUMERIC_ROUNDABORT" => Value::Int(0),
         "QUOTED_IDENTIFIER" => Value::Int(if ctx.options.quoted_identifier { 1 } else { 0 }),
         _ => Value::Null,

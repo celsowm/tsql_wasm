@@ -1,7 +1,7 @@
-use std::sync::Arc;
-use std::thread;
 use iridium_core::types::Value;
 use iridium_core::{parse_sql, Database};
+use std::sync::Arc;
+use std::thread;
 
 #[test]
 fn test_concurrent_inserts_different_tables() {
@@ -125,4 +125,3 @@ fn test_concurrent_updates_same_table_lock_conflict() {
     h1.join().unwrap();
     h2.join().unwrap();
 }
-

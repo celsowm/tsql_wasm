@@ -7,11 +7,11 @@
 
 #![allow(dead_code)]
 
+use iridium_core::Database;
+use iridium_server::{ServerConfig, TdsServer};
 use tiberius::{Client, Config};
 use tokio::net::TcpStream;
 use tokio_util::compat::TokioAsyncWriteCompatExt;
-use iridium_core::Database;
-use iridium_server::{ServerConfig, TdsServer};
 
 /// Read Azure SQL Edge connection info from environment or defaults.
 fn azure_config() -> Config {
@@ -140,18 +140,27 @@ async fn test_compare_cursor_fetch() {
     let mut azure = connect_azure().await;
 
     // Create table
-    azure.execute(
-        "IF OBJECT_ID('dbo.compare_cursor', 'U') IS NOT NULL DROP TABLE dbo.compare_cursor",
-        &[],
-    ).await.unwrap();
-    azure.execute(
-        "CREATE TABLE dbo.compare_cursor (id INT PRIMARY KEY, val VARCHAR(50))",
-        &[],
-    ).await.unwrap();
-    azure.execute(
-        "INSERT INTO dbo.compare_cursor VALUES (1, 'one'), (2, 'two'), (3, 'three')",
-        &[],
-    ).await.unwrap();
+    azure
+        .execute(
+            "IF OBJECT_ID('dbo.compare_cursor', 'U') IS NOT NULL DROP TABLE dbo.compare_cursor",
+            &[],
+        )
+        .await
+        .unwrap();
+    azure
+        .execute(
+            "CREATE TABLE dbo.compare_cursor (id INT PRIMARY KEY, val VARCHAR(50))",
+            &[],
+        )
+        .await
+        .unwrap();
+    azure
+        .execute(
+            "INSERT INTO dbo.compare_cursor VALUES (1, 'one'), (2, 'two'), (3, 'three')",
+            &[],
+        )
+        .await
+        .unwrap();
 
     // Test cursor fetch on Azure
     let azure_rows = query_client(
@@ -174,7 +183,10 @@ async fn test_compare_cursor_fetch() {
     assert_eq!(azure_rows[0][1], "one");
 
     // Clean up
-    azure.execute("DROP TABLE dbo.compare_cursor", &[]).await.unwrap();
+    azure
+        .execute("DROP TABLE dbo.compare_cursor", &[])
+        .await
+        .unwrap();
 }
 
 /// Compare @@FETCH_STATUS behavior.
@@ -184,12 +196,19 @@ async fn test_compare_fetch_status() {
     let mut azure = connect_azure().await;
 
     // Create table
-    azure.execute(
-        "IF OBJECT_ID('dbo.fetch_compare', 'U') IS NOT NULL DROP TABLE dbo.fetch_compare",
-        &[],
-    ).await.unwrap();
-    azure.execute("CREATE TABLE dbo.fetch_compare (id INT)", &[]).await.unwrap();
-    azure.execute("INSERT INTO dbo.fetch_compare VALUES (1), (2)", &[])
+    azure
+        .execute(
+            "IF OBJECT_ID('dbo.fetch_compare', 'U') IS NOT NULL DROP TABLE dbo.fetch_compare",
+            &[],
+        )
+        .await
+        .unwrap();
+    azure
+        .execute("CREATE TABLE dbo.fetch_compare (id INT)", &[])
+        .await
+        .unwrap();
+    azure
+        .execute("INSERT INTO dbo.fetch_compare VALUES (1), (2)", &[])
         .await
         .unwrap();
 
@@ -211,13 +230,17 @@ async fn test_compare_fetch_status() {
         DEALLOCATE cur;
         SELECT @status1 as s1, @status2 as s2, @status3 as s3;
         "#,
-    ).await;
+    )
+    .await;
 
     // Azure returns: 0, 0, -1
     assert_eq!(azure_rows[0], vec!["0", "0", "-1"]);
 
     // Cleanup
-    azure.execute("DROP TABLE dbo.fetch_compare", &[]).await.unwrap();
+    azure
+        .execute("DROP TABLE dbo.fetch_compare", &[])
+        .await
+        .unwrap();
 }
 
 /// Compare cursor WITH HOLD behavior (if supported).
@@ -227,14 +250,19 @@ async fn test_compare_cursor_scroll() {
     let mut azure = connect_azure().await;
 
     // Create table
-    azure.execute(
-        "IF OBJECT_ID('dbo.scroll_test', 'U') IS NOT NULL DROP TABLE dbo.scroll_test",
-        &[],
-    ).await.unwrap();
-    azure.execute("CREATE TABLE dbo.scroll_test (id INT PRIMARY KEY)", &[])
+    azure
+        .execute(
+            "IF OBJECT_ID('dbo.scroll_test', 'U') IS NOT NULL DROP TABLE dbo.scroll_test",
+            &[],
+        )
         .await
         .unwrap();
-    azure.execute("INSERT INTO dbo.scroll_test VALUES (1), (2), (3)", &[])
+    azure
+        .execute("CREATE TABLE dbo.scroll_test (id INT PRIMARY KEY)", &[])
+        .await
+        .unwrap();
+    azure
+        .execute("INSERT INTO dbo.scroll_test VALUES (1), (2), (3)", &[])
         .await
         .unwrap();
 
@@ -250,13 +278,17 @@ async fn test_compare_cursor_scroll() {
         CLOSE cur;
         DEALLOCATE cur;
         "#,
-    ).await;
+    )
+    .await;
 
     // Azure should return the last row (id=3)
     assert_eq!(azure_rows[0][0], "3");
 
     // Cleanup
-    azure.execute("DROP TABLE dbo.scroll_test", &[]).await.unwrap();
+    azure
+        .execute("DROP TABLE dbo.scroll_test", &[])
+        .await
+        .unwrap();
 }
 
 /// Test that error messages are comparable.
@@ -266,16 +298,18 @@ async fn test_compare_cursor_errors() {
     let mut azure = connect_azure().await;
 
     // Test opening an undeclared cursor on Azure
-    let result = azure.query(
-        r#"
+    let result = azure
+        .query(
+            r#"
         DECLARE @id INT;
         OPEN undeclared_cursor;
         FETCH NEXT FROM undeclared_cursor INTO @id;
         CLOSE undeclared_cursor;
         DEALLOCATE undeclared_cursor;
         "#,
-        &[],
-    ).await;
+            &[],
+        )
+        .await;
 
     // Should fail with an error about cursor
     assert!(result.is_err(), "Azure should fail on undeclared cursor");
@@ -294,17 +328,27 @@ async fn test_compare_cursor_aggregation() {
     let mut azure = connect_azure().await;
 
     // Create table
-    azure.execute(
-        "IF OBJECT_ID('dbo.agg_cursor', 'U') IS NOT NULL DROP TABLE dbo.agg_cursor",
-        &[],
-    ).await.unwrap();
-    azure.execute("CREATE TABLE dbo.agg_cursor (cat VARCHAR(10), val INT)", &[])
+    azure
+        .execute(
+            "IF OBJECT_ID('dbo.agg_cursor', 'U') IS NOT NULL DROP TABLE dbo.agg_cursor",
+            &[],
+        )
         .await
         .unwrap();
-    azure.execute(
-        "INSERT INTO dbo.agg_cursor VALUES ('A', 10), ('A', 20), ('B', 30)",
-        &[],
-    ).await.unwrap();
+    azure
+        .execute(
+            "CREATE TABLE dbo.agg_cursor (cat VARCHAR(10), val INT)",
+            &[],
+        )
+        .await
+        .unwrap();
+    azure
+        .execute(
+            "INSERT INTO dbo.agg_cursor VALUES ('A', 10), ('A', 20), ('B', 30)",
+            &[],
+        )
+        .await
+        .unwrap();
 
     // Test cursor with aggregation
     let azure_rows = query_client(
@@ -318,12 +362,16 @@ async fn test_compare_cursor_aggregation() {
         CLOSE cur;
         DEALLOCATE cur;
         "#,
-    ).await;
+    )
+    .await;
 
     // Azure should return first group: A, 30
     assert_eq!(azure_rows[0][0], "A");
     assert_eq!(azure_rows[0][1], "30");
 
     // Cleanup
-    azure.execute("DROP TABLE dbo.agg_cursor", &[]).await.unwrap();
+    azure
+        .execute("DROP TABLE dbo.agg_cursor", &[])
+        .await
+        .unwrap();
 }

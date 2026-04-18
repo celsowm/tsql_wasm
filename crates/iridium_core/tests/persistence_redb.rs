@@ -1,6 +1,6 @@
-use tempfile::tempdir;
 use iridium_core::types::Value;
 use iridium_core::PersistentDatabase;
+use tempfile::tempdir;
 
 #[test]
 fn test_redb_persistence_roundtrip() {
@@ -95,4 +95,3 @@ fn test_redb_persistence_update_delete() {
         db.close_session(sid).unwrap();
     }
 }
-

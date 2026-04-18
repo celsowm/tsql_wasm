@@ -74,5 +74,3 @@ pub(crate) fn procedure_return_value(value: Option<Value>) -> Value {
         None => Value::Int(0),
     }
 }
-
-

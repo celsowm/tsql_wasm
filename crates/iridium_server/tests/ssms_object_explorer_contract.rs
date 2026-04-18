@@ -297,4 +297,3 @@ fn ssms_object_explorer_all_objects_contract() {
 fn ssms_object_explorer_metadata_dependencies_contract() {
     run_scope("metadata_dependencies");
 }
-

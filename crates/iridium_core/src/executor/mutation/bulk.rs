@@ -1,9 +1,9 @@
-use crate::ast::BulkInsertStmt;
-use crate::ast::InsertBulkStmt;
-use crate::error::DbError;
 use super::super::context::ExecutionContext;
 use super::super::result::QueryResult;
 use super::MutationExecutor;
+use crate::ast::BulkInsertStmt;
+use crate::ast::InsertBulkStmt;
+use crate::error::DbError;
 
 impl<'a> MutationExecutor<'a> {
     pub(crate) fn execute_bulk_insert(

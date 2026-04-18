@@ -23,7 +23,10 @@ pub fn parse_bulk_load_data(
 
     let token = reader.read_u8()?;
     if token != crate::tds::tokens::COLMETADATA_TOKEN {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, format!("Expected COLMETADATA (0x81), got 0x{:02X}", token)));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Expected COLMETADATA (0x81), got 0x{:02X}", token),
+        ));
     }
 
     let count = reader.read_u16_le()? as usize;
@@ -51,7 +54,10 @@ pub fn parse_bulk_load_data(
             break;
         }
         if token != crate::tds::tokens::ROW_TOKEN {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, format!("Expected ROW (0xD1), got 0x{:02X}", token)));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Expected ROW (0xD1), got 0x{:02X}", token),
+            ));
         }
 
         let mut row = Vec::with_capacity(count);

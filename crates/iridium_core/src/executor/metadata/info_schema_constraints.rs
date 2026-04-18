@@ -155,7 +155,9 @@ impl VirtualTable for CheckConstraints {
                         Value::VarChar(DB_CATALOG.to_string()),
                         Value::VarChar(schema.clone()),
                         Value::VarChar(chk.name.clone()),
-                        Value::VarChar(crate::executor::tooling::formatting::format_expr(&chk.expr)),
+                        Value::VarChar(crate::executor::tooling::formatting::format_expr(
+                            &chk.expr,
+                        )),
                     ],
                     deleted: false,
                 });

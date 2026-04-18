@@ -8,15 +8,17 @@ impl SequenceRegistry for CatalogImpl {
     }
 
     fn find_sequence(&self, schema: &str, name: &str) -> Option<&SequenceDef> {
-        let idx = self.sequence_map.get(&(
-            normalize_identifier(schema),
-            normalize_identifier(name),
-        ))?;
+        let idx = self
+            .sequence_map
+            .get(&(normalize_identifier(schema), normalize_identifier(name)))?;
         Some(&self.sequences[*idx])
     }
 
     fn create_sequence(&mut self, sequence: SequenceDef) -> Result<(), DbError> {
-        if self.find_sequence(&sequence.schema, &sequence.name).is_some() {
+        if self
+            .find_sequence(&sequence.schema, &sequence.name)
+            .is_some()
+        {
             return Err(DbError::Execution(format!(
                 "sequence '{}' already exists in schema '{}'",
                 sequence.name, sequence.schema

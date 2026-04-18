@@ -358,7 +358,8 @@ pub fn parse_primary(parser: &mut Parser) -> ParseResult<Expr> {
             let _ = parser.next();
             parser.expect_keyword(Keyword::Value)?;
             parser.expect_keyword(Keyword::For)?;
-            let sequence_name = crate::parser::parse::statements::query::parse_multipart_name(parser)?;
+            let sequence_name =
+                crate::parser::parse::statements::query::parse_multipart_name(parser)?;
             Ok(Expr::NextValueFor { sequence_name })
         }
         Some(Token::Keyword(k)) if matches!(parser.peek_at(1), Some(Token::LParen)) => {
@@ -893,8 +894,7 @@ pub fn parse_data_type(parser: &mut Parser) -> ParseResult<DataType> {
                 }
                 "VECTOR" => {
                     parser.expect_lparen()?;
-                    let dimensions = if let Some(Token::Number { value: d, .. }) = parser.next()
-                    {
+                    let dimensions = if let Some(Token::Number { value: d, .. }) = parser.next() {
                         if *d < 1.0
                             || *d > crate::types::VECTOR_MAX_DIMENSIONS as f64
                             || d.fract() != 0.0

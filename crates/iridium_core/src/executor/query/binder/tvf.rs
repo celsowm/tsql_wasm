@@ -277,9 +277,7 @@ fn bind_openjson(
 
     let parts = crate::parser::utils::split_csv_top_level(&inner);
     if parts.is_empty() || parts.len() > 2 {
-        return Err(DbError::Parse(
-            "OPENJSON requires 1 or 2 arguments".into(),
-        ));
+        return Err(DbError::Parse("OPENJSON requires 1 or 2 arguments".into()));
     }
 
     let json_expr = parse_expr_subquery_aware(&parts[0])?;
@@ -302,9 +300,7 @@ fn bind_openjson(
         let path_expr = parse_expr_subquery_aware(&parts[1])?;
         let path_val = eval_expr(&path_expr, &[], ctx, catalog, storage, clock)?;
         let path_str = match &path_val {
-            Value::VarChar(s) | Value::NVarChar(s) | Value::Char(s) | Value::NChar(s) => {
-                s.clone()
-            }
+            Value::VarChar(s) | Value::NVarChar(s) | Value::Char(s) | Value::NChar(s) => s.clone(),
             _ => {
                 return Err(DbError::Execution(
                     "OPENJSON second argument (path) must be a string".into(),
@@ -407,17 +403,15 @@ fn openjson_to_rows(val: &serde_json::Value) -> Vec<StoredRow> {
                     serde_json::Value::Null => Value::Null,
                     serde_json::Value::String(s) => Value::NVarChar(s.clone()),
                     serde_json::Value::Number(n) => Value::NVarChar(n.to_string()),
-                    serde_json::Value::Bool(b) => Value::NVarChar(if *b { "true" } else { "false" }.to_string()),
+                    serde_json::Value::Bool(b) => {
+                        Value::NVarChar(if *b { "true" } else { "false" }.to_string())
+                    }
                     serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
                         Value::NVarChar(v.to_string())
                     }
                 };
                 StoredRow {
-                    values: vec![
-                        Value::NVarChar(k.clone()),
-                        value_str,
-                        Value::Int(type_code),
-                    ],
+                    values: vec![Value::NVarChar(k.clone()), value_str, Value::Int(type_code)],
                     deleted: false,
                 }
             })
@@ -431,7 +425,9 @@ fn openjson_to_rows(val: &serde_json::Value) -> Vec<StoredRow> {
                     serde_json::Value::Null => Value::Null,
                     serde_json::Value::String(s) => Value::NVarChar(s.clone()),
                     serde_json::Value::Number(n) => Value::NVarChar(n.to_string()),
-                    serde_json::Value::Bool(b) => Value::NVarChar(if *b { "true" } else { "false" }.to_string()),
+                    serde_json::Value::Bool(b) => {
+                        Value::NVarChar(if *b { "true" } else { "false" }.to_string())
+                    }
                     serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
                         Value::NVarChar(v.to_string())
                     }
@@ -453,7 +449,9 @@ fn openjson_to_rows(val: &serde_json::Value) -> Vec<StoredRow> {
                     serde_json::Value::Null => Value::Null,
                     serde_json::Value::String(s) => Value::NVarChar(s.clone()),
                     serde_json::Value::Number(n) => Value::NVarChar(n.to_string()),
-                    serde_json::Value::Bool(b) => Value::NVarChar(if *b { "true" } else { "false" }.to_string()),
+                    serde_json::Value::Bool(b) => {
+                        Value::NVarChar(if *b { "true" } else { "false" }.to_string())
+                    }
                     _ => Value::Null,
                 },
                 Value::Int(openjson_type_code(val)),
@@ -464,10 +462,7 @@ fn openjson_to_rows(val: &serde_json::Value) -> Vec<StoredRow> {
 }
 
 /// Navigate a JSON value using a SQL Server JSON path like '$.key.subkey' or '$[0]'.
-fn navigate_json_path(
-    root: &serde_json::Value,
-    path: &str,
-) -> Result<serde_json::Value, DbError> {
+fn navigate_json_path(root: &serde_json::Value, path: &str) -> Result<serde_json::Value, DbError> {
     let path = path.trim();
     if path == "$" {
         return Ok(root.clone());
@@ -516,10 +511,7 @@ fn navigate_json_path(
                         idx_str
                     ))
                 })?;
-                current = current
-                    .get(idx)
-                    .cloned()
-                    .unwrap_or(serde_json::Value::Null);
+                current = current.get(idx).cloned().unwrap_or(serde_json::Value::Null);
             }
             _ => {
                 return Err(DbError::Execution(format!(

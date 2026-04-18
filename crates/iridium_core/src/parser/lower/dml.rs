@@ -763,11 +763,13 @@ pub fn lower_insert_bulk(
                     check: c.check_expr.map(lower_expr).transpose()?,
                     check_constraint_name: c.check_constraint_name,
                     computed_expr: c.computed_expr.map(lower_expr).transpose()?,
-                    foreign_key: c.foreign_key.map(|fk| executor_ast::statements::ddl::ForeignKeyRef {
-                        referenced_table: lower_object_name(fk.ref_table),
-                        referenced_columns: fk.ref_columns,
-                        on_delete: fk.on_delete.map(super::ddl::lower_referential_action),
-                        on_update: fk.on_update.map(super::ddl::lower_referential_action),
+                    foreign_key: c.foreign_key.map(|fk| {
+                        executor_ast::statements::ddl::ForeignKeyRef {
+                            referenced_table: lower_object_name(fk.ref_table),
+                            referenced_columns: fk.ref_columns,
+                            on_delete: fk.on_delete.map(super::ddl::lower_referential_action),
+                            on_update: fk.on_update.map(super::ddl::lower_referential_action),
+                        }
                     }),
                     ansi_padding_on: true,
                 })

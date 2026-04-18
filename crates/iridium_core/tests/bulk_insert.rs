@@ -10,7 +10,10 @@ fn test_parse_bulk_insert() {
     // but it should parse correctly.
     let res = db.execute_session_batch_sql(sid, sql);
     assert!(res.is_err());
-    assert!(res.unwrap_err().to_string().contains("BULK INSERT from server-side file is not yet implemented"));
+    assert!(res
+        .unwrap_err()
+        .to_string()
+        .contains("BULK INSERT from server-side file is not yet implemented"));
 }
 
 #[test]
@@ -20,7 +23,8 @@ fn test_parse_insert_bulk() {
     let sid = db.create_session();
 
     // Create the table first
-    db.execute_session_batch_sql(sid, "CREATE TABLE MyTable (Col1 INT, Col2 NVARCHAR(50))").unwrap();
+    db.execute_session_batch_sql(sid, "CREATE TABLE MyTable (Col1 INT, Col2 NVARCHAR(50))")
+        .unwrap();
 
     // INSERT BULK should execute and set bulk active flag (though we can't easily check the flag here)
     let res = db.execute_session_batch_sql(sid, sql).unwrap();

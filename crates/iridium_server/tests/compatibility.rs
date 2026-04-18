@@ -1,5 +1,5 @@
-use tiberius::Row;
 use iridium_server::ServerConfig;
+use tiberius::Row;
 
 mod common;
 use common::*;

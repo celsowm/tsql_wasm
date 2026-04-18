@@ -227,7 +227,10 @@ fn test_sysname_type_alias() {
 fn test_float_basic() {
     let mut engine = Engine::new();
     exec(&mut engine, "CREATE TABLE dbo.t (val FLOAT NOT NULL)");
-    exec(&mut engine, "INSERT INTO dbo.t (val) VALUES (3.141592653589793)");
+    exec(
+        &mut engine,
+        "INSERT INTO dbo.t (val) VALUES (3.141592653589793)",
+    );
     let r = query(&mut engine, "SELECT val FROM dbo.t");
     let v = f64::from_bits(match &r.rows[0][0] {
         Value::Float(b) => *b,
@@ -480,4 +483,3 @@ fn test_binary_cast_to_int() {
     let r = query(&mut engine, "SELECT CAST(0x0001 AS INT) AS v");
     assert_eq!(r.rows[0][0], Value::Int(1));
 }
-

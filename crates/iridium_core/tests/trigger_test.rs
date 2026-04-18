@@ -166,4 +166,3 @@ fn test_recursive_trigger_prevention() {
         .to_string()
         .contains("Maximum trigger nesting level"));
 }
-

@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use iridium_core::{parse_sql, Engine, types::Value};
+    use iridium_core::{parse_sql, types::Value, Engine};
 
     #[test]
     fn test_dm_exec_sessions() {

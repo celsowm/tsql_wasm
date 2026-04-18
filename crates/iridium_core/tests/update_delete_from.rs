@@ -83,4 +83,3 @@ fn test_delete_from_basic() {
     assert_eq!(r.rows.len(), 1);
     assert_eq!(r.rows[0][0], Value::Int(3));
 }
-

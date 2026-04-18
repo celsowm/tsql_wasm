@@ -108,16 +108,14 @@ pub fn lower_ddl(ddl: ast::DdlStatement) -> Result<executor_ast::Statement, DbEr
                 executor_ast::statements::ddl::CreateSchemaStmt { name },
             ),
         )),
-        ast::DdlStatement::CreateSynonym { name, base_object } => {
-            Ok(executor_ast::Statement::Ddl(
-                executor_ast::statements::DdlStatement::CreateSynonym(
-                    executor_ast::statements::ddl::CreateSynonymStmt {
-                        name: lower_object_name(name),
-                        base_object: lower_object_name(base_object),
-                    },
-                ),
-            ))
-        }
+        ast::DdlStatement::CreateSynonym { name, base_object } => Ok(executor_ast::Statement::Ddl(
+            executor_ast::statements::DdlStatement::CreateSynonym(
+                executor_ast::statements::ddl::CreateSynonymStmt {
+                    name: lower_object_name(name),
+                    base_object: lower_object_name(base_object),
+                },
+            ),
+        )),
         ast::DdlStatement::DropSynonym(name) => Ok(executor_ast::Statement::Ddl(
             executor_ast::statements::DdlStatement::DropSynonym(
                 executor_ast::statements::ddl::DropSynonymStmt {
@@ -349,7 +347,11 @@ pub fn lower_alter_action(
         ast::AlterTableAction::DropColumn(c) => Ok(
             executor_ast::statements::ddl::AlterTableAction::DropColumn(c),
         ),
-        ast::AlterTableAction::AlterColumn { name, data_type, nullable } => Ok(
+        ast::AlterTableAction::AlterColumn {
+            name,
+            data_type,
+            nullable,
+        } => Ok(
             executor_ast::statements::ddl::AlterTableAction::AlterColumn {
                 name,
                 data_type: lower_data_type(data_type)?,

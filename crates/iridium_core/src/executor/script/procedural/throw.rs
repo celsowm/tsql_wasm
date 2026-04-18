@@ -42,10 +42,7 @@ impl<'a> ScriptExecutor<'a> {
             self.storage,
             self.clock,
         )?;
-        let msg = format!(
-            "{}",
-            message.to_string_value()
-        );
+        let msg = format!("{}", message.to_string_value());
         Err(DbError::Custom {
             class: 16,
             number: error_number.to_integer_i64().unwrap_or(50000) as i32,

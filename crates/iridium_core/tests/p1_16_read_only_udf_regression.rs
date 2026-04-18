@@ -395,4 +395,3 @@ fn test_udf_with_nested_try_catch_inside_begin_end_clones_catalog() {
     let r = query_batch(&mut e, "SELECT COUNT(*) AS cnt FROM dbo.deep_log");
     assert_eq!(r.rows[0][0], count_val(0));
 }
-

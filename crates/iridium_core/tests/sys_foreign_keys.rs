@@ -37,4 +37,3 @@ fn test_sys_foreign_keys_viewable() {
     println!("test_sys_foreign_keys_viewable: {:?}", r);
     // Should return empty result, not an error
 }
-

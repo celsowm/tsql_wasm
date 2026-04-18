@@ -128,7 +128,9 @@ pub(crate) fn eval_greatest(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.is_empty() {
-        return Err(DbError::Execution("GREATEST requires at least 1 argument".into()));
+        return Err(DbError::Execution(
+            "GREATEST requires at least 1 argument".into(),
+        ));
     }
     let mut result = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
     for arg in &args[1..] {
@@ -136,7 +138,8 @@ pub(crate) fn eval_greatest(
         if val.is_null() || result.is_null() {
             return Ok(Value::Null);
         }
-        if crate::executor::value_ops::compare_values(&val, &result) == std::cmp::Ordering::Greater {
+        if crate::executor::value_ops::compare_values(&val, &result) == std::cmp::Ordering::Greater
+        {
             result = val;
         }
     }
@@ -152,7 +155,9 @@ pub(crate) fn eval_least(
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
     if args.is_empty() {
-        return Err(DbError::Execution("LEAST requires at least 1 argument".into()));
+        return Err(DbError::Execution(
+            "LEAST requires at least 1 argument".into(),
+        ));
     }
     let mut result = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
     for arg in &args[1..] {

@@ -97,5 +97,3 @@ pub(crate) fn resolve_system_variable(
     }
     Ok(None)
 }
-
-

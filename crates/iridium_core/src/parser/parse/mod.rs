@@ -10,8 +10,8 @@ use crate::parser::token::Keyword;
 pub use crate::parser::parse::expressions::{parse_comma_list, parse_data_type};
 pub use crate::parser::parse::statements::alter::parse_alter;
 pub use crate::parser::parse::statements::ddl::{
-    parse_create, parse_create_index, parse_create_schema, parse_create_sequence, parse_create_type,
-    parse_table_body,
+    parse_create, parse_create_index, parse_create_schema, parse_create_sequence,
+    parse_create_type, parse_table_body,
 };
 pub use crate::parser::parse::statements::dml::{
     parse_bulk_insert, parse_delete, parse_insert_dispatch, parse_merge, parse_update,

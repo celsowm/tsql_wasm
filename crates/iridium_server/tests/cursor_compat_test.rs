@@ -270,7 +270,10 @@ async fn test_fetch_status() {
         .await
         .unwrap();
     client
-        .execute("CREATE TABLE dbo.fetch_status_test (id INT PRIMARY KEY)", &[])
+        .execute(
+            "CREATE TABLE dbo.fetch_status_test (id INT PRIMARY KEY)",
+            &[],
+        )
         .await
         .unwrap();
     client
@@ -490,4 +493,3 @@ async fn test_cursor_scope() {
         .await
         .unwrap();
 }
-

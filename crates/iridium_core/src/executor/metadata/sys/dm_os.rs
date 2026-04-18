@@ -45,26 +45,26 @@ impl VirtualTable for SysDmOsSysInfo {
         );
         vec![StoredRow {
             values: vec![
-                Value::Int(4),               // cpu_count
-                Value::Int(1),               // hyperthread_ratio
-                Value::BigInt(16777216),     // physical_memory_kb (16GB)
-                Value::BigInt(33554432),     // virtual_memory_kb (32GB)
-                Value::BigInt(1048576),      // committed_kb (1GB)
-                Value::BigInt(8388608),      // committed_target_kb (8GB)
-                Value::BigInt(8388608),      // visible_target_kb (8GB)
-                Value::Int(2097152),         // stack_size_in_bytes (2MB)
-                Value::BigInt(100),          // os_quantum
-                Value::Int(0),               // os_error_mode
-                Value::Int(32),              // os_priority_class
-                Value::Int(512),             // max_workers_count
-                Value::Int(4),               // scheduler_count
-                Value::Int(4),               // scheduler_total_count
-                Value::Int(0),               // deadline_priority_offset
-                Value::BigInt(0),            // sqlserver_start_time_ms
-                start_time,                  // sqlserver_start_time
-                Value::Int(1),               // socket_count
-                Value::Int(4),               // cores_per_socket
-                Value::Int(1),               // numa_node_count
+                Value::Int(4),           // cpu_count
+                Value::Int(1),           // hyperthread_ratio
+                Value::BigInt(16777216), // physical_memory_kb (16GB)
+                Value::BigInt(33554432), // virtual_memory_kb (32GB)
+                Value::BigInt(1048576),  // committed_kb (1GB)
+                Value::BigInt(8388608),  // committed_target_kb (8GB)
+                Value::BigInt(8388608),  // visible_target_kb (8GB)
+                Value::Int(2097152),     // stack_size_in_bytes (2MB)
+                Value::BigInt(100),      // os_quantum
+                Value::Int(0),           // os_error_mode
+                Value::Int(32),          // os_priority_class
+                Value::Int(512),         // max_workers_count
+                Value::Int(4),           // scheduler_count
+                Value::Int(4),           // scheduler_total_count
+                Value::Int(0),           // deadline_priority_offset
+                Value::BigInt(0),        // sqlserver_start_time_ms
+                start_time,              // sqlserver_start_time
+                Value::Int(1),           // socket_count
+                Value::Int(4),           // cores_per_socket
+                Value::Int(1),           // numa_node_count
             ],
             deleted: false,
         }]

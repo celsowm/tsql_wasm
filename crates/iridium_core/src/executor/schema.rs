@@ -231,7 +231,10 @@ impl<'a> SchemaExecutor<'a> {
         self.catalog.drop_view(schema, &stmt.name.name)
     }
 
-    pub(crate) fn create_synonym(&mut self, stmt: crate::ast::CreateSynonymStmt) -> Result<(), DbError> {
+    pub(crate) fn create_synonym(
+        &mut self,
+        stmt: crate::ast::CreateSynonymStmt,
+    ) -> Result<(), DbError> {
         let schema = stmt.name.schema_or_dbo().to_string();
         let object_id = self.catalog.alloc_object_id();
         self.catalog.create_synonym(crate::catalog::SynonymDef {
@@ -242,12 +245,18 @@ impl<'a> SchemaExecutor<'a> {
         })
     }
 
-    pub(crate) fn drop_synonym(&mut self, stmt: crate::ast::DropSynonymStmt) -> Result<(), DbError> {
+    pub(crate) fn drop_synonym(
+        &mut self,
+        stmt: crate::ast::DropSynonymStmt,
+    ) -> Result<(), DbError> {
         let schema = stmt.name.schema_or_dbo();
         self.catalog.drop_synonym(schema, &stmt.name.name)
     }
 
-    pub(crate) fn create_sequence(&mut self, stmt: crate::ast::CreateSequenceStmt) -> Result<(), DbError> {
+    pub(crate) fn create_sequence(
+        &mut self,
+        stmt: crate::ast::CreateSequenceStmt,
+    ) -> Result<(), DbError> {
         let schema = stmt.name.schema_or_dbo().to_string();
         let data_type = data_type_spec_to_runtime(&stmt.data_type);
         let object_id = self.catalog.alloc_object_id();
@@ -265,7 +274,10 @@ impl<'a> SchemaExecutor<'a> {
         })
     }
 
-    pub(crate) fn drop_sequence(&mut self, stmt: crate::ast::DropSequenceStmt) -> Result<(), DbError> {
+    pub(crate) fn drop_sequence(
+        &mut self,
+        stmt: crate::ast::DropSequenceStmt,
+    ) -> Result<(), DbError> {
         let schema = stmt.name.schema_or_dbo();
         self.catalog.drop_sequence(schema, &stmt.name.name)
     }
@@ -430,7 +442,11 @@ impl<'a> SchemaExecutor<'a> {
                 }
                 self.storage.replace_table(table_id, rows_vec)?;
             }
-            AlterTableAction::AlterColumn { name, data_type, nullable } => {
+            AlterTableAction::AlterColumn {
+                name,
+                data_type,
+                nullable,
+            } => {
                 let table_mut = self
                     .catalog
                     .find_table_mut(&schema_name, &stmt.table.name)

@@ -89,4 +89,3 @@ fn xact_abort_forces_state_zero() {
     let r = query(&mut e, "SELECT XACT_STATE()");
     assert_eq!(r.rows[0][0], Value::Int(0));
 }
-

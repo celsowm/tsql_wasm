@@ -89,4 +89,3 @@ async fn test_identity() {
     assert_eq!(rows[0][0], "1");
     assert_eq!(rows[1][0], "2");
 }
-

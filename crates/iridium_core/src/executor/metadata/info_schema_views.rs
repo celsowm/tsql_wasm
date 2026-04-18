@@ -706,5 +706,3 @@ fn format_values(values: &[Value]) -> String {
 }
 
 const DB_CATALOG: &str = "iridium_sql";
-
-

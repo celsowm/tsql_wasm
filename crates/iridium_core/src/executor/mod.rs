@@ -4,6 +4,7 @@ pub mod conflict;
 pub mod context;
 pub(crate) mod cte;
 pub mod database;
+pub(crate) mod database_catalog;
 pub(crate) mod date_time;
 pub(crate) mod deadlock;
 pub(crate) mod dirty_buffer;

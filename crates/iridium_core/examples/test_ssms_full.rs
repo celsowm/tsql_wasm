@@ -74,4 +74,3 @@ ORDER BY [Database_Name] ASC
         Err(e) => println!("Error: {}", e),
     }
 }
-

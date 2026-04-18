@@ -116,4 +116,3 @@ WHERE idx.index_id < 2
         Err(e) => println!("Error: {}", e),
     }
 }
-

@@ -87,4 +87,3 @@ fn test_unique_allows_nulls() {
     let r = query(&mut engine, "SELECT * FROM dbo.t");
     assert_eq!(r.rows.len(), 2);
 }
-

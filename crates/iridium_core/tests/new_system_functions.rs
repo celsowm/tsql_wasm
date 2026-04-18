@@ -559,4 +559,3 @@ fn test_ident_metadata_null() {
     let r = query(&mut engine, "SELECT IDENT_SEED('nonexistent') AS v");
     assert!(r.rows[0][0].is_null());
 }
-

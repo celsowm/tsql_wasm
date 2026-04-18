@@ -1,6 +1,6 @@
+use super::packet::PacketReader;
 use iridium_core::types::Value;
 use std::io;
-use super::packet::PacketReader;
 
 pub const INTNTYPE: u8 = 0x26;
 pub const GUIDTYPE: u8 = 0x24;
@@ -622,14 +622,16 @@ pub fn runtime_type_to_tds(ty: &iridium_core::types::DataType) -> TypeInfo {
             precision: None,
             flags: 0x0001,
         },
-        iridium_core::types::DataType::DateTime | iridium_core::types::DataType::SmallDateTime => TypeInfo {
-            tds_type: DATETIMNTYPE,
-            length_prefix: vec![0x08],
-            collation: None,
-            scale: None,
-            precision: None,
-            flags: 0x0001,
-        },
+        iridium_core::types::DataType::DateTime | iridium_core::types::DataType::SmallDateTime => {
+            TypeInfo {
+                tds_type: DATETIMNTYPE,
+                length_prefix: vec![0x08],
+                collation: None,
+                scale: None,
+                precision: None,
+                flags: 0x0001,
+            }
+        }
         iridium_core::types::DataType::DateTime2 => TypeInfo {
             tds_type: DATETIME2NTYPE,
             length_prefix: vec![0x08],
@@ -736,7 +738,12 @@ pub fn read_type_info(reader: &mut PacketReader) -> io::Result<TypeInfo> {
             // Fix-length types
             match tds_type {
                 0x30 | 0x32 | 0x34 | 0x38 | 0x3B | 0x3C | 0x3D | 0x7A | 0x7E => {}
-                _ => return Err(io::Error::new(io::ErrorKind::InvalidData, format!("Unsupported TDS type: 0x{:02X}", tds_type))),
+                _ => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("Unsupported TDS type: 0x{:02X}", tds_type),
+                    ))
+                }
             }
         }
     }
@@ -761,7 +768,10 @@ pub fn read_value(reader: &mut PacketReader, ti: &TypeInfo) -> io::Result<Value>
                 2 => Ok(Value::SmallInt(reader.read_u16_le()? as i16)),
                 4 => Ok(Value::Int(reader.read_u32_le()? as i32)),
                 8 => Ok(Value::BigInt(reader.read_u64_le()? as i64)),
-                _ => Err(io::Error::new(io::ErrorKind::InvalidData, format!("Invalid INTN length: {}", len))),
+                _ => Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Invalid INTN length: {}", len),
+                )),
             }
         }
         BITNTYPE => {
@@ -769,7 +779,10 @@ pub fn read_value(reader: &mut PacketReader, ti: &TypeInfo) -> io::Result<Value>
             match len {
                 0 => Ok(Value::Null),
                 1 => Ok(Value::Bit(reader.read_u8()? != 0)),
-                _ => Err(io::Error::new(io::ErrorKind::InvalidData, format!("Invalid BITN length: {}", len))),
+                _ => Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Invalid BITN length: {}", len),
+                )),
             }
         }
         NVARCHARTYPE | NCHARTYPE => {
