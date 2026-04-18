@@ -447,4 +447,3 @@ fn test_nested_correlated_subqueries() {
     assert_eq!(col_str(&result.rows[0], 0), "Engineering");
     assert_eq!(col_str(&result.rows[1], 0), "Sales");
 }
-

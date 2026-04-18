@@ -363,4 +363,3 @@ fn test_isnull_with_new_types() {
     );
     assert_eq!(r.rows[0][0], Value::TinyInt(42));
 }
-

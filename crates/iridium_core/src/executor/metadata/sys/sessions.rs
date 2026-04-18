@@ -2,6 +2,9 @@ use super::super::virtual_table_def;
 use super::super::VirtualTable;
 use crate::catalog::Catalog;
 use crate::executor::context::ExecutionContext;
+use crate::executor::metadata::database_catalog::{
+    authenticating_database_id, current_database_id,
+};
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
@@ -20,7 +23,11 @@ impl VirtualTable for SysDmExecSessions {
                 ("program_name", DataType::NVarChar { max_len: 128 }, true),
                 ("host_process_id", DataType::Int, true),
                 ("client_version", DataType::Int, true),
-                ("client_interface_name", DataType::NVarChar { max_len: 32 }, true),
+                (
+                    "client_interface_name",
+                    DataType::NVarChar { max_len: 32 },
+                    true,
+                ),
                 ("security_id", DataType::VarBinary { max_len: 85 }, false),
                 ("login_name", DataType::NVarChar { max_len: 128 }, false),
                 ("nt_domain", DataType::NVarChar { max_len: 128 }, true),
@@ -53,8 +60,16 @@ impl VirtualTable for SysDmExecSessions {
                 ("deadlock_priority", DataType::Int, false),
                 ("row_count", DataType::BigInt, false),
                 ("prev_error", DataType::Int, false),
-                ("original_security_id", DataType::VarBinary { max_len: 85 }, false),
-                ("original_login_name", DataType::NVarChar { max_len: 128 }, false),
+                (
+                    "original_security_id",
+                    DataType::VarBinary { max_len: 85 },
+                    false,
+                ),
+                (
+                    "original_login_name",
+                    DataType::NVarChar { max_len: 128 },
+                    false,
+                ),
                 ("last_successful_logon", DataType::DateTime, true),
                 ("last_unsuccessful_logon", DataType::DateTime, true),
                 ("unsuccessful_logons", DataType::BigInt, true),
@@ -92,7 +107,12 @@ impl VirtualTable for SysDmExecSessions {
                 Value::Int(1),    // client_version
                 Value::NVarChar("TDS".to_string()),
                 Value::VarBinary(vec![0x01]), // security_id
-                Value::NVarChar(ctx.metadata.user.clone().unwrap_or_else(|| "sa".to_string())),
+                Value::NVarChar(
+                    ctx.metadata
+                        .user
+                        .clone()
+                        .unwrap_or_else(|| "sa".to_string()),
+                ),
                 Value::Null, // nt_domain
                 Value::Null, // nt_user_name
                 Value::NVarChar("running".to_string()),
@@ -124,13 +144,18 @@ impl VirtualTable for SysDmExecSessions {
                 Value::BigInt(0),
                 Value::Int(0),
                 Value::VarBinary(vec![0x01]),
-                Value::NVarChar(ctx.metadata.user.clone().unwrap_or_else(|| "sa".to_string())),
+                Value::NVarChar(
+                    ctx.metadata
+                        .user
+                        .clone()
+                        .unwrap_or_else(|| "sa".to_string()),
+                ),
                 Value::Null,
                 Value::Null,
                 Value::Null,
                 Value::Int(1),
-                Value::SmallInt(5), // iridium_sql
-                Value::Int(5),
+                Value::SmallInt(current_database_id(ctx) as i16),
+                Value::Int(authenticating_database_id(ctx)),
                 Value::Int(ctx.frame.trancount as i32),
                 Value::VarBinary(ctx.session.context_info.clone()),
             ],
@@ -195,7 +220,11 @@ impl VirtualTable for SysDmExecRequests {
                 ("group_id", DataType::Int, false),
                 ("query_hash", DataType::VarBinary { max_len: 8 }, true),
                 ("query_plan_hash", DataType::VarBinary { max_len: 8 }, true),
-                ("statement_sql_handle", DataType::VarBinary { max_len: 64 }, true),
+                (
+                    "statement_sql_handle",
+                    DataType::VarBinary { max_len: 64 },
+                    true,
+                ),
                 ("statement_context_id", DataType::BigInt, true),
             ],
         )
@@ -211,58 +240,58 @@ impl VirtualTable for SysDmExecRequests {
         vec![StoredRow {
             values: vec![
                 Value::SmallInt(ctx.metadata.id as i16),
-                Value::Int(0),        // request_id
-                now,                  // start_time
+                Value::Int(0), // request_id
+                now,           // start_time
                 Value::NVarChar("running".to_string()),
                 Value::NVarChar("SELECT".to_string()), // command
-                Value::Null,          // sql_handle
-                Value::Int(0),        // start_offset
-                Value::Int(-1),       // end_offset
-                Value::Null,          // plan_handle
-                Value::SmallInt(5),   // database_id
-                Value::Int(1),        // user_id
+                Value::Null,                           // sql_handle
+                Value::Int(0),                         // start_offset
+                Value::Int(-1),                        // end_offset
+                Value::Null,                           // plan_handle
+                Value::SmallInt(current_database_id(ctx) as i16), // database_id
+                Value::Int(1),                         // user_id
                 Value::UniqueIdentifier(uuid::Uuid::nil()),
-                Value::Null,          // blocking_session_id
-                Value::Null,          // wait_type
-                Value::Int(0),        // wait_time
-                Value::Null,          // last_wait_type
-                Value::Null,          // wait_resource
+                Value::Null,   // blocking_session_id
+                Value::Null,   // wait_type
+                Value::Int(0), // wait_time
+                Value::Null,   // last_wait_type
+                Value::Null,   // wait_resource
                 Value::Int(ctx.frame.trancount as i32),
-                Value::Int(1),        // open_resultset_count
-                Value::BigInt(0),     // transaction_id
+                Value::Int(1),                  // open_resultset_count
+                Value::BigInt(0),               // transaction_id
                 Value::Float(0.0f64.to_bits()), // percent_complete
-                Value::BigInt(0),     // estimated_completion_time
-                Value::Int(0),        // cpu_time
-                Value::Int(0),        // total_elapsed_time
-                Value::Int(1),        // scheduler_id
-                Value::BigInt(0),     // reads
-                Value::BigInt(0),     // writes
-                Value::BigInt(0),     // logical_reads
-                Value::Int(4096),     // text_size
+                Value::BigInt(0),               // estimated_completion_time
+                Value::Int(0),                  // cpu_time
+                Value::Int(0),                  // total_elapsed_time
+                Value::Int(1),                  // scheduler_id
+                Value::BigInt(0),               // reads
+                Value::BigInt(0),               // writes
+                Value::BigInt(0),               // logical_reads
+                Value::Int(4096),               // text_size
                 Value::NVarChar("us_english".to_string()),
                 Value::NVarChar("mdy".to_string()),
                 Value::SmallInt(ctx.metadata.datefirst as i16),
-                Value::Bit(true),     // quoted_identifier
-                Value::Bit(false),    // arithabort
-                Value::Bit(true),     // ansi_null_dflt_on
-                Value::Bit(false),    // ansi_defaults
-                Value::Bit(true),     // ansi_warnings
-                Value::Bit(true),     // ansi_padding
+                Value::Bit(true),  // quoted_identifier
+                Value::Bit(false), // arithabort
+                Value::Bit(true),  // ansi_null_dflt_on
+                Value::Bit(false), // ansi_defaults
+                Value::Bit(true),  // ansi_warnings
+                Value::Bit(true),  // ansi_padding
                 Value::Bit(ctx.metadata.ansi_nulls),
-                Value::Bit(true),     // concat_null_yields_null
-                Value::SmallInt(2),   // transaction_isolation_level
-                Value::Int(-1),       // lock_timeout
-                Value::Int(0),        // deadlock_priority
-                Value::BigInt(0),     // row_count
-                Value::Int(0),        // prev_error
-                Value::Int(0),        // nest_level
-                Value::Int(0),        // granted_query_memory
-                Value::Bit(false),    // executing_managed_code
-                Value::Int(1),        // group_id
-                Value::Null,          // query_hash
-                Value::Null,          // query_plan_hash
-                Value::Null,          // statement_sql_handle
-                Value::Null,          // statement_context_id
+                Value::Bit(true),   // concat_null_yields_null
+                Value::SmallInt(2), // transaction_isolation_level
+                Value::Int(-1),     // lock_timeout
+                Value::Int(0),      // deadlock_priority
+                Value::BigInt(0),   // row_count
+                Value::Int(0),      // prev_error
+                Value::Int(0),      // nest_level
+                Value::Int(0),      // granted_query_memory
+                Value::Bit(false),  // executing_managed_code
+                Value::Int(1),      // group_id
+                Value::Null,        // query_hash
+                Value::Null,        // query_plan_hash
+                Value::Null,        // statement_sql_handle
+                Value::Null,        // statement_context_id
             ],
             deleted: false,
         }]
@@ -289,13 +318,21 @@ impl VirtualTable for SysDmExecConnections {
                 ("last_read", DataType::DateTime, true),
                 ("last_write", DataType::DateTime, true),
                 ("net_packet_size", DataType::Int, true),
-                ("client_net_address", DataType::VarChar { max_len: 48 }, true),
+                (
+                    "client_net_address",
+                    DataType::VarChar { max_len: 48 },
+                    true,
+                ),
                 ("client_tcp_port", DataType::Int, true),
                 ("local_net_address", DataType::VarChar { max_len: 48 }, true),
                 ("local_tcp_port", DataType::Int, true),
                 ("connection_id", DataType::UniqueIdentifier, false),
                 ("parent_connection_id", DataType::UniqueIdentifier, true),
-                ("most_recent_sql_handle", DataType::VarBinary { max_len: 64 }, true),
+                (
+                    "most_recent_sql_handle",
+                    DataType::VarBinary { max_len: 64 },
+                    true,
+                ),
             ],
         )
     }

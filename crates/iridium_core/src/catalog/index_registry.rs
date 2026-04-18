@@ -60,8 +60,10 @@ impl IndexRegistry for CatalogImpl {
             table_id: table.id,
             name: name.to_string(),
             column_ids,
+            is_primary_key: false,
             is_unique: false,
             is_clustered: false,
+            constraint_name: None,
         });
         self.index_map.insert(
             (index_schema_id, normalize_identifier(name)),
@@ -79,6 +81,8 @@ impl IndexRegistry for CatalogImpl {
         columns: &[String],
         is_clustered: bool,
         is_unique: bool,
+        is_primary_key: bool,
+        constraint_name: Option<String>,
     ) -> Result<(), DbError> {
         let index_schema_id = self
             .get_schema_id(schema)
@@ -123,8 +127,10 @@ impl IndexRegistry for CatalogImpl {
             table_id: table.id,
             name: name.to_string(),
             column_ids,
+            is_primary_key,
             is_unique,
             is_clustered,
+            constraint_name,
         });
         self.index_map.insert(
             (index_schema_id, normalize_identifier(name)),

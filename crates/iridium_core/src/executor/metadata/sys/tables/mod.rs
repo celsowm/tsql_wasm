@@ -9,18 +9,19 @@ pub(crate) use columns::{SysAllColumns, SysColumns, SysComputedColumns, SysViewC
 pub(crate) use databases::{SysConfigurations, SysDatabases, SysSysDatabases};
 pub(crate) use identity_columns::SysIdentityColumns;
 pub(crate) use objects_misc::{
-    SysAssemblyModules, SysDataSpaces, SysEdgeConstraints, SysExtendedProperties,
-    SysForeignKeyColumns, SysIndexColumns, SysSequences, SysServerPrincipals,
-    SysSqlExpressionDependencies, SysSqlModules, SysStats, SysStatsColumns, SysSynonyms,
-    SysSystemSqlModules, SysTriggerEvents, SysTriggers, SysXmlIndexes, SysXmlSchemaCollections,
+    SysAssemblyModules, SysChangeTrackingTables, SysDataSpaces, SysEdgeConstraints,
+    SysExtendedProperties, SysForeignKeyColumns, SysFullTextCatalogs, SysFullTextIndexes,
+    SysIndexColumns, SysSequences, SysServerPrincipals, SysSqlExpressionDependencies,
+    SysSqlModules, SysStats, SysStatsColumns, SysSynonyms, SysSystemSqlModules, SysTriggerEvents,
+    SysTriggers, SysXmlIndexes, SysXmlSchemaCollections,
 };
 pub(crate) use tables::SysTables;
 pub(crate) use types::{SysTableTypes, SysTypes};
 
 use super::super::virtual_table_def;
-use crate::executor::context::ExecutionContext;
 use super::super::VirtualTable;
 use crate::catalog::Catalog;
+use crate::executor::context::ExecutionContext;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 

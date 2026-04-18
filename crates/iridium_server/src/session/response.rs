@@ -20,4 +20,3 @@ pub(crate) fn build_single_int_result(column_name: &str, value: i32) -> Vec<u8> 
     tokens::write_done(&mut b, tokens::DONE_FINAL | tokens::DONE_COUNT, 1, 1);
     b.as_bytes().to_vec()
 }
-

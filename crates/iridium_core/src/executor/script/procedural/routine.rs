@@ -1,3 +1,4 @@
+use crate::executor::metadata::DB_CATALOG;
 use crate::executor::result::QueryResult;
 use crate::types::Value;
 
@@ -21,7 +22,7 @@ pub(crate) fn execute_xp_msver() -> QueryResult {
                 Value::Int(1),
                 Value::NVarChar("ProductName".to_string()),
                 Value::Int(0),
-                Value::NVarChar("iridium_sql".to_string()),
+                Value::NVarChar(DB_CATALOG.to_string()),
             ],
             vec![
                 Value::Int(2),
@@ -74,5 +75,3 @@ pub(crate) fn procedure_return_value(value: Option<Value>) -> Value {
         None => Value::Int(0),
     }
 }
-
-

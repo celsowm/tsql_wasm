@@ -97,7 +97,14 @@ fn handle_session_statement<C: Catalog, S: Storage>(
     } else if let Statement::Session(SessionStatement::SetContextInfo(ref expr)) = stmt {
         let storage_guard = state.storage.read();
         let (catalog, storage) = storage_guard.get_refs();
-        match crate::executor::evaluator::eval_expr(expr, &[], ctx, catalog as &dyn Catalog, storage as &dyn Storage, &SystemClock) {
+        match crate::executor::evaluator::eval_expr(
+            expr,
+            &[],
+            ctx,
+            catalog as &dyn Catalog,
+            storage as &dyn Storage,
+            &SystemClock,
+        ) {
             Ok(val) => {
                 let bytes = match val {
                     Value::Null => vec![0u8; 128],

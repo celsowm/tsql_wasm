@@ -2,6 +2,7 @@ use super::super::virtual_table_def;
 use super::super::VirtualTable;
 use crate::catalog::Catalog;
 use crate::executor::context::ExecutionContext;
+use crate::executor::metadata::database_catalog::{builtin_databases, playground_database};
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
@@ -92,16 +93,15 @@ impl VirtualTable for SysMasterFiles {
     }
 
     fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
-        DATABASE_IDS
-            .iter()
-            .map(|&db_id| StoredRow {
+        builtin_databases()
+            .map(|db| StoredRow {
                 values: vec![
-                    Value::Int(db_id),
+                    Value::Int(db.id),
                     Value::Int(1),
                     Value::TinyInt(0), // ROWS
                     Value::NVarChar("ROWS".to_string()),
-                    Value::NVarChar(format!("db_{}", db_id)),
-                    Value::NVarChar(format!("C:\\data\\db_{}.mdf", db_id)),
+                    Value::NVarChar(format!("db_{}", db.id)),
+                    Value::NVarChar(format!("C:\\data\\db_{}.mdf", db.id)),
                     Value::TinyInt(0), // ONLINE
                     Value::NVarChar("ONLINE".to_string()),
                     Value::Int(1024),
@@ -116,9 +116,6 @@ impl VirtualTable for SysMasterFiles {
 /// columns NULL (mirroring not configured).
 pub(crate) struct SysDatabaseMirroring;
 pub(crate) struct SysDatabaseFiles;
-
-/// Database IDs that match sys.databases (master=1, tempdb=2, model=3, msdb=4, iridium_sql=5).
-const DATABASE_IDS: &[i32] = &[1, 2, 3, 4, 5];
 
 impl VirtualTable for SysDatabaseMirroring {
     fn definition(&self) -> crate::catalog::TableDef {
@@ -176,11 +173,10 @@ impl VirtualTable for SysDatabaseMirroring {
     }
 
     fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
-        DATABASE_IDS
-            .iter()
-            .map(|&db_id| StoredRow {
+        builtin_databases()
+            .map(|db| StoredRow {
                 values: vec![
-                    Value::Int(db_id),
+                    Value::Int(db.id),
                     Value::Null, // mirroring_guid
                     Value::Null, // mirroring_state
                     Value::Null, // mirroring_role
@@ -224,14 +220,14 @@ impl VirtualTable for SysDatabaseFiles {
     }
 
     fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
-        // Assume database_id 5 (iridium_sql) is the current database for this view.
+        let database = playground_database();
         vec![StoredRow {
             values: vec![
                 Value::Int(1),
                 Value::TinyInt(0), // ROWS
                 Value::NVarChar("ROWS".to_string()),
-                Value::NVarChar("iridium_sql".to_string()),
-                Value::NVarChar("C:\\data\\iridium_sql.mdf".to_string()),
+                Value::NVarChar(database.name.to_string()),
+                Value::NVarChar(format!("C:\\data\\{}.mdf", database.name)),
                 Value::TinyInt(0), // ONLINE
                 Value::NVarChar("ONLINE".to_string()),
                 Value::Int(1024),
@@ -241,4 +237,3 @@ impl VirtualTable for SysDatabaseFiles {
         }]
     }
 }
-

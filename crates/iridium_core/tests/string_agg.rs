@@ -91,4 +91,3 @@ fn test_string_agg_different_separators() {
     println!("test_string_agg_different_separators: {:?}", r);
     assert_eq!(r.rows[0][0], Value::VarChar("a | b".to_string()));
 }
-

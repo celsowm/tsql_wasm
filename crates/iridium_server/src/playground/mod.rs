@@ -34,4 +34,3 @@ where
     let _ = db.close_session(session_id);
     Ok(())
 }
-

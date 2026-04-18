@@ -147,36 +147,33 @@ impl VirtualTable for SysKeyConstraints {
         let mut object_id = 2_000_000i32;
 
         for table in catalog.get_tables() {
-            for col in &table.columns {
-                if col.primary_key {
-                    rows.push(StoredRow {
-                        values: vec![
-                            Value::VarChar(format!("PK_{}", table.name)),
-                            Value::Int(object_id),
-                            Value::Int(table.schema_id as i32),
-                            Value::Int(table.id as i32),
-                            Value::Char("PK".to_string()),
-                            Value::VarChar("PRIMARY_KEY_CONSTRAINT".to_string()),
-                            Value::Bit(true),
-                        ],
-                        deleted: false,
-                    });
-                    object_id += 1;
-                } else if col.unique {
-                    rows.push(StoredRow {
-                        values: vec![
-                            Value::VarChar(format!("UQ_{}_{}", table.name, col.name)),
-                            Value::Int(object_id),
-                            Value::Int(table.schema_id as i32),
-                            Value::Int(table.id as i32),
-                            Value::Char("UQ".to_string()),
-                            Value::VarChar("UNIQUE_CONSTRAINT".to_string()),
-                            Value::Bit(true),
-                        ],
-                        deleted: false,
-                    });
-                    object_id += 1;
-                }
+            for idx in catalog
+                .get_indexes()
+                .iter()
+                .filter(|idx| idx.table_id == table.id && (idx.is_primary_key || idx.is_unique))
+            {
+                let name = idx
+                    .constraint_name
+                    .clone()
+                    .unwrap_or_else(|| generated_constraint_name(table, idx));
+                let (type_code, type_desc): (&str, &str) = if idx.is_primary_key {
+                    ("PK", "PRIMARY_KEY_CONSTRAINT")
+                } else {
+                    ("UQ", "UNIQUE_CONSTRAINT")
+                };
+                rows.push(StoredRow {
+                    values: vec![
+                        Value::VarChar(name),
+                        Value::Int(object_id),
+                        Value::Int(table.schema_id as i32),
+                        Value::Int(table.id as i32),
+                        Value::Char(type_code.to_string()),
+                        Value::VarChar(type_desc.to_string()),
+                        Value::Bit(true),
+                    ],
+                    deleted: false,
+                });
+                object_id += 1;
             }
         }
         rows
@@ -239,4 +236,23 @@ impl VirtualTable for SysDefaultConstraints {
         }
         rows
     }
+}
+
+fn generated_constraint_name(
+    table: &crate::catalog::TableDef,
+    idx: &crate::catalog::IndexDef,
+) -> String {
+    let prefix = if idx.is_primary_key { "PK" } else { "UQ" };
+    let mut column_names = Vec::new();
+    for column_id in &idx.column_ids {
+        if let Some(col) = table.columns.iter().find(|c| c.id == *column_id) {
+            column_names.push(col.name.clone());
+        }
+    }
+    let suffix = if column_names.is_empty() {
+        "col".to_string()
+    } else {
+        column_names.join("_")
+    };
+    format!("{}_{}", prefix, suffix)
 }

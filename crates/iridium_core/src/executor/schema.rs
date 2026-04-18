@@ -12,10 +12,41 @@ use crate::storage::Storage;
 use super::tooling::format_view_definition;
 use super::tooling::SessionOptions;
 use super::type_mapping::data_type_spec_to_runtime;
+#[derive(Debug, Clone)]
+struct ConstraintIndexSpec {
+    constraint_name: String,
+    columns: Vec<String>,
+    is_primary_key: bool,
+    is_clustered: bool,
+    is_unique: bool,
+}
+
+fn generated_constraint_name(table_name: &str, columns: &[String], is_primary_key: bool) -> String {
+    let prefix = if is_primary_key { "PK" } else { "UQ" };
+    let suffix = if columns.is_empty() {
+        "col".to_string()
+    } else {
+        columns.join("_")
+    };
+    format!("{}_{}_{}", prefix, table_name, suffix)
+}
+
+fn generated_index_name(table_name: &str, columns: &[String], is_primary_key: bool) -> String {
+    let prefix = if is_primary_key { "PK" } else { "UQ" };
+    let suffix = if columns.is_empty() {
+        "col".to_string()
+    } else {
+        columns.join("__")
+    };
+    format!("{}__{}__{}", prefix, table_name, suffix)
+}
 
 /// S6: Shared constraint application logic extracted from create_table and alter_table.
 /// Eliminates ~65 lines of duplicated constraint handling.
-fn apply_table_constraint(table: &mut TableDef, tc: TableConstraintSpec) -> Result<(), DbError> {
+fn apply_table_constraint(
+    table: &mut TableDef,
+    tc: TableConstraintSpec,
+) -> Result<Option<ConstraintIndexSpec>, DbError> {
     match tc {
         TableConstraintSpec::Default { name, column, expr } => {
             let col = table
@@ -25,11 +56,13 @@ fn apply_table_constraint(table: &mut TableDef, tc: TableConstraintSpec) -> Resu
                 .ok_or_else(|| DbError::column_not_found(&column))?;
             col.default = Some(expr);
             col.default_constraint_name = Some(name);
+            Ok(None)
         }
         TableConstraintSpec::Check { name, expr } => {
             table
                 .check_constraints
                 .push(CheckConstraintDef { name, expr });
+            Ok(None)
         }
         TableConstraintSpec::ForeignKey {
             name,
@@ -47,8 +80,13 @@ fn apply_table_constraint(table: &mut TableDef, tc: TableConstraintSpec) -> Resu
                 on_delete: on_delete.unwrap_or(crate::ast::ReferentialAction::NoAction),
                 on_update: on_update.unwrap_or(crate::ast::ReferentialAction::NoAction),
             });
+            Ok(None)
         }
-        TableConstraintSpec::PrimaryKey { name: _, columns } => {
+        TableConstraintSpec::PrimaryKey {
+            name,
+            columns,
+            clustered,
+        } => {
             for col_name in &columns {
                 let col = table
                     .columns
@@ -67,8 +105,24 @@ fn apply_table_constraint(table: &mut TableDef, tc: TableConstraintSpec) -> Resu
                     col.unique = true;
                 }
             }
+            let constraint_name = if name.is_empty() {
+                generated_constraint_name(&table.name, &columns, true)
+            } else {
+                name
+            };
+            Ok(Some(ConstraintIndexSpec {
+                constraint_name,
+                columns,
+                is_primary_key: true,
+                is_clustered: clustered,
+                is_unique: true,
+            }))
         }
-        TableConstraintSpec::Unique { name: _, columns } => {
+        TableConstraintSpec::Unique {
+            name,
+            columns,
+            clustered,
+        } => {
             for col_name in &columns {
                 let col = table
                     .columns
@@ -77,9 +131,20 @@ fn apply_table_constraint(table: &mut TableDef, tc: TableConstraintSpec) -> Resu
                     .ok_or_else(|| DbError::column_not_found(col_name))?;
                 col.unique = true;
             }
+            let constraint_name = if name.is_empty() {
+                generated_constraint_name(&table.name, &columns, false)
+            } else {
+                name
+            };
+            Ok(Some(ConstraintIndexSpec {
+                constraint_name,
+                columns,
+                is_primary_key: false,
+                is_clustered: clustered,
+                is_unique: true,
+            }))
         }
     }
-    Ok(())
 }
 
 pub(crate) struct SchemaExecutor<'a> {
@@ -125,6 +190,14 @@ impl<'a> SchemaExecutor<'a> {
         }
 
         let table_id = self.catalog.alloc_table_id();
+        let has_table_pk = stmt
+            .table_constraints
+            .iter()
+            .any(|c| matches!(c, TableConstraintSpec::PrimaryKey { .. }));
+        let has_table_unique = stmt
+            .table_constraints
+            .iter()
+            .any(|c| matches!(c, TableConstraintSpec::Unique { .. }));
 
         let mut column_fks: Vec<(String, crate::ast::ForeignKeyRef)> = Vec::new();
         for spec in &stmt.columns {
@@ -164,31 +237,69 @@ impl<'a> SchemaExecutor<'a> {
             });
         }
 
+        let mut constraint_index_specs = Vec::new();
         for tc in stmt.table_constraints {
-            apply_table_constraint(&mut table, tc)?;
+            if let Some(spec) = apply_table_constraint(&mut table, tc)? {
+                constraint_index_specs.push(spec);
+            }
         }
 
         self.catalog.register_table(table.clone());
         self.storage.ensure_table(table_id)?;
 
-        // Create clustered indexes for PRIMARY KEYs
-        for col in &table.columns {
-            if col.primary_key {
-                let index_name = format!("PK__{}__{}", table.name, col.name);
-                self.catalog
-                    .create_index_with_options(
-                        "dbo",
-                        &index_name,
-                        &table.schema_name,
-                        &table.name,
-                        std::slice::from_ref(&col.name),
-                        true,       // is_clustered
-                        col.unique, // is_unique
-                    )
-                    .map_err(|e| {
-                        DbError::Execution(format!("Failed to create primary key index: {}", e))
-                    })?;
+        if !has_table_pk {
+            for col in &table.columns {
+                if col.primary_key {
+                    constraint_index_specs.push(ConstraintIndexSpec {
+                        constraint_name: generated_constraint_name(
+                            &table.name,
+                            std::slice::from_ref(&col.name),
+                            true,
+                        ),
+                        columns: vec![col.name.clone()],
+                        is_primary_key: true,
+                        is_clustered: true,
+                        is_unique: true,
+                    });
+                }
             }
+        }
+
+        if !has_table_unique {
+            for col in &table.columns {
+                if col.unique && !col.primary_key {
+                    constraint_index_specs.push(ConstraintIndexSpec {
+                        constraint_name: generated_constraint_name(
+                            &table.name,
+                            std::slice::from_ref(&col.name),
+                            false,
+                        ),
+                        columns: vec![col.name.clone()],
+                        is_primary_key: false,
+                        is_clustered: false,
+                        is_unique: true,
+                    });
+                }
+            }
+        }
+
+        for spec in constraint_index_specs {
+            let index_name = generated_index_name(&table.name, &spec.columns, spec.is_primary_key);
+            self.catalog
+                .create_index_with_options(
+                    &table.schema_name,
+                    &index_name,
+                    &table.schema_name,
+                    &table.name,
+                    &spec.columns,
+                    spec.is_clustered,
+                    spec.is_unique,
+                    spec.is_primary_key,
+                    Some(spec.constraint_name),
+                )
+                .map_err(|e| {
+                    DbError::Execution(format!("Failed to create constraint index: {}", e))
+                })?;
         }
 
         Ok(())
@@ -231,7 +342,10 @@ impl<'a> SchemaExecutor<'a> {
         self.catalog.drop_view(schema, &stmt.name.name)
     }
 
-    pub(crate) fn create_synonym(&mut self, stmt: crate::ast::CreateSynonymStmt) -> Result<(), DbError> {
+    pub(crate) fn create_synonym(
+        &mut self,
+        stmt: crate::ast::CreateSynonymStmt,
+    ) -> Result<(), DbError> {
         let schema = stmt.name.schema_or_dbo().to_string();
         let object_id = self.catalog.alloc_object_id();
         self.catalog.create_synonym(crate::catalog::SynonymDef {
@@ -242,12 +356,18 @@ impl<'a> SchemaExecutor<'a> {
         })
     }
 
-    pub(crate) fn drop_synonym(&mut self, stmt: crate::ast::DropSynonymStmt) -> Result<(), DbError> {
+    pub(crate) fn drop_synonym(
+        &mut self,
+        stmt: crate::ast::DropSynonymStmt,
+    ) -> Result<(), DbError> {
         let schema = stmt.name.schema_or_dbo();
         self.catalog.drop_synonym(schema, &stmt.name.name)
     }
 
-    pub(crate) fn create_sequence(&mut self, stmt: crate::ast::CreateSequenceStmt) -> Result<(), DbError> {
+    pub(crate) fn create_sequence(
+        &mut self,
+        stmt: crate::ast::CreateSequenceStmt,
+    ) -> Result<(), DbError> {
         let schema = stmt.name.schema_or_dbo().to_string();
         let data_type = data_type_spec_to_runtime(&stmt.data_type);
         let object_id = self.catalog.alloc_object_id();
@@ -265,7 +385,10 @@ impl<'a> SchemaExecutor<'a> {
         })
     }
 
-    pub(crate) fn drop_sequence(&mut self, stmt: crate::ast::DropSequenceStmt) -> Result<(), DbError> {
+    pub(crate) fn drop_sequence(
+        &mut self,
+        stmt: crate::ast::DropSequenceStmt,
+    ) -> Result<(), DbError> {
         let schema = stmt.name.schema_or_dbo();
         self.catalog.drop_sequence(schema, &stmt.name.name)
     }
@@ -430,7 +553,11 @@ impl<'a> SchemaExecutor<'a> {
                 }
                 self.storage.replace_table(table_id, rows_vec)?;
             }
-            AlterTableAction::AlterColumn { name, data_type, nullable } => {
+            AlterTableAction::AlterColumn {
+                name,
+                data_type,
+                nullable,
+            } => {
                 let table_mut = self
                     .catalog
                     .find_table_mut(&schema_name, &stmt.table.name)

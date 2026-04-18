@@ -87,9 +87,10 @@ fn coerce_bit(v: bool, ty: &DataType) -> Result<Value, DbError> {
         | DataType::SmallDateTime
         | DataType::DateTimeOffset
         | DataType::Date
-        | DataType::Time => Err(
-            DbError::Execution(format!("cannot convert bit to {:?}", ty)),
-        ),
+        | DataType::Time => Err(DbError::Execution(format!(
+            "cannot convert bit to {:?}",
+            ty
+        ))),
         DataType::UniqueIdentifier => Err(DbError::Execution(
             "cannot convert bit to UNIQUEIDENTIFIER".into(),
         )),
@@ -125,9 +126,10 @@ fn coerce_int(v: i64, ty: &DataType) -> Result<Value, DbError> {
         | DataType::SmallDateTime
         | DataType::DateTimeOffset
         | DataType::Date
-        | DataType::Time => Err(
-            DbError::Execution(format!("cannot convert integer to {:?}", ty)),
-        ),
+        | DataType::Time => Err(DbError::Execution(format!(
+            "cannot convert integer to {:?}",
+            ty
+        ))),
         DataType::UniqueIdentifier => Err(DbError::Execution(
             "cannot convert integer to UNIQUEIDENTIFIER".into(),
         )),
@@ -479,7 +481,10 @@ fn coerce_string(v: &str, ty: &DataType, dateformat: &str) -> Result<Value, DbEr
                 Err(_) => Err(DbError::Execution(format!("invalid time: {}", v))),
             }
         }
-        DataType::DateTime | DataType::DateTime2 | DataType::SmallDateTime | DataType::DateTimeOffset => {
+        DataType::DateTime
+        | DataType::DateTime2
+        | DataType::SmallDateTime
+        | DataType::DateTimeOffset => {
             let parsed = parse_datetime_string(v, dateformat);
             match parsed {
                 Ok(dt) => Ok(match ty {
@@ -513,15 +518,17 @@ fn coerce_vector(value: Value, ty: &DataType) -> Result<Value, DbError> {
                 Ok(Value::Vector(bits))
             }
         }
-        (Value::Vector(bits), DataType::Char { len }) => {
-            Ok(Value::Char(pad_right(&crate::types::format_vector(&bits), *len as usize)))
-        }
+        (Value::Vector(bits), DataType::Char { len }) => Ok(Value::Char(pad_right(
+            &crate::types::format_vector(&bits),
+            *len as usize,
+        ))),
         (Value::Vector(bits), DataType::VarChar { .. }) => {
             Ok(Value::VarChar(crate::types::format_vector(&bits)))
         }
-        (Value::Vector(bits), DataType::NChar { len }) => {
-            Ok(Value::NChar(pad_right(&crate::types::format_vector(&bits), *len as usize)))
-        }
+        (Value::Vector(bits), DataType::NChar { len }) => Ok(Value::NChar(pad_right(
+            &crate::types::format_vector(&bits),
+            *len as usize,
+        ))),
         (Value::Vector(bits), DataType::NVarChar { .. }) => {
             Ok(Value::NVarChar(crate::types::format_vector(&bits)))
         }
@@ -558,7 +565,9 @@ fn coerce_date_value(v: chrono::NaiveDate, ty: &DataType) -> Result<Value, DbErr
         }
         DataType::DateTimeOffset => {
             let dt = v.and_hms_opt(0, 0, 0).unwrap();
-            Ok(Value::DateTimeOffset(dt.format("%Y-%m-%dT%H:%M:%S").to_string()))
+            Ok(Value::DateTimeOffset(
+                dt.format("%Y-%m-%dT%H:%M:%S").to_string(),
+            ))
         }
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Date(v)))),
         _ => Err(DbError::Execution(format!(
@@ -589,9 +598,10 @@ fn coerce_time_value(v: chrono::NaiveTime, ty: &DataType) -> Result<Value, DbErr
                 .and_time(v);
             Ok(Value::SmallDateTime(dt))
         }
-        DataType::DateTimeOffset => Ok(Value::DateTimeOffset(
-            format!("1900-01-01T{}", v.format("%H:%M:%S%.f")),
-        )),
+        DataType::DateTimeOffset => Ok(Value::DateTimeOffset(format!(
+            "1900-01-01T{}",
+            v.format("%H:%M:%S%.f")
+        ))),
         DataType::SqlVariant => Ok(Value::SqlVariant(Box::new(Value::Time(v)))),
         _ => Err(DbError::Execution(format!(
             "cannot convert TIME value to {:?}",
@@ -691,9 +701,15 @@ fn coerce_binary(data: &[u8], ty: &DataType) -> Result<Value, DbError> {
                 ))
             }
         }
-        DataType::DateTime | DataType::DateTime2 | DataType::SmallDateTime | DataType::DateTimeOffset | DataType::Date | DataType::Time => Err(
-            DbError::Execution(format!("cannot convert BINARY to {:?}", ty)),
-        ),
+        DataType::DateTime
+        | DataType::DateTime2
+        | DataType::SmallDateTime
+        | DataType::DateTimeOffset
+        | DataType::Date
+        | DataType::Time => Err(DbError::Execution(format!(
+            "cannot convert BINARY to {:?}",
+            ty
+        ))),
         _ => Err(DbError::Execution(format!(
             "cannot convert BINARY to {:?}",
             ty

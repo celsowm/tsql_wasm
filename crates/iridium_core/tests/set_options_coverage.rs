@@ -157,4 +157,3 @@ fn test_set_options_chained_batch() {
     assert!(!opts.ansi_nulls);
     assert_eq!(opts.datefirst, 1);
 }
-

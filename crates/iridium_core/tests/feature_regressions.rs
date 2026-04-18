@@ -30,7 +30,10 @@ fn throw_propagates_into_catch() {
 #[test]
 fn greatest_and_least_choose_extrema() {
     let mut engine = Engine::new();
-    let r = query(&mut engine, "SELECT GREATEST(1, 5, 3) AS g, LEAST(1, 5, 3) AS l");
+    let r = query(
+        &mut engine,
+        "SELECT GREATEST(1, 5, 3) AS g, LEAST(1, 5, 3) AS l",
+    );
 
     assert_eq!(r.rows[0][0].to_integer_i64(), Some(5));
     assert_eq!(r.rows[0][1].to_integer_i64(), Some(1));
@@ -45,9 +48,18 @@ fn string_split_with_ordinal_is_queryable() {
     );
 
     assert_eq!(r.rows.len(), 3);
-    assert_eq!(r.rows[0], vec![Value::VarChar("a".to_string()), Value::Int(1)]);
-    assert_eq!(r.rows[1], vec![Value::VarChar("b".to_string()), Value::Int(2)]);
-    assert_eq!(r.rows[2], vec![Value::VarChar("c".to_string()), Value::Int(3)]);
+    assert_eq!(
+        r.rows[0],
+        vec![Value::VarChar("a".to_string()), Value::Int(1)]
+    );
+    assert_eq!(
+        r.rows[1],
+        vec![Value::VarChar("b".to_string()), Value::Int(2)]
+    );
+    assert_eq!(
+        r.rows[2],
+        vec![Value::VarChar("c".to_string()), Value::Int(3)]
+    );
 }
 
 #[test]

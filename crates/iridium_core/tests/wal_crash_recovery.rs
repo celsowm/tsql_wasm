@@ -1,6 +1,6 @@
-use tempfile::TempDir;
 use iridium_core::types::Value;
 use iridium_core::PersistentDatabase;
+use tempfile::TempDir;
 
 fn exec(db: &PersistentDatabase, sid: u64, sql: &str) {
     db.execute_session_batch_sql(sid, sql).unwrap();
@@ -202,4 +202,3 @@ fn test_crash_recovery_checkpoint_export_import() {
         ));
     }
 }
-

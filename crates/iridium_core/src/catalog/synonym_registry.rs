@@ -8,10 +8,9 @@ impl SynonymRegistry for CatalogImpl {
     }
 
     fn find_synonym(&self, schema: &str, name: &str) -> Option<&SynonymDef> {
-        let idx = self.synonym_map.get(&(
-            normalize_identifier(schema),
-            normalize_identifier(name),
-        ))?;
+        let idx = self
+            .synonym_map
+            .get(&(normalize_identifier(schema), normalize_identifier(name)))?;
         Some(&self.synonyms[*idx])
     }
 

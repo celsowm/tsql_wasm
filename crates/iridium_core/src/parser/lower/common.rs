@@ -145,19 +145,17 @@ pub fn lower_expr(parser_expr: ast::Expr) -> Result<executor_ast::expressions::E
             name,
             args,
             within_group,
-        } => {
-            Ok(executor_ast::expressions::Expr::FunctionCall {
-                name,
-                args: args
-                    .into_iter()
-                    .map(lower_expr)
-                    .collect::<Result<Vec<_>, _>>()?,
-                within_group: within_group
-                    .into_iter()
-                    .map(lower_order_by_expr)
-                    .collect::<Result<Vec<_>, _>>()?,
-            })
-        }
+        } => Ok(executor_ast::expressions::Expr::FunctionCall {
+            name,
+            args: args
+                .into_iter()
+                .map(lower_expr)
+                .collect::<Result<Vec<_>, _>>()?,
+            within_group: within_group
+                .into_iter()
+                .map(lower_order_by_expr)
+                .collect::<Result<Vec<_>, _>>()?,
+        }),
         ast::Expr::WindowFunction {
             name,
             args,

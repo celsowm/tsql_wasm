@@ -60,4 +60,3 @@ fn test_info_schema_parameters_empty() {
     println!("test_info_schema_parameters_empty: {:?}", r);
     assert_eq!(r.rows.len(), 0);
 }
-

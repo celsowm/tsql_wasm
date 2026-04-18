@@ -3,6 +3,7 @@ use crate::ast::ExecProcedureStmt;
 use crate::error::DbError;
 use crate::executor::context::ExecutionContext;
 use crate::executor::evaluator::eval_expr;
+use crate::executor::metadata::DB_CATALOG;
 use crate::executor::metadata::{type_max_length, type_name};
 use crate::executor::result::QueryResult;
 use crate::types::{DataType, Value};
@@ -82,10 +83,7 @@ fn execute_sp_rename(
     }
     let objname = &args[0];
     let newname = &args[1];
-    let objtype = args
-        .get(2)
-        .map(|s| s.as_str())
-        .unwrap_or("OBJECT");
+    let objtype = args.get(2).map(|s| s.as_str()).unwrap_or("OBJECT");
 
     if objtype.eq_ignore_ascii_case("COLUMN") {
         let parts: Vec<&str> = objname.splitn(2, '.').collect();
@@ -120,10 +118,7 @@ fn execute_sp_rename(
     Ok(QueryResult::default())
 }
 
-fn execute_sp_help(
-    exec: &mut ScriptExecutor<'_>,
-    args: &[String],
-) -> Result<QueryResult, DbError> {
+fn execute_sp_help(exec: &mut ScriptExecutor<'_>, args: &[String]) -> Result<QueryResult, DbError> {
     if args.is_empty() {
         let mut rows = Vec::new();
         for t in exec.catalog.get_tables() {
@@ -343,7 +338,10 @@ fn execute_sp_helpindex(
         .ok_or_else(|| DbError::object_not_found(format!("table '{}.{}'", schema, table_name)))?;
 
     let indexes = exec.catalog.get_indexes();
-    let table_indexes: Vec<_> = indexes.iter().filter(|idx| idx.table_id == table.id).collect();
+    let table_indexes: Vec<_> = indexes
+        .iter()
+        .filter(|idx| idx.table_id == table.id)
+        .collect();
 
     let mut rows = Vec::new();
     for idx in table_indexes {
@@ -431,9 +429,7 @@ fn execute_sp_set_session_context(
         }
     }
 
-    ctx.session
-        .session_context
-        .insert(key, (value, read_only));
+    ctx.session.session_context.insert(key, (value, read_only));
 
     Ok(QueryResult::default())
 }
@@ -445,7 +441,7 @@ fn execute_sp_tables(exec: &mut ScriptExecutor<'_>) -> Result<QueryResult, DbErr
         .iter()
         .map(|t| {
             vec![
-                Value::VarChar("iridium_sql".into()),
+                Value::VarChar(DB_CATALOG.into()),
                 Value::VarChar("dbo".into()),
                 Value::VarChar(t.name.clone()),
                 Value::VarChar("TABLE".into()),

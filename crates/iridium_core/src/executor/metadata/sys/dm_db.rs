@@ -2,6 +2,7 @@ use super::super::virtual_table_def;
 use super::super::VirtualTable;
 use crate::catalog::Catalog;
 use crate::executor::context::ExecutionContext;
+use crate::executor::metadata::database_catalog::current_database_id;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
@@ -37,7 +38,8 @@ impl VirtualTable for SysDmDbIndexUsageStats {
         )
     }
 
-    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+    fn rows(&self, catalog: &dyn Catalog, ctx: &ExecutionContext) -> Vec<StoredRow> {
+        let database_id = current_database_id(ctx);
         let mut rows = Vec::new();
         // Return zeros for all indexes for now to satisfy tools
         for t in catalog.get_tables() {
@@ -50,13 +52,25 @@ impl VirtualTable for SysDmDbIndexUsageStats {
             let mut add_usage = |index_id: i32| {
                 rows.push(StoredRow {
                     values: vec![
-                        Value::Int(5), // iridium_sql
+                        Value::Int(database_id),
                         Value::Int(t.id as i32),
                         Value::Int(index_id),
-                        Value::BigInt(0), Value::BigInt(0), Value::BigInt(0), Value::BigInt(0),
-                        Value::Null, Value::Null, Value::Null, Value::Null,
-                        Value::BigInt(0), Value::BigInt(0), Value::BigInt(0), Value::BigInt(0),
-                        Value::Null, Value::Null, Value::Null, Value::Null,
+                        Value::BigInt(0),
+                        Value::BigInt(0),
+                        Value::BigInt(0),
+                        Value::BigInt(0),
+                        Value::Null,
+                        Value::Null,
+                        Value::Null,
+                        Value::Null,
+                        Value::BigInt(0),
+                        Value::BigInt(0),
+                        Value::BigInt(0),
+                        Value::BigInt(0),
+                        Value::Null,
+                        Value::Null,
+                        Value::Null,
+                        Value::Null,
                     ],
                     deleted: false,
                 });
@@ -112,10 +126,15 @@ impl VirtualTable for SysDmDbPartitionStats {
                         Value::Int(t.id as i32),
                         Value::Int(index_id),
                         Value::Int(1), // partition_number
-                        Value::BigInt(0), Value::BigInt(0), Value::BigInt(0),
-                        Value::BigInt(0), Value::BigInt(0),
-                        Value::BigInt(0), Value::BigInt(0),
-                        Value::BigInt(0), Value::BigInt(0),
+                        Value::BigInt(0),
+                        Value::BigInt(0),
+                        Value::BigInt(0),
+                        Value::BigInt(0),
+                        Value::BigInt(0),
+                        Value::BigInt(0),
+                        Value::BigInt(0),
+                        Value::BigInt(0),
+                        Value::BigInt(0),
                         Value::BigInt(0), // row_count
                     ],
                     deleted: false,
@@ -146,7 +165,11 @@ impl VirtualTable for SysDmDbIndexPhysicalStats {
                 ("index_id", DataType::Int, false),
                 ("partition_number", DataType::Int, false),
                 ("index_type_desc", DataType::NVarChar { max_len: 60 }, false),
-                ("alloc_unit_type_desc", DataType::NVarChar { max_len: 60 }, false),
+                (
+                    "alloc_unit_type_desc",
+                    DataType::NVarChar { max_len: 60 },
+                    false,
+                ),
                 ("index_depth", DataType::TinyInt, false),
                 ("index_level", DataType::TinyInt, false),
                 ("avg_fragmentation_in_percent", DataType::Float, false),

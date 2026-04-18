@@ -13,11 +13,20 @@ mod routines;
 mod sessions;
 mod tables;
 
+use super::virtual_table_def;
 use super::VirtualTable;
+use crate::catalog::Catalog;
+use crate::executor::context::ExecutionContext;
+use crate::storage::StoredRow;
+use crate::types::{DataType, Value};
 
 pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> {
     if schema.eq_ignore_ascii_case("dbo") && name.eq_ignore_ascii_case("syspolicy_configuration") {
         Some(Box::new(policy_configuration::SysPolicyConfiguration))
+    } else if schema.eq_ignore_ascii_case("dbo")
+        && name.eq_ignore_ascii_case("syspolicy_system_health_state")
+    {
+        Some(Box::new(SysPolicySystemHealthState))
     } else if schema.eq_ignore_ascii_case("dbo") && name.eq_ignore_ascii_case("sysobjects") {
         Some(Box::new(objects::SysCompatSysObjects))
     } else if !schema.eq_ignore_ascii_case("sys") {
@@ -44,6 +53,12 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(tables::SysIdentityColumns))
     } else if name.eq_ignore_ascii_case("data_spaces") {
         Some(Box::new(tables::SysDataSpaces))
+    } else if name.eq_ignore_ascii_case("change_tracking_tables") {
+        Some(Box::new(tables::SysChangeTrackingTables))
+    } else if name.eq_ignore_ascii_case("fulltext_indexes") {
+        Some(Box::new(tables::SysFullTextIndexes))
+    } else if name.eq_ignore_ascii_case("fulltext_catalogs") {
+        Some(Box::new(tables::SysFullTextCatalogs))
     } else if name.eq_ignore_ascii_case("extended_properties") {
         Some(Box::new(tables::SysExtendedProperties))
     } else if name.eq_ignore_ascii_case("index_columns") {
@@ -160,5 +175,27 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(database_principals::SysDatabaseRoleMembers))
     } else {
         None
+    }
+}
+
+pub(crate) struct SysPolicySystemHealthState;
+
+impl VirtualTable for SysPolicySystemHealthState {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "syspolicy_system_health_state",
+            vec![(
+                "target_query_expression_with_id",
+                DataType::NVarChar { max_len: 4000 },
+                false,
+            )],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+        vec![StoredRow {
+            values: vec![Value::NVarChar("Server".to_string())],
+            deleted: false,
+        }]
     }
 }

@@ -135,7 +135,11 @@ impl VirtualTable for SysPartitions {
                 ("rows", DataType::BigInt, false),
                 ("filestream_filegroup_id", DataType::Int, false),
                 ("data_compression", DataType::TinyInt, false),
-                ("data_compression_desc", DataType::VarChar { max_len: 60 }, false),
+                (
+                    "data_compression_desc",
+                    DataType::VarChar { max_len: 60 },
+                    false,
+                ),
             ],
         )
     }

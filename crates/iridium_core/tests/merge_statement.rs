@@ -148,4 +148,3 @@ fn test_merge_all_three_clauses() {
     assert_eq!(r.rows[1][0], Value::Int(2));
     assert_eq!(r.rows[1][1], Value::VarChar("new2".to_string()));
 }
-

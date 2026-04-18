@@ -65,4 +65,3 @@ fn test_ssms_partition_schemes_join_group_parse() {
     let parsed = parse_sql(sql);
     assert!(parsed.is_ok(), "parse failed: {:?}", parsed.err());
 }
-

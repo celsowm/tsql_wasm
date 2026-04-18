@@ -154,4 +154,3 @@ fn procedural_nested_while() {
     let r = query(&mut e, "SELECT @total");
     assert_eq!(r.rows[0][0], Value::Int(9));
 }
-

@@ -3,8 +3,12 @@ use iridium_core::{types::Value, Engine};
 #[test]
 fn test_synonym_basic() {
     let engine = Engine::new();
-    engine.exec("CREATE TABLE BaseTable (id INT, name VARCHAR(50))").unwrap();
-    engine.exec("INSERT INTO BaseTable VALUES (1, 'Alice'), (2, 'Bob')").unwrap();
+    engine
+        .exec("CREATE TABLE BaseTable (id INT, name VARCHAR(50))")
+        .unwrap();
+    engine
+        .exec("INSERT INTO BaseTable VALUES (1, 'Alice'), (2, 'Bob')")
+        .unwrap();
 
     engine.exec("CREATE SYNONYM MyTable FOR BaseTable").unwrap();
 
@@ -20,11 +24,15 @@ fn test_synonym_metadata() {
     engine.exec("CREATE TABLE T1 (id INT)").unwrap();
     engine.exec("CREATE SYNONYM S1 FOR T1").unwrap();
 
-    let res = engine.query("SELECT name, base_object_name FROM sys.synonyms WHERE name = 'S1'").unwrap();
+    let res = engine
+        .query("SELECT name, base_object_name FROM sys.synonyms WHERE name = 'S1'")
+        .unwrap();
     assert_eq!(res.rows.len(), 1);
     assert_eq!(res.rows[0][1], Value::NVarChar("dbo.T1".to_string()));
 
-    let res = engine.query("SELECT name, type FROM sys.objects WHERE name = 'S1'").unwrap();
+    let res = engine
+        .query("SELECT name, type FROM sys.objects WHERE name = 'S1'")
+        .unwrap();
     assert_eq!(res.rows.len(), 1);
     assert_eq!(res.rows[0][1], Value::Char("SN".to_string()));
 }

@@ -87,8 +87,11 @@ pub struct IndexDef {
     pub table_id: u32,
     pub name: String,
     pub column_ids: Vec<u32>,
+    pub is_primary_key: bool,
     pub is_unique: bool,
     pub is_clustered: bool,
+    #[serde(default)]
+    pub constraint_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -242,6 +245,8 @@ pub trait IndexRegistry {
         columns: &[String],
         is_clustered: bool,
         is_unique: bool,
+        is_primary_key: bool,
+        constraint_name: Option<String>,
     ) -> Result<(), DbError>;
     fn drop_index(
         &mut self,

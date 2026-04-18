@@ -1,7 +1,7 @@
+use iridium_core::{parse_sql, types::Value, Engine};
 use tiberius::{Client, Config, Row};
 use tokio::net::TcpStream;
 use tokio_util::compat::TokioAsyncWriteCompatExt;
-use iridium_core::{parse_sql, types::Value, Engine};
 
 /// Helper to convert engine Value to a string representation that matches SQL Server's TDS output
 fn engine_val_to_string(val: &Value) -> String {
@@ -72,7 +72,10 @@ async fn get_sqlserver_client() -> Client<tokio_util::compat::Compat<TcpStream>>
 async fn sqlserver_supports_vector() -> bool {
     let mut client = get_sqlserver_client().await;
     let stream = client
-        .query("SELECT CASE WHEN TYPE_ID('vector') IS NULL THEN 0 ELSE 1 END", &[])
+        .query(
+            "SELECT CASE WHEN TYPE_ID('vector') IS NULL THEN 0 ELSE 1 END",
+            &[],
+        )
         .await
         .expect("Failed to probe SQL Server VECTOR support");
     let rows = stream
@@ -121,10 +124,7 @@ async fn compare_after_setup(setup_sqls: &[&str], sql: &str) {
 
     for setup_sql in setup_sqls {
         engine.exec(setup_sql).expect(setup_sql);
-        client
-            .execute(*setup_sql, &[])
-            .await
-            .expect(setup_sql);
+        client.execute(*setup_sql, &[]).await.expect(setup_sql);
     }
 
     let stmt = parse_sql(sql).expect("Failed to parse SQL for engine");
@@ -148,8 +148,24 @@ async fn compare_after_setup(setup_sqls: &[&str], sql: &str) {
         .expect("Failed to get results from SQL Server");
     let ss_rows: Vec<Vec<String>> = ss_rows_raw.iter().map(tiberius_row_to_strings).collect();
 
-    assert_eq!(engine_rows, ss_rows, "Mismatch for SQL after setup: {}", sql);
+    assert_eq!(
+        engine_rows, ss_rows,
+        "Mismatch for SQL after setup: {}",
+        sql
+    );
     println!("Success comparing after setup: {}", sql);
+}
+
+fn unique_suffix() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time before unix epoch")
+        .as_nanos()
+}
+
+async fn compare_after_setup_owned(setup_sqls: &[String], sql: &str) {
+    let setup_refs: Vec<&str> = setup_sqls.iter().map(|s| s.as_str()).collect();
+    compare_after_setup(&setup_refs, sql).await;
 }
 
 #[tokio::test]
@@ -195,10 +211,7 @@ async fn test_compare_greatest_least() {
 #[tokio::test]
 #[ignore]
 async fn test_compare_string_split_with_ordinal() {
-    compare(
-        "SELECT value, ordinal FROM STRING_SPLIT('a,b,c', ',', 1) ORDER BY ordinal",
-    )
-    .await;
+    compare("SELECT value, ordinal FROM STRING_SPLIT('a,b,c', ',', 1) ORDER BY ordinal").await;
 }
 
 #[tokio::test]
@@ -276,4 +289,154 @@ async fn test_compare_vector_metadata() {
         full_table_name_2
     );
     compare_after_setup(&[&create_sql_2], &sys_columns_sql).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_compare_designer_table_list_probe() {
+    let suffix = unique_suffix();
+    let table_name = format!("DesignerCustomers_{}", suffix);
+    let full_table_name = format!("dbo.{}", table_name);
+
+    let setup_sqls = vec![format!(
+        "CREATE TABLE {} (CustomerId INT NOT NULL, Name NVARCHAR(50) NOT NULL, CONSTRAINT PK_{} PRIMARY KEY CLUSTERED (CustomerId))",
+        full_table_name, table_name
+    )];
+
+    let sql = format!(
+        "SELECT tbl.name AS [Name], SCHEMA_NAME(tbl.schema_id) AS [Schema], CAST(tbl.is_memory_optimized AS bit) AS [IsMemoryOptimized], CAST(CASE idx.type WHEN 5 THEN 1 ELSE 0 END AS bit) AS [HasClusteredColumnStoreIndex], CAST(CASE WHEN 'PS' = dsidx.type THEN 1 ELSE 0 END AS bit) AS [IsPartitioned], CAST(ISNULL((SELECT distinct 1 FROM sys.all_columns WHERE object_id = tbl.object_id AND is_sparse = 1), 0) AS bit) AS [HasSparseColumn], CAST(CASE WHEN (SELECT major_id FROM sys.extended_properties WHERE major_id = tbl.object_id AND minor_id = 0 AND class = 1 AND name = N'microsoft_database_tools_support') IS NOT NULL THEN 1 ELSE 0 END AS bit) AS [HasMdtSupport] FROM sys.tables AS tbl LEFT JOIN sys.indexes AS idx ON idx.object_id = tbl.object_id AND (idx.index_id < 2 OR (tbl.is_memory_optimized = 1 AND idx.index_id = (SELECT MIN(index_id) FROM sys.indexes WHERE object_id = tbl.object_id))) LEFT OUTER JOIN sys.data_spaces AS dsidx ON dsidx.data_space_id = idx.data_space_id WHERE CAST(ISNULL(tbl.ledger_type, 0) AS int) = 0 AND tbl.is_filetable = 0 AND CAST(tbl.is_memory_optimized AS bit) = 0 AND tbl.temporal_type = 0 AND CAST(tbl.is_external AS bit) = 0 AND CAST(tbl.is_node AS bit) = 0 AND CAST(tbl.is_edge AS bit) = 0 AND tbl.is_ms_shipped = 0 AND tbl.name = '{}' AND SCHEMA_NAME(tbl.schema_id) = N'dbo' ORDER BY [Schema], [Name]",
+        table_name
+    );
+
+    compare_after_setup_owned(&setup_sqls, &sql).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_compare_designer_table_columns_probe() {
+    let suffix = unique_suffix();
+    let table_name = format!("DesignerColumns_{}", suffix);
+    let full_table_name = format!("dbo.{}", table_name);
+
+    let setup_sqls = vec![format!(
+        "CREATE TABLE {} (CustomerId INT NOT NULL, Name NVARCHAR(50) NOT NULL, CONSTRAINT PK_{} PRIMARY KEY CLUSTERED (CustomerId))",
+        full_table_name, table_name
+    )];
+
+    let sql = format!(
+        "SELECT clmns.name AS [Name], CAST(ISNULL(cik.index_column_id, 0) AS bit) AS [InPrimaryKey], CAST(ISNULL((select TOP 1 1 from sys.foreign_key_columns AS colfk where colfk.parent_column_id = clmns.column_id and colfk.parent_object_id = clmns.object_id), 0) AS bit) AS [IsForeignKey], ISNULL(usrt.name, baset.name) AS [DataType], ISNULL(baset.name, N'') AS [SystemType], CAST(CASE WHEN baset.name IN (N'nchar', N'nvarchar') AND clmns.max_length <> -1 THEN clmns.max_length/2 ELSE clmns.max_length END AS int) AS [Length], CAST(clmns.precision AS int) AS [NumericPrecision], CAST(clmns.scale AS int) AS [NumericScale], clmns.is_nullable AS [Nullable], clmns.is_computed AS [Computed], ISNULL(s2clmns.name, N'') AS [XmlSchemaNamespaceSchema], ISNULL(xscclmns.name, N'') AS [XmlSchemaNamespace], ISNULL((case clmns.is_xml_document when 1 then 2 else 1 end), 0) AS [XmlDocumentConstraint], CAST(clmns.is_sparse AS bit) AS [IsSparse], CAST(clmns.is_column_set AS bit) AS [IsColumnSet], clmns.column_id AS [ID], CAST(clmns.is_dropped_ledger_column AS bit) AS [IsDroppedLedgerColumn] FROM sys.tables AS tbl INNER JOIN sys.all_columns AS clmns ON clmns.object_id = tbl.object_id LEFT OUTER JOIN sys.indexes AS ik ON ik.object_id = clmns.object_id and 1 = ik.is_primary_key LEFT OUTER JOIN sys.index_columns AS cik ON cik.index_id = ik.index_id and cik.column_id = clmns.column_id and cik.object_id = clmns.object_id and 0 = cik.is_included_column LEFT OUTER JOIN sys.types AS usrt ON usrt.user_type_id = clmns.user_type_id LEFT OUTER JOIN sys.types AS baset ON (baset.user_type_id = clmns.system_type_id and baset.user_type_id = baset.system_type_id) or ((baset.system_type_id = clmns.system_type_id) and (baset.user_type_id = clmns.user_type_id) and (baset.is_user_defined = 0) and (baset.is_assembly_type = 1)) LEFT OUTER JOIN sys.xml_schema_collections AS xscclmns ON xscclmns.xml_collection_id = clmns.xml_collection_id LEFT OUTER JOIN sys.schemas AS s2clmns ON s2clmns.schema_id = xscclmns.schema_id WHERE (CAST(clmns.is_dropped_ledger_column AS bit) = 0) and ((tbl.name = N'{}' and SCHEMA_NAME(tbl.schema_id) = N'dbo')) ORDER BY [ID] ASC",
+        table_name
+    );
+
+    compare_after_setup_owned(&setup_sqls, &sql).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_compare_designer_table_indexes_probe() {
+    let suffix = unique_suffix();
+    let table_name = format!("DesignerIndexes_{}", suffix);
+    let full_table_name = format!("dbo.{}", table_name);
+
+    let setup_sqls = vec![format!(
+        "CREATE TABLE {} (CustomerId INT NOT NULL, Name NVARCHAR(50) NOT NULL, CONSTRAINT PK_{} PRIMARY KEY CLUSTERED (CustomerId))",
+        full_table_name, table_name
+    )];
+
+    let sql = format!(
+        "SELECT i.name, i.type_desc, i.is_unique, i.is_primary_key FROM sys.indexes i INNER JOIN sys.tables t ON i.object_id = t.object_id WHERE t.name = '{}' AND t.schema_id = SCHEMA_ID('dbo')",
+        table_name
+    );
+
+    compare_after_setup_owned(&setup_sqls, &sql).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_compare_designer_table_foreign_keys_probe() {
+    let suffix = unique_suffix();
+    let customers_table = format!("DesignerCustomersFk_{}", suffix);
+    let orders_table = format!("DesignerOrdersFk_{}", suffix);
+    let full_customers_table = format!("dbo.{}", customers_table);
+    let full_orders_table = format!("dbo.{}", orders_table);
+
+    let setup_sqls = vec![
+        format!(
+            "CREATE TABLE {} (CustomerId INT NOT NULL, Name NVARCHAR(50) NOT NULL, CONSTRAINT PK_{} PRIMARY KEY CLUSTERED (CustomerId))",
+            full_customers_table, customers_table
+        ),
+        format!(
+            "CREATE TABLE {} (OrderId INT NOT NULL, CustomerId INT NOT NULL, CONSTRAINT PK_{} PRIMARY KEY (OrderId), CONSTRAINT FK_{}_Customers FOREIGN KEY (CustomerId) REFERENCES {}(CustomerId))",
+            full_orders_table, orders_table, orders_table, full_customers_table
+        ),
+    ];
+
+    let sql = format!(
+        "SELECT cstr.name AS [Name] FROM sys.tables AS tbl INNER JOIN sys.foreign_keys AS cstr ON cstr.parent_object_id = tbl.object_id LEFT OUTER JOIN sys.indexes AS ki ON ki.index_id = cstr.key_index_id and ki.object_id = cstr.referenced_object_id WHERE (CAST(CASE WHEN ((SELECT o.type FROM sys.objects o WHERE o.object_id = ki.object_id) = 'U') THEN CASE WHEN ((SELECT tbl.is_memory_optimized FROM sys.tables tbl WHERE tbl.object_id = ki.object_id) = 1) THEN 1 ELSE 0 END ELSE CASE WHEN ((SELECT tt.is_memory_optimized FROM sys.table_types tt WHERE tt.type_table_object_id = ki.object_id) = 1) THEN 1 ELSE 0 END END AS bit) = 0) and ((tbl.name = '{}' and SCHEMA_NAME(tbl.schema_id) = N'dbo')) ORDER BY [Name] ASC",
+        orders_table
+    );
+
+    compare_after_setup_owned(&setup_sqls, &sql).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_compare_database_identity_functions() {
+    compare(
+        "SELECT DB_NAME() AS current_db, DB_ID() AS current_db_id, \
+                DB_NAME(1) AS master_name, DB_ID('master') AS master_id, \
+                DB_NAME(2) AS tempdb_name, DB_ID('tempdb') AS tempdb_id, \
+                DB_NAME(3) AS model_name, DB_ID('model') AS model_id, \
+                DB_NAME(4) AS msdb_name, DB_ID('msdb') AS msdb_id",
+    )
+    .await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_compare_database_metadata_probes() {
+    compare(
+        "SELECT \
+            name, database_id, state_desc, compatibility_level, recovery_model_desc \
+         FROM sys.databases \
+         WHERE name IN ('master', 'tempdb', 'model', 'msdb') \
+         ORDER BY database_id",
+    )
+    .await;
+
+    compare(
+        "SELECT \
+            CAST(DATABASEPROPERTYEX('master', 'Status') AS nvarchar(20)) AS master_status, \
+            CAST(DATABASEPROPERTYEX('master', 'Recovery') AS nvarchar(20)) AS master_recovery, \
+            CAST(DATABASEPROPERTYEX('tempdb', 'Recovery') AS nvarchar(20)) AS tempdb_recovery, \
+            CAST(DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS nvarchar(128)) AS current_collation",
+    )
+    .await;
+
+    compare(
+        "SELECT \
+            HAS_DBACCESS('master') AS has_master, \
+            HAS_DBACCESS('tempdb') AS has_tempdb, \
+            HAS_DBACCESS('model') AS has_model, \
+            HAS_DBACCESS('msdb') AS has_msdb",
+    )
+    .await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_compare_session_and_connection_probes() {
+    compare(
+        "SELECT database_id, authenticating_database_id \
+         FROM sys.dm_exec_sessions \
+         WHERE session_id = @@SPID",
+    )
+    .await;
+
+    compare(
+        "SELECT status, database_id \
+         FROM sys.dm_exec_requests \
+         WHERE session_id = @@SPID",
+    )
+    .await;
 }

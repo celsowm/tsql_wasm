@@ -46,4 +46,3 @@ fn test_example_basic() {
     assert_eq!(result.columns, vec!["Name", "TotalPosts"]);
     assert_eq!(result.rows.len(), 2);
 }
-

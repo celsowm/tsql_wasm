@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
+use iridium_core::Database;
+use iridium_server::{ServerConfig, TdsServer};
 use tiberius::{Client, Config, Row};
 use tokio::net::TcpStream;
 use tokio_util::compat::TokioAsyncWriteCompatExt;
-use iridium_core::Database;
-use iridium_server::{ServerConfig, TdsServer};
 
 pub fn init_test_logger() {
     let mut logger = env_logger::builder();

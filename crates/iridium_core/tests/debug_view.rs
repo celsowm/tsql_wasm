@@ -12,4 +12,3 @@ fn debug_view_smoke() {
     assert_eq!(result.columns, vec!["n".to_string()]);
     assert_eq!(result.rows.len(), 1);
 }
-

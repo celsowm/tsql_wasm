@@ -118,6 +118,18 @@ fn test_sql_server_handshake_probe_functions() {
 }
 
 #[test]
+fn test_collationproperty_probe() {
+    let mut engine = Engine::new();
+    let r = query(
+        &mut engine,
+        "SELECT COLLATIONPROPERTY((select collation_name from sys.databases where name = ISNULL(DB_NAME(), db_name())), 'LCID') AS lcid, COLLATIONPROPERTY((select collation_name from sys.databases where name = ISNULL(DB_NAME(), db_name())), 'ComparisonStyle') AS comparison_style",
+    );
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0][0], Value::Int(1033));
+    assert_eq!(r.rows[0][1], Value::Int(196609));
+}
+
+#[test]
 fn test_serverproperty_is_hadr_enabled_probe() {
     let mut engine = Engine::new();
     let r = query(
@@ -234,6 +246,37 @@ fn test_syspolicy_configuration_object_explorer_probe() {
 }
 
 #[test]
+fn test_syspolicy_health_state_probe() {
+    let mut engine = Engine::new();
+    let r = query(
+        &mut engine,
+        "SELECT CASE WHEN 1 = msdb.dbo.fn_syspolicy_is_automation_enabled() AND EXISTS (SELECT * FROM msdb.dbo.syspolicy_system_health_state WHERE target_query_expression_with_id LIKE 'Server%') THEN 1 ELSE 0 END AS PolicyHealthState",
+    );
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0][0], Value::Int(1));
+}
+
+#[test]
+fn test_designer_table_filegroup_probe() {
+    let mut engine = Engine::new();
+    exec(
+        &mut engine,
+        "CREATE TABLE dbo.DesignerCategories (CategoryId INT NOT NULL, Name NVARCHAR(100) NOT NULL)",
+    );
+    let r = query(
+        &mut engine,
+        "SELECT Fg.name AS TableFg, dsp.name AS TexImageFg, FtCat.name AS FulltextCatalog FROM sys.tables tbl LEFT OUTER JOIN sys.change_tracking_tables AS ctt ON ctt.object_id = tbl.object_id LEFT OUTER JOIN sys.data_spaces dsp ON dsp.data_space_id = tbl.lob_data_space_id LEFT OUTER JOIN (sys.fulltext_indexes fti INNER JOIN sys.fulltext_catalogs FtCat ON FtCat.fulltext_catalog_id = fti.fulltext_catalog_id) ON fti.object_id = tbl.object_id INNER JOIN (sys.indexes idx INNER JOIN sys.data_spaces Fg ON (idx.index_id = 0 OR idx.index_id = 1) AND Fg.data_space_id = idx.data_space_id) ON idx.object_id = tbl.object_id AND (idx.index_id = 0 OR idx.index_id = 1) WHERE tbl.object_id = object_id(N'dbo.DesignerCategories')",
+    );
+    assert!(!r.rows.is_empty());
+    assert!(r
+        .rows
+        .iter()
+        .all(|row| row[0] == Value::VarChar("PRIMARY".to_string())));
+    assert!(r.rows.iter().all(|row| row[1].is_null()));
+    assert!(r.rows.iter().all(|row| row[2].is_null()));
+}
+
+#[test]
 fn test_is_srvrolemember_object_explorer_probe() {
     let mut engine = Engine::new();
     let r = query(
@@ -257,6 +300,14 @@ fn test_has_dbaccess_for_master() {
 }
 
 #[test]
+fn test_is_member_for_db_owner() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT IS_MEMBER('db_owner') AS is_db_owner");
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0][0], Value::Int(1));
+}
+
+#[test]
 fn test_has_perms_by_name_probe() {
     let mut engine = Engine::new();
     let r = query(
@@ -267,6 +318,14 @@ fn test_has_perms_by_name_probe() {
     assert_eq!(r.rows[0][1], Value::Int(1));
     assert_eq!(r.rows[0][2], Value::Int(1));
     assert_eq!(r.rows[0][3], Value::Int(1));
+}
+
+#[test]
+fn test_permissions_returns_positive_mask() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT PERMISSIONS() AS perms");
+    assert_eq!(r.rows.len(), 1);
+    assert!(matches!(r.rows[0][0], Value::Int(v) if v > 0));
 }
 
 #[test]
@@ -485,5 +544,3 @@ fn test_ident_metadata_null() {
     let r = query(&mut engine, "SELECT IDENT_SEED('nonexistent') AS v");
     assert!(r.rows[0][0].is_null());
 }
-
-

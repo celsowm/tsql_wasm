@@ -171,4 +171,3 @@ async fn quick_fetch_status_test() {
 
     println!("✓ Fetch status test passed");
 }
-

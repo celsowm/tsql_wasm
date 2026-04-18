@@ -102,4 +102,3 @@ fn parser_select_with_column_alias() {
     assert_eq!(r.columns[0], "the_answer");
     assert_eq!(r.rows[0][0], Value::Int(42));
 }
-

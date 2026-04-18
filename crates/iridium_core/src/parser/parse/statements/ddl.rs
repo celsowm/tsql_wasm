@@ -94,10 +94,20 @@ pub fn parse_column_def(parser: &mut Parser) -> ParseResult<ColumnDef> {
             Keyword::Primary => {
                 let _ = parser.next();
                 parser.expect_keyword(Keyword::Key)?;
+                if matches!(parser.peek(), Some(Token::Keyword(Keyword::Clustered)))
+                    || matches!(parser.peek(), Some(Token::Keyword(Keyword::Nonclustered)))
+                {
+                    let _ = parser.next();
+                }
                 is_primary_key = true;
             }
             Keyword::Unique => {
                 let _ = parser.next();
+                if matches!(parser.peek(), Some(Token::Keyword(Keyword::Clustered)))
+                    || matches!(parser.peek(), Some(Token::Keyword(Keyword::Nonclustered)))
+                {
+                    let _ = parser.next();
+                }
                 is_unique = true;
             }
             Keyword::Default => {
@@ -235,6 +245,15 @@ pub fn parse_table_constraint(parser: &mut Parser) -> ParseResult<TableConstrain
     match kw {
         Keyword::Primary => {
             parser.expect_keyword(Keyword::Key)?;
+            let clustered = if matches!(parser.peek(), Some(Token::Keyword(Keyword::Clustered))) {
+                let _ = parser.next();
+                true
+            } else if matches!(parser.peek(), Some(Token::Keyword(Keyword::Nonclustered))) {
+                let _ = parser.next();
+                false
+            } else {
+                true
+            };
             parser.expect_lparen()?;
             let columns =
                 crate::parser::parse::expressions::parse_comma_list(parser, |p| match p.next() {
@@ -243,9 +262,22 @@ pub fn parse_table_constraint(parser: &mut Parser) -> ParseResult<TableConstrain
                     _ => p.backtrack(Expected::Description("column name")),
                 })?;
             parser.expect_rparen()?;
-            Ok(TableConstraint::PrimaryKey { name, columns })
+            Ok(TableConstraint::PrimaryKey {
+                name,
+                columns,
+                clustered,
+            })
         }
         Keyword::Unique => {
+            let clustered = if matches!(parser.peek(), Some(Token::Keyword(Keyword::Clustered))) {
+                let _ = parser.next();
+                true
+            } else if matches!(parser.peek(), Some(Token::Keyword(Keyword::Nonclustered))) {
+                let _ = parser.next();
+                false
+            } else {
+                false
+            };
             parser.expect_lparen()?;
             let columns =
                 crate::parser::parse::expressions::parse_comma_list(parser, |p| match p.next() {
@@ -254,7 +286,11 @@ pub fn parse_table_constraint(parser: &mut Parser) -> ParseResult<TableConstrain
                     _ => p.backtrack(Expected::Description("column name")),
                 })?;
             parser.expect_rparen()?;
-            Ok(TableConstraint::Unique { name, columns })
+            Ok(TableConstraint::Unique {
+                name,
+                columns,
+                clustered,
+            })
         }
         Keyword::Foreign => {
             parser.expect_keyword(Keyword::Key)?;
@@ -481,6 +517,15 @@ pub fn parse_alter_table_add_constraint(parser: &mut Parser) -> ParseResult<Tabl
     let constraint = if parser.at_keyword(Keyword::Primary) {
         let _ = parser.next();
         parser.expect_keyword(Keyword::Key)?;
+        let clustered = if matches!(parser.peek(), Some(Token::Keyword(Keyword::Clustered))) {
+            let _ = parser.next();
+            true
+        } else if matches!(parser.peek(), Some(Token::Keyword(Keyword::Nonclustered))) {
+            let _ = parser.next();
+            false
+        } else {
+            true
+        };
         parser.expect_lparen()?;
         let columns =
             crate::parser::parse::expressions::parse_comma_list(parser, |p| match p.next() {
@@ -492,6 +537,7 @@ pub fn parse_alter_table_add_constraint(parser: &mut Parser) -> ParseResult<Tabl
         TableConstraint::PrimaryKey {
             name: Some(constraint_name),
             columns,
+            clustered,
         }
     } else if parser.at_keyword(Keyword::Foreign) {
         let _ = parser.next();
@@ -552,6 +598,15 @@ pub fn parse_alter_table_add_constraint(parser: &mut Parser) -> ParseResult<Tabl
         }
     } else if parser.at_keyword(Keyword::Unique) {
         let _ = parser.next();
+        let clustered = if matches!(parser.peek(), Some(Token::Keyword(Keyword::Clustered))) {
+            let _ = parser.next();
+            true
+        } else if matches!(parser.peek(), Some(Token::Keyword(Keyword::Nonclustered))) {
+            let _ = parser.next();
+            false
+        } else {
+            false
+        };
         parser.expect_lparen()?;
         let columns =
             crate::parser::parse::expressions::parse_comma_list(parser, |p| match p.next() {
@@ -563,6 +618,7 @@ pub fn parse_alter_table_add_constraint(parser: &mut Parser) -> ParseResult<Tabl
         TableConstraint::Unique {
             name: Some(constraint_name),
             columns,
+            clustered,
         }
     } else {
         return parser.backtrack(Expected::Description("constraint type"));

@@ -145,5 +145,3 @@ impl IridiumWasmDb {
 fn js_err(err: impl std::fmt::Display) -> JsValue {
     JsValue::from_str(&err.to_string())
 }
-
-

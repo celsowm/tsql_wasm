@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
-use parking_lot::Mutex;
 use iridium_core::{SessionId, SessionManager};
+use parking_lot::Mutex;
 
 use crate::ServerConfig;
 
@@ -124,4 +124,3 @@ impl SessionPool {
         });
     }
 }
-

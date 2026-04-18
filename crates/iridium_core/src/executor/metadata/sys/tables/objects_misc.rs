@@ -6,6 +6,9 @@ use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
 pub(crate) struct SysDataSpaces;
+pub(crate) struct SysChangeTrackingTables;
+pub(crate) struct SysFullTextIndexes;
+pub(crate) struct SysFullTextCatalogs;
 pub(crate) struct SysExtendedProperties;
 pub(crate) struct SysIndexColumns;
 pub(crate) struct SysForeignKeyColumns;
@@ -51,6 +54,54 @@ impl VirtualTable for SysDataSpaces {
     }
 }
 
+impl VirtualTable for SysChangeTrackingTables {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "change_tracking_tables",
+            vec![
+                ("object_id", DataType::Int, false),
+                ("is_track_columns_updated_on", DataType::Bit, false),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+        Vec::new()
+    }
+}
+
+impl VirtualTable for SysFullTextIndexes {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "fulltext_indexes",
+            vec![
+                ("object_id", DataType::Int, false),
+                ("fulltext_catalog_id", DataType::Int, false),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+        Vec::new()
+    }
+}
+
+impl VirtualTable for SysFullTextCatalogs {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "fulltext_catalogs",
+            vec![
+                ("fulltext_catalog_id", DataType::Int, false),
+                ("name", DataType::VarChar { max_len: 128 }, false),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+        Vec::new()
+    }
+}
+
 impl VirtualTable for SysTriggerEvents {
     fn definition(&self) -> crate::catalog::TableDef {
         virtual_table_def(
@@ -62,7 +113,11 @@ impl VirtualTable for SysTriggerEvents {
                 ("is_first", DataType::Bit, false),
                 ("is_last", DataType::Bit, false),
                 ("event_group_type", DataType::Int, true),
-                ("event_group_type_desc", DataType::NVarChar { max_len: 60 }, true),
+                (
+                    "event_group_type_desc",
+                    DataType::NVarChar { max_len: 60 },
+                    true,
+                ),
                 ("is_trigger_event", DataType::Bit, false),
             ],
         )
@@ -627,7 +682,11 @@ impl VirtualTable for SysSynonyms {
                 ("is_ms_shipped", DataType::Bit, false),
                 ("is_published", DataType::Bit, false),
                 ("is_schema_published", DataType::Bit, false),
-                ("base_object_name", DataType::NVarChar { max_len: 1035 }, true),
+                (
+                    "base_object_name",
+                    DataType::NVarChar { max_len: 1035 },
+                    true,
+                ),
             ],
         )
     }
@@ -644,11 +703,7 @@ impl VirtualTable for SysSynonyms {
             .get_synonyms()
             .iter()
             .map(|s| {
-                let base_name = format!(
-                    "{}.{}",
-                    s.base_object.schema_or_dbo(),
-                    s.base_object.name
-                );
+                let base_name = format!("{}.{}", s.base_object.schema_or_dbo(), s.base_object.name);
                 StoredRow {
                     values: vec![
                         Value::VarChar(s.name.clone()),

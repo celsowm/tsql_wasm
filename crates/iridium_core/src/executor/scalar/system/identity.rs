@@ -1,6 +1,7 @@
 use crate::ast::Expr;
 use crate::catalog::Catalog;
 use crate::error::DbError;
+use crate::executor::metadata::DB_CATALOG;
 use crate::storage::Storage;
 use crate::types::Value;
 
@@ -121,7 +122,7 @@ pub(crate) fn eval_app_name(args: &[Expr], ctx: &ExecutionContext) -> Result<Val
         ctx.metadata
             .app_name
             .clone()
-            .unwrap_or_else(|| "iridium_sql".to_string()),
+            .unwrap_or_else(|| DB_CATALOG.to_string()),
     ))
 }
 
@@ -228,6 +229,70 @@ pub(crate) fn eval_is_srvrolemember(
     Ok(Value::Int(is_member))
 }
 
+pub(crate) fn eval_is_member(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("IS_MEMBER expects 1 argument".into()));
+    }
+
+    let name = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if name.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let role_name = name.to_string_value().to_ascii_lowercase();
+    let is_member = match role_name.as_str() {
+        "db_owner" | "public" => 1,
+        _ => 0,
+    };
+    Ok(Value::Int(is_member))
+}
+
+pub(crate) fn eval_permissions(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() > 4 {
+        return Err(DbError::Execution(
+            "PERMISSIONS expects 0 to 4 arguments".into(),
+        ));
+    }
+
+    for arg in args {
+        let value = eval_expr(arg, row, ctx, catalog, storage, clock)?;
+        if value.is_null() {
+            return Ok(Value::Null);
+        }
+    }
+
+    // SSMS designer uses this as a permissive capability check. Returning a
+    // broad positive mask keeps the workflow moving without modeling the full
+    // permission lattice.
+    Ok(Value::Int(i32::MAX))
+}
+
+pub(crate) fn eval_fn_syspolicy_is_automation_enabled(
+    args: &[Expr],
+    _ctx: &ExecutionContext,
+) -> Result<Value, DbError> {
+    if !args.is_empty() {
+        return Err(DbError::Execution(
+            "FN_SYSPOLICY_IS_AUTOMATION_ENABLED expects no arguments".into(),
+        ));
+    }
+    Ok(Value::Int(1))
+}
+
 pub(crate) fn eval_has_dbaccess(
     args: &[Expr],
     row: &[ContextTable],
@@ -249,7 +314,7 @@ pub(crate) fn eval_has_dbaccess(
             || db_name.eq_ignore_ascii_case("tempdb")
             || db_name.eq_ignore_ascii_case("model")
             || db_name.eq_ignore_ascii_case("msdb")
-            || db_name.eq_ignore_ascii_case("iridium_sql")
+            || db_name.eq_ignore_ascii_case(DB_CATALOG)
         {
             1
         } else {
@@ -378,4 +443,3 @@ pub(crate) fn eval_user_sid(
         0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x12, 0x00, 0x00, 0x00,
     ]))
 }
-

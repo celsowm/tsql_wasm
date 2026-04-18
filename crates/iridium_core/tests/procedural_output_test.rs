@@ -58,4 +58,3 @@ fn test_update_output_into() {
     assert_eq!(result.rows[0][0].to_string_value(), "10");
     assert_eq!(result.rows[0][1].to_string_value(), "15");
 }
-

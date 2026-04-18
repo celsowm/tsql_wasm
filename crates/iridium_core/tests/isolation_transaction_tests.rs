@@ -221,4 +221,3 @@ fn test_temp_table_transaction() {
     let result = engine.query("SELECT * FROM #temp");
     assert!(result.is_err());
 }
-

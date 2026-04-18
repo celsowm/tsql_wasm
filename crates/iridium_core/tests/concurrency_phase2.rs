@@ -1,7 +1,7 @@
+use iridium_core::{parse_sql, Database};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
-use iridium_core::{parse_sql, Database};
 
 #[test]
 fn test_lock_timeout_zero_fails_immediately() {
@@ -219,4 +219,3 @@ fn test_lock_timeout_infinite_wait() {
     h1.join().unwrap();
     h2.join().unwrap();
 }
-

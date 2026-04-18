@@ -5,8 +5,8 @@ pub(crate) mod math;
 pub(crate) mod metadata;
 pub(crate) mod string;
 pub(crate) mod system;
-pub(crate) mod vector;
 pub(crate) mod udf;
+pub(crate) mod vector;
 
 use crate::ast::Expr;
 use crate::catalog::Catalog;

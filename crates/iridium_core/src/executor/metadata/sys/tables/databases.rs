@@ -2,61 +2,13 @@ use super::super::super::virtual_table_def;
 use super::super::super::VirtualTable;
 use crate::catalog::Catalog;
 use crate::executor::context::ExecutionContext;
+use crate::executor::metadata::database_catalog::builtin_databases;
 use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
 pub(crate) struct SysDatabases;
 pub(crate) struct SysSysDatabases;
 pub(crate) struct SysConfigurations;
-
-#[derive(Clone, Copy)]
-struct DatabaseRow {
-    id: i32,
-    name: &'static str,
-    compatibility_level: u8,
-    recovery_model: &'static str,
-}
-
-const CATALOG_DATABASES: &[DatabaseRow] = &[
-    DatabaseRow {
-        id: 1,
-        name: "master",
-        compatibility_level: 160,
-        recovery_model: "FULL",
-    },
-    DatabaseRow {
-        id: 2,
-        name: "tempdb",
-        compatibility_level: 160,
-        recovery_model: "SIMPLE",
-    },
-    DatabaseRow {
-        id: 3,
-        name: "model",
-        compatibility_level: 160,
-        recovery_model: "FULL",
-    },
-    DatabaseRow {
-        id: 4,
-        name: "msdb",
-        compatibility_level: 160,
-        recovery_model: "FULL",
-    },
-];
-
-const USER_DATABASES: &[DatabaseRow] = &[
-    // The playground database is a user database, not a system database.
-    DatabaseRow {
-        id: 5,
-        name: "iridium_sql",
-        compatibility_level: 160,
-        recovery_model: "FULL",
-    },
-];
-
-fn catalog_databases() -> impl Iterator<Item = &'static DatabaseRow> {
-    CATALOG_DATABASES.iter().chain(USER_DATABASES.iter())
-}
 
 impl VirtualTable for SysDatabases {
     fn definition(&self) -> crate::catalog::TableDef {
@@ -98,7 +50,7 @@ impl VirtualTable for SysDatabases {
                 .and_hms_opt(0, 0, 0)
                 .unwrap(),
         );
-        catalog_databases()
+        builtin_databases()
             .map(|db| StoredRow {
                 values: vec![
                     Value::Int(db.id),
@@ -193,7 +145,7 @@ impl VirtualTable for SysSysDatabases {
                 .and_hms_opt(0, 0, 0)
                 .unwrap(),
         );
-        catalog_databases()
+        builtin_databases()
             .map(|db| StoredRow {
                 values: vec![
                     Value::VarChar(db.name.to_string()),
@@ -212,5 +164,3 @@ impl VirtualTable for SysSysDatabases {
             .collect()
     }
 }
-
-

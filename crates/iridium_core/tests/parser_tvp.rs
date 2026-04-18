@@ -29,4 +29,3 @@ fn parse_sp_executesql_tvp_decl() {
         Statement::Procedural(ProceduralStatement::SpExecuteSql(_))
     ));
 }
-

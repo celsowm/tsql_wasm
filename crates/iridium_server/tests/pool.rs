@@ -1,8 +1,8 @@
+use iridium_server::ServerConfig;
 use tiberius::Client;
 use tiberius::Config;
 use tokio::net::TcpStream;
 use tokio_util::compat::TokioAsyncWriteCompatExt;
-use iridium_server::ServerConfig;
 
 mod common;
 use common::*;

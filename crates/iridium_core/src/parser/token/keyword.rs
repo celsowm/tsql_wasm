@@ -126,6 +126,8 @@ define_keywords! {
     Default => "DEFAULT",
     Check => "CHECK",
     Unique => "UNIQUE",
+    Clustered => "CLUSTERED",
+    Nonclustered => "NONCLUSTERED",
     Foreign => "FOREIGN",
     Drop => "DROP",
     View => "VIEW",

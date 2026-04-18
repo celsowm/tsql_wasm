@@ -1,8 +1,8 @@
+use iridium_core::error::DbError;
+use iridium_core::executor::engine::Engine;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use iridium_core::error::DbError;
-use iridium_core::executor::engine::Engine;
 
 #[test]
 fn test_deadlock_2_sessions() {
@@ -187,4 +187,3 @@ fn test_deadlock_priority_prefers_lower_priority_victim() {
     assert!(matches!(res_s1, Err(DbError::Deadlock(_))));
     assert!(res_s2.is_ok());
 }
-

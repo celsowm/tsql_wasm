@@ -86,14 +86,14 @@ fn euclidean_distance(left: &[f32], right: &[f32]) -> f64 {
 }
 
 fn cosine_distance(left: &[f32], right: &[f32]) -> f64 {
-    let (dot, left_norm, right_norm) = left.iter().zip(right.iter()).fold(
-        (0.0f64, 0.0f64, 0.0f64),
-        |(dot, ln, rn), (a, b)| {
-            let af = f64::from(*a);
-            let bf = f64::from(*b);
-            (dot + af * bf, ln + af * af, rn + bf * bf)
-        },
-    );
+    let (dot, left_norm, right_norm) =
+        left.iter()
+            .zip(right.iter())
+            .fold((0.0f64, 0.0f64, 0.0f64), |(dot, ln, rn), (a, b)| {
+                let af = f64::from(*a);
+                let bf = f64::from(*b);
+                (dot + af * bf, ln + af * af, rn + bf * bf)
+            });
 
     let denom = left_norm.sqrt() * right_norm.sqrt();
     if denom == 0.0 {

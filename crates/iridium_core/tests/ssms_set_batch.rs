@@ -14,4 +14,3 @@ fn ssms_chained_set_batch_is_accepted() {
         result.err()
     );
 }
-

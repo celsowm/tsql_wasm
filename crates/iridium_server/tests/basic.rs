@@ -52,4 +52,3 @@ async fn test_error_handling() {
         assert!(first_result.is_err());
     }
 }
-

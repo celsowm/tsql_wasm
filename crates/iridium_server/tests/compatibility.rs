@@ -1,5 +1,5 @@
-use tiberius::Row;
 use iridium_server::ServerConfig;
+use tiberius::Row;
 
 mod common;
 use common::*;
@@ -94,7 +94,7 @@ async fn test_object_explorer_database_list_probe() {
 
     let stream = client
         .query(
-            "SELECT name, database_id, state_desc FROM sys.databases WHERE name = 'master'",
+            "SELECT name, database_id, state_desc FROM sys.databases WHERE HAS_DBACCESS(name) = 1 ORDER BY name",
             &[],
         )
         .await
@@ -103,9 +103,17 @@ async fn test_object_explorer_database_list_probe() {
         .into_first_result()
         .await
         .expect("Failed to read result");
-    assert_eq!(rows.len(), 1);
-    let name: &str = rows[0].try_get(0).unwrap().unwrap();
-    assert_eq!(name, "master");
+    assert_eq!(rows.len(), 5);
+
+    let names: Vec<&str> = rows
+        .iter()
+        .map(|row| row.try_get::<&str, _>(0).unwrap().unwrap())
+        .collect();
+    assert!(names.contains(&"master"));
+    assert!(names.contains(&"tempdb"));
+    assert!(names.contains(&"model"));
+    assert!(names.contains(&"msdb"));
+    assert!(names.contains(&"iridium_sql"));
 }
 
 #[tokio::test]
@@ -144,6 +152,46 @@ async fn test_database_context_tracks_login_database() {
     let original_db: &str = rows[0].try_get(1).unwrap().unwrap();
     assert_eq!(current_db, "msdb");
     assert_eq!(original_db, "msdb");
+
+    let stream = client
+        .query(
+            "SELECT database_id, authenticating_database_id FROM sys.dm_exec_sessions WHERE session_id = @@SPID",
+            &[],
+        )
+        .await
+        .expect("Query failed");
+    let rows: Vec<Row> = stream
+        .into_first_result()
+        .await
+        .expect("Failed to read result");
+    assert_eq!(rows.len(), 1);
+    let database_id: i16 = rows[0].try_get(0).unwrap().unwrap();
+    let authenticating_database_id: i32 = rows[0].try_get(1).unwrap().unwrap();
+    assert_eq!(database_id, 4);
+    assert_eq!(authenticating_database_id, 4);
+}
+
+#[tokio::test]
+async fn test_object_explorer_database_property_probe() {
+    let port = start_server().await;
+    let mut client = connect(port).await;
+
+    let stream = client
+        .query(
+            "SELECT DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS DatabaseCollation, DATABASEPROPERTYEX(DB_NAME(), 'Status') AS DatabaseStatus",
+            &[],
+        )
+        .await
+        .expect("Query failed");
+    let rows: Vec<Row> = stream
+        .into_first_result()
+        .await
+        .expect("Failed to read result");
+    assert_eq!(rows.len(), 1);
+    let collation: &str = rows[0].try_get(0).unwrap().unwrap();
+    let status: &str = rows[0].try_get(1).unwrap().unwrap();
+    assert_eq!(collation, "SQL_Latin1_General_CP1_CI_AS");
+    assert_eq!(status, "ONLINE");
 }
 
 #[tokio::test]

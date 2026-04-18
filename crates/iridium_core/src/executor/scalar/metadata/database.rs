@@ -7,6 +7,10 @@ use crate::types::Value;
 use super::common::eval_expr_to_value;
 use crate::executor::clock::Clock;
 use crate::executor::context::ExecutionContext;
+use crate::executor::metadata::database_catalog::{
+    current_database_id, current_database_name, database_id_for_name, database_name_for_id,
+    recovery_model_for_name,
+};
 use crate::executor::model::ContextTable;
 
 pub(crate) fn eval_databasepropertyex(
@@ -28,33 +32,15 @@ pub(crate) fn eval_databasepropertyex(
         return Ok(Value::Null);
     }
     let db_name = match db_val {
-        Value::Int(1) | Value::BigInt(1) | Value::SmallInt(1) | Value::TinyInt(1) => {
-            "master".to_string()
-        }
-        Value::Int(2) | Value::BigInt(2) | Value::SmallInt(2) | Value::TinyInt(2) => {
-            "tempdb".to_string()
-        }
-        Value::Int(3) | Value::BigInt(3) | Value::SmallInt(3) | Value::TinyInt(3) => {
-            "model".to_string()
-        }
-        Value::Int(4) | Value::BigInt(4) | Value::SmallInt(4) | Value::TinyInt(4) => {
-            "msdb".to_string()
-        }
-        Value::Int(5) | Value::BigInt(5) | Value::SmallInt(5) | Value::TinyInt(5) => {
-            "iridium_sql".to_string()
-        }
-        _ => db_val.to_string_value(),
-    };
-    let is_known_db = matches!(
-        db_name.to_ascii_lowercase().as_str(),
-        "master" | "tempdb" | "model" | "msdb" | "iridium_sql"
-    );
-    let active_db = ctx
-        .metadata
-        .database
-        .as_ref()
-        .unwrap_or(&ctx.metadata.original_database)
-        .to_string();
+        Value::Int(v) => database_name_for_id(v).map(|name| name.to_string()),
+        Value::BigInt(v) => database_name_for_id(v as i32).map(|name| name.to_string()),
+        Value::SmallInt(v) => database_name_for_id(v as i32).map(|name| name.to_string()),
+        Value::TinyInt(v) => database_name_for_id(v as i32).map(|name| name.to_string()),
+        _ => None,
+    }
+    .unwrap_or_else(|| db_val.to_string_value());
+    let is_known_db = database_id_for_name(&db_name).is_some();
+    let active_db = current_database_name(ctx).to_string();
     if !is_known_db && !active_db.eq_ignore_ascii_case(&db_name) {
         return Ok(Value::Null);
     }
@@ -69,13 +55,11 @@ pub(crate) fn eval_databasepropertyex(
             Value::Int(if ctx.metadata.ansi_nulls { 1 } else { 0 })
         }
         "COMPATIBILITYLEVEL" => Value::Int(160),
-        "RECOVERY" | "RECOVERYMODEL" => {
-            Value::NVarChar(if db_name.eq_ignore_ascii_case("tempdb") {
-                "SIMPLE".to_string()
-            } else {
-                "FULL".to_string()
-            })
-        }
+        "RECOVERY" | "RECOVERYMODEL" => Value::NVarChar(
+            recovery_model_for_name(&db_name)
+                .unwrap_or("FULL")
+                .to_string(),
+        ),
         "ISAUTOSHRINK" | "ISAUTO_SHRINK_ON" => Value::Int(0),
         "ISAUTOCLOSE" | "ISAUTO_CLOSE_ON" => Value::Int(0),
         "ISFULLTEXTENABLED" => Value::Int(0),
@@ -123,65 +107,37 @@ pub(crate) fn eval_db_name(args: &[Expr], ctx: &ExecutionContext) -> Result<Valu
     }
     if let Some(arg) = args.first() {
         let name = match arg {
-            Expr::Integer(1) => "master".to_string(),
-            Expr::Integer(2) => "tempdb".to_string(),
-            Expr::Integer(3) => "model".to_string(),
-            Expr::Integer(4) => "msdb".to_string(),
-            Expr::Integer(5) => "iridium_sql".to_string(),
+            Expr::Integer(v) => database_name_for_id(*v as i32),
             Expr::String(s) | Expr::UnicodeString(s) => {
-                if s.eq_ignore_ascii_case("master")
-                    || s.eq_ignore_ascii_case("tempdb")
-                    || s.eq_ignore_ascii_case("model")
-                    || s.eq_ignore_ascii_case("msdb")
-                    || s.eq_ignore_ascii_case("iridium_sql")
-                {
-                    s.clone()
+                if database_id_for_name(s).is_some() {
+                    Some(s.as_str())
                 } else {
-                    return Ok(Value::Null);
+                    None
                 }
             }
-            _ => return Ok(Value::Null),
+            _ => None,
         };
-        return Ok(Value::NVarChar(name));
+        return Ok(name
+            .map(|name| Value::NVarChar(name.to_string()))
+            .unwrap_or(Value::Null));
     }
-    Ok(Value::NVarChar(
-        ctx.metadata
-            .database
-            .clone()
-            .unwrap_or_else(|| "master".to_string()),
-    ))
+    Ok(Value::NVarChar(current_database_name(ctx).to_string()))
 }
 
-pub(crate) fn eval_db_id(args: &[Expr], _ctx: &ExecutionContext) -> Result<Value, DbError> {
+pub(crate) fn eval_db_id(args: &[Expr], ctx: &ExecutionContext) -> Result<Value, DbError> {
     if args.len() > 1 {
         return Err(DbError::Execution("DB_ID expects 0 or 1 arguments".into()));
     }
     if let Some(arg) = args.first() {
         return Ok(match arg {
-            Expr::Integer(1) => Value::Int(1),
-            Expr::Integer(2) => Value::Int(2),
-            Expr::Integer(3) => Value::Int(3),
-            Expr::Integer(4) => Value::Int(4),
-            Expr::Integer(5) => Value::Int(5),
-            Expr::String(s) | Expr::UnicodeString(s) if s.eq_ignore_ascii_case("master") => {
-                Value::Int(1)
-            }
-            Expr::String(s) | Expr::UnicodeString(s) if s.eq_ignore_ascii_case("tempdb") => {
-                Value::Int(2)
-            }
-            Expr::String(s) | Expr::UnicodeString(s) if s.eq_ignore_ascii_case("model") => {
-                Value::Int(3)
-            }
-            Expr::String(s) | Expr::UnicodeString(s) if s.eq_ignore_ascii_case("msdb") => {
-                Value::Int(4)
-            }
-            Expr::String(s) | Expr::UnicodeString(s) if s.eq_ignore_ascii_case("iridium_sql") => {
-                Value::Int(5)
-            }
+            Expr::Integer(v) => database_name_for_id(*v as i32)
+                .map(|_| Value::Int(*v as i32))
+                .unwrap_or(Value::Null),
+            Expr::String(s) | Expr::UnicodeString(s) => database_id_for_name(s)
+                .map(Value::Int)
+                .unwrap_or(Value::Null),
             _ => Value::Null,
         });
     }
-    Ok(Value::Int(1))
+    Ok(Value::Int(current_database_id(ctx)))
 }
-
-

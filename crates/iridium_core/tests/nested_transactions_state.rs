@@ -112,4 +112,3 @@ fn test_nested_begin_transaction_state_restoration() {
         Value::Int(10)
     );
 }
-

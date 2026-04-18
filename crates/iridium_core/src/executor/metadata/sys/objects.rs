@@ -87,7 +87,6 @@ impl VirtualTable for SysObjects {
         );
 
         let mut chk_idx = 0;
-        let mut pk_uq_idx = 0;
         let mut fk_idx = 0;
 
         for t in catalog.get_tables() {
@@ -108,45 +107,43 @@ impl VirtualTable for SysObjects {
             });
 
             // Primary Keys and Uniques
-            for col in &t.columns {
-                if col.primary_key {
-                    let object_id = 2_000_000 + pk_uq_idx;
-                    pk_uq_idx += 1;
-                    rows.push(StoredRow {
-                        values: vec![
-                            Value::Int(object_id),
-                            Value::VarChar(format!("PK_{}", t.name)),
-                            Value::Int(t.schema_id as i32),
-                            Value::Null,
-                            Value::Int(t.id as i32),
-                            Value::Char("PK".to_string()),
-                            Value::VarChar("PRIMARY_KEY_CONSTRAINT".to_string()),
-                            created.clone(),
-                            created.clone(),
-                            Value::Bit(false),
-                        ],
-                        deleted: false,
-                    });
-                } else if col.unique {
-                    let object_id = 2_000_000 + pk_uq_idx;
-                    pk_uq_idx += 1;
-                    rows.push(StoredRow {
-                        values: vec![
-                            Value::Int(object_id),
-                            Value::VarChar(format!("UQ_{}_{}", t.name, col.name)),
-                            Value::Int(t.schema_id as i32),
-                            Value::Null,
-                            Value::Int(t.id as i32),
-                            Value::Char("UQ".to_string()),
-                            Value::VarChar("UNIQUE_CONSTRAINT".to_string()),
-                            created.clone(),
-                            created.clone(),
-                            Value::Bit(false),
-                        ],
-                        deleted: false,
-                    });
-                }
+            for idx in catalog
+                .get_indexes()
+                .iter()
+                .filter(|idx| idx.table_id == t.id && (idx.is_primary_key || idx.is_unique))
+            {
+                let object_id = if idx.is_primary_key {
+                    2_000_000 + t.id as i32
+                } else {
+                    2_500_000 + t.id as i32 + idx.id as i32
+                };
+                let name = idx
+                    .constraint_name
+                    .clone()
+                    .unwrap_or_else(|| generated_constraint_name(t, idx));
+                let (type_code, desc): (&str, &str) = if idx.is_primary_key {
+                    ("PK", "PRIMARY_KEY_CONSTRAINT")
+                } else {
+                    ("UQ", "UNIQUE_CONSTRAINT")
+                };
+                rows.push(StoredRow {
+                    values: vec![
+                        Value::Int(object_id),
+                        Value::VarChar(name),
+                        Value::Int(t.schema_id as i32),
+                        Value::Null,
+                        Value::Int(t.id as i32),
+                        Value::Char(type_code.to_string()),
+                        Value::VarChar(desc.to_string()),
+                        created.clone(),
+                        created.clone(),
+                        Value::Bit(false),
+                    ],
+                    deleted: false,
+                });
+            }
 
+            for col in &t.columns {
                 if let Some(_default_expr) = &col.default {
                     let name = col
                         .default_constraint_name
@@ -335,6 +332,25 @@ impl VirtualTable for SysObjects {
         }
         rows
     }
+}
+
+fn generated_constraint_name(
+    table: &crate::catalog::TableDef,
+    idx: &crate::catalog::IndexDef,
+) -> String {
+    let prefix = if idx.is_primary_key { "PK" } else { "UQ" };
+    let mut column_names = Vec::new();
+    for column_id in &idx.column_ids {
+        if let Some(col) = table.columns.iter().find(|c| c.id == *column_id) {
+            column_names.push(col.name.clone());
+        }
+    }
+    let suffix = if column_names.is_empty() {
+        "col".to_string()
+    } else {
+        column_names.join("_")
+    };
+    format!("{}_{}", prefix, suffix)
 }
 
 impl VirtualTable for SysAllObjects {

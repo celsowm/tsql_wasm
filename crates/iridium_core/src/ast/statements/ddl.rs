@@ -170,9 +170,11 @@ pub enum TableConstraintSpec {
     PrimaryKey {
         name: String,
         columns: Vec<String>,
+        clustered: bool,
     },
     Unique {
         name: String,
         columns: Vec<String>,
+        clustered: bool,
     },
 }

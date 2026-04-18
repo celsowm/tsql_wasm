@@ -19,4 +19,3 @@ fn main() {
         Err(e) => println!("Schema ERROR: {}", e),
     }
 }
-

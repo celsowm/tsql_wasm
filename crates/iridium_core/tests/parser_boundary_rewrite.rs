@@ -31,4 +31,3 @@ fn test_unterminated_string() {
     println!("Unterminated result: {:?}", res);
     // It should probably be an error, but let's see what it does now.
 }
-

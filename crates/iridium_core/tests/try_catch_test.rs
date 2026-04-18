@@ -75,4 +75,3 @@ fn test_error_functions_null_outside_catch() {
     let res = engine.query("SELECT ERROR_MESSAGE() AS Msg").unwrap();
     assert!(res.rows[0][0].is_null());
 }
-

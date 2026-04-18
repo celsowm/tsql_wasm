@@ -632,8 +632,6 @@ fn test_sys_partition_schemes_has_type_desc() {
         .any(|c| c.eq_ignore_ascii_case("type_desc")));
 }
 
-
-
 // ─── sys.sql_modules ──────────────────────────────────────────────────
 
 #[test]
@@ -681,7 +679,10 @@ fn test_sys_sql_modules_trigger() {
 #[test]
 fn test_sys_foreign_key_columns() {
     let mut e = Engine::new();
-    exec(&mut e, "CREATE TABLE p (id1 INT, id2 INT, PRIMARY KEY (id1, id2))");
+    exec(
+        &mut e,
+        "CREATE TABLE p (id1 INT, id2 INT, PRIMARY KEY (id1, id2))",
+    );
     exec(&mut e, "CREATE TABLE c (c1 INT, c2 INT, CONSTRAINT fk_c_p FOREIGN KEY (c1, c2) REFERENCES p (id1, id2))");
     let r = query(
         &mut e,
@@ -707,7 +708,10 @@ fn test_sys_foreign_key_columns() {
 fn test_sys_trigger_events() {
     let mut e = Engine::new();
     exec(&mut e, "CREATE TABLE t1 (id INT)");
-    exec(&mut e, "CREATE TRIGGER tr_multi ON t1 FOR INSERT, UPDATE AS PRINT 'hi'");
+    exec(
+        &mut e,
+        "CREATE TRIGGER tr_multi ON t1 FOR INSERT, UPDATE AS PRINT 'hi'",
+    );
     let r = query(
         &mut e,
         "SELECT type, type_desc FROM sys.trigger_events WHERE object_id = OBJECT_ID('tr_multi') ORDER BY type",

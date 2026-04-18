@@ -1,3 +1,4 @@
+pub(crate) mod database_catalog;
 mod info_schema_columns;
 mod info_schema_constraints;
 mod info_schema_dispatch;
@@ -140,8 +141,10 @@ pub(crate) fn type_name(dt: &DataType) -> String {
 
 pub(crate) fn type_max_length(dt: &DataType) -> i16 {
     match dt {
-        DataType::Char { len } | DataType::NChar { len } => *len as i16,
-        DataType::VarChar { max_len } | DataType::NVarChar { max_len } => *max_len as i16,
+        DataType::Char { len } => *len as i16,
+        DataType::NChar { len } => (*len as i16) * 2,
+        DataType::VarChar { max_len } => *max_len as i16,
+        DataType::NVarChar { max_len } => (*max_len as i16) * 2,
         DataType::Binary { len } => *len as i16,
         DataType::VarBinary { max_len } => *max_len as i16,
         DataType::Vector { dimensions } => (*dimensions as i16) * 4,

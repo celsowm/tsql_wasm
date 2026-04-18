@@ -77,6 +77,46 @@ pub(crate) fn eval_serverproperty(
     })
 }
 
+pub(crate) fn eval_collationproperty(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 2 {
+        return Err(DbError::Execution(
+            "COLLATIONPROPERTY expects 2 arguments".into(),
+        ));
+    }
+
+    let collation = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    let property = eval_expr(&args[1], row, ctx, catalog, storage, clock)?;
+    if collation.is_null() || property.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let collation_name = collation.to_string_value();
+    let property_name = property.to_string_value().to_uppercase();
+
+    let normalized = collation_name.to_ascii_lowercase();
+    let is_known_collation = matches!(
+        normalized.as_str(),
+        "sql_latin1_general_cp1_ci_as" | "latin1_general_ci_as"
+    );
+    if !is_known_collation {
+        return Ok(Value::Null);
+    }
+
+    Ok(match property_name.as_str() {
+        "LCID" => Value::Int(1033),
+        "COMPARISONSTYLE" => Value::Int(196609),
+        "CODEPAGE" => Value::Int(1252),
+        _ => Value::Null,
+    })
+}
+
 pub(crate) fn eval_sessionproperty(
     args: &[Expr],
     row: &[ContextTable],
@@ -102,9 +142,11 @@ pub(crate) fn eval_sessionproperty(
         "ANSI_PADDING" => Value::Int(if ctx.options.ansi_padding { 1 } else { 0 }),
         "ANSI_WARNINGS" => Value::Int(if ctx.options.ansi_warnings { 1 } else { 0 }),
         "ARITHABORT" => Value::Int(if ctx.options.arithabort { 1 } else { 0 }),
-        "CONCAT_NULL_YIELDS_NULL" => {
-            Value::Int(if ctx.options.concat_null_yields_null { 1 } else { 0 })
-        }
+        "CONCAT_NULL_YIELDS_NULL" => Value::Int(if ctx.options.concat_null_yields_null {
+            1
+        } else {
+            0
+        }),
         "NUMERIC_ROUNDABORT" => Value::Int(0),
         "QUOTED_IDENTIFIER" => Value::Int(if ctx.options.quoted_identifier { 1 } else { 0 }),
         _ => Value::Null,

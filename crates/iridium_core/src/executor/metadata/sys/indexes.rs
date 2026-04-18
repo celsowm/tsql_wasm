@@ -30,10 +30,37 @@ impl VirtualTable for SysIndexes {
 
     fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let tables = catalog.get_tables();
-        catalog
-            .get_indexes()
-            .iter()
-            .map(|idx| {
+        let mut rows = Vec::new();
+
+        for table in tables {
+            let table_indexes: Vec<_> = catalog
+                .get_indexes()
+                .iter()
+                .filter(|idx| idx.table_id == table.id)
+                .collect();
+
+            if table_indexes.is_empty() {
+                rows.push(StoredRow {
+                    values: vec![
+                        Value::Int(table.id as i32),
+                        Value::Int(0),
+                        Value::VarChar("heap".to_string()),
+                        Value::TinyInt(0),
+                        Value::VarChar("HEAP".to_string()),
+                        Value::Bit(false),
+                        Value::Int(1),
+                        Value::Bit(false),
+                        Value::Bit(false),
+                        Value::Bit(false),
+                        Value::Bit(false),
+                        Value::Bit(false),
+                    ],
+                    deleted: false,
+                });
+                continue;
+            }
+
+            for idx in table_indexes {
                 let table = tables.iter().find(|t| t.id == idx.table_id);
                 let is_primary_key = table
                     .map(|t| {
@@ -60,11 +87,16 @@ impl VirtualTable for SysIndexes {
                     })
                     .unwrap_or(false);
 
-                StoredRow {
+                let display_name = idx
+                    .constraint_name
+                    .clone()
+                    .unwrap_or_else(|| idx.name.clone());
+
+                rows.push(StoredRow {
                     values: vec![
                         Value::Int(idx.table_id as i32),
                         Value::Int(idx.id as i32),
-                        Value::VarChar(idx.name.clone()),
+                        Value::VarChar(display_name),
                         Value::TinyInt(if idx.is_clustered { 1 } else { 2 }),
                         Value::VarChar(if idx.is_clustered {
                             "CLUSTERED".to_string()
@@ -80,8 +112,10 @@ impl VirtualTable for SysIndexes {
                         Value::Bit(false),
                     ],
                     deleted: false,
-                }
-            })
-            .collect()
+                });
+            }
+        }
+
+        rows
     }
 }

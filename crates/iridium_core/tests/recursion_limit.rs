@@ -37,4 +37,3 @@ fn test_executor_recursion_limit_safe() {
 
     assert!(result.is_ok(), "Expected OK for depth 2, got {:?}", result);
 }
-

@@ -210,4 +210,3 @@ fn metadata_index_columns_count() {
     );
     assert!(r.rows[0][0].to_integer_i64().unwrap() >= 2);
 }
-

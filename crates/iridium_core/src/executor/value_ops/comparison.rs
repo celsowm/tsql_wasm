@@ -37,9 +37,7 @@ pub fn categorize(v: &Value) -> ValueCategory {
         | Value::Time(_)
         | Value::DateTime(_)
         | Value::DateTime2(_)
-        | Value::SmallDateTime(_) => {
-            ValueCategory::DateTime
-        }
+        | Value::SmallDateTime(_) => ValueCategory::DateTime,
         Value::DateTimeOffset(_) => ValueCategory::String,
         Value::UniqueIdentifier(_) => ValueCategory::Uuid,
         Value::SqlVariant(inner) => categorize(inner),
@@ -128,7 +126,9 @@ pub fn compare_values(a: &Value, b: &Value) -> Ordering {
         (ValueCategory::Uuid, ValueCategory::Uuid) => extract_string(&a).cmp(&extract_string(&b)),
 
         (ValueCategory::Binary, ValueCategory::Binary) => extract_bytes(&a).cmp(extract_bytes(&b)),
-        (ValueCategory::Vector, ValueCategory::Vector) => extract_vector(&a).cmp(extract_vector(&b)),
+        (ValueCategory::Vector, ValueCategory::Vector) => {
+            extract_vector(&a).cmp(extract_vector(&b))
+        }
 
         _ => value_key(&a).cmp(&value_key(&b)),
     }

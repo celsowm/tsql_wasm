@@ -22,9 +22,18 @@ fn test_string_split_comma_separator() {
 
     let r = query(&mut e, "SELECT * FROM STRING_SPLIT('a,b,c', ',')");
     assert_eq!(r.rows.len(), 3);
-    assert_eq!(r.rows[0][0], iridium_core::types::Value::VarChar("a".into()));
-    assert_eq!(r.rows[1][0], iridium_core::types::Value::VarChar("b".into()));
-    assert_eq!(r.rows[2][0], iridium_core::types::Value::VarChar("c".into()));
+    assert_eq!(
+        r.rows[0][0],
+        iridium_core::types::Value::VarChar("a".into())
+    );
+    assert_eq!(
+        r.rows[1][0],
+        iridium_core::types::Value::VarChar("b".into())
+    );
+    assert_eq!(
+        r.rows[2][0],
+        iridium_core::types::Value::VarChar("c".into())
+    );
 }
 
 #[test]
@@ -74,13 +83,22 @@ fn test_string_split_ordinal_enabled() {
     assert_eq!(r.columns[1], "ordinal");
     assert_eq!(r.rows.len(), 3);
 
-    assert_eq!(r.rows[0][0], iridium_core::types::Value::VarChar("a".into()));
+    assert_eq!(
+        r.rows[0][0],
+        iridium_core::types::Value::VarChar("a".into())
+    );
     assert_eq!(r.rows[0][1], iridium_core::types::Value::Int(1));
 
-    assert_eq!(r.rows[1][0], iridium_core::types::Value::VarChar("b".into()));
+    assert_eq!(
+        r.rows[1][0],
+        iridium_core::types::Value::VarChar("b".into())
+    );
     assert_eq!(r.rows[1][1], iridium_core::types::Value::Int(2));
 
-    assert_eq!(r.rows[2][0], iridium_core::types::Value::VarChar("c".into()));
+    assert_eq!(
+        r.rows[2][0],
+        iridium_core::types::Value::VarChar("c".into())
+    );
     assert_eq!(r.rows[2][1], iridium_core::types::Value::Int(3));
 }
 
@@ -95,4 +113,3 @@ fn test_string_split_ordinal_only() {
     assert_eq!(r.rows[0][0], iridium_core::types::Value::Int(1));
     assert_eq!(r.rows[1][0], iridium_core::types::Value::Int(2));
 }
-

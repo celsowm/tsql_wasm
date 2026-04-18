@@ -59,4 +59,3 @@ fn test_reset_session_not_found() {
     let err = db.reset_session(9999).unwrap_err().to_string();
     assert!(err.contains("session 9999 not found"));
 }
-

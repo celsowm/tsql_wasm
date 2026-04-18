@@ -116,4 +116,3 @@ fn test_cursor_close_on_commit_closes_open_cursor() {
     assert_eq!(output[0], "Before: 0");
     assert_eq!(output[1], "After: -1");
 }
-

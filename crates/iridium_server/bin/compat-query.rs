@@ -4,19 +4,19 @@
 //!
 //! Usage: compat-query "SELECT 1 as n"
 
-use serde::Serialize;
-use std::io::Write;
 use iridium_core::types::{DataType, Value};
 use iridium_core::{Database, DbError, QueryResult, StatementExecutor};
 use iridium_server::playground;
+use serde::Serialize;
+use std::io::Write;
 
 fn format_compat_value(value: &Value) -> String {
     match value {
         Value::Null => "NULL".to_string(),
         Value::Date(v) => format!("{} 00:00:00", v.format("%Y-%m-%d")),
-        Value::DateTime(v)
-        | Value::DateTime2(v)
-        | Value::SmallDateTime(v) => v.format("%Y-%m-%d %H:%M:%S").to_string(),
+        Value::DateTime(v) | Value::DateTime2(v) | Value::SmallDateTime(v) => {
+            v.format("%Y-%m-%d %H:%M:%S").to_string()
+        }
         Value::DateTimeOffset(v) => v.clone(),
         other => other.to_string_value(),
     }

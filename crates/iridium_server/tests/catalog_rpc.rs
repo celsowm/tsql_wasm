@@ -1,8 +1,8 @@
+use iridium_core::Database;
+use iridium_server::{ServerConfig, TdsServer};
 use tiberius::{Client, Config, Row};
 use tokio::net::TcpStream;
 use tokio_util::compat::TokioAsyncWriteCompatExt;
-use iridium_core::Database;
-use iridium_server::{ServerConfig, TdsServer};
 
 fn row_to_strings(row: &Row) -> Vec<String> {
     (0..row.len())
@@ -94,12 +94,18 @@ async fn test_sys_tables_query() {
         .unwrap();
 
     let stream = client
-        .query("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME LIKE 'TestSpTables'", &[])
+        .query(
+            "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME LIKE 'TestSpTables'",
+            &[],
+        )
         .await
         .unwrap();
     let rows: Vec<Row> = stream.into_first_result().await.unwrap();
 
-    assert!(!rows.is_empty(), "Should find TestSpTables in INFORMATION_SCHEMA");
+    assert!(
+        !rows.is_empty(),
+        "Should find TestSpTables in INFORMATION_SCHEMA"
+    );
     let row = row_to_strings(&rows[0]);
     println!("TABLE_NAME: {}", row[0]);
     assert_eq!(row[0], "TestSpTables");
@@ -244,10 +250,7 @@ async fn test_sp_tables_via_query() {
         .await
         .unwrap();
     client
-        .execute(
-            "CREATE TABLE dbo.TablesQueryTest (Id INT)",
-            &[],
-        )
+        .execute("CREATE TABLE dbo.TablesQueryTest (Id INT)", &[])
         .await
         .unwrap();
 
@@ -373,7 +376,10 @@ async fn test_table_without_pk() {
         .unwrap();
     let rows: Vec<Row> = stream.into_first_result().await.unwrap();
 
-    assert!(rows.is_empty(), "Table without PK should return no key columns");
+    assert!(
+        rows.is_empty(),
+        "Table without PK should return no key columns"
+    );
 
     client
         .execute("DROP TABLE dbo.NoPkTest", &[])

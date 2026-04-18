@@ -410,10 +410,12 @@ pub enum TableConstraint {
     PrimaryKey {
         name: Option<String>,
         columns: Vec<String>,
+        clustered: bool,
     },
     Unique {
         name: Option<String>,
         columns: Vec<String>,
+        clustered: bool,
     },
     ForeignKey {
         name: Option<String>,

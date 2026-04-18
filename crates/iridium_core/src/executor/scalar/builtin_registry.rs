@@ -10,8 +10,8 @@ use std::sync::OnceLock;
 use crate::executor::clock::Clock;
 use crate::executor::context::ExecutionContext;
 use crate::executor::model::ContextTable;
-use crate::executor::scalar::{datetime, logic, math, metadata as tsql_metadata, string, system};
 use crate::executor::scalar::vector;
+use crate::executor::scalar::{datetime, logic, math, metadata as tsql_metadata, string, system};
 use crate::executor::{fuzzy, json, metadata as exec_metadata, regexp};
 
 pub(crate) type ScalarHandler = for<'a> fn(
@@ -158,8 +158,12 @@ const SYSTEM_FUNCTIONS: &[BuiltinScalarFunction] = &[
         system::identity::eval_user_id(args, ctx)
     }),
     builtin!("USER_SID" => system::identity::eval_user_sid),
+    builtin!("IS_MEMBER" => system::identity::eval_is_member),
     builtin!("DATABASE_PRINCIPAL_ID" => system::identity::eval_database_principal_id),
     builtin!("DATABASE_PRINCIPAL_NAME" => system::identity::eval_database_principal_name),
+    builtin!("MSDB.DBO.FN_SYSPOLICY_IS_AUTOMATION_ENABLED" => |args, _row, ctx, _catalog, _storage, _clock| {
+        system::identity::eval_fn_syspolicy_is_automation_enabled(args, ctx)
+    }),
     builtin!("APP_NAME" => |args, _row, ctx, _catalog, _storage, _clock| {
         system::identity::eval_app_name(args, ctx)
     }),
@@ -188,12 +192,14 @@ const SYSTEM_FUNCTIONS: &[BuiltinScalarFunction] = &[
         tsql_metadata::eval_procid(ctx)
     }),
     builtin!("SERVERPROPERTY" => system::properties::eval_serverproperty),
+    builtin!("COLLATIONPROPERTY" => system::properties::eval_collationproperty),
     builtin!("FULLTEXTSERVICEPROPERTY" => system::properties::eval_fulltextserviceproperty),
     builtin!("CONNECTIONPROPERTY" => system::properties::eval_connectionproperty),
     builtin!("SESSIONPROPERTY" => system::properties::eval_sessionproperty),
     builtin!("CONTEXT_INFO" => system::properties::eval_context_info),
     builtin!("SESSION_CONTEXT" => system::properties::eval_session_context),
     builtin!("IS_SRVROLEMEMBER" => system::identity::eval_is_srvrolemember),
+    builtin!("PERMISSIONS" => system::identity::eval_permissions),
     builtin!("HAS_DBACCESS" => system::identity::eval_has_dbaccess),
     builtin!("HAS_PERMS_BY_NAME" => system::identity::eval_has_perms_by_name),
     builtin!("PARSENAME" => system::formatting::eval_parsename),
