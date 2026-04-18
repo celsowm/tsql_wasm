@@ -144,6 +144,9 @@ impl<'a> StatementVisitor<ExecutionContext<'_>> for ScriptExecutor<'a> {
             SessionStatement::SetIdentityInsert(_) => Err(DbError::Execution(
                 "SET IDENTITY_INSERT is handled at engine level".into(),
             )),
+            SessionStatement::UseDatabase(_) => {
+                Err(DbError::Execution("USE is handled at engine level".into()))
+            }
             SessionStatement::SetTransactionIsolationLevel(_)
             | SessionStatement::SetOption(_)
             | SessionStatement::SetContextInfo(_) => Err(DbError::Execution(

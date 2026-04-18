@@ -69,12 +69,78 @@ Rotate-LogFile -Path $script:LogFile
 
 $env:RUST_LOG = "iridium_server=debug,iridium_core=info"
 
+function Stop-PodmanIfRunning {
+    try {
+        $machineRunning = podman machine list 2>$null | Select-String "Currently running"
+        if (-not $machineRunning) {
+            return
+        }
+
+        Write-LogLine "Podman machine is running; stopping iridium_test_sqlserver before starting playground..." Yellow
+
+        $existing = podman ps -a --filter "name=iridium_test_sqlserver" --format "{{.Names}}" 2>$null
+        if ($existing -and ($existing | Select-String "iridium_test_sqlserver")) {
+            $running = podman ps --filter "name=iridium_test_sqlserver" --format "{{.Names}}" 2>$null
+            if ($running -and ($running | Select-String "iridium_test_sqlserver")) {
+                podman stop iridium_test_sqlserver 2>&1 | ForEach-Object {
+                    Write-LogLine $_.ToString() Gray
+                }
+            }
+        }
+
+        podman machine stop 2>&1 | ForEach-Object {
+            Write-LogLine $_.ToString() Gray
+        }
+    }
+    catch {
+        Write-LogLine "Podman cleanup skipped: $($_.Exception.Message)" Yellow
+    }
+}
+
+function Get-ProcessOutputText {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object] $Item
+    )
+
+    if ($Item -is [System.Management.Automation.ErrorRecord]) {
+        if ($Item.Exception -and $Item.Exception.Message) {
+            return $Item.Exception.Message
+        }
+        if ($Item.TargetObject) {
+            return $Item.TargetObject.ToString()
+        }
+    }
+
+    return $Item.ToString()
+}
+
+function Stop-StaleIridiumServer {
+    try {
+        $running = Get-Process -Name "iridium-server" -ErrorAction SilentlyContinue
+        if (-not $running) {
+            return
+        }
+        foreach ($proc in $running) {
+            Write-LogLine "Stopping stale iridium-server process $($proc.Id) to avoid binary lock..." Yellow
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+        }
+    }
+    catch {
+        Write-LogLine "Could not stop stale iridium-server process: $($_.Exception.Message)" Yellow
+    }
+}
+
+Stop-PodmanIfRunning
+Stop-StaleIridiumServer
+
 $args = @(
     "run"
     "--package", "iridium_server"
     "--bin", "iridium-server"
     "--"
     "--playground"
+    "--memory"
     "--tls-gen"
     "--host", "127.0.0.1"
     "--port", "1433"
@@ -87,10 +153,19 @@ Write-LogLine "Use Server Name = localhost in SSMS." Green
 Write-LogLine "Writing server log to $script:LogFile" Cyan
 Write-LogBlankLine
 
+$script:PlaygroundReady = $false
+
 & $cargo @args 2>&1 | ForEach-Object {
-    $text = $_.ToString()
+    $text = Get-ProcessOutputText $_
+    if ($text -eq "System.Management.Automation.RemoteException") {
+        return
+    }
     Add-Content -LiteralPath $script:LogFile -Value $text -Encoding utf8
     Write-Host $text
+    if (-not $script:PlaygroundReady -and $text -match "TDS Server listening on") {
+        $script:PlaygroundReady = $true
+        Write-LogLine "Playground is ready. Connect SSMS to localhost now." Green
+    }
 }
 
 if ($LASTEXITCODE -ne 0) {

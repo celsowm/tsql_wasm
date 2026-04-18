@@ -343,6 +343,9 @@ pub fn lower_session(session: ast::SessionStatement) -> Result<executor_ast::Sta
                 ),
             ))
         }
+        ast::SessionStatement::UseDatabase(database) => Ok(executor_ast::Statement::Session(
+            executor_ast::statements::SessionStatement::UseDatabase(database),
+        )),
         ast::SessionStatement::SetOption { option, value } => Ok(executor_ast::Statement::Session(
             executor_ast::statements::SessionStatement::SetOption(
                 executor_ast::statements::procedural::SetOptionStmt {

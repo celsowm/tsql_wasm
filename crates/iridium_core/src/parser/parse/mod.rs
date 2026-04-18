@@ -173,6 +173,11 @@ fn parse_statement_inner(parser: &mut Parser) -> ParseResult<Statement> {
                     parse_set_dispatch(parser)
                 }
             }
+            Keyword::Use => {
+                let _ = parser.next();
+                let database = parse_use_database_name(parser)?;
+                Ok(Statement::Session(SessionStatement::UseDatabase(database)))
+            }
             Keyword::If => {
                 let _ = parser.next();
                 Ok(parse_if(parser)?)
@@ -716,6 +721,16 @@ fn parse_set_dispatch(parser: &mut Parser) -> ParseResult<Statement> {
         }
     }
     parse_set(parser)
+}
+
+fn parse_use_database_name(parser: &mut Parser) -> ParseResult<String> {
+    match parser.next() {
+        Some(Token::Identifier(id)) => Ok(id.clone()),
+        Some(Token::Keyword(k)) => Ok(k.as_ref().to_string()),
+        Some(Token::String(s)) => Ok(s.clone()),
+        Some(Token::NString(s)) => Ok(s.clone()),
+        _ => parser.backtrack(Expected::Description("database name")),
+    }
 }
 
 fn parse_begin_dispatch(parser: &mut Parser) -> ParseResult<Statement> {

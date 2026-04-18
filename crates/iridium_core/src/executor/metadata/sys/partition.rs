@@ -99,6 +99,7 @@ impl VirtualTable for SysFilegroups {
         virtual_table_def(
             "filegroups",
             vec![
+                ("data_space_id", DataType::Int, false),
                 ("name", DataType::VarChar { max_len: 128 }, false),
                 ("type", DataType::Char { len: 2 }, false),
                 ("type_desc", DataType::VarChar { max_len: 60 }, false),
@@ -111,6 +112,7 @@ impl VirtualTable for SysFilegroups {
     fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         vec![StoredRow {
             values: vec![
+                Value::Int(1),
                 Value::VarChar("PRIMARY".to_string()),
                 Value::Char("FG".to_string()),
                 Value::VarChar("ROWS_FILEGROUP".to_string()),

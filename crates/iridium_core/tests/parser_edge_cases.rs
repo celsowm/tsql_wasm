@@ -103,3 +103,13 @@ fn parser_select_with_column_alias() {
     assert_eq!(r.rows[0][0], Value::Int(42));
 }
 
+#[test]
+fn parser_use_statement_and_session_database_switch() {
+    let stmts = parse_batch("USE [iridium_sql]; SELECT DB_NAME()").unwrap();
+    assert_eq!(stmts.len(), 2);
+
+    let mut e = Engine::new();
+    exec(&mut e, "USE [iridium_sql]");
+    let r = query(&mut e, "SELECT DB_NAME()");
+    assert_eq!(r.rows[0][0], Value::NVarChar("iridium_sql".to_string()));
+}

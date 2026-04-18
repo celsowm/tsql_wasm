@@ -67,6 +67,7 @@ pub fn statement_kind(stmt: &Statement) -> &'static str {
             crate::ast::SessionStatement::SetOption(_) => "SET_OPTION",
             crate::ast::SessionStatement::SetIdentityInsert(_) => "SET_IDENTITY_INSERT",
             crate::ast::SessionStatement::SetTransactionIsolationLevel(_) => "SET_ISOLATION_LEVEL",
+            crate::ast::SessionStatement::UseDatabase(_) => "USE_DATABASE",
             crate::ast::SessionStatement::SetContextInfo(_) => "SET_CONTEXT_INFO",
         },
         Statement::Transaction(_) => match stmt {

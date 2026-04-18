@@ -146,6 +146,7 @@ define_keywords! {
     Exec => "EXEC",
     Execute => "EXECUTE",
     Print => "PRINT",
+    Use => "USE",
     Go => "GO",
     While => "WHILE",
     Break => "BREAK",

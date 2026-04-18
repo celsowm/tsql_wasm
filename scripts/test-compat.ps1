@@ -6,12 +6,32 @@ $credentialsPath = Join-Path $repoRoot "scripts\credentials.json"
 $credentials = Get-Content -LiteralPath $credentialsPath -Raw | ConvertFrom-Json
 $sqlPassword = $credentials.sql_server_password
 
+function Stop-PodmanIfRunning {
+    $machineRunning = podman machine list 2>&1 | Select-String "Currently running"
+    if (-not $machineRunning) {
+        return
+    }
+
+    Write-Host "Podman machine is running; stopping iridium_test_sqlserver before compatibility run..." -ForegroundColor Yellow
+    $existing = podman ps -a --filter "name=iridium_test_sqlserver" --format "{{.Names}}" 2>$null
+    if ($existing -and ($existing | Select-String "iridium_test_sqlserver")) {
+        $running = podman ps --filter "name=iridium_test_sqlserver" --format "{{.Names}}" 2>$null
+        if ($running -and ($running | Select-String "iridium_test_sqlserver")) {
+            podman stop iridium_test_sqlserver 2>&1 | ForEach-Object { Write-Host $_ }
+        }
+    }
+
+    podman machine stop 2>&1 | ForEach-Object { Write-Host $_ }
+}
+
 # ══════════════════════════════════════════════════════════════════════
 # STEP 1 — Ensure Podman + Azure SQL Edge are running
 # ══════════════════════════════════════════════════════════════════════
 Write-Host "=============================================" -ForegroundColor Cyan
 Write-Host " STEP 1: Azure SQL Edge (Podman)" -ForegroundColor Cyan
 Write-Host "=============================================" -ForegroundColor Cyan
+
+Stop-PodmanIfRunning
 
 $machineRunning = podman machine list 2>&1 | Select-String "Currently running"
 if (-not $machineRunning) {

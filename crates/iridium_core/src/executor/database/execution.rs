@@ -391,6 +391,7 @@ where
         workspace,
         options,
         random_state,
+        current_database,
         original_database,
         user,
         app_name,
@@ -407,6 +408,7 @@ where
         &mut session.workspace,
         &mut session.options,
         &mut session.random_state,
+        &mut session.current_database,
         &mut session.original_database,
         &mut session.user,
         &mut session.app_name,
@@ -436,6 +438,7 @@ where
         &mut session.session_context,
         dirty_buffer,
         session_id,
+        current_database.clone(),
         original_database.clone(),
         user.clone(),
         app_name.clone(),
@@ -584,6 +587,7 @@ where
         clock.as_ref(),
         options,
     );
+    let current_database = ctx.metadata.database.clone();
 
     // Scope cleanup always runs before error propagation — guarantees no leak
     // even when the body returns Err (BREAK/CONTINUE/deadlock/etc).
@@ -592,6 +596,9 @@ where
     let workspace = workspace.as_mut();
     drop(ctx);
     cleanup_scope_tables(state, tx_active, workspace, dropped_physical)?;
+    if let Some(current_database) = current_database {
+        session.current_database = current_database;
+    }
 
     exec_res
 }
@@ -696,7 +703,11 @@ where
                 res = r;
             },
         );
+        let current_database = ctx.metadata.database.clone();
         drop(ctx);
+        if let Some(current_database) = current_database {
+            session.current_database = current_database;
+        }
         exec_res
     };
     exec_res?;

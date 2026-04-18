@@ -234,6 +234,80 @@ fn test_syspolicy_configuration_object_explorer_probe() {
 }
 
 #[test]
+fn test_syspolicy_health_state_probe() {
+    let mut engine = Engine::new();
+    let r = query(
+        &mut engine,
+        "SELECT CASE WHEN 1 = msdb.dbo.fn_syspolicy_is_automation_enabled() AND EXISTS (SELECT * FROM msdb.dbo.syspolicy_system_health_state WHERE target_query_expression_with_id LIKE 'Server%') THEN 1 ELSE 0 END AS PolicyHealthState",
+    );
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0][0], Value::Int(1));
+}
+
+#[test]
+fn test_designer_table_filegroup_probe() {
+    let mut engine = Engine::new();
+    exec(
+        &mut engine,
+        "CREATE TABLE dbo.DesignerCategories (CategoryId INT NOT NULL, Name NVARCHAR(100) NOT NULL)",
+    );
+    let r = query(
+        &mut engine,
+        "SELECT Fg.name AS TableFg, dsp.name AS TexImageFg, FtCat.name AS FulltextCatalog FROM sys.tables tbl LEFT OUTER JOIN sys.change_tracking_tables AS ctt ON ctt.object_id = tbl.object_id LEFT OUTER JOIN sys.data_spaces dsp ON dsp.data_space_id = tbl.lob_data_space_id LEFT OUTER JOIN (sys.fulltext_indexes fti INNER JOIN sys.fulltext_catalogs FtCat ON FtCat.fulltext_catalog_id = fti.fulltext_catalog_id) ON fti.object_id = tbl.object_id INNER JOIN (sys.indexes idx INNER JOIN sys.data_spaces Fg ON (idx.index_id = 0 OR idx.index_id = 1) AND Fg.data_space_id = idx.data_space_id) ON idx.object_id = tbl.object_id AND (idx.index_id = 0 OR idx.index_id = 1) WHERE tbl.object_id = object_id(N'dbo.DesignerCategories')",
+    );
+    assert!(!r.rows.is_empty());
+    assert!(r
+        .rows
+        .iter()
+        .all(|row| row[0] == Value::VarChar("PRIMARY".to_string())));
+    assert!(r.rows.iter().all(|row| row[1].is_null()));
+    assert!(r.rows.iter().all(|row| row[2].is_null()));
+}
+
+#[test]
+fn test_designer_partition_scheme_filegroups_probe_no_fg_error() {
+    let mut engine = Engine::new();
+    let r = query(
+        &mut engine,
+        "select sch.name, sch.data_space_id, sch.function_id, dest.destination_id, fg.name as fg_name, fg.type from sys.partition_schemes sch inner join (sys.destination_data_spaces dest inner join sys.filegroups fg on fg.data_space_id = dest.data_space_id) on dest.partition_scheme_id = sch.data_space_id order by sch.data_space_id, dest.destination_id",
+    );
+    assert_eq!(
+        r.columns,
+        vec![
+            "name",
+            "data_space_id",
+            "function_id",
+            "destination_id",
+            "fg_name",
+            "TYPE",
+        ]
+    );
+}
+
+#[test]
+fn test_ssms_database_info_probe_with_master_files_df_alias() {
+    let mut engine = Engine::new();
+    let r = query(
+        &mut engine,
+        "SELECT dtb.name AS [Name], ISNULL(df.physical_name, N'') AS [PrimaryFilePath] FROM master.sys.databases AS dtb LEFT OUTER JOIN sys.master_files AS df ON df.database_id = dtb.database_id and 1=df.data_space_id and 1 = df.file_id WHERE dtb.name = N'iridium_sql'",
+    );
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0][0], Value::VarChar("iridium_sql".to_string()));
+}
+
+#[test]
+fn test_ssms_database_info_probe_with_dtb_containment_and_ledger() {
+    let mut engine = Engine::new();
+    let r = query(
+        &mut engine,
+        "SELECT dtb.name AS [Database_Name], dtb.containment AS [Database_ContainmentType], CAST(ISNULL(dtb.is_ledger_on, 0) AS bit) AS [Database_IsLedger] FROM master.sys.databases AS dtb WHERE dtb.name = N'master'",
+    );
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(r.rows[0][0], Value::VarChar("master".to_string()));
+    assert_eq!(r.rows[0][1], Value::TinyInt(0));
+    assert_eq!(r.rows[0][2], Value::Bit(false));
+}
+#[test]
 fn test_is_srvrolemember_object_explorer_probe() {
     let mut engine = Engine::new();
     let r = query(
@@ -485,5 +559,4 @@ fn test_ident_metadata_null() {
     let r = query(&mut engine, "SELECT IDENT_SEED('nonexistent') AS v");
     assert!(r.rows[0][0].is_null());
 }
-
 

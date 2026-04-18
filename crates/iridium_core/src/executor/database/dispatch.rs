@@ -10,6 +10,7 @@ use super::super::context::ExecutionContext;
 use super::super::dirty_buffer;
 use super::super::journal::{Journal, JournalEvent};
 use super::super::locks::{LockTable, SessionId, TxWorkspace};
+use super::super::metadata::database_catalog::{database_id_for_name, database_name_for_id};
 use super::super::result::QueryResult;
 use super::super::script::ScriptExecutor;
 use super::super::session::{SessionSnapshot, SharedState};
@@ -69,7 +70,21 @@ fn handle_session_statement<C: Catalog, S: Storage>(
     ctx: &mut ExecutionContext,
     journal: &mut dyn Journal,
 ) -> Option<StmtResult<Option<QueryResult>>> {
-    if let Statement::Session(SessionStatement::SetOption(opt)) = stmt {
+    if let Statement::Session(SessionStatement::UseDatabase(database)) = stmt {
+        match database_id_for_name(database) {
+            Some(database_id) => {
+                let canonical_name = database_name_for_id(database_id)
+                    .unwrap_or(database.as_str())
+                    .to_string();
+                ctx.metadata.database = Some(canonical_name);
+                Some(Ok(StmtOutcome::Ok(None)))
+            }
+            None => Some(Err(DbError::Execution(format!(
+                "Cannot open database '{}' requested by the login. The login failed.",
+                database
+            )))),
+        }
+    } else if let Statement::Session(SessionStatement::SetOption(opt)) = stmt {
         match apply_set_option(opt, session_options) {
             Ok(apply) => {
                 ctx.options = session_options.clone();

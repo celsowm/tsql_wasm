@@ -72,10 +72,12 @@ impl VirtualTable for SysDatabases {
                 ("collation_name", DataType::VarChar { max_len: 128 }, false),
                 ("state", DataType::TinyInt, false),
                 ("state_desc", DataType::VarChar { max_len: 60 }, false),
+                ("containment", DataType::TinyInt, false),
                 ("user_access", DataType::TinyInt, false),
                 ("user_access_desc", DataType::VarChar { max_len: 60 }, false),
                 ("is_read_only", DataType::Bit, false),
                 ("is_fulltext_enabled", DataType::Bit, false),
+                ("is_ledger_on", DataType::Bit, false),
                 ("recovery_model", DataType::TinyInt, false),
                 (
                     "recovery_model_desc",
@@ -111,7 +113,9 @@ impl VirtualTable for SysDatabases {
                     Value::TinyInt(0),
                     Value::VarChar("ONLINE".to_string()),
                     Value::TinyInt(0),
+                    Value::TinyInt(0),
                     Value::VarChar("MULTI_USER".to_string()),
+                    Value::Bit(false),
                     Value::Bit(false),
                     Value::Bit(false),
                     Value::TinyInt(match db.recovery_model {

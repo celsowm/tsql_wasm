@@ -179,6 +179,7 @@ pub enum CursorStatement {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SessionStatement {
     SetTransactionIsolationLevel(IsolationLevel),
+    UseDatabase(String),
     SetOption {
         option: SessionOption,
         value: SessionOptionValue,

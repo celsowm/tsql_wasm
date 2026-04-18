@@ -87,6 +87,7 @@ impl VirtualTable for SysMasterFiles {
                 ("state", DataType::TinyInt, false),
                 ("state_desc", DataType::NVarChar { max_len: 60 }, false),
                 ("size", DataType::Int, false),
+                ("data_space_id", DataType::Int, false),
             ],
         )
     }
@@ -105,6 +106,7 @@ impl VirtualTable for SysMasterFiles {
                     Value::TinyInt(0), // ONLINE
                     Value::NVarChar("ONLINE".to_string()),
                     Value::Int(1024),
+                    Value::Int(1),
                 ],
                 deleted: false,
             })

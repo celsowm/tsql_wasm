@@ -108,6 +108,7 @@ pub enum CursorStatement {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SessionStatement {
     SetTransactionIsolationLevel(IsolationLevel),
+    UseDatabase(String),
     SetOption(SetOptionStmt),
     SetIdentityInsert(SetIdentityInsertStmt),
     SetContextInfo(Expr),

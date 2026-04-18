@@ -485,6 +485,7 @@ impl<'a> ExecutionContext<'a> {
         session_context: &'a mut HashMap<String, (Value, bool)>,
         dirty_buffer: Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>>,
         session_id: super::locks::SessionId,
+        session_current_database: String,
         session_original_database: String,
         user: Option<String>,
         app_name: Option<String>,
@@ -515,7 +516,7 @@ impl<'a> ExecutionContext<'a> {
             },
             metadata: SessionMetadata {
                 id: session_id,
-                database: Some(session_original_database.clone()),
+                database: Some(session_current_database),
                 original_database: session_original_database,
                 user,
                 app_name,

@@ -7,9 +7,27 @@ cd "$REPO_ROOT"
 CREDENTIALS_PATH="$REPO_ROOT/scripts/credentials.json"
 SQL_PASSWORD=$(jq -r '.sql_server_password' "$CREDENTIALS_PATH")
 
+cleanup_podman() {
+    if ! command -v podman >/dev/null 2>&1; then
+        return
+    fi
+
+    if podman machine list 2>/dev/null | grep -q "Currently running"; then
+        echo "Podman machine is running; stopping iridium_test_sqlserver before compatibility run..."
+        if podman ps -a --filter "name=iridium_test_sqlserver" --format "{{.Names}}" 2>/dev/null | grep -q "iridium_test_sqlserver"; then
+            if podman ps --filter "name=iridium_test_sqlserver" --format "{{.Names}}" 2>/dev/null | grep -q "iridium_test_sqlserver"; then
+                podman stop iridium_test_sqlserver
+            fi
+        fi
+        podman machine stop
+    fi
+}
+
 echo "============================================="
 echo " STEP 1: Azure SQL Edge (Podman)"
 echo "============================================="
+
+cleanup_podman
 
 if ! podman machine list | grep -q "Currently running"; then
     echo "Starting Podman machine..."
