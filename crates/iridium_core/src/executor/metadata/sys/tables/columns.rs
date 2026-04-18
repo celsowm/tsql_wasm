@@ -316,7 +316,7 @@ impl VirtualTable for SysComputedColumns {
                             Value::NVarChar(
                                 col.computed_expr
                                     .as_ref()
-                                    .map_or(String::new(), |e| format!("{:?}", e)),
+                                    .map_or(String::new(), |e| crate::executor::tooling::formatting::format_expr(e)),
                             ),
                         ],
                         deleted: false,

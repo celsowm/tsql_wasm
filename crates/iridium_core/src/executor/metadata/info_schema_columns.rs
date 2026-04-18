@@ -75,7 +75,7 @@ impl VirtualTable for Columns {
                 let col_default = c
                     .default
                     .as_ref()
-                    .map(|e| Value::VarChar(format!("{:?}", e)))
+                    .map(|e| Value::VarChar(crate::executor::tooling::formatting::format_expr(e)))
                     .unwrap_or(Value::Null);
                 rows.push(StoredRow {
                     values: vec![

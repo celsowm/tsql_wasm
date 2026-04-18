@@ -144,11 +144,11 @@ impl<'a> StatementVisitor<ExecutionContext<'_>> for ScriptExecutor<'a> {
             SessionStatement::SetIdentityInsert(_) => Err(DbError::Execution(
                 "SET IDENTITY_INSERT is handled at engine level".into(),
             )),
-            SessionStatement::SetTransactionIsolationLevel(_) | SessionStatement::SetOption(_) => {
-                Err(DbError::Execution(
-                    "session option statements are handled at engine level".into(),
-                ))
-            }
+            SessionStatement::SetTransactionIsolationLevel(_)
+            | SessionStatement::SetOption(_)
+            | SessionStatement::SetContextInfo(_) => Err(DbError::Execution(
+                "session option statements are handled at engine level".into(),
+            )),
         }
         .map(StmtOutcome::Ok)
     }

@@ -187,6 +187,7 @@ pub enum SessionStatement {
         table: Vec<String>,
         on: bool,
     },
+    SetContextInfo(Expr),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

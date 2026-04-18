@@ -97,7 +97,11 @@ pub fn parse_set(parser: &mut Parser) -> ParseResult<Statement> {
                 expr,
             }))
         }
-        _ => parser.backtrack(Expected::Description("variable")),
+        Some(Token::Keyword(Keyword::ContextInfo)) => {
+            let expr = crate::parser::parse::expressions::parse_expr(parser)?;
+            Ok(Statement::Session(SessionStatement::SetContextInfo(expr)))
+        }
+        _ => parser.backtrack(Expected::Description("variable or CONTEXT_INFO")),
     }
 }
 
