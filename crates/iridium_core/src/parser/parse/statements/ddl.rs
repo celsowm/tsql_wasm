@@ -367,6 +367,86 @@ pub fn parse_create_schema(parser: &mut Parser) -> ParseResult<Statement> {
     Ok(Statement::Ddl(DdlStatement::CreateSchema(name)))
 }
 
+pub fn parse_create_sequence(parser: &mut Parser) -> ParseResult<Statement> {
+    let name = super::parse_multipart_name(parser)?;
+    let mut data_type = None;
+    let mut start_with = None;
+    let mut increment_by = None;
+    let mut min_value = None;
+    let mut max_value = None;
+    let mut cycle = false;
+
+    while !parser.is_empty() {
+        if matches!(parser.peek(), Some(Token::Semicolon) | Some(Token::Go)) {
+            break;
+        }
+
+        if parser.at_keyword(Keyword::As) {
+            let _ = parser.next();
+            data_type = Some(crate::parser::parse::expressions::parse_data_type(parser)?);
+        } else if parser.at_keyword(Keyword::Start) {
+            let _ = parser.next();
+            parser.expect_keyword(Keyword::With)?;
+            start_with = Some(parse_signed_int(parser)?);
+        } else if parser.at_keyword(Keyword::Increment) {
+            let _ = parser.next();
+            parser.expect_keyword(Keyword::By)?;
+            increment_by = Some(parse_signed_int(parser)?);
+        } else if parser.at_keyword(Keyword::Minvalue) {
+            let _ = parser.next();
+            min_value = Some(parse_signed_int(parser)?);
+        } else if parser.at_keyword(Keyword::Maxvalue) {
+            let _ = parser.next();
+            max_value = Some(parse_signed_int(parser)?);
+        } else if parser.at_keyword(Keyword::No) {
+            let _ = parser.next();
+            if parser.at_keyword(Keyword::Minvalue) {
+                let _ = parser.next();
+            } else if parser.at_keyword(Keyword::Maxvalue) {
+                let _ = parser.next();
+            } else if parser.at_keyword(Keyword::Cycle) {
+                let _ = parser.next();
+                cycle = false;
+            } else {
+                return parser.backtrack(Expected::Description("MINVALUE, MAXVALUE, or CYCLE"));
+            }
+        } else if parser.at_keyword(Keyword::Cycle) {
+            let _ = parser.next();
+            cycle = true;
+        } else {
+            break;
+        }
+    }
+
+    Ok(Statement::Ddl(DdlStatement::CreateSequence {
+        name,
+        data_type,
+        start_with,
+        increment_by,
+        min_value,
+        max_value,
+        cycle,
+    }))
+}
+
+fn parse_signed_int(parser: &mut Parser) -> ParseResult<i64> {
+    let sign = if matches!(parser.peek(), Some(Token::Operator(op)) if *op == "-") {
+        let _ = parser.next();
+        -1i64
+    } else if matches!(parser.peek(), Some(Token::Operator(op)) if *op == "+") {
+        let _ = parser.next();
+        1i64
+    } else {
+        1i64
+    };
+
+    if let Some(Token::Number { value: n, .. }) = parser.next() {
+        Ok(sign * (*n as i64))
+    } else {
+        parser.backtrack(Expected::Description("number"))
+    }
+}
+
 fn parse_referential_action(parser: &mut Parser) -> ParseResult<ReferentialAction> {
     match parser.next() {
         Some(Token::Keyword(k)) => match *k {

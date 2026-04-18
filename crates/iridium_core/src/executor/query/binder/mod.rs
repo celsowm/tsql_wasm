@@ -34,6 +34,20 @@ pub(crate) fn bind_table(
     if let Some(bound_view) = views::bind_view(catalog, storage, clock, &tref, ctx, executor)? {
         return Ok(bound_view);
     }
+    if let Some(obj) = tref.name_as_object() {
+        let schema = obj.schema_or_dbo();
+        if let Some(synonym) = catalog.find_synonym(schema, &obj.name) {
+            if ctx.frame.depth > 16 {
+                return Err(DbError::Execution("Synonym recursion limit exceeded".into()));
+            }
+            ctx.frame.depth += 1;
+            let mut resolved_tref = tref.clone();
+            resolved_tref.factor = TableFactor::Named(synonym.base_object.clone());
+            let res = bind_table(catalog, storage, clock, resolved_tref, ctx, executor);
+            ctx.frame.depth -= 1;
+            return res;
+        }
+    }
     values::bind_plain_table(tref, catalog, ctx)
 }
 

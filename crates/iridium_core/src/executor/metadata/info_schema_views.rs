@@ -577,6 +577,7 @@ fn collect_expr_view_column_usage(
         | crate::ast::Expr::Wildcard
         | crate::ast::Expr::QualifiedWildcard(_)
         | crate::ast::Expr::Null => {}
+        crate::ast::Expr::NextValueFor { .. } => {}
     }
 }
 

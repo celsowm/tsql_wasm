@@ -116,6 +116,9 @@ pub enum Expr {
         order_by: Vec<OrderByExpr>,
         frame: Option<WindowFrame>,
     },
+    NextValueFor {
+        sequence_name: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

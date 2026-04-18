@@ -557,6 +557,8 @@ impl VirtualTable for SysServerPrincipals {
 /// Stub for sys.sql_expression_dependencies — intentionally empty until
 /// cross-object dependency tracking is implemented.
 pub(crate) struct SysSqlExpressionDependencies;
+pub(crate) struct SysSynonyms;
+pub(crate) struct SysSequences;
 
 impl VirtualTable for SysSqlExpressionDependencies {
     fn definition(&self) -> crate::catalog::TableDef {
@@ -606,5 +608,142 @@ impl VirtualTable for SysSqlExpressionDependencies {
 
     fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         Vec::new()
+    }
+}
+
+impl VirtualTable for SysSynonyms {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "synonyms",
+            vec![
+                ("name", DataType::VarChar { max_len: 128 }, false),
+                ("object_id", DataType::Int, false),
+                ("schema_id", DataType::Int, false),
+                ("parent_object_id", DataType::Int, false),
+                ("type", DataType::Char { len: 2 }, false),
+                ("type_desc", DataType::VarChar { max_len: 60 }, false),
+                ("create_date", DataType::DateTime, false),
+                ("modify_date", DataType::DateTime, false),
+                ("is_ms_shipped", DataType::Bit, false),
+                ("is_published", DataType::Bit, false),
+                ("is_schema_published", DataType::Bit, false),
+                ("base_object_name", DataType::NVarChar { max_len: 1035 }, true),
+            ],
+        )
+    }
+
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+        let created = Value::DateTime(
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap(),
+        );
+
+        catalog
+            .get_synonyms()
+            .iter()
+            .map(|s| {
+                let base_name = format!(
+                    "{}.{}",
+                    s.base_object.schema_or_dbo(),
+                    s.base_object.name
+                );
+                StoredRow {
+                    values: vec![
+                        Value::VarChar(s.name.clone()),
+                        Value::Int(s.object_id),
+                        Value::Int(catalog.get_schema_id(&s.schema).unwrap_or(1) as i32),
+                        Value::Int(0),
+                        Value::Char("SN".to_string()),
+                        Value::VarChar("SYNONYM".to_string()),
+                        created.clone(),
+                        created.clone(),
+                        Value::Bit(false),
+                        Value::Bit(false),
+                        Value::Bit(false),
+                        Value::NVarChar(base_name),
+                    ],
+                    deleted: false,
+                }
+            })
+            .collect()
+    }
+}
+
+impl VirtualTable for SysSequences {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "sequences",
+            vec![
+                ("name", DataType::VarChar { max_len: 128 }, false),
+                ("object_id", DataType::Int, false),
+                ("schema_id", DataType::Int, false),
+                ("parent_object_id", DataType::Int, false),
+                ("type", DataType::Char { len: 2 }, false),
+                ("type_desc", DataType::VarChar { max_len: 60 }, false),
+                ("create_date", DataType::DateTime, false),
+                ("modify_date", DataType::DateTime, false),
+                ("is_ms_shipped", DataType::Bit, false),
+                ("is_published", DataType::Bit, false),
+                ("is_schema_published", DataType::Bit, false),
+                ("start_value", DataType::SqlVariant, false),
+                ("increment", DataType::SqlVariant, false),
+                ("minimum_value", DataType::SqlVariant, false),
+                ("maximum_value", DataType::SqlVariant, false),
+                ("is_cycling", DataType::Bit, false),
+                ("is_cached", DataType::Bit, false),
+                ("cache_size", DataType::Int, true),
+                ("system_type_id", DataType::TinyInt, false),
+                ("user_type_id", DataType::Int, false),
+                ("precision", DataType::TinyInt, false),
+                ("scale", DataType::TinyInt, false),
+                ("current_value", DataType::SqlVariant, false),
+            ],
+        )
+    }
+
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+        let created = Value::DateTime(
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap(),
+        );
+
+        catalog
+            .get_sequences()
+            .iter()
+            .map(|s| {
+                StoredRow {
+                    values: vec![
+                        Value::VarChar(s.name.clone()),
+                        Value::Int(s.object_id),
+                        Value::Int(catalog.get_schema_id(&s.schema).unwrap_or(1) as i32),
+                        Value::Int(0),
+                        Value::Char("SO".to_string()),
+                        Value::VarChar("SEQUENCE_OBJECT".to_string()),
+                        created.clone(),
+                        created.clone(),
+                        Value::Bit(false),
+                        Value::Bit(false),
+                        Value::Bit(false),
+                        Value::BigInt(s.start_value),
+                        Value::BigInt(s.increment),
+                        Value::BigInt(s.minimum_value),
+                        Value::BigInt(s.maximum_value),
+                        Value::Bit(s.is_cycling),
+                        Value::Bit(false),
+                        Value::Null,
+                        Value::TinyInt(127), // BIGINT
+                        Value::Int(127),
+                        Value::TinyInt(19),
+                        Value::TinyInt(0),
+                        Value::BigInt(s.current_value),
+                    ],
+                    deleted: false,
+                }
+            })
+            .collect()
     }
 }

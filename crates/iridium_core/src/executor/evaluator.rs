@@ -286,6 +286,12 @@ fn eval_expr_inner(
                 ))
             }
         }
+        Expr::NextValueFor { sequence_name } => {
+            // Placeholder: Sequence increment side-effects are complex in &dyn Catalog.
+            // For now, return a value to satisfy the type system during this phase.
+            let _ = sequence_name;
+            Ok(Value::BigInt(1))
+        }
     }
 }
 

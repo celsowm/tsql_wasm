@@ -180,6 +180,11 @@ pub fn lower_expr(parser_expr: ast::Expr) -> Result<executor_ast::expressions::E
                 .collect::<Result<Vec<_>, _>>()?,
             frame: frame.map(lower_window_frame),
         }),
+        ast::Expr::NextValueFor { sequence_name } => {
+            Ok(executor_ast::expressions::Expr::NextValueFor {
+                sequence_name: lower_object_name(sequence_name),
+            })
+        }
     }
 }
 

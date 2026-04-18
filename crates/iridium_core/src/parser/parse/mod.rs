@@ -10,7 +10,8 @@ use crate::parser::token::Keyword;
 pub use crate::parser::parse::expressions::{parse_comma_list, parse_data_type};
 pub use crate::parser::parse::statements::alter::parse_alter;
 pub use crate::parser::parse::statements::ddl::{
-    parse_create, parse_create_index, parse_create_schema, parse_create_type, parse_table_body,
+    parse_create, parse_create_index, parse_create_schema, parse_create_sequence, parse_create_type,
+    parse_table_body,
 };
 pub use crate::parser::parse::statements::dml::{
     parse_bulk_insert, parse_delete, parse_insert_dispatch, parse_merge, parse_update,
@@ -103,12 +104,36 @@ fn parse_statement_inner(parser: &mut Parser) -> ParseResult<Statement> {
                     let _ = parser.next();
                     return parse_create_schema(parser);
                 }
+                if parser.at_keyword(Keyword::Synonym) {
+                    let _ = parser.next();
+                    let name = multipart_name(parser)?;
+                    parser.expect_keyword(Keyword::For)?;
+                    let base_object = multipart_name(parser)?;
+                    return Ok(Statement::Ddl(DdlStatement::CreateSynonym {
+                        name,
+                        base_object,
+                    }));
+                }
+                if parser.at_keyword(Keyword::Sequence) {
+                    let _ = parser.next();
+                    return parse_create_sequence(parser);
+                }
                 Ok(Statement::Ddl(DdlStatement::Create(Box::new(
                     parse_create(parser)?,
                 ))))
             }
             Keyword::Drop => {
                 let _ = parser.next();
+                if parser.at_keyword(Keyword::Synonym) {
+                    let _ = parser.next();
+                    let name = multipart_name(parser)?;
+                    return Ok(Statement::Ddl(DdlStatement::DropSynonym(name)));
+                }
+                if parser.at_keyword(Keyword::Sequence) {
+                    let _ = parser.next();
+                    let name = multipart_name(parser)?;
+                    return Ok(Statement::Ddl(DdlStatement::DropSequence(name)));
+                }
                 parse_drop(parser)
             }
             Keyword::Truncate => {

@@ -231,6 +231,45 @@ impl<'a> SchemaExecutor<'a> {
         self.catalog.drop_view(schema, &stmt.name.name)
     }
 
+    pub(crate) fn create_synonym(&mut self, stmt: crate::ast::CreateSynonymStmt) -> Result<(), DbError> {
+        let schema = stmt.name.schema_or_dbo().to_string();
+        let object_id = self.catalog.alloc_object_id();
+        self.catalog.create_synonym(crate::catalog::SynonymDef {
+            object_id,
+            schema,
+            name: stmt.name.name,
+            base_object: stmt.base_object,
+        })
+    }
+
+    pub(crate) fn drop_synonym(&mut self, stmt: crate::ast::DropSynonymStmt) -> Result<(), DbError> {
+        let schema = stmt.name.schema_or_dbo();
+        self.catalog.drop_synonym(schema, &stmt.name.name)
+    }
+
+    pub(crate) fn create_sequence(&mut self, stmt: crate::ast::CreateSequenceStmt) -> Result<(), DbError> {
+        let schema = stmt.name.schema_or_dbo().to_string();
+        let data_type = data_type_spec_to_runtime(&stmt.data_type);
+        let object_id = self.catalog.alloc_object_id();
+        self.catalog.create_sequence(crate::catalog::SequenceDef {
+            object_id,
+            schema,
+            name: stmt.name.name,
+            data_type,
+            start_value: stmt.start_value,
+            increment: stmt.increment,
+            current_value: stmt.start_value,
+            minimum_value: stmt.minimum_value,
+            maximum_value: stmt.maximum_value,
+            is_cycling: stmt.is_cycling,
+        })
+    }
+
+    pub(crate) fn drop_sequence(&mut self, stmt: crate::ast::DropSequenceStmt) -> Result<(), DbError> {
+        let schema = stmt.name.schema_or_dbo();
+        self.catalog.drop_sequence(schema, &stmt.name.name)
+    }
+
     fn build_column_def(&mut self, spec: crate::ast::ColumnSpec) -> Result<ColumnDef, DbError> {
         let data_type = data_type_spec_to_runtime(&spec.data_type);
         let nullable = if spec.nullable_explicit {

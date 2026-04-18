@@ -268,6 +268,9 @@ pub(crate) fn format_expr(expr: &Expr) -> String {
             }
             parts.join(" ")
         }
+        Expr::NextValueFor { sequence_name } => {
+            format!("NEXT VALUE FOR {}", format_object_name(sequence_name))
+        }
     }
 }
 
