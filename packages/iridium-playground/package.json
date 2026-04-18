@@ -1,6 +1,6 @@
 {
   "name": "@iridium-sql/playground",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "type": "module",
   "scripts": {
     "dev": "vite"
@@ -12,4 +12,3 @@
     "vite": "^5.4.10"
   }
 }
-
