@@ -110,6 +110,12 @@ define_keywords! {
     Within => "WITHIN",
     Groups => "GROUPS",
     Range => "RANGE",
+    CurrentDate => "CURRENT_DATE",
+    CurrentTime => "CURRENT_TIME",
+    CurrentTimestamp => "CURRENT_TIMESTAMP",
+    CurrentUser => "CURRENT_USER",
+    SessionUser => "SESSION_USER",
+    SystemUser => "SYSTEM_USER",
 
     // DDL
     Create => "CREATE",

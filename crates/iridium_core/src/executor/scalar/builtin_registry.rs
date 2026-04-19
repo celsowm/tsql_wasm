@@ -208,6 +208,7 @@ const DATETIME_FUNCTIONS: &[BuiltinScalarFunction] = &[
     builtin!("GETDATE" => datetime::eval_getdate),
     builtin!("CURRENT_TIMESTAMP" => datetime::eval_current_timestamp),
     builtin!("CURRENT_DATE" => datetime::eval_current_date),
+    builtin!("CURRENT_TIME" => datetime::eval_current_time),
     builtin!("GETUTCDATE" => datetime::eval_getutcdate),
     builtin!("SYSDATETIME" => datetime::eval_sysdatetime),
     builtin!("SYSUTCDATETIME" => datetime::eval_sysutcdatetime),
