@@ -93,7 +93,7 @@ fn eval_objectproperty_common(
             "ISINDEXABLE" => Value::Int(1),
             "ISFULLTEXTENABLED" => Value::Int(0),
             "ISMSSHIPPED" => Value::Int(if table.schema_name == "sys" { 1 } else { 0 }),
-            _ => Value::Int(0),
+            _ => Value::Null,
         },
         super::common::ResolvedObject::VirtualTable(ref table) => match prop.as_str() {
             "ISTABLE" | "ISUSERTABLE" => Value::Int(1),
@@ -127,7 +127,7 @@ fn eval_objectproperty_common(
             "ISINDEXABLE" => Value::Int(1),
             "ISFULLTEXTENABLED" => Value::Int(0),
             "ISMSSHIPPED" => Value::Int(if table.schema_name == "sys" { 1 } else { 0 }),
-            _ => Value::Int(0),
+            _ => Value::Null,
         },
         super::common::ResolvedObject::Routine(routine) => match prop.as_str() {
             "ISPROCEDURE" => {
@@ -165,7 +165,7 @@ fn eval_objectproperty_common(
             "EXECISANSINULLSON" => Value::Int(1),
             "EXECISQUOTEDIDENTON" => Value::Int(1),
             "ISMSSHIPPED" => Value::Int(if routine.schema == "sys" { 1 } else { 0 }),
-            _ => Value::Int(0),
+            _ => Value::Null,
         },
         super::common::ResolvedObject::View => match prop.as_str() {
             "ISVIEW" => Value::Int(1),
@@ -173,13 +173,13 @@ fn eval_objectproperty_common(
             "ISSCHEMABOUND" => Value::Int(0),
             "ISINDEXABLE" => Value::Int(0),
             "ISMSSHIPPED" => Value::Int(0),
-            _ => Value::Int(0),
+            _ => Value::Null,
         },
         super::common::ResolvedObject::Trigger => match prop.as_str() {
             "ISTRIGGER" => Value::Int(1),
             "ISVIEW" | "ISTABLE" | "ISPROCEDURE" => Value::Int(0),
             "ISMSSHIPPED" => Value::Int(0),
-            _ => Value::Int(0),
+            _ => Value::Null,
         },
     })
 }

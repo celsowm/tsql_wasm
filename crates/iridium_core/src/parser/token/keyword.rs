@@ -297,4 +297,15 @@ define_keywords! {
     // Misc
     Last => "LAST",
     First => "FIRST",
+    Any => "ANY",
+    Some => "SOME",
+    User => "USER",
+    Database => "DATABASE",
+    Backup => "BACKUP",
+    Restore => "RESTORE",
+    Checkpoint => "CHECKPOINT",
+    Kill => "KILL",
+    Authorization => "AUTHORIZATION",
+    Browse => "BROWSE",
+    Shutdown => "SHUTDOWN",
 }

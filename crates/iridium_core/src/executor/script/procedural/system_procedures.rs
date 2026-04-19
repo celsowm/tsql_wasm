@@ -17,6 +17,10 @@ const SYSTEM_PROCEDURES: &[&str] = &[
     "sp_set_session_context",
     "xp_instance_regread",
     "sp_msgetversion",
+    "sp_who",
+    "sp_databases",
+    "sp_server_info",
+    "sp_monitor",
 ];
 
 pub(crate) fn is_system_procedure(name: &str) -> bool {
@@ -47,6 +51,14 @@ pub(crate) fn execute_system_procedure(
         execute_sp_helpindex(exec, &args)?
     } else if name.eq_ignore_ascii_case("sp_set_session_context") {
         execute_sp_set_session_context(stmt, ctx, exec)?
+    } else if name.eq_ignore_ascii_case("sp_who") {
+        execute_sp_who(ctx)?
+    } else if name.eq_ignore_ascii_case("sp_databases") {
+        execute_sp_databases()?
+    } else if name.eq_ignore_ascii_case("sp_server_info") {
+        execute_sp_server_info()?
+    } else if name.eq_ignore_ascii_case("sp_monitor") {
+        execute_sp_monitor(exec)?
     } else if name.eq_ignore_ascii_case("xp_instance_regread") {
         // Stub for registry reads. If it has an output parameter, set it to a default.
         for arg in &stmt.args {
@@ -336,6 +348,189 @@ fn execute_sp_columns(
             DataType::Int,
         ],
         column_nullabilities: vec![false, false, false, true, true, true, false],
+        rows,
+        ..Default::default()
+    })
+}
+
+fn execute_sp_who(ctx: &ExecutionContext<'_>) -> Result<QueryResult, DbError> {
+    let rows = vec![vec![
+        Value::Int(ctx.metadata.id as i32),
+        Value::Int(0), // ecid
+        Value::NVarChar("running".to_string()),
+        Value::NVarChar(
+            ctx.metadata
+                .user
+                .clone()
+                .unwrap_or_else(|| "sa".to_string()),
+        ),
+        Value::NVarChar(
+            ctx.metadata
+                .host_name
+                .clone()
+                .unwrap_or_else(|| "localhost".to_string()),
+        ),
+        Value::Char("0".to_string()), // blk
+        Value::NVarChar(ctx.metadata.database.clone().unwrap_or_default()),
+        Value::NVarChar("SELECT".to_string()), // cmd
+        Value::Int(0),                         // request_id
+    ]];
+
+    Ok(QueryResult {
+        columns: vec![
+            "spid".into(),
+            "ecid".into(),
+            "status".into(),
+            "loginame".into(),
+            "hostname".into(),
+            "blk".into(),
+            "dbname".into(),
+            "cmd".into(),
+            "request_id".into(),
+        ],
+        column_types: vec![
+            DataType::Int,
+            DataType::Int,
+            DataType::NVarChar { max_len: 30 },
+            DataType::NVarChar { max_len: 128 },
+            DataType::NVarChar { max_len: 128 },
+            DataType::Char { len: 5 },
+            DataType::NVarChar { max_len: 128 },
+            DataType::NVarChar { max_len: 16 },
+            DataType::Int,
+        ],
+        column_nullabilities: vec![
+            false, false, false, false, false, false, false, false, false,
+        ],
+        rows,
+        ..Default::default()
+    })
+}
+
+fn execute_sp_databases() -> Result<QueryResult, DbError> {
+    let mut rows = Vec::new();
+    for db in crate::executor::database_catalog::builtin_databases() {
+        rows.push(vec![
+            Value::VarChar(db.name.to_string()),
+            Value::Int(0), // DATABASE_SIZE
+            Value::Null,   // REMARKS
+        ]);
+    }
+    Ok(QueryResult {
+        columns: vec!["DATABASE_NAME".into(), "DATABASE_SIZE".into(), "REMARKS".into()],
+        column_types: vec![
+            DataType::VarChar { max_len: 128 },
+            DataType::Int,
+            DataType::VarChar { max_len: 254 },
+        ],
+        column_nullabilities: vec![false, false, true],
+        rows,
+        ..Default::default()
+    })
+}
+
+fn execute_sp_server_info() -> Result<QueryResult, DbError> {
+    let rows = vec![
+        vec![
+            Value::Int(1),
+            Value::VarChar("DBMS_NAME".into()),
+            Value::VarChar("SQL Server".into()),
+        ],
+        vec![
+            Value::Int(2),
+            Value::VarChar("DBMS_VER".into()),
+            Value::VarChar("Microsoft SQL Server 2025 - 17.0.1000.0".into()),
+        ],
+        vec![
+            Value::Int(10),
+            Value::VarChar("OWNER_TERM".into()),
+            Value::VarChar("owner".into()),
+        ],
+        vec![
+            Value::Int(11),
+            Value::VarChar("TABLE_TERM".into()),
+            Value::VarChar("table".into()),
+        ],
+        vec![
+            Value::Int(12),
+            Value::VarChar("MAX_OWNER_NAME_LENGTH".into()),
+            Value::VarChar("128".into()),
+        ],
+        vec![
+            Value::Int(13),
+            Value::VarChar("TABLE_LENGTH".into()),
+            Value::VarChar("128".into()),
+        ],
+    ];
+    Ok(QueryResult {
+        columns: vec![
+            "ATTRIBUTE_ID".into(),
+            "ATTRIBUTE_NAME".into(),
+            "ATTRIBUTE_VALUE".into(),
+        ],
+        column_types: vec![
+            DataType::Int,
+            DataType::VarChar { max_len: 60 },
+            DataType::VarChar { max_len: 255 },
+        ],
+        column_nullabilities: vec![false, false, false],
+        rows,
+        ..Default::default()
+    })
+}
+
+fn execute_sp_monitor(exec: &ScriptExecutor<'_>) -> Result<QueryResult, DbError> {
+    let now = Value::DateTime(exec.clock.now_datetime_literal());
+    let rows = vec![vec![
+        now.clone(),   // last_run
+        now.clone(),   // current_run
+        Value::Int(0), // seconds
+        Value::Int(0), // cpu_busy
+        Value::Int(0), // io_busy
+        Value::Int(0), // idle
+        Value::Int(0), // packets_received
+        Value::Int(0), // packets_sent
+        Value::Int(0), // packet_errors
+        Value::Int(0), // total_read
+        Value::Int(0), // total_write
+        Value::Int(0), // total_errors
+        Value::Int(0), // connections
+    ]];
+    Ok(QueryResult {
+        columns: vec![
+            "last_run".into(),
+            "current_run".into(),
+            "seconds".into(),
+            "cpu_busy".into(),
+            "io_busy".into(),
+            "idle".into(),
+            "packets_received".into(),
+            "packets_sent".into(),
+            "packet_errors".into(),
+            "total_read".into(),
+            "total_write".into(),
+            "total_errors".into(),
+            "connections".into(),
+        ],
+        column_types: vec![
+            DataType::DateTime,
+            DataType::DateTime,
+            DataType::Int,
+            DataType::Int,
+            DataType::Int,
+            DataType::Int,
+            DataType::Int,
+            DataType::Int,
+            DataType::Int,
+            DataType::Int,
+            DataType::Int,
+            DataType::Int,
+            DataType::Int,
+        ],
+        column_nullabilities: vec![
+            false, false, false, false, false, false, false, false, false, false, false, false,
+            false,
+        ],
         rows,
         ..Default::default()
     })
