@@ -342,6 +342,17 @@ pub(crate) fn eval_current_date(
     Ok(Value::Date(clock.now_datetime_literal().date()))
 }
 
+pub(crate) fn eval_current_time(
+    _args: &[Expr],
+    _row: &[ContextTable],
+    _ctx: &mut ExecutionContext,
+    _catalog: &dyn Catalog,
+    _storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    Ok(Value::Time(clock.now_datetime_literal().time()))
+}
+
 pub(crate) fn eval_getutcdate(
     _args: &[Expr],
     _row: &[ContextTable],

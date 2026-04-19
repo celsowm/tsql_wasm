@@ -362,6 +362,25 @@ pub fn parse_primary(parser: &mut Parser) -> ParseResult<Expr> {
                 crate::parser::parse::statements::query::parse_multipart_name(parser)?;
             Ok(Expr::NextValueFor { sequence_name })
         }
+        Some(Token::Keyword(k))
+            if matches!(
+                k,
+                Keyword::CurrentDate
+                    | Keyword::CurrentTime
+                    | Keyword::CurrentTimestamp
+                    | Keyword::CurrentUser
+                    | Keyword::SessionUser
+                    | Keyword::SystemUser
+            ) =>
+        {
+            let name = k.as_sql().to_string();
+            let _ = parser.next();
+            Ok(Expr::FunctionCall {
+                name,
+                args: vec![],
+                within_group: vec![],
+            })
+        }
         Some(Token::Keyword(k)) if matches!(parser.peek_at(1), Some(Token::LParen)) => {
             let name = k.as_ref().to_string();
             let _ = parser.next();
@@ -577,7 +596,13 @@ fn parse_identifier_or_function(parser: &mut Parser, name: String) -> ParseResul
         let upper = parts[0].to_uppercase();
         if matches!(
             upper.as_str(),
-            "CURRENT_TIMESTAMP" | "CURRENT_DATE" | "GETDATE"
+            "CURRENT_TIMESTAMP"
+                | "CURRENT_DATE"
+                | "CURRENT_TIME"
+                | "CURRENT_USER"
+                | "SESSION_USER"
+                | "SYSTEM_USER"
+                | "GETDATE"
         ) {
             Ok(Expr::FunctionCall {
                 name: parts.remove(0),
