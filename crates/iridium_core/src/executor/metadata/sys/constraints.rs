@@ -16,9 +16,13 @@ impl VirtualTable for SysCheckConstraints {
         virtual_table_def(
             "check_constraints",
             vec![
+                ("name", DataType::VarChar { max_len: 128 }, false),
                 ("object_id", DataType::Int, false),
                 ("parent_object_id", DataType::Int, false),
-                ("name", DataType::VarChar { max_len: 128 }, false),
+                ("definition", DataType::VarChar { max_len: 8000 }, true),
+                ("is_not_for_replication", DataType::Bit, false),
+                ("is_disabled", DataType::Bit, false),
+                ("is_not_trusted", DataType::Bit, false),
             ],
         )
     }
@@ -30,9 +34,13 @@ impl VirtualTable for SysCheckConstraints {
             for chk in &t.check_constraints {
                 rows.push(StoredRow {
                     values: vec![
+                        Value::VarChar(chk.name.clone()),
                         Value::Int(object_id),
                         Value::Int(t.id as i32),
-                        Value::VarChar(chk.name.clone()),
+                        Value::VarChar(format!("({})", format_expr(&chk.expr))),
+                        Value::Bit(false),
+                        Value::Bit(false),
+                        Value::Bit(false),
                     ],
                     deleted: false,
                 });

@@ -718,6 +718,7 @@ pub fn format_routine_definition(routine: &crate::catalog::RoutineDef) -> String
         .collect::<Vec<_>>()
         .join(", ");
     let name = ObjectName {
+        database: None,
         schema: Some(routine.schema.clone()),
         name: routine.name.clone(),
     };
@@ -773,6 +774,7 @@ pub fn format_view_definition(view: &crate::catalog::ViewDef) -> String {
     format!(
         "CREATE VIEW {} AS {}",
         format_object_name(&ObjectName {
+            database: None,
             schema: Some(view.schema.clone()),
             name: view.name.clone(),
         }),
@@ -802,10 +804,12 @@ pub fn format_trigger_definition(trigger: &crate::catalog::TriggerDef) -> String
     format!(
         "CREATE TRIGGER {} ON {} {} {} AS BEGIN {} END",
         format_object_name(&ObjectName {
+            database: None,
             schema: Some(trigger.schema.clone()),
             name: trigger.name.clone(),
         }),
         format_object_name(&ObjectName {
+            database: None,
             schema: Some(trigger.table_schema.clone()),
             name: trigger.table_name.clone(),
         }),

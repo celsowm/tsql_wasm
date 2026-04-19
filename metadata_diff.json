@@ -1,0 +1,102 @@
+{
+  "tables": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "columns": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "indexes": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "index_columns": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "stats": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "stats_columns": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "check_constraints": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "foreign_keys": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "foreign_key_columns": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "default_constraints": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "sql_modules": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "system_sql_modules": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "objects": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "all_objects": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "partitions": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "allocation_units": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "data_spaces": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "schemas": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "types": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "xml_indexes": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "internal_tables": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "periods": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "xml_schema_collections": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "dm_db_index_usage_stats": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  },
+  "dm_db_partition_stats": {
+    "status": "MISSING_VIEW",
+    "missing": []
+  }
+}

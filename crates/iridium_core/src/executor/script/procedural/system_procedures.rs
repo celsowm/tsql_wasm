@@ -15,6 +15,8 @@ const SYSTEM_PROCEDURES: &[&str] = &[
     "sp_tables",
     "sp_helpindex",
     "sp_set_session_context",
+    "xp_instance_regread",
+    "sp_msgetversion",
 ];
 
 pub(crate) fn is_system_procedure(name: &str) -> bool {
@@ -45,6 +47,31 @@ pub(crate) fn execute_system_procedure(
         execute_sp_helpindex(exec, &args)?
     } else if name.eq_ignore_ascii_case("sp_set_session_context") {
         execute_sp_set_session_context(stmt, ctx, exec)?
+    } else if name.eq_ignore_ascii_case("xp_instance_regread") {
+        // Stub for registry reads. If it has an output parameter, set it to a default.
+        for arg in &stmt.args {
+            if arg.is_output {
+                if let crate::ast::Expr::Identifier(ref var_name) = arg.expr {
+                    if let Some((ty, val)) = ctx.session.variables.get_mut(var_name) {
+                        *val = crate::executor::value_ops::coerce_value_to_type_with_dateformat(
+                            Value::Int(0),
+                            ty,
+                            &ctx.options.dateformat,
+                        )?;
+                    }
+                }
+            }
+        }
+        QueryResult::default()
+    } else if name.eq_ignore_ascii_case("sp_msgetversion") {
+        // Stub for version check
+        QueryResult {
+            columns: vec!["Character_Value".into()],
+            column_types: vec![DataType::NVarChar { max_len: 128 }],
+            column_nullabilities: vec![false],
+            rows: vec![vec![Value::NVarChar("16.0.1000.0".into())]],
+            ..Default::default()
+        }
     } else {
         return Err(DbError::Execution(format!(
             "unknown system procedure '{}'",

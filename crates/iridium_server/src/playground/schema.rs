@@ -87,4 +87,10 @@ END
     r#"
 CREATE PROCEDURE dbo.uspGetOrderDetails AS BEGIN SELECT 1 END
 "#,
+    r#"
+CREATE PROCEDURE dbo.xp_instance_regread AS BEGIN SELECT 1 END
+"#,
+    r#"
+CREATE PROCEDURE dbo.sp_msgetversion AS BEGIN SELECT 1 END
+"#,
 ];

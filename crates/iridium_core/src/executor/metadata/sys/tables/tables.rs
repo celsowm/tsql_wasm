@@ -6,6 +6,7 @@ use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
 pub(crate) struct SysTables;
+pub(crate) struct SysFileTables;
 
 impl VirtualTable for SysTables {
     fn definition(&self) -> crate::catalog::TableDef {
@@ -44,7 +45,6 @@ impl VirtualTable for SysTables {
                 ("uses_ansi_null_defaults", DataType::Bit, false),
                 ("is_tracked_by_cdc", DataType::Bit, false),
                 ("is_merge_published", DataType::Bit, false),
-                ("is_filetable", DataType::Bit, false),
             ],
         )
     }
@@ -86,17 +86,34 @@ impl VirtualTable for SysTables {
                     Value::Bit(false),                // is_replicated
                     Value::TinyInt(0),                // lock_escalation (TABLE)
                     Value::VarChar("TABLE".to_string()), // lock_escalation_desc
-                    Value::Int(0),                    // lob_data_space_id (default filegroup)
+                    Value::Int(1),                    // lob_data_space_id (match sys.data_spaces default)
                     Value::Null,                      // filestream_data_space_id
                     Value::Int(0),                    // max_column_id_used
                     Value::Bit(false),                // lock_on_bulk_load
                     Value::Bit(false),                // uses_ansi_null_defaults
                     Value::Bit(false),                // is_tracked_by_cdc
                     Value::Bit(false),                // is_merge_published
-                    Value::Bit(false),                // is_filetable (duplicate for SSMS compat)
                 ],
                 deleted: false,
             })
             .collect()
+    }
+}
+
+impl VirtualTable for SysFileTables {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "filetables",
+            vec![
+                ("object_id", DataType::Int, false),
+                ("is_enabled", DataType::Bit, false),
+                ("directory_name", DataType::NVarChar { max_len: 255 }, false),
+                ("filename_column_guid", DataType::UniqueIdentifier, false),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+        Vec::new()
     }
 }

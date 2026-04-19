@@ -1,5 +1,6 @@
 mod columns;
 mod databases;
+mod encryption;
 mod identity_columns;
 mod objects_misc;
 mod tables;
@@ -7,15 +8,19 @@ mod types;
 
 pub(crate) use columns::{SysAllColumns, SysColumns, SysComputedColumns, SysViewColumns};
 pub(crate) use databases::{SysConfigurations, SysDatabases, SysSysDatabases};
+pub(crate) use encryption::{
+    SysColumnEncryptionKeyValues, SysColumnEncryptionKeys, SysColumnMasterKeys,
+};
 pub(crate) use identity_columns::SysIdentityColumns;
 pub(crate) use objects_misc::{
     SysAssemblyModules, SysDataSpaces, SysEdgeConstraints, SysExtendedProperties,
-    SysForeignKeyColumns, SysIndexColumns, SysSequences, SysServerPrincipals,
-    SysSqlExpressionDependencies, SysSqlModules, SysStats, SysStatsColumns, SysSynonyms,
-    SysSystemSqlModules, SysTriggerEvents, SysTriggers, SysXmlIndexes, SysXmlSchemaCollections,
+    SysForeignKeyColumns, SysIndexColumns, SysInternalTables, SysPeriods, SysSequences,
+    SysServerPrincipals, SysSqlExpressionDependencies, SysSqlModules, SysAllSqlModules, SysStats, SysStatsColumns,
+    SysSynonyms, SysSystemSqlModules, SysTriggerEvents, SysTriggers, SysXmlIndexes,
+    SysXmlSchemaCollections,
 };
-pub(crate) use tables::SysTables;
-pub(crate) use types::{SysTableTypes, SysTypes};
+pub(crate) use tables::{SysFileTables, SysTables};
+pub(crate) use types::{SysAssemblyTypes, SysTableTypes, SysTypes};
 
 use super::super::virtual_table_def;
 use super::super::VirtualTable;

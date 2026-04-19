@@ -10,7 +10,9 @@ pub(crate) struct SysExtendedProperties;
 pub(crate) struct SysIndexColumns;
 pub(crate) struct SysForeignKeyColumns;
 pub(crate) struct SysXmlSchemaCollections;
+pub(crate) struct SysPeriods;
 pub(crate) struct SysXmlIndexes;
+pub(crate) struct SysInternalTables;
 pub(crate) struct SysEdgeConstraints;
 pub(crate) struct SysAssemblyModules;
 pub(crate) struct SysTriggers;
@@ -131,6 +133,8 @@ impl VirtualTable for SysIndexColumns {
                 ("index_column_id", DataType::Int, false),
                 ("column_id", DataType::Int, false),
                 ("key_ordinal", DataType::TinyInt, false),
+                ("partition_ordinal", DataType::Int, false),
+                ("is_descending_key", DataType::Bit, false),
                 ("is_included_column", DataType::Bit, false),
             ],
         )
@@ -147,6 +151,8 @@ impl VirtualTable for SysIndexColumns {
                         Value::Int((ordinal + 1) as i32),
                         Value::Int(*col_id as i32),
                         Value::TinyInt((ordinal + 1) as u8),
+                        Value::Int(0),
+                        Value::Bit(false),
                         Value::Bit(false),
                     ],
                     deleted: false,
@@ -237,15 +243,62 @@ impl VirtualTable for SysXmlSchemaCollections {
     }
 }
 
+impl VirtualTable for SysPeriods {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "periods",
+            vec![
+                ("name", DataType::VarChar { max_len: 128 }, false),
+                ("period_id", DataType::Int, false),
+                ("object_id", DataType::Int, false),
+                ("start_column_id", DataType::Int, false),
+                ("end_column_id", DataType::Int, false),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+        Vec::new()
+    }
+}
+
 impl VirtualTable for SysXmlIndexes {
     fn definition(&self) -> crate::catalog::TableDef {
         virtual_table_def(
             "xml_indexes",
             vec![
                 ("object_id", DataType::Int, false),
+                ("name", DataType::VarChar { max_len: 128 }, false),
                 ("index_id", DataType::Int, false),
+                ("type", DataType::TinyInt, false),
+                ("type_desc", DataType::VarChar { max_len: 60 }, false),
+                ("using_xml_index_id", DataType::Int, true),
                 ("xml_index_type", DataType::TinyInt, false),
                 ("secondary_type", DataType::VarChar { max_len: 1 }, true),
+                ("fill_factor", DataType::TinyInt, false),
+                ("is_padded", DataType::Bit, false),
+                ("is_disabled", DataType::Bit, false),
+                ("is_hypothetical", DataType::Bit, false),
+                ("allow_row_locks", DataType::Bit, false),
+                ("allow_page_locks", DataType::Bit, false),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+        Vec::new()
+    }
+}
+
+impl VirtualTable for SysInternalTables {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "internal_tables",
+            vec![
+                ("name", DataType::VarChar { max_len: 128 }, false),
+                ("object_id", DataType::Int, false),
+                ("parent_id", DataType::Int, false),
+                ("internal_type", DataType::TinyInt, false),
             ],
         )
     }
@@ -436,12 +489,48 @@ impl VirtualTable for SysSystemSqlModules {
             vec![
                 ("object_id", DataType::Int, false),
                 ("definition", DataType::VarChar { max_len: 8000 }, true),
+                ("uses_ansi_nulls", DataType::Bit, true),
+                ("uses_quoted_identifier", DataType::Bit, true),
+                ("is_schema_bound", DataType::Bit, true),
+                ("uses_database_collation", DataType::Bit, true),
+                ("is_recompiled", DataType::Bit, true),
+                ("null_on_null_input", DataType::Bit, true),
+                ("execute_as_principal_id", DataType::Int, true),
+                ("uses_native_compilation", DataType::Bit, true),
             ],
         )
     }
 
     fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         Vec::new()
+    }
+}
+
+pub(crate) struct SysAllSqlModules;
+
+impl VirtualTable for SysAllSqlModules {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "all_sql_modules",
+            vec![
+                ("object_id", DataType::Int, false),
+                ("definition", DataType::VarChar { max_len: 8000 }, true),
+                ("uses_ansi_nulls", DataType::Bit, true),
+                ("uses_quoted_identifier", DataType::Bit, true),
+                ("is_schema_bound", DataType::Bit, true),
+                ("uses_database_collation", DataType::Bit, true),
+                ("is_recompiled", DataType::Bit, true),
+                ("null_on_null_input", DataType::Bit, true),
+                ("execute_as_principal_id", DataType::Int, true),
+                ("uses_native_compilation", DataType::Bit, true),
+            ],
+        )
+    }
+
+    fn rows(&self, catalog: &dyn Catalog, ctx: &ExecutionContext) -> Vec<StoredRow> {
+        let mut rows = SysSqlModules.rows(catalog, ctx);
+        rows.extend(SysSystemSqlModules.rows(catalog, ctx));
+        rows
     }
 }
 
@@ -452,23 +541,33 @@ impl VirtualTable for SysStats {
             vec![
                 ("object_id", DataType::Int, false),
                 ("name", DataType::VarChar { max_len: 128 }, false),
+                ("stats_id", DataType::Int, false),
                 ("auto_created", DataType::Bit, false),
+                ("user_created", DataType::Bit, false),
+                ("no_recompute", DataType::Bit, false),
                 ("has_filter", DataType::Bit, false),
+                ("filter_definition", DataType::NVarChar { max_len: 4000 }, true),
+                ("is_temporary", DataType::Bit, false),
+                ("is_incremental", DataType::Bit, false),
+                ("is_ms_shipped", DataType::Bit, false),
             ],
         )
     }
 
     fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
-        let mut stats_idx = 0;
         for idx in catalog.get_indexes() {
-            let stats_id = 100_000 + stats_idx;
-            stats_idx += 1;
             rows.push(StoredRow {
                 values: vec![
                     Value::Int(idx.table_id as i32),
-                    Value::Int(stats_id),
                     Value::VarChar(idx.name.clone()),
+                    Value::Int(idx.id as i32),
+                    Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Null,
+                    Value::Bit(false),
                     Value::Bit(false),
                     Value::Bit(false),
                 ],
@@ -494,15 +593,12 @@ impl VirtualTable for SysStatsColumns {
 
     fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let mut rows = Vec::new();
-        let mut stats_idx = 0;
         for idx in catalog.get_indexes() {
-            let stats_id = 100_000 + stats_idx;
-            stats_idx += 1;
             for (i, col_id) in idx.column_ids.iter().enumerate() {
                 rows.push(StoredRow {
                     values: vec![
                         Value::Int(idx.table_id as i32),
-                        Value::Int(stats_id),
+                        Value::Int(idx.id as i32),
                         Value::Int((i + 1) as i32),
                         Value::Int(*col_id as i32),
                     ],

@@ -1,6 +1,6 @@
-mod ddl;
-mod dml;
-mod procedural;
+pub(crate) mod ddl;
+pub(crate) mod dml;
+pub(crate) mod procedural;
 
 use super::clock::Clock;
 use super::context::ExecutionContext;
@@ -65,6 +65,7 @@ impl<'a> ScriptExecutor<'a> {
 
             self.schema(ctx).drop_table(DropTableStmt {
                 name: ObjectName {
+                    database: None,
                     schema: Some(table.schema_name),
                     name: physical,
                 },

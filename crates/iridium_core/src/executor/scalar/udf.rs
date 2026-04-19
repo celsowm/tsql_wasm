@@ -20,11 +20,21 @@ pub(crate) fn eval_user_scalar_function(
     storage: &dyn Storage,
     clock: &dyn Clock,
 ) -> Result<Value, DbError> {
-    let (schema, fname) = if let Some(dot) = name.find('.') {
-        (&name[..dot], &name[dot + 1..])
-    } else {
-        ("dbo", name)
+    let parts: Vec<&str> = name.split('.').collect();
+    let (schema, fname) = match parts.len() {
+        3 => (parts[1], parts[2]),
+        2 => (parts[0], parts[1]),
+        _ => ("dbo", name),
     };
+
+    // Special handling for common SSMS/MSDB system functions that might be missing
+    if name.contains("fn_syspolicy_is_automation_enabled") {
+        return Ok(Value::Int(0));
+    }
+    if name.contains("syspolicy_system_health_state") {
+        return Ok(Value::Int(0));
+    }
+
     let Some(routine) = catalog.find_routine(schema, fname) else {
         return Err(DbError::Execution(format!("function '{}' not found", name)));
     };

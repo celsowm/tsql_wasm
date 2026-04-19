@@ -43,6 +43,7 @@ impl<'a> ScriptExecutor<'a> {
         );
         let create = crate::ast::CreateTableStmt {
             name: crate::ast::ObjectName {
+                database: None,
                 schema: Some("dbo".to_string()),
                 name: physical.clone(),
             },

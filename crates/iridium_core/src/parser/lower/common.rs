@@ -281,23 +281,40 @@ pub fn lower_window_bound(
 pub fn lower_object_name(mut parts: Vec<String>) -> executor_ast::ObjectName {
     match parts.len() {
         0 => executor_ast::ObjectName {
+            database: None,
             schema: None,
             name: "".to_string(),
         },
         1 => executor_ast::ObjectName {
+            database: None,
             schema: None,
             name: parts.remove(0),
         },
+        2 => {
+            let name = parts.pop().unwrap_or_default();
+            let schema = Some(parts.pop().unwrap_or_default());
+            executor_ast::ObjectName {
+                database: None,
+                schema,
+                name,
+            }
+        }
         _ => {
             let name = parts.pop().unwrap_or_default();
             let schema = Some(parts.pop().unwrap_or_default());
-            executor_ast::ObjectName { schema, name }
+            let database = Some(parts.pop().unwrap_or_default());
+            executor_ast::ObjectName {
+                database,
+                schema,
+                name,
+            }
         }
     }
 }
 
 pub fn lower_object_name_owned(name: ast::ObjectName) -> executor_ast::ObjectName {
     executor_ast::ObjectName {
+        database: name.database,
         schema: name.schema,
         name: name.name,
     }

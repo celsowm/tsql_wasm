@@ -119,6 +119,7 @@ pub(crate) fn build_from_node(
             TableFactor::Named(target.clone())
         } else {
             TableFactor::Named(ObjectName {
+                database: None,
                 schema: Some(table.schema_or_dbo().to_string()),
                 name: resolved_name.to_string(),
             })

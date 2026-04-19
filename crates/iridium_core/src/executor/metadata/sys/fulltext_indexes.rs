@@ -7,6 +7,7 @@ use crate::types::DataType;
 
 pub(crate) struct SysFullTextIndexes;
 pub(crate) struct SysFullTextCatalogs;
+pub(crate) struct SysFullTextIndexColumns;
 
 impl VirtualTable for SysFullTextIndexes {
     fn definition(&self) -> crate::catalog::TableDef {
@@ -55,6 +56,25 @@ impl VirtualTable for SysFullTextCatalogs {
 
     fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         // Full-text catalogs are not supported, return empty result set
+        Vec::new()
+    }
+}
+
+impl VirtualTable for SysFullTextIndexColumns {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "fulltext_index_columns",
+            vec![
+                ("object_id", DataType::Int, false),
+                ("column_id", DataType::Int, false),
+                ("type_column_id", DataType::Int, true),
+                ("language_id", DataType::Int, false),
+                ("statistical_semantics", DataType::Int, false),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         Vec::new()
     }
 }

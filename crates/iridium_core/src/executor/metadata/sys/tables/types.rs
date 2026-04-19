@@ -7,6 +7,7 @@ use crate::types::{DataType, Value};
 
 pub(crate) struct SysTypes;
 pub(crate) struct SysTableTypes;
+pub(crate) struct SysAssemblyTypes;
 
 impl VirtualTable for SysTypes {
     fn definition(&self) -> crate::catalog::TableDef {
@@ -118,5 +119,34 @@ impl VirtualTable for SysTableTypes {
                 }
             })
             .collect()
+    }
+}
+
+impl VirtualTable for SysAssemblyTypes {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "assembly_types",
+            vec![
+                ("name", DataType::VarChar { max_len: 128 }, false),
+                ("system_type_id", DataType::TinyInt, false),
+                ("user_type_id", DataType::Int, false),
+                ("schema_id", DataType::Int, false),
+                ("principal_id", DataType::Int, true),
+                ("assembly_id", DataType::Int, false),
+                ("assembly_class", DataType::NVarChar { max_len: 128 }, true),
+                ("is_binary_ordered", DataType::Bit, false),
+                ("is_fixed_length", DataType::Bit, false),
+                ("max_length", DataType::SmallInt, false),
+                ("precision", DataType::TinyInt, false),
+                ("scale", DataType::TinyInt, false),
+                ("collation_name", DataType::VarChar { max_len: 128 }, true),
+                ("is_nullable", DataType::Bit, false),
+                ("is_user_defined", DataType::Bit, false),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+        Vec::new()
     }
 }

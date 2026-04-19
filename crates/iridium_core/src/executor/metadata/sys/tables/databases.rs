@@ -41,6 +41,13 @@ impl VirtualTable for SysDatabases {
                 ("is_in_standby", DataType::Bit, false),
                 ("is_distributor", DataType::Bit, false),
                 ("is_cleanly_shutdown", DataType::Bit, false),
+                ("catalog_collation_type", DataType::TinyInt, false),
+                (
+                    "catalog_collation_type_desc",
+                    DataType::VarChar { max_len: 60 },
+                    false,
+                ),
+                ("is_query_store_on", DataType::Bit, false),
             ],
         )
     }
@@ -85,6 +92,9 @@ impl VirtualTable for SysDatabases {
                     Value::Bit(false),
                     Value::Bit(false),
                     Value::Bit(db.name.eq_ignore_ascii_case("master")),
+                    Value::TinyInt(0),
+                    Value::VarChar("DATABASE_DEFAULT".to_string()),
+                    Value::Bit(false),
                 ],
                 deleted: false,
             })

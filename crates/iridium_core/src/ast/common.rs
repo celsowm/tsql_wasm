@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ObjectName {
+    pub database: Option<String>,
     pub schema: Option<String>,
     pub name: String,
 }

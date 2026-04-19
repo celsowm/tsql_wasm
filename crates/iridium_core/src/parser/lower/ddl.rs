@@ -317,6 +317,7 @@ pub fn lower_routine_param(
             };
             (
                 executor_ast::statements::RoutineParamType::TableType(executor_ast::ObjectName {
+                    database: None,
                     schema,
                     name: type_name,
                 }),

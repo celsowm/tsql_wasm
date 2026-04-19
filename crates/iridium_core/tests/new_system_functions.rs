@@ -72,6 +72,50 @@ fn test_host_name() {
     assert!(matches!(r.rows[0][0], Value::NVarChar(_)));
 }
 
+// ─── IS_MEMBER / PERMISSIONS (SSMS Design Mode) ────────────────────────
+
+#[test]
+fn test_is_member_db_owner() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT IS_MEMBER('db_owner') AS v");
+    assert_eq!(r.rows[0][0], Value::Int(1));
+}
+
+#[test]
+fn test_is_member_public() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT IS_MEMBER('public') AS v");
+    assert_eq!(r.rows[0][0], Value::Int(1));
+}
+
+#[test]
+fn test_is_member_db_datareader() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT IS_MEMBER('db_datareader') AS v");
+    assert_eq!(r.rows[0][0], Value::Int(1));
+}
+
+#[test]
+fn test_is_member_nonexistent_role() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT IS_MEMBER('NonExistentRole') AS v");
+    assert_eq!(r.rows[0][0], Value::Int(0));
+}
+
+#[test]
+fn test_permissions_returns_value() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT PERMISSIONS() AS v");
+    assert!(!r.rows.is_empty());
+}
+
+#[test]
+fn test_is_member_null_input() {
+    let mut engine = Engine::new();
+    let r = query(&mut engine, "SELECT IS_MEMBER(NULL) AS v");
+    assert_eq!(r.rows[0][0], Value::Null);
+}
+
 #[test]
 fn test_system_user_via_suser() {
     let mut engine = Engine::new();

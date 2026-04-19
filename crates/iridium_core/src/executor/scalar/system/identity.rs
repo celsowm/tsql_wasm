@@ -378,3 +378,48 @@ pub(crate) fn eval_user_sid(
         0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x12, 0x00, 0x00, 0x00,
     ]))
 }
+
+pub(crate) fn eval_is_member(
+    args: &[Expr],
+    row: &[ContextTable],
+    ctx: &mut ExecutionContext,
+    catalog: &dyn Catalog,
+    storage: &dyn Storage,
+    clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if args.len() != 1 {
+        return Err(DbError::Execution("IS_MEMBER expects 1 argument".into()));
+    }
+
+    let role = eval_expr(&args[0], row, ctx, catalog, storage, clock)?;
+    if role.is_null() {
+        return Ok(Value::Null);
+    }
+
+    let role_name = role.to_string_value().to_ascii_lowercase();
+    let is_member = match role_name.as_str() {
+        "db_owner" | "db_accessadmin" | "db_securityadmin" | "db_ddladmin"
+        | "db_backupoperator" | "db_datareader" | "db_datawriter" | "db_denydatareader"
+        | "db_denydatawriter" => 1,
+        "public" => 1,
+        _ => 0,
+    };
+    Ok(Value::Int(is_member))
+}
+
+pub(crate) fn eval_permissions(
+    args: &[Expr],
+    _row: &[ContextTable],
+    _ctx: &mut ExecutionContext,
+    _catalog: &dyn Catalog,
+    _storage: &dyn Storage,
+    _clock: &dyn Clock,
+) -> Result<Value, DbError> {
+    if !args.is_empty() {
+        return Err(DbError::Execution(
+            "PERMISSIONS expects no arguments".into(),
+        ));
+    }
+
+    Ok(Value::BigInt(0x3FFFFFFF))
+}

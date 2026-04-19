@@ -56,7 +56,7 @@ fn eval_objectproperty_common(
     let Some(object_id) = value_to_object_id(&object_val, catalog, None) else {
         return Ok(Value::Null);
     };
-    let Some(object) = resolve_object(catalog, object_id) else {
+    let Some(object) = resolve_object(catalog, object_id, ctx) else {
         return Ok(Value::Null);
     };
     let prop = prop_val.to_string_value().to_ascii_uppercase();
@@ -89,7 +89,45 @@ fn eval_objectproperty_common(
             } else {
                 0
             }),
-            _ => Value::Null,
+            "TABLETEXTINROWLIMIT" => Value::Int(0),
+            "ISINDEXABLE" => Value::Int(1),
+            "ISFULLTEXTENABLED" => Value::Int(0),
+            "ISMSSHIPPED" => Value::Int(if table.schema_name == "sys" { 1 } else { 0 }),
+            _ => Value::Int(0),
+        },
+        super::common::ResolvedObject::VirtualTable(ref table) => match prop.as_str() {
+            "ISTABLE" | "ISUSERTABLE" => Value::Int(1),
+            "ISVIEW" | "ISPROCEDURE" | "ISTRIGGER" | "ISSCALARFUNCTION" | "ISTABLEFUNCTION" => {
+                Value::Int(0)
+            }
+            "TABLEHASPRIMARYKEY" => Value::Int(if table_has_primary_key(table) { 1 } else { 0 }),
+            "TABLEHASIDENTITY" => Value::Int(if table_has_identity(table) { 1 } else { 0 }),
+            "TABLEHASINDEX" => Value::Int(if table_has_index(catalog, table) {
+                1
+            } else {
+                0
+            }),
+            "TABLEHASFOREIGNKEY" => Value::Int(if table_has_foreign_key(table) { 1 } else { 0 }),
+            "TABLEHASDEFAULTCNST" => Value::Int(if table_has_default_constraint(table) {
+                1
+            } else {
+                0
+            }),
+            "TABLEHASCHECKCNST" => Value::Int(if table_has_check_constraint(table) {
+                1
+            } else {
+                0
+            }),
+            "TABLEHASUNIQUECNST" => Value::Int(if table_has_unique_constraint(table) {
+                1
+            } else {
+                0
+            }),
+            "TABLETEXTINROWLIMIT" => Value::Int(0),
+            "ISINDEXABLE" => Value::Int(1),
+            "ISFULLTEXTENABLED" => Value::Int(0),
+            "ISMSSHIPPED" => Value::Int(if table.schema_name == "sys" { 1 } else { 0 }),
+            _ => Value::Int(0),
         },
         super::common::ResolvedObject::Routine(routine) => match prop.as_str() {
             "ISPROCEDURE" => {
@@ -126,18 +164,22 @@ fn eval_objectproperty_common(
             ) as i32),
             "EXECISANSINULLSON" => Value::Int(1),
             "EXECISQUOTEDIDENTON" => Value::Int(1),
-            _ => Value::Null,
+            "ISMSSHIPPED" => Value::Int(if routine.schema == "sys" { 1 } else { 0 }),
+            _ => Value::Int(0),
         },
         super::common::ResolvedObject::View => match prop.as_str() {
             "ISVIEW" => Value::Int(1),
             "ISTABLE" | "ISUSERTABLE" | "ISPROCEDURE" | "ISTRIGGER" => Value::Int(0),
             "ISSCHEMABOUND" => Value::Int(0),
-            _ => Value::Null,
+            "ISINDEXABLE" => Value::Int(0),
+            "ISMSSHIPPED" => Value::Int(0),
+            _ => Value::Int(0),
         },
         super::common::ResolvedObject::Trigger => match prop.as_str() {
             "ISTRIGGER" => Value::Int(1),
             "ISVIEW" | "ISTABLE" | "ISPROCEDURE" => Value::Int(0),
-            _ => Value::Null,
+            "ISMSSHIPPED" => Value::Int(0),
+            _ => Value::Int(0),
         },
     })
 }
@@ -181,27 +223,49 @@ pub(crate) fn eval_columnproperty(
     let column_name = column_val.to_string_value();
     let property_name = property_val.to_string_value().to_uppercase();
 
-    let Some(table) = catalog
-        .get_tables()
-        .iter()
-        .find(|t| t.id as i32 == object_id)
-    else {
+    let Some(object) = resolve_object(catalog, object_id, ctx) else {
         return Ok(Value::Null);
     };
 
-    let Some((ordinal, col)) = table
-        .columns
-        .iter()
-        .enumerate()
-        .find(|(_, c)| c.name.eq_ignore_ascii_case(&column_name))
-    else {
+    let col = match object {
+        super::common::ResolvedObject::Table(table) => table
+            .columns
+            .iter()
+            .find(|c| c.name.eq_ignore_ascii_case(&column_name)),
+        super::common::ResolvedObject::VirtualTable(ref table) => table
+            .columns
+            .iter()
+            .find(|c| c.name.eq_ignore_ascii_case(&column_name)),
+        _ => None,
+    };
+
+    let Some(col) = col else {
         return Ok(Value::Null);
     };
+
+    let ordinal = match object {
+        super::common::ResolvedObject::Table(table) => table
+            .columns
+            .iter()
+            .position(|c| c.name.eq_ignore_ascii_case(&column_name))
+            .map(|p| p + 1),
+        super::common::ResolvedObject::VirtualTable(ref table) => table
+            .columns
+            .iter()
+            .position(|c| c.name.eq_ignore_ascii_case(&column_name))
+            .map(|p| p + 1),
+        _ => None,
+    }
+    .unwrap_or(0);
 
     match property_name.as_str() {
         "ALLOWSNULL" => Ok(Value::Int(if col.nullable { 1 } else { 0 })),
         "ISCOMPUTED" => Ok(Value::Int(if col.computed_expr.is_some() { 1 } else { 0 })),
-        "COLUMNID" => Ok(Value::Int((ordinal + 1) as i32)),
+        "COLUMNID" => Ok(Value::Int(ordinal as i32)),
+        "ISIDNOTFORREPL" => Ok(Value::Int(0)),
+        "ISROWGUIDCOL" => Ok(Value::Int(0)),
+        "PRECISION" => Ok(crate::executor::metadata::numeric_precision(&col.data_type)),
+        "SCALE" => Ok(crate::executor::metadata::numeric_scale_val(&col.data_type)),
         _ => Ok(Value::Int(0)), // Default for others
     }
 }

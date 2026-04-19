@@ -6,6 +6,7 @@ use crate::storage::StoredRow;
 use crate::types::{DataType, Value};
 
 pub(crate) struct SysPolicyConfiguration;
+pub(crate) struct SysPolicySystemHealthState;
 
 impl VirtualTable for SysPolicyConfiguration {
     fn definition(&self) -> crate::catalog::TableDef {
@@ -62,5 +63,23 @@ impl VirtualTable for SysPolicyConfiguration {
                 deleted: false,
             },
         ]
+    }
+}
+
+impl VirtualTable for SysPolicySystemHealthState {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "syspolicy_system_health_state",
+            vec![
+                ("target_query_expression_with_id", DataType::NVarChar { max_len: 4000 }, false),
+                ("policy_id", DataType::Int, false),
+                ("policy_health_state", DataType::TinyInt, false),
+                ("last_run_date", DataType::DateTime, false),
+            ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+        Vec::new()
     }
 }

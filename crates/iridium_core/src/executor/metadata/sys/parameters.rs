@@ -88,3 +88,15 @@ impl VirtualTable for SysParameters {
         rows
     }
 }
+
+pub(crate) struct SysAllParameters;
+
+impl VirtualTable for SysAllParameters {
+    fn definition(&self) -> crate::catalog::TableDef {
+        SysParameters.definition()
+    }
+
+    fn rows(&self, catalog: &dyn Catalog, ctx: &ExecutionContext) -> Vec<StoredRow> {
+        SysParameters.rows(catalog, ctx)
+    }
+}

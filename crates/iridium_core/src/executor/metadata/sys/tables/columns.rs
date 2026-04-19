@@ -12,21 +12,21 @@ pub(crate) struct SysViewColumns;
 
 impl VirtualTable for SysColumns {
     fn definition(&self) -> crate::catalog::TableDef {
-        column_table_def("columns", false)
+        column_table_def("columns")
     }
 
     fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
-        column_rows(catalog, false)
+        column_rows(catalog)
     }
 }
 
 impl VirtualTable for SysAllColumns {
     fn definition(&self) -> crate::catalog::TableDef {
-        column_table_def("all_columns", true)
+        column_table_def("all_columns")
     }
 
     fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
-        column_rows(catalog, true)
+        column_rows(catalog)
     }
 }
 
@@ -40,8 +40,8 @@ impl VirtualTable for SysViewColumns {
     }
 }
 
-fn column_table_def(name: &str, include_sparse: bool) -> crate::catalog::TableDef {
-    let mut cols = vec![
+fn column_table_def(name: &str) -> crate::catalog::TableDef {
+    let cols = vec![
         ("object_id", DataType::Int, false),
         ("column_id", DataType::Int, false),
         ("name", DataType::VarChar { max_len: 128 }, false),
@@ -50,14 +50,34 @@ fn column_table_def(name: &str, include_sparse: bool) -> crate::catalog::TableDe
         ("max_length", DataType::SmallInt, false),
         ("precision", DataType::TinyInt, false),
         ("scale", DataType::TinyInt, false),
+        ("collation_name", DataType::VarChar { max_len: 128 }, true),
         ("is_nullable", DataType::Bit, false),
+        ("is_ansi_padded", DataType::Bit, false),
+        ("is_rowguidcol", DataType::Bit, false),
+        ("is_identity", DataType::Bit, false),
         ("is_computed", DataType::Bit, false),
+        ("is_filestream", DataType::Bit, false),
+        ("is_replicated", DataType::Bit, false),
+        ("is_non_sql_subscribed", DataType::Bit, false),
+        ("is_merge_published", DataType::Bit, false),
+        ("is_dts_replicated", DataType::Bit, false),
         ("is_xml_document", DataType::Bit, false),
-        ("is_column_set", DataType::Bit, false),
         ("xml_collection_id", DataType::Int, true),
-        ("generated_always_type", DataType::TinyInt, false),
-        ("graph_type", DataType::Int, true),
         ("default_object_id", DataType::Int, false),
+        ("rule_object_id", DataType::Int, false),
+        ("is_sparse", DataType::Bit, false),
+        ("is_column_set", DataType::Bit, false),
+        ("generated_always_type", DataType::TinyInt, false),
+        ("generated_always_type_desc", DataType::NVarChar { max_len: 60 }, true),
+        ("encryption_type", DataType::Int, true),
+        ("encryption_type_desc", DataType::NVarChar { max_len: 64 }, true),
+        ("encryption_algorithm_name", DataType::NVarChar { max_len: 128 }, true),
+        ("column_encryption_key_id", DataType::Int, true),
+        ("column_encryption_key_database_name", DataType::NVarChar { max_len: 128 }, true),
+        ("is_hidden", DataType::Bit, false),
+        ("is_masked", DataType::Bit, false),
+        ("graph_type", DataType::Int, true),
+        ("graph_type_desc", DataType::NVarChar { max_len: 60 }, true),
         ("is_dropped_ledger_column", DataType::Bit, false),
         ("vector_dimensions", DataType::Int, true),
         ("vector_base_type", DataType::TinyInt, true),
@@ -67,13 +87,10 @@ fn column_table_def(name: &str, include_sparse: bool) -> crate::catalog::TableDe
             true,
         ),
     ];
-    if include_sparse {
-        cols.push(("is_sparse", DataType::Bit, false));
-    }
     virtual_table_def(name, cols)
 }
 
-fn column_rows(catalog: &dyn Catalog, include_sparse: bool) -> Vec<StoredRow> {
+fn column_rows(catalog: &dyn Catalog) -> Vec<StoredRow> {
     fn precision_scale(dt: &DataType) -> (u8, u8) {
         match dt {
             DataType::Bit => (1, 0),
@@ -106,7 +123,7 @@ fn column_rows(catalog: &dyn Catalog, include_sparse: bool) -> Vec<StoredRow> {
             let (precision, scale) = precision_scale(&c.data_type);
             let (vector_dimensions, vector_base_type, vector_base_type_desc) =
                 vector_metadata(&c.data_type);
-            let mut values = vec![
+            let values = vec![
                 Value::Int(t.id as i32),
                 Value::Int(c.id as i32),
                 Value::VarChar(c.name.clone()),
@@ -115,27 +132,44 @@ fn column_rows(catalog: &dyn Catalog, include_sparse: bool) -> Vec<StoredRow> {
                 Value::SmallInt(type_max_length(&c.data_type)),
                 Value::TinyInt(precision),
                 Value::TinyInt(scale),
+                Value::VarChar("SQL_Latin1_General_CP1_CI_AS".to_string()),
                 Value::Bit(c.nullable),
+                Value::Bit(true),  // is_ansi_padded
+                Value::Bit(false), // is_rowguidcol
+                Value::Bit(c.identity.is_some()),
                 Value::Bit(c.computed_expr.is_some()),
-                Value::Bit(false),
-                Value::Bit(false),
-                Value::Null,
-                Value::TinyInt(0),
-                Value::Null,
+                Value::Bit(false), // is_filestream
+                Value::Bit(false), // is_replicated
+                Value::Bit(false), // is_non_sql_subscribed
+                Value::Bit(false), // is_merge_published
+                Value::Bit(false), // is_dts_replicated
+                Value::Bit(false), // is_xml_document
+                Value::Null,       // xml_collection_id
                 Value::Int(if c.default.is_some() {
                     let table_bucket = (t.id % 100_000) as i32;
                     3_000_000 + table_bucket * 1_000 + c.id as i32
                 } else {
                     0
                 }),
-                Value::Bit(false),
+                Value::Int(0),     // rule_object_id
+                Value::Bit(false), // is_sparse
+                Value::Bit(false), // is_column_set
+                Value::TinyInt(0), // generated_always_type
+                Value::NVarChar("NOT_APPLICABLE".to_string()),
+                Value::Null, // encryption_type
+                Value::Null, // encryption_type_desc
+                Value::Null, // encryption_algorithm_name
+                Value::Null, // column_encryption_key_id
+                Value::Null, // column_encryption_key_database_name
+                Value::Bit(false), // is_hidden
+                Value::Bit(false), // is_masked
+                Value::Null,       // graph_type
+                Value::Null,       // graph_type_desc
+                Value::Bit(false), // is_dropped_ledger_column
                 vector_dimensions,
                 vector_base_type,
                 vector_base_type_desc,
             ];
-            if include_sparse {
-                values.push(Value::Bit(false));
-            }
             rows.push(StoredRow {
                 values,
                 deleted: false,
@@ -148,7 +182,7 @@ fn column_rows(catalog: &dyn Catalog, include_sparse: bool) -> Vec<StoredRow> {
             let dt = crate::executor::type_mapping::data_type_spec_to_runtime(&c.data_type);
             let (precision, scale) = precision_scale(&dt);
             let (vector_dimensions, vector_base_type, vector_base_type_desc) = vector_metadata(&dt);
-            let mut values = vec![
+            let values = vec![
                 Value::Int(tt.object_id),
                 Value::Int((i + 1) as i32),
                 Value::VarChar(c.name.clone()),
@@ -157,22 +191,39 @@ fn column_rows(catalog: &dyn Catalog, include_sparse: bool) -> Vec<StoredRow> {
                 Value::SmallInt(type_max_length(&dt)),
                 Value::TinyInt(precision),
                 Value::TinyInt(scale),
+                Value::VarChar("SQL_Latin1_General_CP1_CI_AS".to_string()),
                 Value::Bit(c.nullable),
+                Value::Bit(true),  // is_ansi_padded
+                Value::Bit(false), // is_rowguidcol
+                Value::Bit(false), // is_identity
                 Value::Bit(c.computed_expr.is_some()),
-                Value::Bit(false),
-                Value::Bit(false),
-                Value::Null,
-                Value::TinyInt(0),
-                Value::Null,
+                Value::Bit(false), // is_filestream
+                Value::Bit(false), // is_replicated
+                Value::Bit(false), // is_non_sql_subscribed
+                Value::Bit(false), // is_merge_published
+                Value::Bit(false), // is_dts_replicated
+                Value::Bit(false), // is_xml_document
+                Value::Null,       // xml_collection_id
                 Value::Int(0),
-                Value::Bit(false),
+                Value::Int(0),     // rule_object_id
+                Value::Bit(false), // is_sparse
+                Value::Bit(false), // is_column_set
+                Value::TinyInt(0), // generated_always_type
+                Value::NVarChar("NOT_APPLICABLE".to_string()),
+                Value::Null, // encryption_type
+                Value::Null, // encryption_type_desc
+                Value::Null, // encryption_algorithm_name
+                Value::Null, // column_encryption_key_id
+                Value::Null, // column_encryption_key_database_name
+                Value::Bit(false), // is_hidden
+                Value::Bit(false), // is_masked
+                Value::Null,       // graph_type
+                Value::Null,       // graph_type_desc
+                Value::Bit(false), // is_dropped_ledger_column
                 vector_dimensions,
                 vector_base_type,
                 vector_base_type_desc,
             ];
-            if include_sparse {
-                values.push(Value::Bit(false));
-            }
             rows.push(StoredRow {
                 values,
                 deleted: false,
@@ -200,7 +251,9 @@ fn view_column_table_def() -> crate::catalog::TableDef {
             ("is_column_set", DataType::Bit, false),
             ("xml_collection_id", DataType::Int, true),
             ("generated_always_type", DataType::TinyInt, false),
+            ("generated_always_type_desc", DataType::NVarChar { max_len: 60 }, true),
             ("graph_type", DataType::Int, true),
+            ("graph_type_desc", DataType::NVarChar { max_len: 60 }, true),
             ("default_object_id", DataType::Int, false),
             ("is_dropped_ledger_column", DataType::Bit, false),
             ("vector_dimensions", DataType::Int, true),
@@ -240,13 +293,16 @@ fn view_column_rows(catalog: &dyn Catalog) -> Vec<StoredRow> {
                     Value::Bit(true),   // is_nullable - true by default
                     Value::Bit(false),  // is_computed
                     Value::Bit(false),  // is_xml_document
-                    Value::Bit(false),  // is_column_set
+                    Value::Bit(false), // is_column_set
                     Value::Null,        // xml_collection_id
                     Value::TinyInt(0),  // generated_always_type
+                    Value::NVarChar("NOT_APPLICABLE".to_string()),
                     Value::Null,        // graph_type
+                    Value::Null,        // graph_type_desc
                     Value::Int(0),      // default_object_id
                     Value::Bit(false),  // is_dropped_ledger_column
                     Value::Null,        // vector_dimensions
+
                     Value::Null,        // vector_base_type
                     Value::Null,        // vector_base_type_desc
                 ],

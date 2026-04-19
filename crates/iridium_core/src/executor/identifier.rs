@@ -110,7 +110,7 @@ pub(crate) fn resolve_qualified_identifier(
     let table_name = &parts[0];
     let column_name = &parts[1];
 
-    let search_row = |row: &[ContextTable]| -> Option<Value> {
+    let search_row = |row: &[ContextTable]| -> Result<Option<Value>, DbError> {
         for binding in row {
             if binding.alias.eq_ignore_ascii_case(table_name)
                 || binding.table.name.eq_ignore_ascii_case(table_name)
@@ -123,31 +123,36 @@ pub(crate) fn resolve_qualified_identifier(
                     .table
                     .columns
                     .iter()
-                    .position(|c| c.name.eq_ignore_ascii_case(column_name))?;
-                return Some(
-                    binding
-                        .row
-                        .as_ref()
-                        .map(|r| r.values[idx].clone())
-                        .unwrap_or(Value::Null),
-                );
+                    .position(|c| c.name.eq_ignore_ascii_case(column_name));
+
+                if let Some(idx) = idx {
+                    return Ok(Some(
+                        binding
+                            .row
+                            .as_ref()
+                            .map(|r| r.values[idx].clone())
+                            .unwrap_or(Value::Null),
+                    ));
+                } else {
+                    return Err(DbError::column_not_found_qualified(table_name, column_name));
+                }
             }
         }
-        None
+        Ok(None)
     };
 
-    if let Some(val) = search_row(row) {
+    if let Some(val) = search_row(row)? {
         return Ok(val);
     }
 
     for apply_row in ctx.row.apply_stack.iter().rev() {
-        if let Some(val) = search_row(apply_row) {
+        if let Some(val) = search_row(apply_row)? {
             return Ok(val);
         }
     }
 
     for outer_row in ctx.row.outer_stack.iter().rev() {
-        if let Some(val) = search_row(outer_row) {
+        if let Some(val) = search_row(outer_row)? {
             return Ok(val);
         }
     }

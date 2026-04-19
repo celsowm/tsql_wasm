@@ -338,6 +338,7 @@ fn lower_table_ref_flat(tr: ast::TableRef) -> Result<executor_ast::common::Table
             return Ok(executor_ast::common::TableRef {
                 factor: executor_ast::common::TableFactor::Named(
                     executor_ast::common::ObjectName {
+                        database: None,
                         schema: if name.len() > 1 {
                             Some(name[0].to_string())
                         } else {
@@ -527,6 +528,7 @@ pub fn lower_table_ref_recursive(
                 executor_ast::common::TableRef {
                     factor: executor_ast::common::TableFactor::Named(
                         executor_ast::common::ObjectName {
+                            database: None,
                             schema: if name.len() > 1 {
                                 Some(name[0].to_string())
                             } else {

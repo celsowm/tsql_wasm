@@ -14,6 +14,7 @@ use crate::executor::tooling::{
 
 pub(super) enum ResolvedObject<'a> {
     Table(&'a TableDef),
+    VirtualTable(TableDef),
     Routine(&'a RoutineDef),
     View,
     Trigger,
@@ -147,6 +148,7 @@ pub(super) fn object_definition_from_id(catalog: &dyn Catalog, object_id: i32) -
 pub(super) fn resolve_object<'a>(
     catalog: &'a dyn Catalog,
     object_id: i32,
+    ctx: &ExecutionContext,
 ) -> Option<ResolvedObject<'a>> {
     if let Some(table) = table_by_object_id(catalog, object_id) {
         return Some(ResolvedObject::Table(table));
@@ -162,6 +164,62 @@ pub(super) fn resolve_object<'a>(
         let _ = trigger;
         return Some(ResolvedObject::Trigger);
     }
+
+    // Check for virtual tables by matching the hash ID
+    // Note: This is a bit expensive but necessary if we don't have a reverse map.
+    // In a real system, we'd have a better ID management for system objects.
+    for schema in ["sys", "INFORMATION_SCHEMA"] {
+        let names = if schema == "sys" {
+            vec![
+                "databases",
+                "tables",
+                "columns",
+                "all_columns",
+                "view_columns",
+                "identity_columns",
+                "types",
+                "assembly_types",
+                "fulltext_indexes",
+                "fulltext_index_columns",
+                "fulltext_catalogs",
+                "change_tracking_tables",
+                "objects",
+                "indexes",
+                "configurations",
+                "sysdatabases",
+                "filetables",
+                "stats",
+                "stats_columns",
+                "xml_schema_collections",
+                "periods",
+                "xml_indexes",
+                "internal_tables",
+                "xp_instance_regread",
+                "sp_msgetversion",
+            ]
+        } else if schema == "dbo" {
+            vec!["syspolicy_configuration", "syspolicy_system_health_state", "spt_values"]
+        } else {
+            vec!["TABLES", "COLUMNS", "VIEWS", "ROUTINES"]
+        };
+
+        for name in names {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            use std::hash::{Hash, Hasher};
+            schema.hash(&mut hasher);
+            name.hash(&mut hasher);
+            let hash_id = (hasher.finish() as i32).abs();
+
+            if hash_id == object_id {
+                if let Some((table, _)) =
+                    crate::executor::metadata::resolve_virtual_table(schema, name, catalog, ctx)
+                {
+                    return Some(ResolvedObject::VirtualTable(table));
+                }
+            }
+        }
+    }
+
     None
 }
 

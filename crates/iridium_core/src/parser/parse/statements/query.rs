@@ -616,17 +616,33 @@ pub fn parse_multipart_name(parser: &mut Parser) -> ParseResult<Vec<String>> {
 pub fn parse_object_name(mut parts: Vec<String>) -> ObjectName {
     match parts.len() {
         0 => ObjectName {
+            database: None,
             schema: None,
             name: "".to_string(),
         },
         1 => ObjectName {
+            database: None,
             schema: None,
             name: parts.remove(0),
         },
+        2 => {
+            let name = parts.pop().unwrap_or_default();
+            let schema = Some(parts.pop().unwrap_or_default());
+            ObjectName {
+                database: None,
+                schema,
+                name,
+            }
+        }
         _ => {
             let name = parts.pop().unwrap_or_default();
             let schema = Some(parts.pop().unwrap_or_default());
-            ObjectName { schema, name }
+            let database = Some(parts.pop().unwrap_or_default());
+            ObjectName {
+                database,
+                schema,
+                name,
+            }
         }
     }
 }

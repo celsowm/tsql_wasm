@@ -192,7 +192,7 @@ pub(super) fn char_octet_length(dt: &DataType) -> Value {
     }
 }
 
-pub(super) fn numeric_precision(dt: &DataType) -> Value {
+pub(crate) fn numeric_precision(dt: &DataType) -> Value {
     match dt {
         DataType::Bit => Value::TinyInt(1),
         DataType::TinyInt => Value::TinyInt(3),
@@ -222,7 +222,7 @@ pub(super) fn numeric_precision_radix(dt: &DataType) -> Value {
     }
 }
 
-pub(super) fn numeric_scale_val(dt: &DataType) -> Value {
+pub(crate) fn numeric_scale_val(dt: &DataType) -> Value {
     match dt {
         DataType::Bit
         | DataType::TinyInt

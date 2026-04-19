@@ -183,13 +183,8 @@ pub(crate) fn eval_object_id(
         return Ok(Value::Null);
     }
     let raw = val.to_string_value();
-    let cleaned = raw.trim().trim_matches('[').trim_matches(']');
-    let parts: Vec<&str> = cleaned.split('.').collect();
-    let (schema, name) = if parts.len() == 2 {
-        (parts[0].trim(), parts[1].trim())
-    } else {
-        ("dbo", cleaned.trim())
-    };
+    let (schema, name) = super::common::parse_object_parts(&raw);
+    let schema = schema.unwrap_or("dbo");
 
     let object_type = if let Some(arg) = args.get(1) {
         let ty = eval_expr_to_value(arg, row, ctx, catalog, storage, clock)?;
@@ -210,10 +205,31 @@ pub(crate) fn eval_object_id(
         return Ok(Value::Int(2147483001));
     }
 
-    Ok(match catalog.object_id(schema, name) {
-        Some(id) => Value::Int(id),
-        None => Value::Null,
-    })
+    if let Some(id) = catalog.object_id(schema, name) {
+        return Ok(Value::Int(id));
+    }
+
+    // Check system procedures
+    if crate::executor::script::procedural::system_procedures::is_system_procedure(name) {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        use std::hash::{Hash, Hasher};
+        "sys".hash(&mut hasher);
+        name.hash(&mut hasher);
+        return Ok(Value::Int((hasher.finish() as i32).abs()));
+    }
+
+    // Check virtual tables (system views)
+    if let Some((_table, _)) = crate::executor::metadata::resolve_virtual_table(schema, name, catalog, ctx) {
+        // Assign a stable but fake ID for system objects if needed, or use a hashing scheme.
+        // For now, let's use a simple deterministic hash of the name for virtual tables.
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        use std::hash::{Hash, Hasher};
+        schema.hash(&mut hasher);
+        name.hash(&mut hasher);
+        return Ok(Value::Int((hasher.finish() as i32).abs()));
+    }
+
+    Ok(Value::Null)
 }
 
 pub(crate) fn eval_ident_current(
@@ -234,12 +250,8 @@ pub(crate) fn eval_ident_current(
         return Ok(Value::Null);
     }
     let raw = val.to_string_value();
-    let parts: Vec<&str> = raw.split('.').collect();
-    let (schema, name) = if parts.len() == 2 {
-        (parts[0].trim(), parts[1].trim())
-    } else {
-        ("dbo", raw.trim())
-    };
+    let (schema, name) = super::common::parse_object_parts(&raw);
+    let schema = schema.unwrap_or("dbo");
     let Some(table) = catalog.find_table(schema, name) else {
         return Ok(Value::Null);
     };
@@ -267,12 +279,8 @@ pub(crate) fn eval_ident_seed(
         return Ok(Value::Null);
     }
     let raw = val.to_string_value();
-    let parts: Vec<&str> = raw.split('.').collect();
-    let (schema, name) = if parts.len() == 2 {
-        (parts[0].trim(), parts[1].trim())
-    } else {
-        ("dbo", raw.trim())
-    };
+    let (schema, name) = super::common::parse_object_parts(&raw);
+    let schema = schema.unwrap_or("dbo");
     let Some(table) = catalog.find_table(schema, name) else {
         return Ok(Value::Null);
     };
@@ -300,12 +308,8 @@ pub(crate) fn eval_ident_incr(
         return Ok(Value::Null);
     }
     let raw = val.to_string_value();
-    let parts: Vec<&str> = raw.split('.').collect();
-    let (schema, name) = if parts.len() == 2 {
-        (parts[0].trim(), parts[1].trim())
-    } else {
-        ("dbo", raw.trim())
-    };
+    let (schema, name) = super::common::parse_object_parts(&raw);
+    let schema = schema.unwrap_or("dbo");
     let Some(table) = catalog.find_table(schema, name) else {
         return Ok(Value::Null);
     };

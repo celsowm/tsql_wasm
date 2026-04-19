@@ -10,6 +10,7 @@ pub(crate) struct SysAllObjects;
 pub(crate) struct SysSystemViews;
 pub(crate) struct SysCompatSysObjects;
 pub(crate) struct SysViews;
+pub(crate) struct SysAllViews;
 
 impl VirtualTable for SysViews {
     fn definition(&self) -> crate::catalog::TableDef {
@@ -22,6 +23,8 @@ impl VirtualTable for SysViews {
                 ("create_date", DataType::DateTime, false),
                 ("modify_date", DataType::DateTime, false),
                 ("is_ms_shipped", DataType::Bit, false),
+                ("is_published", DataType::Bit, false),
+                ("is_schema_published", DataType::Bit, false),
             ],
         )
     }
@@ -50,11 +53,23 @@ impl VirtualTable for SysViews {
                     created.clone(),
                     created.clone(),
                     Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Bit(false),
                 ],
                 deleted: false,
             });
         }
         rows
+    }
+}
+
+impl VirtualTable for SysAllViews {
+    fn definition(&self) -> crate::catalog::TableDef {
+        SysViews.definition()
+    }
+
+    fn rows(&self, catalog: &dyn Catalog, ctx: &ExecutionContext) -> Vec<StoredRow> {
+        SysViews.rows(catalog, ctx)
     }
 }
 
@@ -73,6 +88,8 @@ impl VirtualTable for SysObjects {
                 ("create_date", DataType::DateTime, false),
                 ("modify_date", DataType::DateTime, false),
                 ("is_ms_shipped", DataType::Bit, false),
+                ("is_published", DataType::Bit, false),
+                ("is_schema_published", DataType::Bit, false),
             ],
         )
     }
@@ -103,6 +120,8 @@ impl VirtualTable for SysObjects {
                     created.clone(),
                     created.clone(),
                     Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Bit(false),
                 ],
                 deleted: false,
             });
@@ -124,6 +143,8 @@ impl VirtualTable for SysObjects {
                             created.clone(),
                             created.clone(),
                             Value::Bit(false),
+                            Value::Bit(false),
+                            Value::Bit(false),
                         ],
                         deleted: false,
                     });
@@ -141,6 +162,8 @@ impl VirtualTable for SysObjects {
                             Value::VarChar("UNIQUE_CONSTRAINT".to_string()),
                             created.clone(),
                             created.clone(),
+                            Value::Bit(false),
+                            Value::Bit(false),
                             Value::Bit(false),
                         ],
                         deleted: false,
@@ -164,6 +187,8 @@ impl VirtualTable for SysObjects {
                             created.clone(),
                             created.clone(),
                             Value::Bit(false),
+                            Value::Bit(false),
+                            Value::Bit(false),
                         ],
                         deleted: false,
                     });
@@ -186,6 +211,8 @@ impl VirtualTable for SysObjects {
                         created.clone(),
                         created.clone(),
                         Value::Bit(false),
+                        Value::Bit(false),
+                        Value::Bit(false),
                     ],
                     deleted: false,
                 });
@@ -206,6 +233,8 @@ impl VirtualTable for SysObjects {
                         Value::VarChar("FOREIGN_KEY_CONSTRAINT".to_string()),
                         created.clone(),
                         created.clone(),
+                        Value::Bit(false),
+                        Value::Bit(false),
                         Value::Bit(false),
                     ],
                     deleted: false,
@@ -240,6 +269,8 @@ impl VirtualTable for SysObjects {
                     created.clone(),
                     created.clone(),
                     Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Bit(false),
                 ],
                 deleted: false,
             });
@@ -256,6 +287,8 @@ impl VirtualTable for SysObjects {
                     Value::VarChar("VIEW".to_string()),
                     created.clone(),
                     created.clone(),
+                    Value::Bit(false),
+                    Value::Bit(false),
                     Value::Bit(false),
                 ],
                 deleted: false,
@@ -278,6 +311,8 @@ impl VirtualTable for SysObjects {
                     created.clone(),
                     created.clone(),
                     Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Bit(false),
                 ],
                 deleted: false,
             });
@@ -294,6 +329,8 @@ impl VirtualTable for SysObjects {
                     Value::VarChar("SQL_INDEX".to_string()),
                     created.clone(),
                     created.clone(),
+                    Value::Bit(false),
+                    Value::Bit(false),
                     Value::Bit(false),
                 ],
                 deleted: false,
@@ -312,6 +349,8 @@ impl VirtualTable for SysObjects {
                     created.clone(),
                     created.clone(),
                     Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Bit(false),
                 ],
                 deleted: false,
             });
@@ -329,6 +368,8 @@ impl VirtualTable for SysObjects {
                     created.clone(),
                     created.clone(),
                     Value::Bit(false),
+                    Value::Bit(false),
+                    Value::Bit(false),
                 ],
                 deleted: false,
             });
@@ -342,8 +383,42 @@ impl VirtualTable for SysAllObjects {
         SysObjects.definition()
     }
 
-    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
-        SysObjects.rows(catalog, _ctx)
+    fn rows(&self, catalog: &dyn Catalog, ctx: &ExecutionContext) -> Vec<StoredRow> {
+        let mut rows = SysObjects.rows(catalog, ctx);
+        let created = Value::DateTime(
+            chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap(),
+        );
+
+        // Add system procedures
+        for name in ["xp_instance_regread", "sp_msgetversion"] {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            use std::hash::{Hash, Hasher};
+            "sys".hash(&mut hasher);
+            name.hash(&mut hasher);
+            let object_id = (hasher.finish() as i32).abs();
+
+            rows.push(StoredRow {
+                values: vec![
+                    Value::Int(object_id),
+                    Value::VarChar(name.to_string()),
+                    Value::Int(4), // sys schema_id
+                    Value::Null,
+                    Value::Int(0),
+                    Value::Char("P ".to_string()),
+                    Value::VarChar("SQL_STORED_PROCEDURE".to_string()),
+                    created.clone(),
+                    created.clone(),
+                    Value::Bit(true), // is_ms_shipped
+                    Value::Bit(false),
+                    Value::Bit(false),
+                ],
+                deleted: false,
+            });
+        }
+        rows
     }
 }
 

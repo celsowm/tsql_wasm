@@ -13,6 +13,7 @@ mod partition;
 mod policy_configuration;
 mod routines;
 mod sessions;
+mod spt;
 mod tables;
 
 use super::VirtualTable;
@@ -20,6 +21,10 @@ use super::VirtualTable;
 pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> {
     if schema.eq_ignore_ascii_case("dbo") && name.eq_ignore_ascii_case("syspolicy_configuration") {
         Some(Box::new(policy_configuration::SysPolicyConfiguration))
+    } else if schema.eq_ignore_ascii_case("dbo") && name.eq_ignore_ascii_case("syspolicy_system_health_state") {
+        Some(Box::new(policy_configuration::SysPolicySystemHealthState))
+    } else if schema.eq_ignore_ascii_case("dbo") && name.eq_ignore_ascii_case("spt_values") {
+        Some(Box::new(spt::SysSptValues))
     } else if schema.eq_ignore_ascii_case("dbo") && name.eq_ignore_ascii_case("sysobjects") {
         Some(Box::new(objects::SysCompatSysObjects))
     } else if !schema.eq_ignore_ascii_case("sys") {
@@ -34,6 +39,8 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(tables::SysConfigurations))
     } else if name.eq_ignore_ascii_case("tables") {
         Some(Box::new(tables::SysTables))
+    } else if name.eq_ignore_ascii_case("filetables") {
+        Some(Box::new(tables::SysFileTables))
     } else if name.eq_ignore_ascii_case("columns") {
         Some(Box::new(tables::SysColumns))
     } else if name.eq_ignore_ascii_case("all_columns") {
@@ -54,8 +61,18 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(tables::SysForeignKeyColumns))
     } else if name.eq_ignore_ascii_case("xml_schema_collections") {
         Some(Box::new(tables::SysXmlSchemaCollections))
+    } else if name.eq_ignore_ascii_case("periods") {
+        Some(Box::new(tables::SysPeriods))
     } else if name.eq_ignore_ascii_case("xml_indexes") {
         Some(Box::new(tables::SysXmlIndexes))
+    } else if name.eq_ignore_ascii_case("column_encryption_keys") {
+        Some(Box::new(tables::SysColumnEncryptionKeys))
+    } else if name.eq_ignore_ascii_case("column_master_keys") {
+        Some(Box::new(tables::SysColumnMasterKeys))
+    } else if name.eq_ignore_ascii_case("column_encryption_key_values") {
+        Some(Box::new(tables::SysColumnEncryptionKeyValues))
+    } else if name.eq_ignore_ascii_case("internal_tables") {
+        Some(Box::new(tables::SysInternalTables))
     } else if name.eq_ignore_ascii_case("synonyms") {
         Some(Box::new(tables::SysSynonyms))
     } else if name.eq_ignore_ascii_case("sequences") {
@@ -80,12 +97,16 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(tables::SysEdgeConstraints))
     } else if name.eq_ignore_ascii_case("assembly_modules") {
         Some(Box::new(tables::SysAssemblyModules))
+    } else if name.eq_ignore_ascii_case("assembly_types") {
+        Some(Box::new(tables::SysAssemblyTypes))
     } else if name.eq_ignore_ascii_case("triggers") {
         Some(Box::new(tables::SysTriggers))
     } else if name.eq_ignore_ascii_case("trigger_events") {
         Some(Box::new(tables::SysTriggerEvents))
     } else if name.eq_ignore_ascii_case("sql_modules") {
         Some(Box::new(tables::SysSqlModules))
+    } else if name.eq_ignore_ascii_case("all_sql_modules") {
+        Some(Box::new(tables::SysAllSqlModules))
     } else if name.eq_ignore_ascii_case("system_sql_modules") {
         Some(Box::new(tables::SysSystemSqlModules))
     } else if name.eq_ignore_ascii_case("sql_expression_dependencies") {
@@ -98,6 +119,8 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(tables::SysTypes))
     } else if name.eq_ignore_ascii_case("parameters") {
         Some(Box::new(parameters::SysParameters))
+    } else if name.eq_ignore_ascii_case("all_parameters") {
+        Some(Box::new(parameters::SysAllParameters))
     } else if name.eq_ignore_ascii_case("procedures") {
         Some(Box::new(routines::SysProcedures))
     } else if name.eq_ignore_ascii_case("functions") {
@@ -114,6 +137,8 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(objects::SysSystemViews))
     } else if name.eq_ignore_ascii_case("views") {
         Some(Box::new(objects::SysViews))
+    } else if name.eq_ignore_ascii_case("all_views") {
+        Some(Box::new(objects::SysAllViews))
     } else if name.eq_ignore_ascii_case("dm_os_host_info") {
         Some(Box::new(host_info::SysHostInfo))
     } else if name.eq_ignore_ascii_case("dm_os_sys_info") {
@@ -164,6 +189,8 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(change_tracking::SysChangeTrackingTables))
     } else if name.eq_ignore_ascii_case("fulltext_indexes") {
         Some(Box::new(fulltext_indexes::SysFullTextIndexes))
+    } else if name.eq_ignore_ascii_case("fulltext_index_columns") {
+        Some(Box::new(fulltext_indexes::SysFullTextIndexColumns))
     } else if name.eq_ignore_ascii_case("fulltext_catalogs") {
         Some(Box::new(fulltext_indexes::SysFullTextCatalogs))
     } else {
