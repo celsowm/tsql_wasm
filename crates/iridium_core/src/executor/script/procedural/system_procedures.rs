@@ -14,11 +14,13 @@ const SYSTEM_PROCEDURES: &[&str] = &[
     "sp_columns",
     "sp_tables",
     "sp_helpindex",
+    "sp_helpconstraint",
     "sp_set_session_context",
     "xp_instance_regread",
     "sp_msgetversion",
     "sp_who",
     "sp_databases",
+    "sp_helpdb",
     "sp_server_info",
     "sp_monitor",
 ];
@@ -49,12 +51,16 @@ pub(crate) fn execute_system_procedure(
         execute_sp_tables(exec)?
     } else if name.eq_ignore_ascii_case("sp_helpindex") {
         execute_sp_helpindex(exec, &args)?
+    } else if name.eq_ignore_ascii_case("sp_helpconstraint") {
+        execute_sp_helpconstraint(exec, &args)?
     } else if name.eq_ignore_ascii_case("sp_set_session_context") {
         execute_sp_set_session_context(stmt, ctx, exec)?
     } else if name.eq_ignore_ascii_case("sp_who") {
         execute_sp_who(ctx)?
     } else if name.eq_ignore_ascii_case("sp_databases") {
         execute_sp_databases()?
+    } else if name.eq_ignore_ascii_case("sp_helpdb") {
+        execute_sp_helpdb(exec, &args)?
     } else if name.eq_ignore_ascii_case("sp_server_info") {
         execute_sp_server_info()?
     } else if name.eq_ignore_ascii_case("sp_monitor") {
@@ -348,6 +354,54 @@ fn execute_sp_columns(
             DataType::Int,
         ],
         column_nullabilities: vec![false, false, false, true, true, true, false],
+        rows,
+        ..Default::default()
+    })
+}
+
+fn execute_sp_helpdb(
+    _exec: &mut ScriptExecutor<'_>,
+    args: &[String],
+) -> Result<QueryResult, DbError> {
+    let mut rows = Vec::new();
+    let filter_name = args.get(0);
+
+    for db in crate::executor::database_catalog::builtin_databases() {
+        if let Some(name) = filter_name {
+            if !db.name.eq_ignore_ascii_case(name) {
+                continue;
+            }
+        }
+        rows.push(vec![
+            Value::NVarChar(db.name.to_string()),
+            Value::NVarChar("0 MB".into()), // db_size
+            Value::NVarChar("sa".into()),   // owner
+            Value::Int(db.id),             // dbid
+            Value::NVarChar("2025-01-01 00:00:00".into()), // created
+            Value::NVarChar("Status=ONLINE, Updateability=READ_WRITE, UserAccess=MULTI_USER, Recovery=FULL, Version=904, Collation=SQL_Latin1_General_CP1_CI_AS, SQLSortOrder=52, IsAutoCreateStatistics, IsAutoUpdateStatistics".into()), // status
+            Value::TinyInt(db.compatibility_level), // compatibility_level
+        ]);
+    }
+    Ok(QueryResult {
+        columns: vec![
+            "name".into(),
+            "db_size".into(),
+            "owner".into(),
+            "dbid".into(),
+            "created".into(),
+            "status".into(),
+            "compatibility_level".into(),
+        ],
+        column_types: vec![
+            DataType::NVarChar { max_len: 128 },
+            DataType::NVarChar { max_len: 13 },
+            DataType::NVarChar { max_len: 128 },
+            DataType::Int,
+            DataType::NVarChar { max_len: 18 },
+            DataType::NVarChar { max_len: 600 },
+            DataType::TinyInt,
+        ],
+        column_nullabilities: vec![false, true, true, false, false, true, false],
         rows,
         ..Default::default()
     })
@@ -653,6 +707,70 @@ fn execute_sp_set_session_context(
     ctx.session.session_context.insert(key, (value, read_only));
 
     Ok(QueryResult::default())
+}
+
+fn execute_sp_helpconstraint(
+    exec: &mut ScriptExecutor<'_>,
+    args: &[String],
+) -> Result<QueryResult, DbError> {
+    if args.is_empty() {
+        return Err(DbError::Execution(
+            "sp_helpconstraint requires 1 argument: @objname".into(),
+        ));
+    }
+    let objname = &args[0];
+    let parts: Vec<&str> = objname.splitn(2, '.').collect();
+    let (schema, table_name) = if parts.len() == 2 {
+        (parts[0], parts[1])
+    } else {
+        ("dbo", parts[0])
+    };
+
+    let table = exec
+        .catalog
+        .find_table(schema, table_name)
+        .ok_or_else(|| DbError::object_not_found(format!("table '{}'", table_name)))?;
+
+    let mut rows = Vec::new();
+
+    // Check constraints
+    for ck in &table.check_constraints {
+        rows.push(vec![
+            Value::NVarChar("Check".into()),
+            Value::NVarChar(ck.name.clone()),
+            Value::NVarChar(format!("CHECK {}", crate::executor::tooling::formatting::format_expr(&ck.expr))),
+        ]);
+    }
+
+    // Foreign keys
+    for fk in &table.foreign_keys {
+        rows.push(vec![
+            Value::NVarChar("Foreign Key".into()),
+            Value::NVarChar(fk.name.clone()),
+            Value::NVarChar(format!(
+                "REFERENCES {}.{} ({})",
+                fk.referenced_table.schema.as_deref().unwrap_or("dbo"),
+                fk.referenced_table.name,
+                fk.referenced_columns.join(", ")
+            )),
+        ]);
+    }
+
+    Ok(QueryResult {
+        columns: vec![
+            "constraint_type".into(),
+            "constraint_name".into(),
+            "constraint_keys".into(),
+        ],
+        column_types: vec![
+            DataType::NVarChar { max_len: 128 },
+            DataType::NVarChar { max_len: 128 },
+            DataType::NVarChar { max_len: 2048 },
+        ],
+        column_nullabilities: vec![false, false, false],
+        rows,
+        ..Default::default()
+    })
 }
 
 fn execute_sp_tables(exec: &mut ScriptExecutor<'_>) -> Result<QueryResult, DbError> {

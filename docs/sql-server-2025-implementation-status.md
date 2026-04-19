@@ -359,8 +359,8 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | sp_help_targetserver | ❌ Pending |
 | sp_help_targetservergroup | ❌ Pending |
 | sp_help_targetsvrgrp_member | ❌ Pending |
-| sp_helpconstraint | ❌ Pending |
-| sp_helpdb | ❌ Pending |
+| sp_helpconstraint | ✅ Implemented |
+| sp_helpdb | ✅ Implemented |
 | sp_helpdevice | ❌ Pending |
 | sp_helpdownloadlist | ❌ Pending |
 | sp_helpextendedproc | ❌ Pending |
