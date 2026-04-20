@@ -21,6 +21,7 @@ pub(crate) struct SysSystemSqlModules;
 pub(crate) struct SysStats;
 pub(crate) struct SysStatsColumns;
 pub(crate) struct SysServerPrincipals;
+pub(crate) struct SysServerRoleMembers;
 pub(crate) struct SysTriggerEvents;
 
 impl VirtualTable for SysDataSpaces {
@@ -638,17 +639,51 @@ impl VirtualTable for SysServerPrincipals {
                 .and_hms_opt(0, 0, 0)
                 .unwrap(),
         );
-        vec![StoredRow {
-            values: vec![
-                Value::Int(1),
-                Value::VarChar("sa".to_string()),
-                Value::Char("S".to_string()),
-                Value::VarChar("SQL_LOGIN".to_string()),
-                Value::Bit(false),
-                created.clone(),
-                created.clone(),
-                Value::VarChar("master".to_string()),
+        vec![
+            StoredRow {
+                values: vec![
+                    Value::Int(1),
+                    Value::VarChar("sa".to_string()),
+                    Value::Char("S".to_string()),
+                    Value::VarChar("SQL_LOGIN".to_string()),
+                    Value::Bit(false),
+                    created.clone(),
+                    created.clone(),
+                    Value::VarChar("master".to_string()),
+                ],
+                deleted: false,
+            },
+            StoredRow {
+                values: vec![
+                    Value::Int(3),
+                    Value::VarChar("sysadmin".to_string()),
+                    Value::Char("R".to_string()),
+                    Value::VarChar("SERVER_ROLE".to_string()),
+                    Value::Bit(false),
+                    created.clone(),
+                    created.clone(),
+                    Value::Null,
+                ],
+                deleted: false,
+            },
+        ]
+    }
+}
+
+impl VirtualTable for SysServerRoleMembers {
+    fn definition(&self) -> crate::catalog::TableDef {
+        virtual_table_def(
+            "server_role_members",
+            vec![
+                ("role_principal_id", DataType::Int, false),
+                ("member_principal_id", DataType::Int, false),
             ],
+        )
+    }
+
+    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+        vec![StoredRow {
+            values: vec![Value::Int(3), Value::Int(1)],
             deleted: false,
         }]
     }

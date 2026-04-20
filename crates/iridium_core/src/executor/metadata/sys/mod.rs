@@ -167,6 +167,8 @@ pub(crate) fn lookup(schema: &str, name: &str) -> Option<Box<dyn VirtualTable>> 
         Some(Box::new(constraints::SysDefaultConstraints))
     } else if name.eq_ignore_ascii_case("server_principals") {
         Some(Box::new(tables::SysServerPrincipals))
+    } else if name.eq_ignore_ascii_case("server_role_members") {
+        Some(Box::new(tables::SysServerRoleMembers))
     } else if name.eq_ignore_ascii_case("availability_replicas") {
         Some(Box::new(hadr::SysAvailabilityReplicas))
     } else if name.eq_ignore_ascii_case("availability_groups") {

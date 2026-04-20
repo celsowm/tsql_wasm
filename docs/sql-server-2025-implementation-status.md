@@ -364,8 +364,8 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | sp_helpdevice | ❌ Pending |
 | sp_helpdownloadlist | ❌ Pending |
 | sp_helpextendedproc | ❌ Pending |
-| sp_helpfile | ❌ Pending |
-| sp_helpfilegroup | ❌ Pending |
+| sp_helpfile | ✅ Implemented |
+| sp_helpfilegroup | ✅ Implemented |
 | sp_helpgroup | ❌ Pending |
 | sp_helpindex | ✅ Implemented |
 | sp_helplinkedsrvlogin | ❌ Pending |
@@ -373,10 +373,10 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | sp_helpremotelogin | ❌ Pending |
 | sp_helpremotelogin_90 | ❌ Pending |
 | sp_helpserver | ❌ Pending |
-| sp_helpsrvrole | ❌ Pending |
-| sp_helpsrvrolemember | ❌ Pending |
+| sp_helpsrvrole | ✅ Implemented |
+| sp_helpsrvrolemember | ✅ Implemented |
 | sp_helptext_jobstep | ❌ Pending |
-| sp_helpuser | ❌ Pending |
+| sp_helpuser | ✅ Implemented |
 | sp_indexes | ❌ Pending |
 | sp_kill_filestream_non_transacted_handles | ❌ Pending |
 | sp_link_publication | ❌ Pending |
