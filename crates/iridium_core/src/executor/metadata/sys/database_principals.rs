@@ -37,7 +37,7 @@ impl VirtualTable for SysDatabasePrincipals {
                 .unwrap(),
         );
 
-        vec![
+        let mut rows = vec![
             StoredRow {
                 values: vec![
                     Value::Int(1),
@@ -62,7 +62,36 @@ impl VirtualTable for SysDatabasePrincipals {
                 ],
                 deleted: false,
             },
-        ]
+        ];
+
+        let db_roles = vec![
+            (16384, "db_owner"),
+            (16385, "db_accessadmin"),
+            (16386, "db_securityadmin"),
+            (16387, "db_ddladmin"),
+            (16389, "db_backupoperator"),
+            (16390, "db_datareader"),
+            (16391, "db_datawriter"),
+            (16392, "db_denydatareader"),
+            (16393, "db_denydatawriter"),
+        ];
+
+        for (id, name) in db_roles {
+            rows.push(StoredRow {
+                values: vec![
+                    Value::Int(id),
+                    Value::VarChar(name.to_string()),
+                    Value::Char("R".to_string()),
+                    Value::VarChar("DATABASE_ROLE".to_string()),
+                    Value::VarChar("dbo".to_string()),
+                    created.clone(),
+                    created.clone(),
+                ],
+                deleted: false,
+            });
+        }
+
+        rows
     }
 }
 
@@ -85,7 +114,10 @@ impl VirtualTable for SysDatabasePermissions {
     }
 
     fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
-        vec![]
+        vec![StoredRow {
+            values: vec![Value::Int(16384), Value::Int(1)], // db_owner -> dbo
+            deleted: false,
+        }]
     }
 }
 

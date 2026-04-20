@@ -832,7 +832,7 @@ fn execute_sp_helpuser(
     exec: &mut ScriptExecutor<'_>,
     ctx: &mut ExecutionContext<'_>,
 ) -> Result<QueryResult, DbError> {
-    let sql = "SELECT p.name AS UserName, p.type_desc AS RoleName, '' AS LoginName, '' AS DefDBName, '' AS DefSchemaName, p.principal_id AS UserId, p.principal_id AS SID FROM sys.database_principals p";
+    let sql = "SELECT p.name AS UserName, COALESCE(r.name, 'public') AS RoleName, '' AS LoginName, '' AS DefDBName, p.default_schema_name AS DefSchemaName, p.principal_id AS UserId, p.principal_id AS SID FROM sys.database_principals p LEFT JOIN sys.database_role_members rm ON p.principal_id = rm.member_principal_id LEFT JOIN sys.database_principals r ON rm.role_principal_id = r.principal_id WHERE p.type != 'R'";
     let batch = crate::parser::parse_batch(sql)?;
     match exec.execute_batch(&batch, ctx)? {
         crate::error::StmtOutcome::Ok(Some(res)) => Ok(res),

@@ -265,6 +265,7 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | sp_clean_db_file_free_space | ❌ Pending |
 | sp_clean_db_free_space | ❌ Pending |
 | sp_column_privileges | ❌ Pending |
+| sp_columns | ✅ Implemented |
 | sp_columns_ex | ❌ Pending |
 | sp_configure | ❌ Pending |
 | sp_control_plan_guide | ❌ Pending |
@@ -366,6 +367,8 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | sp_helpextendedproc | ❌ Pending |
 | sp_helpfile | ✅ Implemented |
 | sp_helpfilegroup | ✅ Implemented |
+| sp_helprole | ✅ Implemented |
+| sp_helprolemember | ✅ Implemented |
 | sp_helpgroup | ❌ Pending |
 | sp_helpindex | ✅ Implemented |
 | sp_helplinkedsrvlogin | ❌ Pending |
@@ -375,6 +378,7 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | sp_helpserver | ❌ Pending |
 | sp_helpsrvrole | ✅ Implemented |
 | sp_helpsrvrolemember | ✅ Implemented |
+| sp_helptext | ✅ Implemented |
 | sp_helptext_jobstep | ❌ Pending |
 | sp_helpuser | ✅ Implemented |
 | sp_indexes | ❌ Pending |
@@ -385,6 +389,7 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | sp_manage_backup_devices | ❌ Pending |
 | sp_mapdown_bitmap | ❌ Pending |
 | sp_monitor | ✅ Implemented |
+| sp_msgetversion | ✅ Implemented |
 | sp_password | ❌ Pending |
 | sp_pkeys | ❌ Pending |
 | sp_prepare | ❌ Pending |
@@ -422,6 +427,7 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | sp_revokelogin | ❌ Pending |
 | sp_server_info | ✅ Implemented |
 | sp_serveroption | ❌ Pending |
+| sp_set_session_context | ✅ Implemented |
 | sp_set_firewall_rule | ❌ Pending |
 | sp_set_sqlagent_properties | ❌ Pending |
 | sp_set_sqlagent_proxy | ❌ Pending |
@@ -519,7 +525,7 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | sp_xtp_control_query_exec_stats | ❌ Pending |
 | sp_xtp_unbind_db_resource_pool | ❌ Pending |
 
-**Summary:** 8/320 (2.5%)
+**Summary:** 21/326 (6.4%)
 
 ## System Catalog Views (`sys.*`)
 

@@ -639,7 +639,7 @@ impl VirtualTable for SysServerPrincipals {
                 .and_hms_opt(0, 0, 0)
                 .unwrap(),
         );
-        vec![
+        let mut rows = vec![
             StoredRow {
                 values: vec![
                     Value::Int(1),
@@ -666,7 +666,35 @@ impl VirtualTable for SysServerPrincipals {
                 ],
                 deleted: false,
             },
-        ]
+        ];
+
+        let server_roles = vec![
+            (4, "securityadmin"),
+            (5, "serveradmin"),
+            (6, "setupadmin"),
+            (7, "processadmin"),
+            (8, "diskadmin"),
+            (9, "dbcreator"),
+            (10, "bulkadmin"),
+        ];
+
+        for (id, name) in server_roles {
+            rows.push(StoredRow {
+                values: vec![
+                    Value::Int(id),
+                    Value::VarChar(name.to_string()),
+                    Value::Char("R".to_string()),
+                    Value::VarChar("SERVER_ROLE".to_string()),
+                    Value::Bit(false),
+                    created.clone(),
+                    created.clone(),
+                    Value::Null,
+                ],
+                deleted: false,
+            });
+        }
+
+        rows
     }
 }
 
