@@ -165,3 +165,34 @@ fn test_metadata_discovery_procedures() {
     assert_eq!(res.columns[1], "COLUMN_NAME");
     assert!(res.rows.iter().any(|r| r[1].to_string_value() == "Id"));
 }
+
+#[test]
+fn test_management_and_extended_properties() {
+    let engine = Engine::new();
+    engine.exec("CREATE TABLE PropTable (Id INT)").unwrap();
+
+    // sp_addextendedproperty
+    engine.query("EXEC sp_addextendedproperty @name = 'Description', @value = 'Test Table', @level0type = 'SCHEMA', @level0name = 'dbo', @level1type = 'TABLE', @level1name = 'PropTable'").unwrap();
+    let res = engine.query("SELECT name, value FROM sys.extended_properties WHERE name = 'Description'").unwrap();
+    assert_eq!(res.rows[0][1].to_string_value(), "Test Table");
+
+    // sp_updateextendedproperty
+    engine.query("EXEC sp_updateextendedproperty @name = 'Description', @value = 'Updated Description', @level0type = 'SCHEMA', @level0name = 'dbo', @level1type = 'TABLE', @level1name = 'PropTable'").unwrap();
+    let res = engine.query("SELECT name, value FROM sys.extended_properties WHERE name = 'Description'").unwrap();
+    assert_eq!(res.rows[0][1].to_string_value(), "Updated Description");
+
+    // sp_dropextendedproperty
+    engine.query("EXEC sp_dropextendedproperty @name = 'Description', @level0type = 'SCHEMA', @level0name = 'dbo', @level1type = 'TABLE', @level1name = 'PropTable'").unwrap();
+    let res = engine.query("SELECT COUNT(*) FROM sys.extended_properties WHERE name = 'Description'").unwrap();
+    assert_eq!(res.rows[0][0].to_string_value(), "0");
+
+    // sp_addrolemember
+    engine.query("EXEC sp_addrolemember 'db_datareader', 'dbo'").unwrap();
+    let res = engine.query("SELECT COUNT(*) FROM sys.database_role_members WHERE role_principal_id = 16390").unwrap();
+    assert_eq!(res.rows[0][0].to_string_value(), "1");
+
+    // sp_spaceused
+    let res = engine.query("EXEC sp_spaceused 'PropTable'").unwrap();
+    assert_eq!(res.columns[0], "name");
+    assert_eq!(res.rows[0][0].to_string_value(), "PropTable");
+}

@@ -129,10 +129,22 @@ impl VirtualTable for SysDatabaseRoleMembers {
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
-        vec![StoredRow {
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+        let mut rows = vec![StoredRow {
             values: vec![Value::Int(16384), Value::Int(1)], // db_owner -> dbo
             deleted: false,
-        }]
+        }];
+
+        for m in catalog.get_role_members() {
+            rows.push(StoredRow {
+                values: vec![
+                    Value::Int(m.role_principal_id),
+                    Value::Int(m.member_principal_id),
+                ],
+                deleted: false,
+            });
+        }
+
+        rows
     }
 }

@@ -111,16 +111,36 @@ impl VirtualTable for SysExtendedProperties {
         virtual_table_def(
             "extended_properties",
             vec![
+                ("class", DataType::TinyInt, false),
+                ("class_desc", DataType::NVarChar { max_len: 60 }, false),
                 ("major_id", DataType::Int, false),
                 ("minor_id", DataType::Int, false),
-                ("class", DataType::Int, false),
                 ("name", DataType::VarChar { max_len: 128 }, false),
+                ("value", DataType::SqlVariant, true),
             ],
         )
     }
 
-    fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
-        Vec::new()
+    fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
+        catalog
+            .get_extended_properties()
+            .iter()
+            .map(|p| StoredRow {
+                values: vec![
+                    Value::TinyInt(p.class),
+                    Value::NVarChar(match p.class {
+                        0 => "DATABASE",
+                        1 => "OBJECT_OR_COLUMN",
+                        _ => "USER_DEFINED",
+                    }.to_string()),
+                    Value::Int(p.major_id),
+                    Value::Int(p.minor_id),
+                    Value::VarChar(p.name.clone()),
+                    p.value.clone(),
+                ],
+                deleted: false,
+            })
+            .collect()
     }
 }
 

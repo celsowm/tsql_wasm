@@ -225,7 +225,7 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | sp_addaudit | ❌ Pending |
 | sp_addauditaccess | ❌ Pending |
 | sp_addextendedproc | ❌ Pending |
-| sp_addextendedproperty | ❌ Pending |
+| sp_addextendedproperty | ✅ Implemented |
 | sp_addgroup | ❌ Pending |
 | sp_addlinkedserver | ❌ Pending |
 | sp_addlinkedsrvlogin | ❌ Pending |
@@ -233,7 +233,7 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | sp_addmessage | ❌ Pending |
 | sp_addremotelogin | ❌ Pending |
 | sp_addrole | ❌ Pending |
-| sp_addrolemember | ❌ Pending |
+| sp_addrolemember | ✅ Implemented |
 | sp_addserver | ❌ Pending |
 | sp_addservrolemember | ❌ Pending |
 | sp_addsrvrolemember | ❌ Pending |
@@ -269,7 +269,7 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | sp_columns_ex | ❌ Pending |
 | sp_configure | ❌ Pending |
 | sp_control_plan_guide | ❌ Pending |
-| sp_createstats | ❌ Pending |
+| sp_createstats | ✅ Implemented |
 | sp_cycle_agent_errorlog | ❌ Pending |
 | sp_databases | ✅ Implemented |
 | sp_db_increased_partitions | ❌ Pending |
@@ -303,13 +303,13 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | sp_describe_undeclared_parameters | ❌ Pending |
 | sp_detach_schedule | ❌ Pending |
 | sp_dropextendedproc | ❌ Pending |
-| sp_dropextendedproperty | ❌ Pending |
+| sp_dropextendedproperty | ✅ Implemented |
 | sp_droplinkedsrvlogin | ❌ Pending |
 | sp_droplogin | ❌ Pending |
 | sp_dropmessage | ❌ Pending |
 | sp_dropremotelogin | ❌ Pending |
 | sp_droprole | ❌ Pending |
-| sp_droprolemember | ❌ Pending |
+| sp_droprolemember | ✅ Implemented |
 | sp_dropserver | ❌ Pending |
 | sp_droptype | ❌ Pending |
 | sp_dropuser | ❌ Pending |
@@ -433,6 +433,7 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | sp_set_sqlagent_proxy | ❌ Pending |
 | sp_setapprole | ❌ Pending |
 | sp_setnetname | ❌ Pending |
+| sp_spaceused | ✅ Implemented |
 | sp_special_columns | ✅ Implemented |
 | sp_srvrolepermission | ❌ Pending |
 | sp_statistics | ✅ Implemented |
@@ -512,7 +513,8 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | sp_update_proxy | ❌ Pending |
 | sp_update_schedule | ❌ Pending |
 | sp_update_targetservergroup | ❌ Pending |
-| sp_updateextendedproperty | ❌ Pending |
+| sp_updateextendedproperty | ✅ Implemented |
+| sp_updatestats | ✅ Implemented |
 | sp_validatelogins | ❌ Pending |
 | sp_validname | ❌ Pending |
 | sp_who | ✅ Implemented |
@@ -525,7 +527,7 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | sp_xtp_control_query_exec_stats | ❌ Pending |
 | sp_xtp_unbind_db_resource_pool | ❌ Pending |
 
-**Summary:** 26/326 (7.9%)
+**Summary:** 34/326 (10.4%)
 
 ## System Catalog Views (`sys.*`)
 

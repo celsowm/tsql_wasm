@@ -14,7 +14,7 @@ use crate::ast::Expr;
 use crate::ast::{DataTypeSpec, FunctionBody, RoutineParam, Statement, TriggerEvent};
 use crate::error::DbError;
 use crate::executor::string_norm::normalize_identifier;
-use crate::types::DataType;
+use crate::types::{DataType, Value};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -324,6 +324,8 @@ pub trait Catalog:
     + TriggerRegistry
     + SynonymRegistry
     + SequenceRegistry
+    + ExtendedPropertyRegistry
+    + DatabaseRoleRegistry
     + ObjectResolver
     + std::fmt::Debug
     + Send
@@ -346,6 +348,10 @@ pub struct CatalogImpl {
     triggers: Vec<TriggerDef>,
     synonyms: Vec<SynonymDef>,
     sequences: Vec<SequenceDef>,
+    extended_properties: Vec<ExtendedPropertyDef>,
+    database_role_members: Vec<DatabaseRoleMemberDef>,
+    database_principals: Vec<PrincipalDef>,
+    server_principals: Vec<PrincipalDef>,
     next_schema_id: u32,
     next_table_id: u32,
     next_column_id: u32,
@@ -381,6 +387,19 @@ impl CatalogImpl {
             id: dbo_id,
             name: "dbo".to_string(),
         });
+
+        c.database_principals = vec![
+            PrincipalDef { id: 1, name: "dbo".into(), type_code: "S".into(), type_desc: "SQL_USER".into(), default_schema: Some("dbo".into()) },
+            PrincipalDef { id: 2, name: "guest".into(), type_code: "S".into(), type_desc: "SQL_USER".into(), default_schema: None },
+            PrincipalDef { id: 16384, name: "db_owner".into(), type_code: "R".into(), type_desc: "DATABASE_ROLE".into(), default_schema: Some("dbo".into()) },
+            PrincipalDef { id: 16390, name: "db_datareader".into(), type_code: "R".into(), type_desc: "DATABASE_ROLE".into(), default_schema: Some("dbo".into()) },
+        ];
+
+        c.server_principals = vec![
+            PrincipalDef { id: 1, name: "sa".into(), type_code: "S".into(), type_desc: "SQL_LOGIN".into(), default_schema: None },
+            PrincipalDef { id: 3, name: "sysadmin".into(), type_code: "R".into(), type_desc: "SERVER_ROLE".into(), default_schema: None },
+        ];
+
         c.rebuild_maps();
         c
     }
@@ -529,6 +548,10 @@ impl Default for CatalogImpl {
             triggers: Vec::new(),
             synonyms: Vec::new(),
             sequences: Vec::new(),
+            extended_properties: Vec::new(),
+            database_role_members: Vec::new(),
+            database_principals: Vec::new(),
+            server_principals: Vec::new(),
             next_schema_id: 1,
             next_table_id: 1234567890,
             next_column_id: 1,
@@ -562,5 +585,122 @@ impl Catalog for CatalogImpl {
 
     fn rebuild_maps(&mut self) {
         self.rebuild_maps();
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtendedPropertyDef {
+    pub class: u8,
+    pub major_id: i32,
+    pub minor_id: i32,
+    pub name: String,
+    pub value: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatabaseRoleMemberDef {
+    pub role_principal_id: i32,
+    pub member_principal_id: i32,
+}
+
+pub trait ExtendedPropertyRegistry {
+    fn get_extended_properties(&self) -> &[ExtendedPropertyDef];
+    fn add_extended_property(&mut self, prop: ExtendedPropertyDef) -> Result<(), DbError>;
+    fn update_extended_property(&mut self, prop: ExtendedPropertyDef) -> Result<(), DbError>;
+    fn drop_extended_property(&mut self, class: u8, major_id: i32, minor_id: i32, name: &str) -> Result<(), DbError>;
+}
+
+pub trait DatabaseRoleRegistry {
+    fn get_role_members(&self) -> &[DatabaseRoleMemberDef];
+    fn add_role_member(&mut self, role_id: i32, member_id: i32) -> Result<(), DbError>;
+    fn drop_role_member(&mut self, role_id: i32, member_id: i32) -> Result<(), DbError>;
+}
+
+impl ExtendedPropertyRegistry for CatalogImpl {
+    fn get_extended_properties(&self) -> &[ExtendedPropertyDef] {
+        &self.extended_properties
+    }
+
+    fn add_extended_property(&mut self, prop: ExtendedPropertyDef) -> Result<(), DbError> {
+        if self.extended_properties.iter().any(|p| p.class == prop.class && p.major_id == prop.major_id && p.minor_id == prop.minor_id && p.name.eq_ignore_ascii_case(&prop.name)) {
+            return Err(DbError::Execution(format!("Extended property '{}' already exists", prop.name)));
+        }
+        self.extended_properties.push(prop);
+        Ok(())
+    }
+
+    fn update_extended_property(&mut self, prop: ExtendedPropertyDef) -> Result<(), DbError> {
+        if let Some(existing) = self.extended_properties.iter_mut().find(|p| p.class == prop.class && p.major_id == prop.major_id && p.minor_id == prop.minor_id && p.name.eq_ignore_ascii_case(&prop.name)) {
+            existing.value = prop.value;
+            Ok(())
+        } else {
+            Err(DbError::Execution(format!("Extended property '{}' not found", prop.name)))
+        }
+    }
+
+    fn drop_extended_property(&mut self, class: u8, major_id: i32, minor_id: i32, name: &str) -> Result<(), DbError> {
+        let initial_len = self.extended_properties.len();
+        self.extended_properties.retain(|p| !(p.class == class && p.major_id == major_id && p.minor_id == minor_id && p.name.eq_ignore_ascii_case(name)));
+        if self.extended_properties.len() == initial_len {
+            Err(DbError::Execution(format!("Extended property '{}' not found", name)))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl DatabaseRoleRegistry for CatalogImpl {
+    fn get_role_members(&self) -> &[DatabaseRoleMemberDef] {
+        &self.database_role_members
+    }
+
+    fn add_role_member(&mut self, role_id: i32, member_id: i32) -> Result<(), DbError> {
+        if self.database_role_members.iter().any(|m| m.role_principal_id == role_id && m.member_principal_id == member_id) {
+            return Ok(());
+        }
+        self.database_role_members.push(DatabaseRoleMemberDef { role_principal_id: role_id, member_principal_id: member_id });
+        Ok(())
+    }
+
+    fn drop_role_member(&mut self, role_id: i32, member_id: i32) -> Result<(), DbError> {
+        self.database_role_members.retain(|m| !(m.role_principal_id == role_id && m.member_principal_id == member_id));
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrincipalDef {
+    pub id: i32,
+    pub name: String,
+    pub type_code: String,
+    pub type_desc: String,
+    pub default_schema: Option<String>,
+}
+
+pub trait DatabasePrincipalRegistry {
+    fn get_database_principals(&self) -> &[PrincipalDef];
+    fn find_database_principal(&self, name: &str) -> Option<&PrincipalDef>;
+}
+
+pub trait ServerPrincipalRegistry {
+    fn get_server_principals(&self) -> &[PrincipalDef];
+    fn find_server_principal(&self, name: &str) -> Option<&PrincipalDef>;
+}
+
+impl DatabasePrincipalRegistry for CatalogImpl {
+    fn get_database_principals(&self) -> &[PrincipalDef] {
+        &self.database_principals
+    }
+    fn find_database_principal(&self, name: &str) -> Option<&PrincipalDef> {
+        self.database_principals.iter().find(|p| p.name.eq_ignore_ascii_case(name))
+    }
+}
+
+impl ServerPrincipalRegistry for CatalogImpl {
+    fn get_server_principals(&self) -> &[PrincipalDef] {
+        &self.server_principals
+    }
+    fn find_server_principal(&self, name: &str) -> Option<&PrincipalDef> {
+        self.server_principals.iter().find(|p| p.name.eq_ignore_ascii_case(name))
     }
 }

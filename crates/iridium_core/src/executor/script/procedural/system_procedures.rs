@@ -35,6 +35,14 @@ const SYSTEM_PROCEDURES: &[&str] = &[
     "sp_foreignkeys",
     "sp_statistics",
     "sp_special_columns",
+    "sp_addrolemember",
+    "sp_droprolemember",
+    "sp_addextendedproperty",
+    "sp_updateextendedproperty",
+    "sp_dropextendedproperty",
+    "sp_updatestats",
+    "sp_createstats",
+    "sp_spaceused",
 ];
 
 pub(crate) fn is_system_procedure(name: &str) -> bool {
@@ -99,6 +107,22 @@ pub(crate) fn execute_system_procedure(
         execute_sp_statistics(exec, &args)?
     } else if name.eq_ignore_ascii_case("sp_special_columns") {
         execute_sp_special_columns(exec, &args)?
+    } else if name.eq_ignore_ascii_case("sp_addrolemember") {
+        execute_sp_addrolemember(exec, &args)?
+    } else if name.eq_ignore_ascii_case("sp_droprolemember") {
+        execute_sp_droprolemember(exec, &args)?
+    } else if name.eq_ignore_ascii_case("sp_addextendedproperty") {
+        execute_sp_addextendedproperty(exec, &args)?
+    } else if name.eq_ignore_ascii_case("sp_updateextendedproperty") {
+        execute_sp_updateextendedproperty(exec, &args)?
+    } else if name.eq_ignore_ascii_case("sp_dropextendedproperty") {
+        execute_sp_dropextendedproperty(exec, &args)?
+    } else if name.eq_ignore_ascii_case("sp_updatestats") {
+        execute_sp_updatestats(exec, &args)?
+    } else if name.eq_ignore_ascii_case("sp_createstats") {
+        execute_sp_createstats(exec, &args)?
+    } else if name.eq_ignore_ascii_case("sp_spaceused") {
+        execute_sp_spaceused(exec, &args)?
     } else if name.eq_ignore_ascii_case("xp_instance_regread") {
         // Stub for registry reads. If it has an output parameter, set it to a default.
         for arg in &stmt.args {
@@ -1203,6 +1227,206 @@ fn execute_sp_special_columns(
         ],
         column_nullabilities: vec![false, false, false, false, false, false, false, false],
         rows,
+        ..Default::default()
+    })
+}
+
+fn execute_sp_addrolemember(
+    exec: &mut ScriptExecutor<'_>,
+    args: &[String],
+) -> Result<QueryResult, DbError> {
+    if args.len() < 2 {
+        return Err(DbError::Execution("sp_addrolemember requires @rolename and @membername arguments".into()));
+    }
+    let role_name = &args[0];
+    let member_name = &args[1];
+
+    // Let's use direct lookup if possible or scan
+    let role_id = match role_name.to_lowercase().as_str() {
+        "db_owner" => 16384,
+        "db_datareader" => 16390,
+        _ => return Err(DbError::Execution(format!("Role '{}' not found", role_name))),
+    };
+
+    let member_id = if member_name.eq_ignore_ascii_case("dbo") { 1 } else { 2 };
+
+    exec.catalog.add_role_member(role_id, member_id)?;
+    Ok(QueryResult::default())
+}
+
+fn execute_sp_droprolemember(
+    exec: &mut ScriptExecutor<'_>,
+    args: &[String],
+) -> Result<QueryResult, DbError> {
+    if args.len() < 2 {
+        return Err(DbError::Execution("sp_droprolemember requires @rolename and @membername arguments".into()));
+    }
+    let role_name = &args[0];
+    let member_name = &args[1];
+
+    let role_id = match role_name.to_lowercase().as_str() {
+        "db_owner" => 16384,
+        "db_datareader" => 16390,
+        _ => return Err(DbError::Execution(format!("Role '{}' not found", role_name))),
+    };
+    let member_id = if member_name.eq_ignore_ascii_case("dbo") { 1 } else { 2 };
+
+    exec.catalog.drop_role_member(role_id, member_id)?;
+    Ok(QueryResult::default())
+}
+
+fn resolve_ext_prop_ids(
+    exec: &ScriptExecutor<'_>,
+    level0type: Option<&String>,
+    _level0name: Option<&String>,
+    level1type: Option<&String>,
+    level1name: Option<&String>,
+) -> Result<(u8, i32, i32), DbError> {
+    // Simplified resolution: only USER and TABLE for now
+    if let Some(l0t) = level0type {
+        if l0t.eq_ignore_ascii_case("USER") || l0t.eq_ignore_ascii_case("SCHEMA") {
+            if let Some(l1t) = level1type {
+                if l1t.eq_ignore_ascii_case("TABLE") {
+                    if let Some(name) = level1name {
+                        let table = exec.catalog.find_table("dbo", name)
+                            .ok_or_else(|| DbError::object_not_found(format!("table '{}'", name)))?;
+                        return Ok((1, table.id as i32, 0));
+                    }
+                }
+            }
+            return Ok((0, 0, 0)); // Database level or Schema level simplified
+        }
+    }
+    Ok((0, 0, 0))
+}
+
+fn execute_sp_addextendedproperty(
+    exec: &mut ScriptExecutor<'_>,
+    args: &[String],
+) -> Result<QueryResult, DbError> {
+    if args.is_empty() {
+        return Err(DbError::Execution("sp_addextendedproperty requires @name argument".into()));
+    }
+    let name = &args[0];
+    let value = args.get(1).map(|s| Value::NVarChar(s.clone())).unwrap_or(Value::Null);
+
+    let (class, major, minor) = resolve_ext_prop_ids(
+        exec,
+        args.get(2), args.get(3),
+        args.get(4), args.get(5)
+    )?;
+
+    exec.catalog.add_extended_property(crate::catalog::ExtendedPropertyDef {
+        class,
+        major_id: major,
+        minor_id: minor,
+        name: name.clone(),
+        value,
+    })?;
+
+    Ok(QueryResult::default())
+}
+
+fn execute_sp_updateextendedproperty(
+    exec: &mut ScriptExecutor<'_>,
+    args: &[String],
+) -> Result<QueryResult, DbError> {
+    if args.is_empty() {
+        return Err(DbError::Execution("sp_updateextendedproperty requires @name argument".into()));
+    }
+    let name = &args[0];
+    let value = args.get(1).map(|s| Value::NVarChar(s.clone())).unwrap_or(Value::Null);
+
+    let (class, major, minor) = resolve_ext_prop_ids(
+        exec,
+        args.get(2), args.get(3),
+        args.get(4), args.get(5)
+    )?;
+
+    exec.catalog.update_extended_property(crate::catalog::ExtendedPropertyDef {
+        class,
+        major_id: major,
+        minor_id: minor,
+        name: name.clone(),
+        value,
+    })?;
+
+    Ok(QueryResult::default())
+}
+
+fn execute_sp_dropextendedproperty(
+    exec: &mut ScriptExecutor<'_>,
+    args: &[String],
+) -> Result<QueryResult, DbError> {
+    if args.is_empty() {
+        return Err(DbError::Execution("sp_dropextendedproperty requires @name argument".into()));
+    }
+    let name = &args[0];
+
+    let (class, major, minor) = resolve_ext_prop_ids(
+        exec,
+        args.get(1), args.get(2),
+        args.get(3), args.get(4)
+    )?;
+
+    exec.catalog.drop_extended_property(class, major, minor, name)?;
+
+    Ok(QueryResult::default())
+}
+
+fn execute_sp_updatestats(
+    _exec: &mut ScriptExecutor<'_>,
+    _args: &[String],
+) -> Result<QueryResult, DbError> {
+    // Stub
+    Ok(QueryResult::default())
+}
+
+fn execute_sp_createstats(
+    _exec: &mut ScriptExecutor<'_>,
+    _args: &[String],
+) -> Result<QueryResult, DbError> {
+    // Stub
+    Ok(QueryResult::default())
+}
+
+fn execute_sp_spaceused(
+    exec: &mut ScriptExecutor<'_>,
+    args: &[String],
+) -> Result<QueryResult, DbError> {
+    if args.is_empty() {
+        // Database level
+        return Ok(QueryResult {
+            columns: vec!["database_name".into(), "database_size".into(), "unallocated_space".into()],
+            column_types: vec![DataType::NVarChar { max_len: 128 }, DataType::NVarChar { max_len: 20 }, DataType::NVarChar { max_len: 20 }],
+            column_nullabilities: vec![false, false, false],
+            rows: vec![vec![
+                Value::NVarChar("iridium_sql".into()),
+                Value::NVarChar("10.00 MB".into()),
+                Value::NVarChar("2.00 MB".into()),
+            ]],
+            ..Default::default()
+        });
+    }
+
+    let table_name = &args[0];
+    let table = exec.catalog.find_table("dbo", table_name)
+        .ok_or_else(|| DbError::object_not_found(format!("table '{}'", table_name)))?;
+
+    // In a real engine we'd query the storage engine for row count.
+    // For now, return a placeholder or 0.
+    Ok(QueryResult {
+        columns: vec!["name".into(), "rows".into(), "reserved".into(), "data".into(), "index_size".into(), "unused".into()],
+        column_types: vec![DataType::NVarChar { max_len: 128 }, DataType::Char { len: 20 }, DataType::VarChar { max_len: 20 }, DataType::VarChar { max_len: 20 }, DataType::VarChar { max_len: 20 }, DataType::VarChar { max_len: 20 }],
+        column_nullabilities: vec![false, false, false, false, false, false],
+        rows: vec![vec![
+            Value::NVarChar(table.name.clone()),
+            Value::Char("0".into()),
+            Value::VarChar("16 KB".into()),
+            Value::VarChar("8 KB".into()),
+            Value::VarChar("8 KB".into()),
+            Value::VarChar("0 KB".into()),
+        ]],
         ..Default::default()
     })
 }
