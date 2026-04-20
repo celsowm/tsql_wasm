@@ -203,10 +203,15 @@ pub(crate) fn format_expr(expr: &Expr) -> String {
         Expr::Like {
             expr,
             pattern,
+            escape,
             negated,
         } => {
             let not = if *negated { "NOT " } else { "" };
-            format!("{} {}LIKE {}", format_expr(expr), not, format_expr(pattern))
+            let mut s = format!("{} {}LIKE {}", format_expr(expr), not, format_expr(pattern));
+            if let Some(e) = escape {
+                s.push_str(&format!(" ESCAPE {}", format_expr(e)));
+            }
+            s
         }
         Expr::Subquery(_) => "(SELECT ...)".to_string(),
         Expr::Exists {

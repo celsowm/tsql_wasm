@@ -70,6 +70,8 @@ pub struct ColumnDef {
     pub check: Option<Expr>,
     pub check_constraint_name: Option<String>,
     pub computed_expr: Option<Expr>,
+    pub collation: Option<String>,
+    pub is_clustered: bool,
     #[serde(default = "default_ansi_padding_on")]
     pub ansi_padding_on: bool,
 }

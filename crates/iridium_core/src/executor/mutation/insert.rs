@@ -284,7 +284,7 @@ impl<'a> MutationExecutor<'a> {
                 }
             } else if col.identity.is_some() {
                 let table_upper = normalize_identifier(&table.name);
-                if !ctx.session.identity_insert.contains(&table_upper) {
+                if !ctx.options.identity_insert.contains(&table_upper) {
                     return Err(DbError::Execution(format!(
                         "Cannot insert explicit value for identity column '{}' in table '{}' when IDENTITY_INSERT is set to OFF.",
                         col.name, table.name

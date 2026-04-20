@@ -59,6 +59,8 @@ impl<'a> ScriptExecutor<'a> {
                                     computed_expr: None,
                                     check: None,
                                     check_constraint_name: None,
+                                    collation: None,
+                                    is_clustered: false,
                                     ansi_padding_on: true,
                                 })
                                 .collect(),
@@ -173,6 +175,8 @@ impl<'a> ScriptExecutor<'a> {
                             computed_expr: None,
                             check: None,
                             check_constraint_name: None,
+                            collation: None,
+                            is_clustered: false,
                             ansi_padding_on: true,
                         })
                         .collect(),

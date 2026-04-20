@@ -132,6 +132,7 @@ pub(crate) fn eval_between(
 pub(crate) fn eval_like(
     like_expr: &Expr,
     pattern: &Expr,
+    escape: Option<&Expr>,
     negated: bool,
     row: &[ContextTable],
     ctx: &mut ExecutionContext,
@@ -148,40 +149,66 @@ pub(crate) fn eval_like(
 
     let s = val.to_string_value();
     let p = pat.to_string_value();
-    let matched = like_match(&s, &p);
+    let esc = match escape {
+        Some(e) => {
+            let ev = eval_expr(e, row, ctx, catalog, storage, clock)?;
+            if ev.is_null() {
+                return Ok(Value::Null);
+            }
+            Some(ev.to_string_value())
+        }
+        None => None,
+    };
+    let matched = like_match(&s, &p, esc.as_deref());
     Ok(Value::Bit(if negated { !matched } else { matched }))
 }
 
-fn like_match(s: &str, pattern: &str) -> bool {
+fn like_match(s: &str, pattern: &str, escape: Option<&str>) -> bool {
     let s: Vec<char> = s.to_ascii_uppercase().chars().collect();
-    let p: Vec<char> = pattern.to_ascii_uppercase().chars().collect();
+    let p_raw: Vec<char> = pattern.to_ascii_uppercase().chars().collect();
+    let esc_char = escape.and_then(|e| e.chars().next().map(|c| c.to_ascii_uppercase()));
+
+    let mut p = Vec::new();
+    let mut escaped = Vec::new();
+    let mut i = 0;
+    while i < p_raw.len() {
+        if let Some(ec) = esc_char {
+            if p_raw[i] == ec && i + 1 < p_raw.len() {
+                p.push(p_raw[i + 1]);
+                escaped.push(true);
+                i += 2;
+                continue;
+            }
+        }
+        p.push(p_raw[i]);
+        escaped.push(false);
+        i += 1;
+    }
+
     let sn = s.len();
     let pn = p.len();
 
-    // dp[j] = whether s[0..i] matches p[0..j]
     let mut dp = vec![false; pn + 1];
     dp[0] = true;
-    // leading '%' can match empty string
     for j in 0..pn {
-        if p[j] == '%' {
+        if p[j] == '%' && !escaped[j] {
             dp[j + 1] = dp[j];
         } else {
             break;
         }
     }
 
-    for i in 0..sn {
-        let mut prev = dp[0]; // dp_prev[0] (previous row, col 0)
+    for i_s in 0..sn {
+        let mut prev = dp[0];
         dp[0] = false;
         for j in 0..pn {
-            let tmp = dp[j + 1]; // save dp_prev[j+1] before overwrite
-            dp[j + 1] = match p[j] {
-                '%' => {
-                    // dp_prev[j+1] (skip char in s) || dp[j] (skip '%' in pattern)
-                    tmp || dp[j]
-                }
-                '_' => prev, // dp_prev[j]: both advance by one
-                c => prev && s[i] == c,
+            let tmp = dp[j + 1];
+            dp[j + 1] = if p[j] == '%' && !escaped[j] {
+                tmp || dp[j]
+            } else if (p[j] == '_' && !escaped[j]) || (p[j] == s[i_s]) {
+                prev
+            } else {
+                false
             };
             prev = tmp;
         }

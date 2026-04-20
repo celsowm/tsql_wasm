@@ -26,9 +26,9 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | CHECK | ✅ Implemented |
 | CHECKPOINT | ✅ Implemented |
 | CLOSE | ✅ Implemented |
-| CLUSTERED | ❌ Pending |
-| COALESCE | ❌ Pending |
-| COLLATE | ❌ Pending |
+| CLUSTERED | ✅ Implemented |
+| COALESCE | ✅ Implemented |
+| COLLATE | ✅ Implemented |
 | COLUMN | ✅ Implemented |
 | COMMIT | ✅ Implemented |
 | COMPUTE | ❌ Pending |
@@ -56,13 +56,13 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | DISK | ❌ Pending |
 | DISTINCT | ✅ Implemented |
 | DISTRIBUTED | ✅ Implemented |
-| DOUBLE | ❌ Pending |
+| DOUBLE | ✅ Implemented |
 | DROP | ✅ Implemented |
 | DUMP | ❌ Pending |
 | ELSE | ✅ Implemented |
 | END | ✅ Implemented |
 | ERRLVL | ❌ Pending |
-| ESCAPE | ❌ Pending |
+| ESCAPE | ✅ Implemented |
 | EXCEPT | ✅ Implemented |
 | EXEC | ✅ Implemented |
 | EXECUTE | ✅ Implemented |
@@ -71,7 +71,7 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | EXTERNAL | ❌ Pending |
 | FETCH | ✅ Implemented |
 | FILE | ❌ Pending |
-| FILLFACTOR | ❌ Pending |
+| FILLFACTOR | ✅ Implemented |
 | FOR | ✅ Implemented |
 | FOREIGN | ✅ Implemented |
 | FREETEXT | ❌ Pending |
@@ -85,8 +85,8 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | HAVING | ✅ Implemented |
 | HOLDLOCK | ✅ Implemented |
 | IDENTITY | ✅ Implemented |
-| IDENTITYCOL | ❌ Pending |
-| IDENTITY_INSERT | ❌ Pending |
+| IDENTITYCOL | ✅ Implemented |
+| IDENTITY_INSERT | ✅ Implemented |
 | IF | ✅ Implemented |
 | IN | ✅ Implemented |
 | INDEX | ✅ Implemented |
@@ -103,12 +103,12 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | LINENO | ❌ Pending |
 | LOAD | ❌ Pending |
 | MERGE | ✅ Implemented |
-| NATIONAL | ❌ Pending |
+| NATIONAL | ✅ Implemented |
 | NOCHECK | ❌ Pending |
-| NONCLUSTERED | ❌ Pending |
+| NONCLUSTERED | ✅ Implemented |
 | NOT | ✅ Implemented |
 | NULL | ✅ Implemented |
-| NULLIF | ❌ Pending |
+| NULLIF | ✅ Implemented |
 | OF | ✅ Implemented |
 | OFF | ✅ Implemented |
 | OFFSETS | ❌ Pending |
@@ -126,7 +126,7 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | PERCENT | ❌ Pending |
 | PIVOT | ✅ Implemented |
 | PLAN | ❌ Pending |
-| PRECISION | ❌ Pending |
+| PRECISION | ✅ Implemented |
 | PRIMARY | ✅ Implemented |
 | PRINT | ✅ Implemented |
 | PROC | ✅ Implemented |
@@ -145,7 +145,7 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | REVOKE | ❌ Pending |
 | RIGHT | ✅ Implemented |
 | ROLLBACK | ✅ Implemented |
-| ROWCOUNT | ❌ Pending |
+| ROWCOUNT | ✅ Implemented |
 | ROWGUIDCOL | ❌ Pending |
 | RULE | ❌ Pending |
 | SAVE | ✅ Implemented |
@@ -164,7 +164,7 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | SYSTEM_USER | ✅ Implemented |
 | TABLE | ✅ Implemented |
 | TABLESAMPLE | ❌ Pending |
-| TEXTSIZE | ❌ Pending |
+| TEXTSIZE | ✅ Implemented |
 | THEN | ✅ Implemented |
 | TO | ❌ Pending |
 | TOP | ✅ Implemented |
@@ -182,7 +182,7 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | USE | ✅ Implemented |
 | USER | ✅ Implemented |
 | VALUES | ✅ Implemented |
-| VARYING | ❌ Pending |
+| VARYING | ✅ Implemented |
 | VIEW | ✅ Implemented |
 | WAITFOR | ❌ Pending |
 | WHEN | ✅ Implemented |
@@ -192,7 +192,7 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | WITHIN | ✅ Implemented |
 | WRITETEXT | ❌ Pending |
 
-**Summary:** 118/185 (63.8%)
+**Summary:** 134/185 (72.4%)
 
 ## System Stored Procedures (`sp_*`)
 

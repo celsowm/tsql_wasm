@@ -78,16 +78,30 @@ pub fn lower_ddl(ddl: ast::DdlStatement) -> Result<executor_ast::Statement, DbEr
                 executor_ast::statements::ddl::DropSchemaStmt { name },
             ),
         )),
-        ast::DdlStatement::CreateIndex {
-            name,
-            table,
-            columns,
-        } => Ok(executor_ast::Statement::Ddl(
+        ast::DdlStatement::CreateIndex(stmt) => Ok(executor_ast::Statement::Ddl(
             executor_ast::statements::DdlStatement::CreateIndex(
                 executor_ast::statements::ddl::CreateIndexStmt {
-                    name: lower_object_name(name),
-                    table: lower_object_name(table),
-                    columns,
+                    name: lower_object_name(stmt.name),
+                    table: lower_object_name(stmt.table),
+                    columns: stmt
+                        .columns
+                        .into_iter()
+                        .map(|c| executor_ast::statements::ddl::IndexColumnSpec {
+                            name: c.name,
+                            is_desc: c.is_desc,
+                        })
+                        .collect(),
+                    is_unique: stmt.is_unique,
+                    is_clustered: stmt.is_clustered,
+                    options: stmt
+                        .options
+                        .into_iter()
+                        .map(|o| match o {
+                            ast::IndexOption::FillFactor(f) => {
+                                executor_ast::statements::ddl::IndexOptionSpec::FillFactor(f)
+                            }
+                        })
+                        .collect(),
                 },
             ),
         )),
@@ -295,8 +309,19 @@ pub fn lower_column_def(
                 on_delete: fk.on_delete.map(lower_referential_action),
                 on_update: fk.on_update.map(lower_referential_action),
             }),
+        collation: c.collation,
+        is_clustered: c.is_clustered,
         ansi_padding_on: true,
     })
+}
+
+pub fn lower_index_column(
+    c: ast::IndexColumn,
+) -> executor_ast::statements::ddl::IndexColumnSpec {
+    executor_ast::statements::ddl::IndexColumnSpec {
+        name: c.name,
+        is_desc: c.is_desc,
+    }
 }
 
 pub fn lower_routine_param(
@@ -374,18 +399,28 @@ pub fn lower_table_constraint(
     c: ast::TableConstraint,
 ) -> Result<executor_ast::statements::ddl::TableConstraintSpec, DbError> {
     match c {
-        ast::TableConstraint::PrimaryKey { name, columns } => Ok(
+        ast::TableConstraint::PrimaryKey {
+            name,
+            columns,
+            is_clustered,
+        } => Ok(
             executor_ast::statements::ddl::TableConstraintSpec::PrimaryKey {
                 name: name.unwrap_or_default(),
-                columns,
+                columns: columns.into_iter().map(lower_index_column).collect(),
+                is_clustered,
             },
         ),
-        ast::TableConstraint::Unique { name, columns } => {
-            Ok(executor_ast::statements::ddl::TableConstraintSpec::Unique {
+        ast::TableConstraint::Unique {
+            name,
+            columns,
+            is_clustered,
+        } => Ok(
+            executor_ast::statements::ddl::TableConstraintSpec::Unique {
                 name: name.unwrap_or_default(),
-                columns,
-            })
-        }
+                columns: columns.into_iter().map(lower_index_column).collect(),
+                is_clustered,
+            },
+        ),
         ast::TableConstraint::ForeignKey {
             name,
             columns,

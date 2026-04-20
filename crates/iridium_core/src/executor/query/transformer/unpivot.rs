@@ -68,6 +68,8 @@ pub(crate) fn execute_unpivot(
         check: None,
         check_constraint_name: None,
         computed_expr: None,
+        collation: None,
+        is_clustered: false,
         ansi_padding_on: true,
     });
     output_columns.push(ColumnDef {
@@ -83,6 +85,8 @@ pub(crate) fn execute_unpivot(
         check: None,
         check_constraint_name: None,
         computed_expr: None,
+        collation: None,
+        is_clustered: false,
         ansi_padding_on: true,
     });
 

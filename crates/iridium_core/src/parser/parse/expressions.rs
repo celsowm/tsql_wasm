@@ -40,9 +40,15 @@ fn parse_pratt_expr(parser: &mut Parser, min_bp: u8) -> ParseResult<Expr> {
                     }
                     let _ = parser.next();
                     let pattern = parse_pratt_expr(parser, r_bp)?;
+                    let mut escape = None;
+                    if parser.at_keyword(Keyword::Escape) {
+                        let _ = parser.next();
+                        escape = Some(Box::new(parse_pratt_expr(parser, r_bp)?));
+                    }
                     left = Expr::Like {
                         expr: Box::new(left),
                         pattern: Box::new(pattern),
+                        escape,
                         negated: false,
                     };
                     continue;
@@ -102,9 +108,15 @@ fn parse_pratt_expr(parser: &mut Parser, min_bp: u8) -> ParseResult<Expr> {
                             let _ = parser.next();
                             let _ = parser.next();
                             let pattern = parse_pratt_expr(parser, r_bp)?;
+                            let mut escape = None;
+                            if parser.at_keyword(Keyword::Escape) {
+                                let _ = parser.next();
+                                escape = Some(Box::new(parse_pratt_expr(parser, r_bp)?));
+                            }
                             left = Expr::Like {
                                 expr: Box::new(left),
                                 pattern: Box::new(pattern),
+                                escape,
                                 negated: true,
                             };
                             continue;
@@ -300,6 +312,18 @@ pub fn parse_primary(parser: &mut Parser) -> ParseResult<Expr> {
         Some(Token::Keyword(k)) if *k == Keyword::Null => {
             let _ = parser.next();
             Ok(Expr::Null)
+        }
+        Some(Token::Keyword(k)) if *k == Keyword::Coalesce || *k == Keyword::Nullif => {
+            let name = k.as_ref().to_string();
+            let _ = parser.next();
+            parser.expect_lparen()?;
+            let args = parse_comma_list(parser, parse_expr)?;
+            parser.expect_rparen()?;
+            Ok(Expr::FunctionCall {
+                name,
+                args,
+                within_group: Vec::new(),
+            })
         }
         Some(Token::Keyword(k)) if *k == Keyword::Case => {
             let _ = parser.next();
@@ -851,16 +875,35 @@ pub fn parse_data_type(parser: &mut Parser) -> ParseResult<DataType> {
                         Ok(DataType::Numeric(p, s))
                     }
                 }
-                "CHAR" => {
+                "CHARACTER" | "CHAR" => {
+                    let is_char = upper == "CHAR";
+                    let mut is_varying = false;
                     let mut size = None;
+                    if parser.at_keyword(Keyword::Varying) {
+                        let _ = parser.next();
+                        is_varying = true;
+                    }
                     if matches!(parser.peek(), Some(Token::LParen)) {
                         let _ = parser.next();
                         if let Some(Token::Number { value: s, .. }) = parser.next() {
                             size = Some(*s as u32);
+                        } else if parser.at_keyword(Keyword::Max) {
+                            let _ = parser.next();
+                            size = None;
                         }
                         parser.expect_rparen()?;
                     }
-                    Ok(DataType::Char(size))
+                    if !is_varying && parser.at_keyword(Keyword::Varying) {
+                        let _ = parser.next();
+                        is_varying = true;
+                    }
+                    if is_varying {
+                        Ok(DataType::VarChar(size))
+                    } else if is_char {
+                        Ok(DataType::Char(size))
+                    } else {
+                        Ok(DataType::Char(size))
+                    }
                 }
                 "VARCHAR" => {
                     let mut size = None;
@@ -868,10 +911,55 @@ pub fn parse_data_type(parser: &mut Parser) -> ParseResult<DataType> {
                         let _ = parser.next();
                         if let Some(Token::Number { value: s, .. }) = parser.next() {
                             size = Some(*s as u32);
+                        } else if parser.at_keyword(Keyword::Max) {
+                            let _ = parser.next();
+                            size = None;
                         }
                         parser.expect_rparen()?;
                     }
                     Ok(DataType::VarChar(size))
+                }
+                "DOUBLE" => {
+                    parser.expect_keyword(Keyword::Precision)?;
+                    Ok(DataType::Float)
+                }
+                "NATIONAL" => {
+                    if parser.at_keyword(Keyword::Character) {
+                        let _ = parser.next();
+                    } else if parser.at_keyword(Keyword::Char) {
+                        let _ = parser.next();
+                    } else if parser.at_keyword(Keyword::Varchar) {
+                        let _ = parser.next();
+                        let mut size = None;
+                        if matches!(parser.peek(), Some(Token::LParen)) {
+                            let _ = parser.next();
+                            if let Some(Token::Number { value: s, .. }) = parser.next() {
+                                size = Some(*s as u32);
+                            }
+                            parser.expect_rparen()?;
+                        }
+                        return Ok(DataType::NationalVarChar(size));
+                    } else {
+                        return parser.backtrack(Expected::Description("CHARACTER or VARCHAR"));
+                    }
+                    let mut is_varying = false;
+                    if parser.at_keyword(Keyword::Varying) {
+                        let _ = parser.next();
+                        is_varying = true;
+                    }
+                    let mut size = None;
+                    if matches!(parser.peek(), Some(Token::LParen)) {
+                        let _ = parser.next();
+                        if let Some(Token::Number { value: s, .. }) = parser.next() {
+                            size = Some(*s as u32);
+                        }
+                        parser.expect_rparen()?;
+                    }
+                    if is_varying {
+                        Ok(DataType::NationalVarChar(size))
+                    } else {
+                        Ok(DataType::NationalChar(size))
+                    }
                 }
                 "NCHAR" => {
                     let mut size = None;
@@ -879,10 +967,13 @@ pub fn parse_data_type(parser: &mut Parser) -> ParseResult<DataType> {
                         let _ = parser.next();
                         if let Some(Token::Number { value: s, .. }) = parser.next() {
                             size = Some(*s as u32);
+                        } else if parser.at_keyword(Keyword::Max) {
+                            let _ = parser.next();
+                            size = None;
                         }
                         parser.expect_rparen()?;
                     }
-                    Ok(DataType::NChar(size))
+                    Ok(DataType::NationalChar(size))
                 }
                 "NVARCHAR" => {
                     let mut size = None;
@@ -890,10 +981,13 @@ pub fn parse_data_type(parser: &mut Parser) -> ParseResult<DataType> {
                         let _ = parser.next();
                         if let Some(Token::Number { value: s, .. }) = parser.next() {
                             size = Some(*s as u32);
+                        } else if parser.at_keyword(Keyword::Max) {
+                            let _ = parser.next();
+                            size = None;
                         }
                         parser.expect_rparen()?;
                     }
-                    Ok(DataType::NVarChar(size))
+                    Ok(DataType::NationalVarChar(size))
                 }
                 "BINARY" => {
                     let mut size = None;
@@ -981,7 +1075,7 @@ pub fn parse_data_type(parser: &mut Parser) -> ParseResult<DataType> {
                 }
             }
         }
-        Some(Token::Keyword(kw)) => match kw {
+        Some(Token::Keyword(kw)) => match *kw {
             Keyword::Int => Ok(DataType::Int),
             Keyword::BigInt => Ok(DataType::BigInt),
             Keyword::SmallInt => Ok(DataType::SmallInt),
@@ -1012,16 +1106,32 @@ pub fn parse_data_type(parser: &mut Parser) -> ParseResult<DataType> {
                     Ok(DataType::Numeric(p, s))
                 }
             }
-            Keyword::Char => {
+            Keyword::Char | Keyword::Character => {
+                let mut is_varying = false;
                 let mut size = None;
+                if parser.at_keyword(Keyword::Varying) {
+                    let _ = parser.next();
+                    is_varying = true;
+                }
                 if matches!(parser.peek(), Some(Token::LParen)) {
                     let _ = parser.next();
                     if let Some(Token::Number { value: s, .. }) = parser.next() {
                         size = Some(*s as u32);
+                    } else if parser.at_keyword(Keyword::Max) {
+                        let _ = parser.next();
+                        size = None;
                     }
                     parser.expect_rparen()?;
                 }
-                Ok(DataType::Char(size))
+                if !is_varying && parser.at_keyword(Keyword::Varying) {
+                    let _ = parser.next();
+                    is_varying = true;
+                }
+                if is_varying {
+                    Ok(DataType::VarChar(size))
+                } else {
+                    Ok(DataType::Char(size))
+                }
             }
             Keyword::Varchar => {
                 let mut size = None;
@@ -1029,21 +1139,52 @@ pub fn parse_data_type(parser: &mut Parser) -> ParseResult<DataType> {
                     let _ = parser.next();
                     if let Some(Token::Number { value: s, .. }) = parser.next() {
                         size = Some(*s as u32);
+                    } else if parser.at_keyword(Keyword::Max) {
+                        let _ = parser.next();
+                        size = None;
                     }
                     parser.expect_rparen()?;
                 }
                 Ok(DataType::VarChar(size))
             }
-            Keyword::NChar => {
+            Keyword::NChar | Keyword::National => {
+                let mut is_varying = false;
+                if *kw == Keyword::National {
+                    if parser.at_keyword(Keyword::Character) {
+                        let _ = parser.next();
+                    } else if parser.at_keyword(Keyword::Char) {
+                        let _ = parser.next();
+                    } else if parser.at_keyword(Keyword::Varchar) {
+                        let _ = parser.next();
+                        is_varying = true;
+                    } else {
+                        return parser.backtrack(Expected::Description("CHARACTER or VARCHAR"));
+                    }
+                }
+                if parser.at_keyword(Keyword::Varying) {
+                    let _ = parser.next();
+                    is_varying = true;
+                }
                 let mut size = None;
                 if matches!(parser.peek(), Some(Token::LParen)) {
                     let _ = parser.next();
                     if let Some(Token::Number { value: s, .. }) = parser.next() {
                         size = Some(*s as u32);
+                    } else if parser.at_keyword(Keyword::Max) {
+                        let _ = parser.next();
+                        size = None;
                     }
                     parser.expect_rparen()?;
                 }
-                Ok(DataType::NChar(size))
+                if !is_varying && parser.at_keyword(Keyword::Varying) {
+                    let _ = parser.next();
+                    is_varying = true;
+                }
+                if is_varying {
+                    Ok(DataType::NationalVarChar(size))
+                } else {
+                    Ok(DataType::NationalChar(size))
+                }
             }
             Keyword::Nvarchar => {
                 let mut size = None;
@@ -1051,10 +1192,13 @@ pub fn parse_data_type(parser: &mut Parser) -> ParseResult<DataType> {
                     let _ = parser.next();
                     if let Some(Token::Number { value: s, .. }) = parser.next() {
                         size = Some(*s as u32);
+                    } else if parser.at_keyword(Keyword::Max) {
+                        let _ = parser.next();
+                        size = None;
                     }
                     parser.expect_rparen()?;
                 }
-                Ok(DataType::NVarChar(size))
+                Ok(DataType::NationalVarChar(size))
             }
             Keyword::Binary => {
                 let mut size = None;

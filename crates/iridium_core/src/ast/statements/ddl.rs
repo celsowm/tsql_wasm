@@ -47,7 +47,21 @@ pub struct DropTableStmt {
 pub struct CreateIndexStmt {
     pub name: ObjectName,
     pub table: ObjectName,
-    pub columns: Vec<String>,
+    pub is_unique: bool,
+    pub is_clustered: bool,
+    pub columns: Vec<IndexColumnSpec>,
+    pub options: Vec<IndexOptionSpec>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexColumnSpec {
+    pub name: String,
+    pub is_desc: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum IndexOptionSpec {
+    FillFactor(u8),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,6 +143,8 @@ pub struct ColumnSpec {
     pub check_constraint_name: Option<String>,
     pub computed_expr: Option<Expr>,
     pub foreign_key: Option<ForeignKeyRef>,
+    pub collation: Option<String>,
+    pub is_clustered: bool,
     pub ansi_padding_on: bool,
 }
 
@@ -169,10 +185,12 @@ pub enum TableConstraintSpec {
     },
     PrimaryKey {
         name: String,
-        columns: Vec<String>,
+        columns: Vec<IndexColumnSpec>,
+        is_clustered: bool,
     },
     Unique {
         name: String,
-        columns: Vec<String>,
+        columns: Vec<IndexColumnSpec>,
+        is_clustered: bool,
     },
 }

@@ -92,6 +92,8 @@ pub(super) fn query_result_to_bound_table(
                 check: None,
                 check_constraint_name: None,
                 computed_expr: None,
+                collation: None,
+                is_clustered: false,
                 ansi_padding_on: true,
             })
             .collect(),

@@ -48,34 +48,44 @@ fn apply_table_constraint(table: &mut TableDef, tc: TableConstraintSpec) -> Resu
                 on_update: on_update.unwrap_or(crate::ast::ReferentialAction::NoAction),
             });
         }
-        TableConstraintSpec::PrimaryKey { name: _, columns } => {
-            for col_name in &columns {
+        TableConstraintSpec::PrimaryKey {
+            name: _,
+            columns,
+            is_clustered,
+        } => {
+            for col_spec in &columns {
                 let col = table
                     .columns
                     .iter_mut()
-                    .find(|c| c.name.eq_ignore_ascii_case(col_name))
-                    .ok_or_else(|| DbError::column_not_found(col_name))?;
+                    .find(|c| c.name.eq_ignore_ascii_case(&col_spec.name))
+                    .ok_or_else(|| DbError::column_not_found(&col_spec.name))?;
                 col.primary_key = true;
                 col.nullable = false;
+                col.is_clustered = is_clustered;
             }
             if columns.len() == 1 {
                 if let Some(col) = table
                     .columns
                     .iter_mut()
-                    .find(|c| c.name.eq_ignore_ascii_case(&columns[0]))
+                    .find(|c| c.name.eq_ignore_ascii_case(&columns[0].name))
                 {
                     col.unique = true;
                 }
             }
         }
-        TableConstraintSpec::Unique { name: _, columns } => {
-            for col_name in &columns {
+        TableConstraintSpec::Unique {
+            name: _,
+            columns,
+            is_clustered,
+        } => {
+            for col_spec in &columns {
                 let col = table
                     .columns
                     .iter_mut()
-                    .find(|c| c.name.eq_ignore_ascii_case(col_name))
-                    .ok_or_else(|| DbError::column_not_found(col_name))?;
+                    .find(|c| c.name.eq_ignore_ascii_case(&col_spec.name))
+                    .ok_or_else(|| DbError::column_not_found(&col_spec.name))?;
                 col.unique = true;
+                col.is_clustered = is_clustered;
             }
         }
     }
@@ -171,10 +181,14 @@ impl<'a> SchemaExecutor<'a> {
         self.catalog.register_table(table.clone());
         self.storage.ensure_table(table_id)?;
 
-        // Create clustered indexes for PRIMARY KEYs
+        // Create indexes for PRIMARY KEYs and UNIQUE columns that are marked as clustered
         for col in &table.columns {
-            if col.primary_key {
-                let index_name = format!("PK__{}__{}", table.name, col.name);
+            if col.primary_key || (col.unique && col.is_clustered) {
+                let index_name = if col.primary_key {
+                    format!("PK__{}__{}", table.name, col.name)
+                } else {
+                    format!("UQ__{}__{}", table.name, col.name)
+                };
                 self.catalog
                     .create_index_with_options(
                         "dbo",
@@ -182,11 +196,11 @@ impl<'a> SchemaExecutor<'a> {
                         &table.schema_name,
                         &table.name,
                         std::slice::from_ref(&col.name),
-                        true,       // is_clustered
-                        col.unique, // is_unique
+                        col.is_clustered,
+                        col.unique || col.primary_key,
                     )
                     .map_err(|e| {
-                        DbError::Execution(format!("Failed to create primary key index: {}", e))
+                        DbError::Execution(format!("Failed to create constraint index: {}", e))
                     })?;
             }
         }
@@ -302,6 +316,8 @@ impl<'a> SchemaExecutor<'a> {
             check: spec.check,
             check_constraint_name: spec.check_constraint_name,
             computed_expr: spec.computed_expr,
+            collation: spec.collation,
+            is_clustered: spec.is_clustered,
             ansi_padding_on: self.session_options.ansi_padding,
         })
     }
@@ -310,12 +326,15 @@ impl<'a> SchemaExecutor<'a> {
         let index_schema = stmt.name.schema_or_dbo().to_string();
         let table_schema = stmt.table.schema_or_dbo().to_string();
 
-        self.catalog.create_index(
+        let col_names: Vec<String> = stmt.columns.iter().map(|c| c.name.clone()).collect();
+        self.catalog.create_index_with_options(
             &index_schema,
             &stmt.name.name,
             &table_schema,
             &stmt.table.name,
-            &stmt.columns,
+            &col_names,
+            stmt.is_clustered,
+            stmt.is_unique,
         )?;
 
         let index_id = self

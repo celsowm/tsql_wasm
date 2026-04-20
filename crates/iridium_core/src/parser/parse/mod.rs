@@ -92,9 +92,40 @@ fn parse_statement_inner(parser: &mut Parser) -> ParseResult<Statement> {
             }
             Keyword::Create => {
                 let _ = parser.next();
+                if parser.at_keyword(Keyword::Unique) {
+                    let _ = parser.next();
+                    let mut is_clustered = false;
+                    if parser.at_keyword(Keyword::Clustered) {
+                        let _ = parser.next();
+                        is_clustered = true;
+                    } else if parser.at_keyword(Keyword::Nonclustered) {
+                        let _ = parser.next();
+                        is_clustered = false;
+                    }
+                    parser.expect_keyword(Keyword::Index)?;
+                    return Ok(Statement::Ddl(DdlStatement::CreateIndex(Box::new(
+                        parse_create_index(parser, true, is_clustered)?,
+                    ))));
+                }
+                if parser.at_keyword(Keyword::Clustered) {
+                    let _ = parser.next();
+                    parser.expect_keyword(Keyword::Index)?;
+                    return Ok(Statement::Ddl(DdlStatement::CreateIndex(Box::new(
+                        parse_create_index(parser, false, true)?,
+                    ))));
+                }
+                if parser.at_keyword(Keyword::Nonclustered) {
+                    let _ = parser.next();
+                    parser.expect_keyword(Keyword::Index)?;
+                    return Ok(Statement::Ddl(DdlStatement::CreateIndex(Box::new(
+                        parse_create_index(parser, false, false)?,
+                    ))));
+                }
                 if parser.at_keyword(Keyword::Index) {
                     let _ = parser.next();
-                    return parse_create_index(parser);
+                    return Ok(Statement::Ddl(DdlStatement::CreateIndex(Box::new(
+                        parse_create_index(parser, false, false)?,
+                    ))));
                 }
                 if parser.at_keyword(Keyword::Type) {
                     let _ = parser.next();

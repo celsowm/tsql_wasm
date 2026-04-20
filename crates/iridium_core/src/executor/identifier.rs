@@ -23,14 +23,21 @@ pub(crate) fn resolve_identifier(
         }
     }
 
+    let is_identity_col = name.eq_ignore_ascii_case("IDENTITYCOL");
+
     let mut matches: Vec<(usize, Value)> = Vec::new();
     for (binding_idx, binding) in row.iter().enumerate() {
-        if let Some(col_idx) = binding
-            .table
-            .columns
-            .iter()
-            .position(|c| c.name.eq_ignore_ascii_case(name))
-        {
+        let col_idx = if is_identity_col {
+            binding.table.columns.iter().position(|c| c.identity.is_some())
+        } else {
+            binding
+                .table
+                .columns
+                .iter()
+                .position(|c| c.name.eq_ignore_ascii_case(name))
+        };
+
+        if let Some(col_idx) = col_idx {
             let value = binding
                 .row
                 .as_ref()
@@ -43,12 +50,16 @@ pub(crate) fn resolve_identifier(
     if matches.is_empty() {
         for apply_row in ctx.row.apply_stack.iter().rev() {
             for binding in apply_row.iter() {
-                if let Some(col_idx) = binding
-                    .table
-                    .columns
-                    .iter()
-                    .position(|c| c.name.eq_ignore_ascii_case(name))
-                {
+                let col_idx = if is_identity_col {
+                    binding.table.columns.iter().position(|c| c.identity.is_some())
+                } else {
+                    binding
+                        .table
+                        .columns
+                        .iter()
+                        .position(|c| c.name.eq_ignore_ascii_case(name))
+                };
+                if let Some(col_idx) = col_idx {
                     let value = binding
                         .row
                         .as_ref()
@@ -66,12 +77,16 @@ pub(crate) fn resolve_identifier(
     if matches.is_empty() {
         for outer_row in ctx.row.outer_stack.iter().rev() {
             for binding in outer_row.iter() {
-                if let Some(col_idx) = binding
-                    .table
-                    .columns
-                    .iter()
-                    .position(|c| c.name.eq_ignore_ascii_case(name))
-                {
+                let col_idx = if is_identity_col {
+                    binding.table.columns.iter().position(|c| c.identity.is_some())
+                } else {
+                    binding
+                        .table
+                        .columns
+                        .iter()
+                        .position(|c| c.name.eq_ignore_ascii_case(name))
+                };
+                if let Some(col_idx) = col_idx {
                     let value = binding
                         .row
                         .as_ref()
@@ -109,6 +124,7 @@ pub(crate) fn resolve_qualified_identifier(
 
     let table_name = &parts[0];
     let column_name = &parts[1];
+    let is_identity_col = column_name.eq_ignore_ascii_case("IDENTITYCOL");
 
     let search_row = |row: &[ContextTable]| -> Result<Option<Value>, DbError> {
         for binding in row {
@@ -119,11 +135,15 @@ pub(crate) fn resolve_qualified_identifier(
                     .iter()
                     .any(|a| a.eq_ignore_ascii_case(table_name))
             {
-                let idx = binding
-                    .table
-                    .columns
-                    .iter()
-                    .position(|c| c.name.eq_ignore_ascii_case(column_name));
+                let idx = if is_identity_col {
+                    binding.table.columns.iter().position(|c| c.identity.is_some())
+                } else {
+                    binding
+                        .table
+                        .columns
+                        .iter()
+                        .position(|c| c.name.eq_ignore_ascii_case(column_name))
+                };
 
                 if let Some(idx) = idx {
                     return Ok(Some(

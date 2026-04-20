@@ -773,6 +773,8 @@ pub fn lower_insert_bulk(
                             on_update: fk.on_update.map(super::ddl::lower_referential_action),
                         }
                     }),
+                    collation: c.collation,
+                    is_clustered: c.is_clustered,
                     ansi_padding_on: true,
                 })
             })

@@ -71,11 +71,7 @@ pub enum DdlStatement {
         cycle: bool,
     },
     DropSequence(Vec<String>),
-    CreateIndex {
-        name: Vec<String>,
-        table: Vec<String>,
-        columns: Vec<String>,
-    },
+    CreateIndex(Box<CreateIndexStmt>),
     CreateType {
         name: Vec<String>,
         columns: Vec<ColumnDef>,
@@ -382,6 +378,8 @@ pub struct ColumnDef {
     pub check_constraint_name: Option<String>,
     pub computed_expr: Option<Expr>,
     pub foreign_key: Option<ForeignKeyRef>,
+    pub collation: Option<String>,
+    pub is_clustered: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -410,11 +408,13 @@ pub enum AlterTableAction {
 pub enum TableConstraint {
     PrimaryKey {
         name: Option<String>,
-        columns: Vec<String>,
+        columns: Vec<IndexColumn>,
+        is_clustered: bool,
     },
     Unique {
         name: Option<String>,
-        columns: Vec<String>,
+        columns: Vec<IndexColumn>,
+        is_clustered: bool,
     },
     ForeignKey {
         name: Option<String>,
@@ -451,6 +451,27 @@ pub enum FetchDirection {
     Last,
     Absolute(Expr),
     Relative(Expr),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct IndexColumn {
+    pub name: String,
+    pub is_desc: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum IndexOption {
+    FillFactor(u8),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct CreateIndexStmt {
+    pub name: Vec<String>,
+    pub table: Vec<String>,
+    pub is_unique: bool,
+    pub is_clustered: bool,
+    pub columns: Vec<IndexColumn>,
+    pub options: Vec<IndexOption>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

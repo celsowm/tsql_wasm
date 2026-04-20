@@ -67,6 +67,7 @@ pub enum Expr {
     Like {
         expr: Box<Expr>,
         pattern: Box<Expr>,
+        escape: Option<Box<Expr>>,
         negated: bool,
     },
     WindowFunction {
