@@ -108,6 +108,8 @@ pub(super) fn bind_builtin_tvf(
         check: None,
         check_constraint_name: None,
         computed_expr: None,
+        collation: None,
+        is_clustered: false,
         ansi_padding_on: true,
     }];
 
@@ -125,6 +127,8 @@ pub(super) fn bind_builtin_tvf(
             check: None,
             check_constraint_name: None,
             computed_expr: None,
+            collation: None,
+            is_clustered: false,
             ansi_padding_on: true,
         });
     }
@@ -328,6 +332,8 @@ fn bind_openjson(
             check: None,
             check_constraint_name: None,
             computed_expr: None,
+            collation: None,
+            is_clustered: false,
             ansi_padding_on: true,
         },
         ColumnDef {
@@ -343,6 +349,8 @@ fn bind_openjson(
             check: None,
             check_constraint_name: None,
             computed_expr: None,
+            collation: None,
+            is_clustered: false,
             ansi_padding_on: true,
         },
         ColumnDef {
@@ -358,6 +366,8 @@ fn bind_openjson(
             check: None,
             check_constraint_name: None,
             computed_expr: None,
+            collation: None,
+            is_clustered: false,
             ansi_padding_on: true,
         },
     ];

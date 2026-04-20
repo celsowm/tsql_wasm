@@ -101,8 +101,17 @@ fn handle_session_statement<C: Catalog, S: Storage>(
             Err(e) => Some(Err(e)),
         }
     } else if let Statement::Session(SessionStatement::SetIdentityInsert(ref id_stmt)) = stmt {
+        let storage_guard = state.storage.read();
+        let (catalog, _) = storage_guard.get_refs();
+        let schema = id_stmt.table.schema_or_dbo();
+        if catalog.find_table(schema, &id_stmt.table.name).is_none() {
+            return Some(Err(DbError::table_not_found(schema, &id_stmt.table.name)));
+        }
+
         let table_name = normalize_identifier(&id_stmt.table.name);
         if id_stmt.on {
+            // SQL Server only allows one table to have IDENTITY_INSERT ON at a time in a session.
+            session_options.identity_insert.clear();
             session_options.identity_insert.insert(table_name);
         } else {
             session_options.identity_insert.remove(&table_name);

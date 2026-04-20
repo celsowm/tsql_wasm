@@ -92,6 +92,8 @@ pub(crate) fn synthetic_source_table(source_alias: String, target_table: &TableD
                 check: None,
                 check_constraint_name: None,
                 computed_expr: None,
+                collation: None,
+                is_clustered: false,
                 ansi_padding_on: true,
             })
             .collect(),

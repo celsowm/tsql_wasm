@@ -261,9 +261,18 @@ fn eval_expr_inner(
         Expr::Like {
             expr: like_expr,
             pattern,
+            escape,
             negated,
         } => eval_like(
-            like_expr, pattern, *negated, row, ctx, catalog, storage, clock,
+            like_expr,
+            pattern,
+            escape.as_deref(),
+            *negated,
+            row,
+            ctx,
+            catalog,
+            storage,
+            clock,
         ),
         Expr::Subquery(stmt) => eval_scalar_subquery(stmt, row, ctx, catalog, storage, clock),
         Expr::Exists { subquery, negated } => {

@@ -69,6 +69,7 @@ define_keywords! {
     Cast => "CAST",
     Convert => "CONVERT",
     Like => "LIKE",
+    Escape => "ESCAPE",
     Top => "TOP",
     Distinct => "DISTINCT",
     Insert => "INSERT",
@@ -101,6 +102,8 @@ define_keywords! {
     Row => "ROW",
     TryCast => "TRY_CAST",
     TryConvert => "TRY_CONVERT",
+    Coalesce => "COALESCE",
+    Nullif => "NULLIF",
     Offset => "OFFSET",
     Rows => "ROWS",
     Fetch => "FETCH",
@@ -139,6 +142,9 @@ define_keywords! {
     Function => "FUNCTION",
     Trigger => "TRIGGER",
     Index => "INDEX",
+    Clustered => "CLUSTERED",
+    Nonclustered => "NONCLUSTERED",
+    Fillfactor => "FILLFACTOR",
     Schema => "SCHEMA",
     Type => "TYPE",
     Column => "COLUMN",
@@ -220,13 +226,17 @@ define_keywords! {
     Decimal => "DECIMAL",
     Numeric => "NUMERIC",
     Real => "REAL",
+    Precision => "PRECISION",
     Money => "MONEY",
     SmallMoney => "SMALLMONEY",
 
     // Data types - character
     Char => "CHAR",
+    Character => "CHARACTER",
     NChar => "NCHAR",
     Varchar => "VARCHAR",
+    Varying => "VARYING",
+    National => "NATIONAL",
     Nvarchar => "NVARCHAR",
     Text => "TEXT",
     NText => "NTEXT",
@@ -269,6 +279,7 @@ define_keywords! {
     Relative => "RELATIVE",
     Routine => "ROUTINE",
     Collation => "COLLATION",
+    Collate => "COLLATE",
 
     // Isolation level
     Isolation => "ISOLATION",
@@ -291,6 +302,10 @@ define_keywords! {
 
     // SET options
     NoCount => "NOCOUNT",
+    Rowcount => "ROWCOUNT",
+    Textsize => "TEXTSIZE",
+    IdentityInsert => "IDENTITY_INSERT",
+    IdentityCol => "IDENTITYCOL",
     ContextInfo => "CONTEXT_INFO",
 
     // DML pseudo-tables

@@ -29,6 +29,7 @@ pub fn lower_expr(parser_expr: ast::Expr) -> Result<executor_ast::expressions::E
             ast::BinaryOp::Like => Ok(executor_ast::expressions::Expr::Like {
                 expr: Box::new(lower_expr(*left)?),
                 pattern: Box::new(lower_expr(*right)?),
+                escape: None,
                 negated: false,
             }),
             _ => Ok(executor_ast::expressions::Expr::Binary {
@@ -128,10 +129,12 @@ pub fn lower_expr(parser_expr: ast::Expr) -> Result<executor_ast::expressions::E
         ast::Expr::Like {
             expr,
             pattern,
+            escape,
             negated,
         } => Ok(executor_ast::expressions::Expr::Like {
             expr: Box::new(lower_expr(*expr)?),
             pattern: Box::new(lower_expr(*pattern)?),
+            escape: escape.map(|e| lower_expr(*e)).transpose()?.map(Box::new),
             negated,
         }),
         ast::Expr::Exists { subquery, negated } => Ok(executor_ast::expressions::Expr::Exists {
@@ -372,6 +375,12 @@ pub fn lower_data_type(
         ast::DataType::NText => Ok(executor_ast::data_types::DataTypeSpec::NVarChar(4000)),
         ast::DataType::Table => Ok(executor_ast::data_types::DataTypeSpec::VarChar(255)),
         ast::DataType::Custom(_) => Ok(executor_ast::data_types::DataTypeSpec::VarChar(255)),
+        ast::DataType::NationalChar(n) => Ok(executor_ast::data_types::DataTypeSpec::NChar(
+            n.unwrap_or(1) as u16,
+        )),
+        ast::DataType::NationalVarChar(n) => Ok(executor_ast::data_types::DataTypeSpec::NVarChar(
+            n.unwrap_or(u16::MAX as u32) as u16,
+        )),
     }
 }
 

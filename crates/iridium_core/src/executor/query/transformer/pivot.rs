@@ -95,6 +95,8 @@ pub(crate) fn execute_pivot(
             check: None,
             check_constraint_name: None,
             computed_expr: None,
+            collation: None,
+            is_clustered: false,
             ansi_padding_on: true,
         });
     }

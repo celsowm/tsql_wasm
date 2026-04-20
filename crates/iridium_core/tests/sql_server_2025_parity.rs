@@ -51,3 +51,51 @@ fn test_system_procedures_2025() {
     assert_eq!(res.columns[0], "last_run");
     assert_eq!(res.rows.len(), 1);
 }
+
+#[test]
+fn test_identity_insert_and_col() {
+    let engine = Engine::new();
+    engine.exec("CREATE TABLE IdTest (Id INT IDENTITY(1,1), Val VARCHAR(10))").unwrap();
+
+    // Normal insert
+    engine.exec("INSERT INTO IdTest (Val) VALUES ('a')").unwrap();
+    let res = engine.query("SELECT IDENTITYCOL, Val FROM IdTest").unwrap();
+    assert_eq!(res.rows[0][0].to_string_value(), "1");
+    assert_eq!(res.rows[0][1].to_string_value(), "a");
+
+    // SET IDENTITY_INSERT ON
+    engine.exec("SET IDENTITY_INSERT IdTest ON").unwrap();
+    engine.exec("INSERT INTO IdTest (Id, Val) VALUES (10, 'b')").unwrap();
+
+    let res = engine.query("SELECT Id, Val FROM IdTest WHERE Id = 10").unwrap();
+    assert_eq!(res.rows[0][0].to_string_value(), "10");
+
+    // Verify qualified IDENTITYCOL
+    let res = engine.query("SELECT T.IDENTITYCOL FROM IdTest T WHERE T.Id = 10").unwrap();
+    assert_eq!(res.rows[0][0].to_string_value(), "10");
+
+    // SET IDENTITY_INSERT OFF
+    engine.exec("SET IDENTITY_INSERT IdTest OFF").unwrap();
+    let res = engine.exec("INSERT INTO IdTest (Id, Val) VALUES (20, 'c')");
+    assert!(res.is_err());
+}
+
+#[test]
+fn test_logic_functions_parity() {
+    let engine = Engine::new();
+    let res = engine.query("SELECT COALESCE(NULL, 1, 2), NULLIF(1, 1), NULLIF(1, 2)").unwrap();
+    assert_eq!(res.rows[0][0].to_string_value(), "1");
+    assert!(res.rows[0][1].is_null());
+    assert_eq!(res.rows[0][2].to_string_value(), "1");
+}
+
+#[test]
+fn test_like_escape_parity() {
+    let engine = Engine::new();
+    engine.exec("CREATE TABLE LikeTest (Pat VARCHAR(10))").unwrap();
+    engine.exec("INSERT INTO LikeTest VALUES ('10%'), ('100')").unwrap();
+
+    let res = engine.query("SELECT Pat FROM LikeTest WHERE Pat LIKE '10!%' ESCAPE '!'").unwrap();
+    assert_eq!(res.rows.len(), 1);
+    assert_eq!(res.rows[0][0].to_string_value(), "10%");
+}
