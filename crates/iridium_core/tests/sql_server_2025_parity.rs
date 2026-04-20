@@ -99,3 +99,42 @@ fn test_like_escape_parity() {
     assert_eq!(res.rows.len(), 1);
     assert_eq!(res.rows[0][0].to_string_value(), "10%");
 }
+
+#[test]
+fn test_new_system_procedures_2025_extended() {
+    let engine = Engine::new();
+
+    // sp_helpuser
+    let res = engine.query("EXEC sp_helpuser").unwrap();
+    assert_eq!(res.columns[0], "UserName");
+    assert!(res.rows.iter().any(|r| r[0].to_string_value() == "dbo"));
+
+    // sp_helprole
+    let res = engine.query("EXEC sp_helprole").unwrap();
+    assert_eq!(res.columns[0], "RoleName");
+    // Currently sys.database_principals has no roles by default, but let's check columns
+
+    // sp_helprolemember
+    let res = engine.query("EXEC sp_helprolemember").unwrap();
+    assert_eq!(res.columns[0], "DbRole");
+
+    // sp_helpsrvrole
+    let res = engine.query("EXEC sp_helpsrvrole").unwrap();
+    assert_eq!(res.columns[0], "ServerRole");
+    assert!(res.rows.iter().any(|r| r[0].to_string_value() == "sysadmin"));
+
+    // sp_helpsrvrolemember
+    let res = engine.query("EXEC sp_helpsrvrolemember").unwrap();
+    assert_eq!(res.columns[0], "ServerRole");
+    assert!(res.rows.iter().any(|r| r[0].to_string_value() == "sysadmin" && r[1].to_string_value() == "sa"));
+
+    // sp_helpfile
+    let res = engine.query("EXEC sp_helpfile").unwrap();
+    assert_eq!(res.columns[0], "name");
+    assert!(res.rows.iter().any(|r| r[0].to_string_value() == "iridium_sql"));
+
+    // sp_helpfilegroup
+    let res = engine.query("EXEC sp_helpfilegroup").unwrap();
+    assert_eq!(res.columns[0], "name");
+    assert!(res.rows.iter().any(|r| r[0].to_string_value() == "PRIMARY"));
+}

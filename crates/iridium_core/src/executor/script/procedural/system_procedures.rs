@@ -23,6 +23,13 @@ const SYSTEM_PROCEDURES: &[&str] = &[
     "sp_helpdb",
     "sp_server_info",
     "sp_monitor",
+    "sp_helpuser",
+    "sp_helprole",
+    "sp_helprolemember",
+    "sp_helpsrvrole",
+    "sp_helpsrvrolemember",
+    "sp_helpfile",
+    "sp_helpfilegroup",
 ];
 
 pub(crate) fn is_system_procedure(name: &str) -> bool {
@@ -65,6 +72,20 @@ pub(crate) fn execute_system_procedure(
         execute_sp_server_info()?
     } else if name.eq_ignore_ascii_case("sp_monitor") {
         execute_sp_monitor(exec)?
+    } else if name.eq_ignore_ascii_case("sp_helpuser") {
+        execute_sp_helpuser(exec, ctx)?
+    } else if name.eq_ignore_ascii_case("sp_helprole") {
+        execute_sp_helprole(exec, ctx)?
+    } else if name.eq_ignore_ascii_case("sp_helprolemember") {
+        execute_sp_helprolemember(exec, ctx)?
+    } else if name.eq_ignore_ascii_case("sp_helpsrvrole") {
+        execute_sp_helpsrvrole(exec, ctx)?
+    } else if name.eq_ignore_ascii_case("sp_helpsrvrolemember") {
+        execute_sp_helpsrvrolemember(exec, ctx)?
+    } else if name.eq_ignore_ascii_case("sp_helpfile") {
+        execute_sp_helpfile(exec, ctx)?
+    } else if name.eq_ignore_ascii_case("sp_helpfilegroup") {
+        execute_sp_helpfilegroup(exec, ctx)?
     } else if name.eq_ignore_ascii_case("xp_instance_regread") {
         // Stub for registry reads. If it has an output parameter, set it to a default.
         for arg in &stmt.args {
@@ -805,4 +826,88 @@ fn execute_sp_tables(exec: &mut ScriptExecutor<'_>) -> Result<QueryResult, DbErr
         rows,
         ..Default::default()
     })
+}
+
+fn execute_sp_helpuser(
+    exec: &mut ScriptExecutor<'_>,
+    ctx: &mut ExecutionContext<'_>,
+) -> Result<QueryResult, DbError> {
+    let sql = "SELECT p.name AS UserName, p.type_desc AS RoleName, '' AS LoginName, '' AS DefDBName, '' AS DefSchemaName, p.principal_id AS UserId, p.principal_id AS SID FROM sys.database_principals p";
+    let batch = crate::parser::parse_batch(sql)?;
+    match exec.execute_batch(&batch, ctx)? {
+        crate::error::StmtOutcome::Ok(Some(res)) => Ok(res),
+        _ => Err(DbError::Execution("Failed to execute sp_helpuser query".into())),
+    }
+}
+
+fn execute_sp_helprole(
+    exec: &mut ScriptExecutor<'_>,
+    ctx: &mut ExecutionContext<'_>,
+) -> Result<QueryResult, DbError> {
+    let sql = "SELECT name AS RoleName, principal_id AS RoleId, 0 AS IsAppRole FROM sys.database_principals WHERE type = 'R'";
+    let batch = crate::parser::parse_batch(sql)?;
+    match exec.execute_batch(&batch, ctx)? {
+        crate::error::StmtOutcome::Ok(Some(res)) => Ok(res),
+        _ => Err(DbError::Execution("Failed to execute sp_helprole query".into())),
+    }
+}
+
+fn execute_sp_helprolemember(
+    exec: &mut ScriptExecutor<'_>,
+    ctx: &mut ExecutionContext<'_>,
+) -> Result<QueryResult, DbError> {
+    let sql = "SELECT r.name AS DbRole, m.name AS MemberName, m.principal_id AS MemberSID FROM sys.database_role_members rm JOIN sys.database_principals r ON rm.role_principal_id = r.principal_id JOIN sys.database_principals m ON rm.member_principal_id = m.principal_id";
+    let batch = crate::parser::parse_batch(sql)?;
+    match exec.execute_batch(&batch, ctx)? {
+        crate::error::StmtOutcome::Ok(Some(res)) => Ok(res),
+        _ => Err(DbError::Execution("Failed to execute sp_helprolemember query".into())),
+    }
+}
+
+fn execute_sp_helpsrvrole(
+    exec: &mut ScriptExecutor<'_>,
+    ctx: &mut ExecutionContext<'_>,
+) -> Result<QueryResult, DbError> {
+    let sql = "SELECT name AS ServerRole, principal_id AS RoleId FROM sys.server_principals WHERE type = 'R'";
+    let batch = crate::parser::parse_batch(sql)?;
+    match exec.execute_batch(&batch, ctx)? {
+        crate::error::StmtOutcome::Ok(Some(res)) => Ok(res),
+        _ => Err(DbError::Execution("Failed to execute sp_helpsrvrole query".into())),
+    }
+}
+
+fn execute_sp_helpsrvrolemember(
+    exec: &mut ScriptExecutor<'_>,
+    ctx: &mut ExecutionContext<'_>,
+) -> Result<QueryResult, DbError> {
+    let sql = "SELECT r.name AS ServerRole, m.name AS MemberName, m.principal_id AS MemberSID FROM sys.server_role_members srm JOIN sys.server_principals r ON srm.role_principal_id = r.principal_id JOIN sys.server_principals m ON srm.member_principal_id = m.principal_id";
+    let batch = crate::parser::parse_batch(sql)?;
+    match exec.execute_batch(&batch, ctx)? {
+        crate::error::StmtOutcome::Ok(Some(res)) => Ok(res),
+        _ => Err(DbError::Execution("Failed to execute sp_helpsrvrolemember query".into())),
+    }
+}
+
+fn execute_sp_helpfile(
+    exec: &mut ScriptExecutor<'_>,
+    ctx: &mut ExecutionContext<'_>,
+) -> Result<QueryResult, DbError> {
+    let sql = "SELECT name, file_id, physical_name, type_desc AS usage, size FROM sys.database_files";
+    let batch = crate::parser::parse_batch(sql)?;
+    match exec.execute_batch(&batch, ctx)? {
+        crate::error::StmtOutcome::Ok(Some(res)) => Ok(res),
+        _ => Err(DbError::Execution("Failed to execute sp_helpfile query".into())),
+    }
+}
+
+fn execute_sp_helpfilegroup(
+    exec: &mut ScriptExecutor<'_>,
+    ctx: &mut ExecutionContext<'_>,
+) -> Result<QueryResult, DbError> {
+    let sql = "SELECT name, data_space_id AS groupid, type_desc AS groupname FROM sys.filegroups";
+    let batch = crate::parser::parse_batch(sql)?;
+    match exec.execute_batch(&batch, ctx)? {
+        crate::error::StmtOutcome::Ok(Some(res)) => Ok(res),
+        _ => Err(DbError::Execution("Failed to execute sp_helpfilegroup query".into())),
+    }
 }
