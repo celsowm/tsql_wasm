@@ -114,10 +114,7 @@ impl VirtualTable for SysDatabasePermissions {
     }
 
     fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
-        vec![StoredRow {
-            values: vec![Value::Int(16384), Value::Int(1)], // db_owner -> dbo
-            deleted: false,
-        }]
+        vec![]
     }
 }
 
@@ -133,6 +130,9 @@ impl VirtualTable for SysDatabaseRoleMembers {
     }
 
     fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
-        vec![]
+        vec![StoredRow {
+            values: vec![Value::Int(16384), Value::Int(1)], // db_owner -> dbo
+            deleted: false,
+        }]
     }
 }

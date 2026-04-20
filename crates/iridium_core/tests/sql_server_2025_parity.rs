@@ -138,3 +138,30 @@ fn test_new_system_procedures_2025_extended() {
     assert_eq!(res.columns[0], "name");
     assert!(res.rows.iter().any(|r| r[0].to_string_value() == "PRIMARY"));
 }
+
+#[test]
+fn test_metadata_discovery_procedures() {
+    let engine = Engine::new();
+    engine.exec("CREATE TABLE PkTable (Id INT PRIMARY KEY, Val VARCHAR(10))").unwrap();
+    engine.exec("CREATE TABLE FkTable (FkId INT REFERENCES PkTable(Id))").unwrap();
+
+    // sp_pkeys
+    let res = engine.query("EXEC sp_pkeys 'PkTable'").unwrap();
+    assert_eq!(res.columns[3], "COLUMN_NAME");
+    assert!(res.rows.iter().any(|r| r[3].to_string_value() == "Id"));
+
+    // sp_foreignkeys
+    let res = engine.query("EXEC sp_foreignkeys 'FkTable'").unwrap();
+    assert_eq!(res.columns[7], "FKCOLUMN_NAME");
+    assert!(res.rows.iter().any(|r| r[7].to_string_value() == "FkId"));
+
+    // sp_statistics
+    let res = engine.query("EXEC sp_statistics 'PkTable'").unwrap();
+    assert_eq!(res.columns[5], "INDEX_NAME");
+    assert!(!res.rows.is_empty());
+
+    // sp_special_columns
+    let res = engine.query("EXEC sp_special_columns 'PkTable'").unwrap();
+    assert_eq!(res.columns[1], "COLUMN_NAME");
+    assert!(res.rows.iter().any(|r| r[1].to_string_value() == "Id"));
+}

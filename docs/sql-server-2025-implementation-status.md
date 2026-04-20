@@ -318,7 +318,7 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | sp_enumcustomresolvers | ❌ Pending |
 | sp_execute_external_script | ❌ Pending |
 | sp_flush_CT_internal_table_on_demand | ❌ Pending |
-| sp_foreignkeys | ❌ Pending |
+| sp_foreignkeys | ✅ Implemented |
 | sp_fulltext_catalog | ❌ Pending |
 | sp_fulltext_database | ❌ Pending |
 | sp_fulltext_keymappings | ❌ Pending |
@@ -391,11 +391,11 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | sp_monitor | ✅ Implemented |
 | sp_msgetversion | ✅ Implemented |
 | sp_password | ❌ Pending |
-| sp_pkeys | ❌ Pending |
+| sp_pkeys | ✅ Implemented |
 | sp_prepare | ❌ Pending |
 | sp_prepexec | ❌ Pending |
 | sp_prepexecrpc | ❌ Pending |
-| sp_primarykeys | ❌ Pending |
+| sp_primarykeys | ✅ Implemented |
 | sp_purge_jobhistory | ❌ Pending |
 | sp_query_store_consistency_check | ❌ Pending |
 | sp_query_store_flush_db | ❌ Pending |
@@ -433,9 +433,9 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | sp_set_sqlagent_proxy | ❌ Pending |
 | sp_setapprole | ❌ Pending |
 | sp_setnetname | ❌ Pending |
-| sp_special_columns | ❌ Pending |
+| sp_special_columns | ✅ Implemented |
 | sp_srvrolepermission | ❌ Pending |
-| sp_statistics | ❌ Pending |
+| sp_statistics | ✅ Implemented |
 | sp_stop_job | ❌ Pending |
 | sp_syscollector_create_collection_item | ❌ Pending |
 | sp_syscollector_create_collection_set | ❌ Pending |
@@ -525,7 +525,7 @@ This document tracks the implementation status of SQL Server 2025 features in Ir
 | sp_xtp_control_query_exec_stats | ❌ Pending |
 | sp_xtp_unbind_db_resource_pool | ❌ Pending |
 
-**Summary:** 21/326 (6.4%)
+**Summary:** 26/326 (7.9%)
 
 ## System Catalog Views (`sys.*`)
 

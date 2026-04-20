@@ -30,6 +30,11 @@ const SYSTEM_PROCEDURES: &[&str] = &[
     "sp_helpsrvrolemember",
     "sp_helpfile",
     "sp_helpfilegroup",
+    "sp_pkeys",
+    "sp_primarykeys",
+    "sp_foreignkeys",
+    "sp_statistics",
+    "sp_special_columns",
 ];
 
 pub(crate) fn is_system_procedure(name: &str) -> bool {
@@ -86,6 +91,14 @@ pub(crate) fn execute_system_procedure(
         execute_sp_helpfile(exec, ctx)?
     } else if name.eq_ignore_ascii_case("sp_helpfilegroup") {
         execute_sp_helpfilegroup(exec, ctx)?
+    } else if name.eq_ignore_ascii_case("sp_pkeys") || name.eq_ignore_ascii_case("sp_primarykeys") {
+        execute_sp_pkeys(exec, &args)?
+    } else if name.eq_ignore_ascii_case("sp_foreignkeys") {
+        execute_sp_foreignkeys(exec, &args)?
+    } else if name.eq_ignore_ascii_case("sp_statistics") {
+        execute_sp_statistics(exec, &args)?
+    } else if name.eq_ignore_ascii_case("sp_special_columns") {
+        execute_sp_special_columns(exec, &args)?
     } else if name.eq_ignore_ascii_case("xp_instance_regread") {
         // Stub for registry reads. If it has an output parameter, set it to a default.
         for arg in &stmt.args {
@@ -910,4 +923,286 @@ fn execute_sp_helpfilegroup(
         crate::error::StmtOutcome::Ok(Some(res)) => Ok(res),
         _ => Err(DbError::Execution("Failed to execute sp_helpfilegroup query".into())),
     }
+}
+
+fn execute_sp_pkeys(
+    exec: &mut ScriptExecutor<'_>,
+    args: &[String],
+) -> Result<QueryResult, DbError> {
+    if args.is_empty() {
+        return Err(DbError::Execution("sp_pkeys requires @table_name argument".into()));
+    }
+    let table_name = &args[0];
+    let table = exec.catalog.find_table("dbo", table_name)
+        .ok_or_else(|| DbError::object_not_found(format!("table '{}'", table_name)))?;
+
+    let mut rows = Vec::new();
+    let mut pk_idx_name = String::new();
+    let mut pk_cols = Vec::new();
+
+    let indexes = exec.catalog.get_indexes();
+    for idx in indexes {
+        if idx.table_id == table.id {
+            let all_pk = idx.column_ids.iter().all(|&cid| {
+                table.columns.iter().find(|c| c.id == cid).map(|c| c.primary_key).unwrap_or(false)
+            });
+            let pk_count = table.columns.iter().filter(|c| c.primary_key).count();
+            if all_pk && pk_count == idx.column_ids.len() && pk_count > 0 {
+                pk_idx_name = idx.name.clone();
+                pk_cols = idx.column_ids.clone();
+                break;
+            }
+        }
+    }
+
+    for (i, &col_id) in pk_cols.iter().enumerate() {
+        let col = table.columns.iter().find(|c| c.id == col_id).unwrap();
+        rows.push(vec![
+            Value::NVarChar("iridium_sql".into()),
+            Value::NVarChar("dbo".into()),
+            Value::NVarChar(table.name.clone()),
+            Value::NVarChar(col.name.clone()),
+            Value::SmallInt((i + 1) as i16),
+            Value::NVarChar(pk_idx_name.clone()),
+        ]);
+    }
+
+    Ok(QueryResult {
+        columns: vec![
+            "TABLE_QUALIFIER".into(),
+            "TABLE_OWNER".into(),
+            "TABLE_NAME".into(),
+            "COLUMN_NAME".into(),
+            "KEY_SEQ".into(),
+            "PK_NAME".into(),
+        ],
+        column_types: vec![
+            DataType::NVarChar { max_len: 128 },
+            DataType::NVarChar { max_len: 128 },
+            DataType::NVarChar { max_len: 128 },
+            DataType::NVarChar { max_len: 128 },
+            DataType::SmallInt,
+            DataType::NVarChar { max_len: 128 },
+        ],
+        column_nullabilities: vec![false, false, false, false, false, false],
+        rows,
+        ..Default::default()
+    })
+}
+
+fn execute_sp_foreignkeys(
+    exec: &mut ScriptExecutor<'_>,
+    args: &[String],
+) -> Result<QueryResult, DbError> {
+    if args.is_empty() {
+        return Err(DbError::Execution("sp_foreignkeys requires @table_name argument".into()));
+    }
+    let table_name = &args[0];
+    let table = exec.catalog.find_table("dbo", table_name)
+        .ok_or_else(|| DbError::object_not_found(format!("table '{}'", table_name)))?;
+
+    let mut rows = Vec::new();
+    for fk in &table.foreign_keys {
+        let ref_schema = fk.referenced_table.schema_or_dbo();
+        let ref_table = exec.catalog.find_table(ref_schema, &fk.referenced_table.name);
+        if let Some(ref_table) = ref_table {
+            for (i, parent_col_name) in fk.columns.iter().enumerate() {
+                let ref_col_name = fk.referenced_columns.get(i).unwrap_or(parent_col_name);
+                rows.push(vec![
+                    Value::NVarChar("iridium_sql".into()),
+                    Value::NVarChar(ref_schema.into()),
+                    Value::NVarChar(ref_table.name.clone()),
+                    Value::NVarChar(ref_col_name.clone()),
+                    Value::NVarChar("iridium_sql".into()),
+                    Value::NVarChar("dbo".into()),
+                    Value::NVarChar(table.name.clone()),
+                    Value::NVarChar(parent_col_name.clone()),
+                    Value::SmallInt((i + 1) as i16),
+                    Value::SmallInt(1), // UPDATE_RULE
+                    Value::SmallInt(1), // DELETE_RULE
+                    Value::NVarChar(fk.name.clone()),
+                    Value::Null, // PK_NAME
+                    Value::SmallInt(7), // DEFERRABILITY
+                ]);
+            }
+        }
+    }
+
+    Ok(QueryResult {
+        columns: vec![
+            "PKTABLE_QUALIFIER".into(),
+            "PKTABLE_OWNER".into(),
+            "PKTABLE_NAME".into(),
+            "PKCOLUMN_NAME".into(),
+            "FKTABLE_QUALIFIER".into(),
+            "FKTABLE_OWNER".into(),
+            "FKTABLE_NAME".into(),
+            "FKCOLUMN_NAME".into(),
+            "KEY_SEQ".into(),
+            "UPDATE_RULE".into(),
+            "DELETE_RULE".into(),
+            "FK_NAME".into(),
+            "PK_NAME".into(),
+            "DEFERRABILITY".into(),
+        ],
+        column_types: vec![
+            DataType::NVarChar { max_len: 128 },
+            DataType::NVarChar { max_len: 128 },
+            DataType::NVarChar { max_len: 128 },
+            DataType::NVarChar { max_len: 128 },
+            DataType::NVarChar { max_len: 128 },
+            DataType::NVarChar { max_len: 128 },
+            DataType::NVarChar { max_len: 128 },
+            DataType::NVarChar { max_len: 128 },
+            DataType::SmallInt,
+            DataType::SmallInt,
+            DataType::SmallInt,
+            DataType::NVarChar { max_len: 128 },
+            DataType::NVarChar { max_len: 128 },
+            DataType::SmallInt,
+        ],
+        column_nullabilities: vec![false, false, false, false, false, false, false, false, false, false, false, false, true, false],
+        rows,
+        ..Default::default()
+    })
+}
+
+fn execute_sp_statistics(
+    exec: &mut ScriptExecutor<'_>,
+    args: &[String],
+) -> Result<QueryResult, DbError> {
+    if args.is_empty() {
+        return Err(DbError::Execution("sp_statistics requires @table_name argument".into()));
+    }
+    let table_name = &args[0];
+    let table = exec.catalog.find_table("dbo", table_name)
+        .ok_or_else(|| DbError::object_not_found(format!("table '{}'", table_name)))?;
+
+    let mut rows = Vec::new();
+    let indexes = exec.catalog.get_indexes();
+    for idx in indexes.iter().filter(|i| i.table_id == table.id) {
+        for (i, &col_id) in idx.column_ids.iter().enumerate() {
+            let col = table.columns.iter().find(|c| c.id == col_id).unwrap();
+            rows.push(vec![
+                Value::NVarChar("iridium_sql".into()),
+                Value::NVarChar("dbo".into()),
+                Value::NVarChar(table.name.clone()),
+                Value::SmallInt(if idx.is_unique { 0 } else { 1 }),
+                Value::NVarChar(idx.name.clone()),
+                Value::NVarChar(idx.name.clone()),
+                Value::SmallInt(if idx.is_clustered { 1 } else { 3 }),
+                Value::SmallInt((i + 1) as i16),
+                Value::NVarChar(col.name.clone()),
+                Value::Char("A".into()),
+                Value::Int(0),
+                Value::Int(0),
+                Value::Null,
+            ]);
+        }
+    }
+
+    Ok(QueryResult {
+        columns: vec![
+            "TABLE_QUALIFIER".into(),
+            "TABLE_OWNER".into(),
+            "TABLE_NAME".into(),
+            "NON_UNIQUE".into(),
+            "INDEX_QUALIFIER".into(),
+            "INDEX_NAME".into(),
+            "TYPE".into(),
+            "SEQ_IN_INDEX".into(),
+            "COLUMN_NAME".into(),
+            "COLLATION".into(),
+            "CARDINALITY".into(),
+            "PAGES".into(),
+            "FILTER_CONDITION".into(),
+        ],
+        column_types: vec![
+            DataType::NVarChar { max_len: 128 },
+            DataType::NVarChar { max_len: 128 },
+            DataType::NVarChar { max_len: 128 },
+            DataType::SmallInt,
+            DataType::NVarChar { max_len: 128 },
+            DataType::NVarChar { max_len: 128 },
+            DataType::SmallInt,
+            DataType::SmallInt,
+            DataType::NVarChar { max_len: 128 },
+            DataType::Char { len: 1 },
+            DataType::Int,
+            DataType::Int,
+            DataType::NVarChar { max_len: 128 },
+        ],
+        column_nullabilities: vec![false, false, false, false, false, false, false, false, false, true, true, true, true],
+        rows,
+        ..Default::default()
+    })
+}
+
+fn execute_sp_special_columns(
+    exec: &mut ScriptExecutor<'_>,
+    args: &[String],
+) -> Result<QueryResult, DbError> {
+    if args.is_empty() {
+        return Err(DbError::Execution("sp_special_columns requires @table_name argument".into()));
+    }
+    let table_name = &args[0];
+    let table = exec.catalog.find_table("dbo", table_name)
+        .ok_or_else(|| DbError::object_not_found(format!("table '{}'", table_name)))?;
+
+    let mut rows = Vec::new();
+    let mut pk_cols = Vec::new();
+
+    let indexes = exec.catalog.get_indexes();
+    for idx in indexes {
+        if idx.table_id == table.id {
+            let all_pk = idx.column_ids.iter().all(|&cid| {
+                table.columns.iter().find(|c| c.id == cid).map(|c| c.primary_key).unwrap_or(false)
+            });
+            let pk_count = table.columns.iter().filter(|c| c.primary_key).count();
+            if all_pk && pk_count == idx.column_ids.len() && pk_count > 0 {
+                pk_cols = idx.column_ids.clone();
+                break;
+            }
+        }
+    }
+
+    for &col_id in &pk_cols {
+        let col = table.columns.iter().find(|c| c.id == col_id).unwrap();
+        rows.push(vec![
+            Value::SmallInt(1), // SCOPE
+            Value::NVarChar(col.name.clone()),
+            Value::Int(crate::executor::metadata::system_type_id(&col.data_type)),
+            Value::NVarChar(type_name(&col.data_type)),
+            Value::Int(0), // PRECISION (dummy)
+            Value::Int(type_max_length(&col.data_type) as i32),
+            Value::SmallInt(0), // SCALE (dummy)
+            Value::SmallInt(1), // PSEUDO_COLUMN
+        ]);
+    }
+
+    Ok(QueryResult {
+        columns: vec![
+            "SCOPE".into(),
+            "COLUMN_NAME".into(),
+            "DATA_TYPE".into(),
+            "TYPE_NAME".into(),
+            "PRECISION".into(),
+            "LENGTH".into(),
+            "SCALE".into(),
+            "PSEUDO_COLUMN".into(),
+        ],
+        column_types: vec![
+            DataType::SmallInt,
+            DataType::NVarChar { max_len: 128 },
+            DataType::Int,
+            DataType::NVarChar { max_len: 128 },
+            DataType::Int,
+            DataType::Int,
+            DataType::SmallInt,
+            DataType::SmallInt,
+        ],
+        column_nullabilities: vec![false, false, false, false, false, false, false, false],
+        rows,
+        ..Default::default()
+    })
 }
