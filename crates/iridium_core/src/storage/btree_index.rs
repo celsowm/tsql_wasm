@@ -51,13 +51,12 @@ impl BTreeIndex {
         let key = IndexKey::from_row(row_values, &self.column_ids)
             .ok_or_else(|| DbError::Storage("failed to extract index key from row".into()))?;
 
-        if self.is_unique {
-            if self.tree.contains_key(&key) {
+        if self.is_unique
+            && self.tree.contains_key(&key) {
                 return Err(DbError::Execution(
                     "Cannot insert duplicate key in unique index".into(),
                 ));
             }
-        }
 
         self.tree.entry(key).or_default().push(row_index);
         Ok(())

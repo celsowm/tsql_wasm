@@ -458,7 +458,7 @@ impl TdsSession {
                                                             } else {
                                                                 let mut buf = PacketBuilder::new();
                                                                 let col_types: Vec<_> = fetch_result.column_types.iter()
-                                                                    .map(|ct| super::tds::type_mapping::runtime_type_to_tds(ct))
+                                                                    .map(super::tds::type_mapping::runtime_type_to_tds)
                                                                     .collect();
                                                                 tokens::write_colmetadata(
                                                                     &mut buf,
@@ -645,7 +645,7 @@ impl TdsSession {
                                                             } else {
                                                                 let mut buf = PacketBuilder::new();
                                                                 let col_types: Vec<_> = fetch_result.column_types.iter()
-                                                                    .map(|ct| super::tds::type_mapping::runtime_type_to_tds(ct))
+                                                                    .map(super::tds::type_mapping::runtime_type_to_tds)
                                                                     .collect();
                                                                 tokens::write_output_int(
                                                                     &mut buf, "@cursor", handle,
@@ -840,8 +840,7 @@ impl TdsSession {
                                         let sql = match cat_req.proc {
                                             CatalogProc::Tables => {
                                                 let table_name = cat_req
-                                                    .params
-                                                    .get(0)
+                                                    .params.first()
                                                     .map(|p| p.value_sql.trim_matches('\''))
                                                     .unwrap_or("%");
                                                 let table_owner = cat_req
@@ -856,8 +855,7 @@ impl TdsSession {
                                             }
                                             CatalogProc::Columns => {
                                                 let table_name = cat_req
-                                                    .params
-                                                    .get(0)
+                                                    .params.first()
                                                     .map(|p| p.value_sql.trim_matches('\''))
                                                     .unwrap_or("%");
                                                 format!(
@@ -867,8 +865,7 @@ impl TdsSession {
                                             }
                                             CatalogProc::SprocColumns => {
                                                 let proc_name = cat_req
-                                                    .params
-                                                    .get(0)
+                                                    .params.first()
                                                     .map(|p| p.value_sql.trim_matches('\''))
                                                     .unwrap_or("%");
                                                 format!(
@@ -878,8 +875,7 @@ impl TdsSession {
                                             }
                                             CatalogProc::PrimaryKeys => {
                                                 let table_name = cat_req
-                                                    .params
-                                                    .get(0)
+                                                    .params.first()
                                                     .map(|p| p.value_sql.trim_matches('\''))
                                                     .unwrap_or("%");
                                                 format!(

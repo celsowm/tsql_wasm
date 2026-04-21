@@ -716,7 +716,7 @@ pub fn read_type_info(reader: &mut PacketReader) -> io::Result<TypeInfo> {
         0x26 | 0x68 | 0x6D | 0x6E | 0x6F | 0x24 | 0x28 => {
             length_prefix.push(reader.read_u8()?);
         }
-        0x29 | 0x2A | 0x2B => {
+        0x29..=0x2B => {
             let s = reader.read_u8()?;
             length_prefix.push(s);
             scale = Some(s);

@@ -360,7 +360,7 @@ fn is_uncorrelated(stmt: &crate::ast::SelectStmt) -> bool {
             .projection
             .iter()
             .all(|i| is_expr_uncorrelated(&i.expr))
-            && stmt.selection.as_ref().map_or(true, is_expr_uncorrelated);
+            && stmt.selection.as_ref().is_none_or(is_expr_uncorrelated);
     }
     // For now, only literals are considered uncorrelated.
     false

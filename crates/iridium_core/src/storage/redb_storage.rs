@@ -437,7 +437,7 @@ impl IndexStorage for RedbStorage {
             .get(&index_id)
             .ok_or_else(|| DbError::Storage(format!("index {} not found", index_id)))?;
 
-        let result = index.seek(key).map(|v| v.clone()).unwrap_or_default();
+        let result = index.seek(key).cloned().unwrap_or_default();
         Ok(result)
     }
 

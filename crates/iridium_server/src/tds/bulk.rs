@@ -70,7 +70,7 @@ pub fn parse_bulk_load_data(
 
     Ok(BulkLoadData {
         columns: column_names,
-        column_types: column_types,
+        column_types,
         rows,
     })
 }
