@@ -126,7 +126,7 @@ fn to_envelope_result_set(result: &QueryResult) -> ResultSetEnvelope {
         .iter()
         .map(|row| row.iter().map(format_compat_value).collect::<Vec<_>>())
         .collect::<Vec<_>>();
-    rows.sort_by(|left, right| left.cmp(right));
+    rows.sort();
 
     ResultSetEnvelope {
         columns,
