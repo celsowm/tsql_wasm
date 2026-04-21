@@ -2,6 +2,7 @@ pub(crate) mod aggregates;
 pub mod clock;
 pub mod conflict;
 pub mod context;
+pub(crate) mod context_factory;
 pub(crate) mod cte;
 pub mod database;
 pub(crate) mod database_catalog;

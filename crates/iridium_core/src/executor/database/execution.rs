@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::ast::Statement;
 use crate::catalog::Catalog;
 use crate::error::DbError;
@@ -12,6 +14,7 @@ use super::super::table_util::is_transaction_statement;
 use super::super::transaction_exec;
 use super::StatementExecutor;
 use super::{EngineCatalog, EngineStorage};
+use super::execution_support;
 
 use super::dispatch::execute_non_transaction_statement;
 
@@ -43,8 +46,8 @@ where
         session_id: SessionId,
         stmt: Statement,
     ) -> Result<Option<QueryResult>, DbError> {
-        with_session(&self.state, session_id, |session| {
-            execute_single_statement(&self.state, session_id, session, stmt)
+        execution_support::with_session(&self.state, session_id, |session| {
+            execution_support::execute_single_statement(&self.state, session_id, session, stmt)
         })
     }
 
@@ -53,8 +56,8 @@ where
         session_id: SessionId,
         stmts: Vec<Statement>,
     ) -> Result<Option<QueryResult>, DbError> {
-        with_session(&self.state, session_id, |session| {
-            execute_batch_statements(&self.state, session_id, session, stmts)
+        execution_support::with_session(&self.state, session_id, |session| {
+            execution_support::execute_batch_statements(&self.state, session_id, session, stmts)
         })
     }
 
@@ -68,8 +71,8 @@ where
         })?;
 
         let stmts = parse_batch_with_quoted_ident(sql, quoted_ident)?;
-        with_session(&self.state, session_id, |session| {
-            execute_batch_statements(&self.state, session_id, session, stmts)
+        execution_support::with_session(&self.state, session_id, |session| {
+            execution_support::execute_batch_statements(&self.state, session_id, session, stmts)
         })
     }
 
@@ -83,8 +86,13 @@ where
         })?;
 
         let stmts = parse_batch_with_quoted_ident(sql, quoted_ident)?;
-        with_session(&self.state, session_id, |session| {
-            execute_batch_statements_multi(&self.state, session_id, session, stmts)
+        execution_support::with_session(&self.state, session_id, |session| {
+            execution_support::execute_batch_statements_multi(
+                &self.state,
+                session_id,
+                session,
+                stmts,
+            )
         })
     }
 

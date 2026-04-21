@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::ast::{DmlStatement, IsolationLevel, SessionStatement, Statement};
 use crate::catalog::Catalog;
 use crate::error::{DbError, StmtOutcome, StmtResult};
@@ -22,6 +24,7 @@ use super::super::tooling::{apply_set_option, SessionOptions};
 use super::super::transaction::TransactionManager;
 use super::super::transaction_exec;
 use super::{EngineCatalog, EngineStorage};
+use super::dispatch_helpers;
 
 /// D4: Factory function to create a ScriptExecutor, eliminating
 /// 6× inline constructions scattered across dispatch.
@@ -271,7 +274,7 @@ where
         &stmt,
         session_options.lock_timeout_ms,
         session_options.deadlock_priority,
-        &|sid| lookup_session_deadlock_priority(state, sid),
+        &|sid| dispatch_helpers::lookup_session_deadlock_priority(state, sid),
     )?;
 
     ctx.options = session_options.clone();
@@ -313,7 +316,7 @@ where
         let workspace = workspace_slot.as_mut().ok_or_else(|| {
             DbError::Execution("internal error: missing transaction workspace".into())
         })?;
-        refresh_workspace_for_read_committed(state, workspace, &stmt)?;
+        dispatch_helpers::refresh_workspace_for_read_committed(state, workspace, &stmt)?;
         let mut script =
             create_script_executor(&mut workspace.catalog, &mut workspace.storage, clock);
         script.execute(stmt.clone(), ctx)
@@ -326,7 +329,7 @@ where
         script.execute(stmt.clone(), ctx)
     };
 
-    update_transaction_state(
+    dispatch_helpers::update_transaction_state(
         &out,
         tx_manager,
         state,
@@ -365,7 +368,7 @@ where
         &stmt,
         session_options.lock_timeout_ms,
         session_options.deadlock_priority,
-        &|sid| lookup_session_deadlock_priority(state, sid),
+        &|sid| dispatch_helpers::lookup_session_deadlock_priority(state, sid),
     )?;
 
     let mut storage_guard = state.storage.write();
@@ -427,7 +430,7 @@ where
         &stmt,
         session_options.lock_timeout_ms,
         session_options.deadlock_priority,
-        &|sid| lookup_session_deadlock_priority(state, sid),
+        &|sid| dispatch_helpers::lookup_session_deadlock_priority(state, sid),
     )?;
 
     // P1 #20: Use read lock for plain SELECT statements
@@ -517,7 +520,7 @@ where
 
     if tx_manager.active.is_none()
         && session_options.implicit_transactions
-        && should_start_implicit_transaction(&stmt)
+        && dispatch_helpers::should_start_implicit_transaction(&stmt)
         && !is_transaction_statement(&stmt)
     {
         transaction_exec::execute_transaction_statement(

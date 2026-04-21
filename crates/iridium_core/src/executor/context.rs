@@ -8,6 +8,7 @@ use crate::error::DbError;
 use crate::types::{DataType, Value};
 
 use super::string_norm::{normalize_identifier, strip_dbo_prefix};
+use super::context_factory;
 
 pub type Variables = std::collections::HashMap<String, (DataType, Value)>;
 
@@ -401,62 +402,7 @@ impl<'a> ExecutionContext<'a> {
         session_id: super::locks::SessionId,
         dirty_buffer: Option<std::sync::Arc<parking_lot::Mutex<super::dirty_buffer::DirtyBuffer>>>,
     ) -> Self {
-        Self {
-            session: SessionStateRefs {
-                variables: &mut session.variables,
-                last_identity: &mut session.identities.last_identity,
-                identity_stack: &mut session.identities.scope_stack,
-                temp_map: &mut session.tables.temp_map,
-                var_map: &mut session.tables.var_map,
-                var_counter: &mut session.tables.var_counter,
-                random_state: &mut session.random_state,
-                cursors: &mut session.cursors.map,
-                fetch_status: &mut session.cursors.fetch_status,
-                next_cursor_handle: &mut session.cursors.next_cursor_handle,
-                handle_map: &mut session.cursors.handle_map,
-                print_output: &mut session.diagnostics.print_output,
-                bulk_load_active: &mut session.bulk_load_active,
-                bulk_load_table: &mut session.bulk_load_table,
-                bulk_load_columns: &mut session.bulk_load_columns,
-                bulk_load_received_metadata: &mut session.bulk_load_received_metadata,
-                context_info: &mut session.context_info,
-                session_context: &mut session.session_context,
-                dirty_buffer,
-                identity_insert: HashSet::new(),
-            },
-            metadata: SessionMetadata {
-                id: session_id,
-                database: Some(session.current_database.clone()),
-                original_database: session.original_database.clone(),
-                user: session.user.clone(),
-                app_name: session.app_name.clone(),
-                host_name: session.host_name.clone(),
-                ansi_nulls: session.options.ansi_nulls,
-                datefirst: session.options.datefirst,
-            },
-            options: session.options.clone(),
-            frame: FrameState {
-                depth: 0,
-                loop_depth: 0,
-                trancount: 0,
-                xact_state: 0,
-                trigger_depth: 0,
-                module_stack: vec![],
-                scope_vars: vec![vec![]],
-                table_vars: vec![HashMap::new()],
-                readonly_table_vars: vec![HashSet::new()],
-                skip_instead_of: false,
-                last_error: None,
-            },
-            row: RowContext {
-                outer_stack: vec![],
-                apply_stack: vec![],
-                current_group: None,
-                window_context: None,
-                ctes: CteStorage::new(),
-            },
-            subquery_cache: Arc::new(Mutex::new(HashMap::new())),
-        }
+        context_factory::from_session(session, session_id, dirty_buffer)
     }
 
     /// Legacy constructor — prefer `from_session()` for new code.
@@ -491,62 +437,35 @@ impl<'a> ExecutionContext<'a> {
         app_name: Option<String>,
         host_name: Option<String>,
     ) -> Self {
-        Self {
-            session: SessionStateRefs {
-                variables,
-                last_identity: session_last_identity,
-                identity_stack: scope_identity_stack,
-                temp_map: temp_table_map,
-                var_map: session_table_var_map,
-                var_counter: table_var_counter,
-                random_state,
-                cursors,
-                fetch_status,
-                next_cursor_handle,
-                handle_map,
-                print_output,
-                bulk_load_active,
-                bulk_load_table,
-                bulk_load_columns,
-                bulk_load_received_metadata,
-                context_info,
-                session_context,
-                dirty_buffer,
-                identity_insert: HashSet::new(),
-            },
-            metadata: SessionMetadata {
-                id: session_id,
-                database: Some(session_current_database),
-                original_database: session_original_database,
-                user,
-                app_name,
-                host_name,
-                ansi_nulls,
-                datefirst,
-            },
-            options: super::tooling::SessionOptions::default(),
-            frame: FrameState {
-                depth: 0,
-                loop_depth: 0,
-                trancount: 0,
-                xact_state: 0,
-                trigger_depth: 0,
-                module_stack: vec![],
-                scope_vars: vec![vec![]],
-                table_vars: vec![HashMap::new()],
-                readonly_table_vars: vec![HashSet::new()],
-                skip_instead_of: false,
-                last_error: None,
-            },
-            row: RowContext {
-                outer_stack: vec![],
-                apply_stack: vec![],
-                current_group: None,
-                window_context: None,
-                ctes: CteStorage::new(),
-            },
-            subquery_cache: Arc::new(Mutex::new(HashMap::new())),
-        }
+        context_factory::legacy_new(
+            variables,
+            bulk_load_active,
+            bulk_load_table,
+            bulk_load_columns,
+            bulk_load_received_metadata,
+            session_last_identity,
+            scope_identity_stack,
+            temp_table_map,
+            session_table_var_map,
+            table_var_counter,
+            ansi_nulls,
+            datefirst,
+            random_state,
+            cursors,
+            fetch_status,
+            next_cursor_handle,
+            handle_map,
+            print_output,
+            context_info,
+            session_context,
+            dirty_buffer,
+            session_id,
+            session_current_database,
+            session_original_database,
+            user,
+            app_name,
+            host_name,
+        )
     }
 
     // Delegation methods for backward compatibility

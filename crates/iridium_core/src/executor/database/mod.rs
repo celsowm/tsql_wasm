@@ -1,7 +1,9 @@
 pub(crate) mod analyzer;
 pub(crate) mod dispatch;
+pub(crate) mod dispatch_helpers;
 pub(crate) mod engine;
 pub(crate) mod execution;
+pub(crate) mod execution_support;
 pub(crate) mod persistence;
 
 use crate::ast::{IsolationLevel, Statement};

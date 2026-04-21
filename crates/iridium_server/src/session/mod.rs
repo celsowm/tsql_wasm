@@ -11,9 +11,10 @@ use crate::ServerDatabase;
 use super::ServerConfig;
 
 pub mod compat;
-pub mod response;
 pub mod execution;
 pub mod handshake;
+pub mod response;
+mod sql_pipeline;
 
 use crate::tds::packet;
 
