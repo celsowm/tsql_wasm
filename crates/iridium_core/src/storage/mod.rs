@@ -1,4 +1,7 @@
 pub mod btree_index;
+mod redb_checkpoint;
+mod redb_index_adapter;
+mod redb_row_storage;
 pub mod redb_storage;
 pub use btree_index::{BTreeIndex, IndexStorage};
 pub use redb_storage::RedbStorage;

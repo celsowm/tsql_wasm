@@ -1,21 +1,33 @@
 # SRP Violations Analysis
 
+## Status Atual
+
+| File | Status | Notes |
+|------|--------|-------|
+| `executor/context.rs` | 🟠 Partial | Split into `context.rs`, `context_impl.rs`, `session_state_impl.rs`, and `context_factory.rs`; still centralizes frame/row/session glue behind compatibility wrappers. |
+| `executor/database/execution.rs` | 🟠 Partial | Helpers extracted, but the file still owns coordination between session access, cursor RPC, scope cleanup, and batch execution. |
+| `executor/database/dispatch.rs` | 🟠 Partial | Policy helpers were extracted, but routing/transaction branches still live in the file. |
+| `parser/parse/expressions.rs` | 🟢 Mostly done | Broken into `common.rs`, `pratt.rs`, `primary.rs`, `window.rs`, and `data_types.rs`; the facade remains for compatibility. |
+| `storage/redb_storage.rs` | 🟢 Mostly done | Split into row storage, checkpointing, and index adapter modules. |
+| `executor/schema.rs` | 🟠 Partial | DDL entrypoints now delegate to `schema_parts.rs` and `schema_physical.rs`, but the facade still coordinates multiple object kinds. |
+| `iridium_server/src/session/execution.rs` | 🟢 Done | SQL preprocessing and packet/result handling are split through `sql_pipeline.rs`. |
+
 ## 🔴 Severe (Top Priority)
 
 | # | File | Problem | Recommended Split |
 |---|------|---------|-------------------|
-| 1 | `executor/context.rs` | **God-context**: `ExecutionContext` + `SessionStateRefs` bundle session, frame, row, window, CTE state, scope cleanup, snapshot, and subquery cloning | `session_state.rs`, `frame_state.rs`, `row_context.rs`, `context_factory.rs` |
-| 2 | `executor/database/execution.rs` | Mixes session access, cursor RPC, batch execution, context building, and scope cleanup | `session_access.rs`, `cursor_rpc.rs`, `batch_runner.rs`, `context_builder.rs` |
-| 3 | `executor/database/dispatch.rs` | Statement routing mixes policy, locking, tx behavior, isolation, SET handling, FMTONLY/NOEXEC, dirty reads | `session_statements.rs`, `tx_dispatch.rs`, `read_dispatch.rs`, `write_dispatch.rs` |
-| 4 | `parser/parse/expressions.rs` | Pratt parsing, primary expressions, function/window parsing, data type parsing, comma-list helpers all in one file | `pratt.rs`, `primary.rs`, `functions.rs`, `window.rs`, `data_types.rs` |
-| 5 | `storage/redb_storage.rs` | Row store + index store + checkpointing + serde shim + DB init in one type | `redb_row_store.rs`, `redb_checkpoint.rs`, `redb_index_adapter.rs` |
+| 1 | `executor/context.rs` | 🟠 Partial: `ExecutionContext` + `SessionStateRefs` have been split across multiple files, but the compatibility layer still ties session, frame, and row behavior together. | `session_state.rs`, `frame_state.rs`, `row_context.rs`, `context_factory.rs` |
+| 2 | `executor/database/execution.rs` | 🟠 Partial: support helpers were extracted, but the file still mixes batch orchestration, cursor RPC, and scope cleanup. | `session_access.rs`, `cursor_rpc.rs`, `batch_runner.rs`, `context_builder.rs` |
+| 3 | `executor/database/dispatch.rs` | 🟢 Mostly done: routing now lives behind `dispatch_paths.rs`, while `dispatch.rs` is a facade. | `session_statements.rs`, `tx_dispatch.rs`, `read_dispatch.rs`, `write_dispatch.rs` |
+| 4 | `parser/parse/expressions.rs` | 🟢 Mostly done: parser responsibilities were split into dedicated sibling modules; the file now acts as a facade. | `pratt.rs`, `primary.rs`, `functions.rs`, `window.rs`, `data_types.rs` |
+| 5 | `storage/redb_storage.rs` | 🟢 Mostly done: row store, checkpointing, and index adaptation are now separated into dedicated modules. | `redb_row_store.rs`, `redb_checkpoint.rs`, `redb_index_adapter.rs` |
 
 ## 🟠 High
 
 | # | File | Problem |
 |---|------|---------|
-| 6 | `executor/schema.rs` | All DDL object kinds + row migration + index rebuild in one `SchemaExecutor` |
-| 7 | `session/execution.rs` (server) | `execute_sql` mixes SSMS compat probes, SQL preprocessing, execution, protocol token/packet writing, error mapping |
+| 6 | `executor/schema.rs` | 🟠 Partial: DDL entrypoints now delegate to `schema_parts.rs` and `schema_physical.rs`, but the facade still coordinates object kinds + storage side effects. |
+| 7 | `session/execution.rs` (server) | 🟢 Done: SQL preprocessing and packet/result writing are separated via `sql_pipeline.rs`. |
 
 ## 🟡 Medium
 
@@ -47,6 +59,15 @@
 5. `executor/schema.rs`
 6. `storage/redb_storage.rs`
 7. `iridium_server/src/session/execution.rs`
+
+## Notes On Current Progress
+
+- The parser, storage, and server-session items are now the most advanced splits in the current branch.
+- `executor/context.rs` is still the largest remaining severe hotspot, but it has already been reduced from a single god file to a set of compatibility-oriented modules.
+- `executor/database/execution.rs` is in a safer intermediate state: helper extraction is in place, but it still needs a second pass to fully separate policy from orchestration.
+- `executor/database/dispatch.rs` is now mostly a facade over `dispatch_paths.rs`.
+- `executor/schema.rs` is partially decomposed; the next step there is to push more of the DDL-specific logic out of the facade and into object-specific modules.
+- `cargo test -p iridium_core` passes except for `concurrency_deadlock::test_deadlock_3_sessions`, which times out in this environment.
 
 ## Detailed File-by-File Assessment
 

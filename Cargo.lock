@@ -655,7 +655,7 @@ dependencies = [
 
 [[package]]
 name = "iridium_core"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "bincode",
  "chrono",
@@ -678,7 +678,7 @@ dependencies = [
 
 [[package]]
 name = "iridium_server"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "bytes",
  "chrono",
@@ -701,7 +701,7 @@ dependencies = [
 
 [[package]]
 name = "iridium_server_test_support"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "env_logger",
  "iridium_core",
@@ -714,7 +714,7 @@ dependencies = [
 
 [[package]]
 name = "iridium_wasm"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "console_error_panic_hook",
  "iridium_core",

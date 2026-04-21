@@ -1,6 +1,8 @@
 pub(crate) mod analyzer;
+pub(crate) mod cursor_rpc;
 pub(crate) mod dispatch;
 pub(crate) mod dispatch_helpers;
+pub(crate) mod dispatch_paths;
 pub(crate) mod engine;
 pub(crate) mod execution;
 pub(crate) mod execution_support;

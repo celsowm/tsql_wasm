@@ -32,6 +32,8 @@ pub mod regexp;
 pub mod result;
 pub(crate) mod scalar;
 pub(crate) mod schema;
+pub(crate) mod schema_physical;
+pub(crate) mod schema_parts;
 pub(crate) mod script;
 pub mod session;
 pub(crate) mod string_norm;
