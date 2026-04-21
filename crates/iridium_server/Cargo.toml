@@ -1,6 +1,6 @@
 [package]
 name = "iridium_server"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2021"
 description = "TDS 7.4 server for Iridium SQL"
 license = "MIT"
@@ -10,7 +10,7 @@ keywords = ["tds", "sql-server", "database", "server"]
 categories = ["database", "network-programming"]
 
 [dependencies]
-iridium_core = { path = "../iridium_core", version = "0.1.7" }
+iridium_core = { path = "../iridium_core", version = "0.1.8" }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macros", "sync"] }
 rustls = "0.23"
 rcgen = { version = "0.13", features = ["pem", "crypto"] }
