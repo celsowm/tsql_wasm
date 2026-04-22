@@ -14,7 +14,8 @@ use super::super::table_util::is_transaction_statement;
 use super::super::transaction_exec;
 use super::{CursorFetchResult, StatementExecutor};
 use super::{EngineCatalog, EngineStorage};
-use super::execution_support;
+use super::session_access;
+use super::batch_runner;
 use super::cursor_rpc;
 
 use super::dispatch::execute_non_transaction_statement;
@@ -29,8 +30,8 @@ where
         session_id: SessionId,
         stmt: Statement,
     ) -> Result<Option<QueryResult>, DbError> {
-        execution_support::with_session(&self.state, session_id, |session| {
-            execution_support::execute_single_statement(&self.state, session_id, session, stmt)
+        session_access::with_session(&self.state, session_id, |session| {
+            batch_runner::execute_single_statement(&self.state, session_id, session, stmt)
         })
     }
 
@@ -39,8 +40,8 @@ where
         session_id: SessionId,
         stmts: Vec<Statement>,
     ) -> Result<Option<QueryResult>, DbError> {
-        execution_support::with_session(&self.state, session_id, |session| {
-            execution_support::execute_batch_statements(&self.state, session_id, session, stmts)
+        session_access::with_session(&self.state, session_id, |session| {
+            batch_runner::execute_batch_statements(&self.state, session_id, session, stmts)
         })
     }
 
@@ -49,13 +50,13 @@ where
         session_id: SessionId,
         sql: &str,
     ) -> Result<Option<QueryResult>, DbError> {
-        let quoted_ident = execution_support::with_session(&self.state, session_id, |session| {
+        let quoted_ident = session_access::with_session(&self.state, session_id, |session| {
             Ok(session.options.quoted_identifier)
         })?;
 
         let stmts = parse_batch_with_quoted_ident(sql, quoted_ident)?;
-        execution_support::with_session(&self.state, session_id, |session| {
-            execution_support::execute_batch_statements(&self.state, session_id, session, stmts)
+        session_access::with_session(&self.state, session_id, |session| {
+            batch_runner::execute_batch_statements(&self.state, session_id, session, stmts)
         })
     }
 
@@ -64,13 +65,13 @@ where
         session_id: SessionId,
         sql: &str,
     ) -> Result<Vec<Option<QueryResult>>, DbError> {
-        let quoted_ident = execution_support::with_session(&self.state, session_id, |session| {
+        let quoted_ident = session_access::with_session(&self.state, session_id, |session| {
             Ok(session.options.quoted_identifier)
         })?;
 
         let stmts = parse_batch_with_quoted_ident(sql, quoted_ident)?;
-        execution_support::with_session(&self.state, session_id, |session| {
-            execution_support::execute_batch_statements_multi(
+        session_access::with_session(&self.state, session_id, |session| {
+            batch_runner::execute_batch_statements_multi(
                 &self.state,
                 session_id,
                 session,
@@ -87,7 +88,7 @@ where
         host_name: Option<String>,
         database: Option<String>,
     ) -> Result<(), DbError> {
-        execution_support::with_session(&self.state, session_id, |session| {
+        session_access::with_session(&self.state, session_id, |session| {
             session.user = user;
             session.app_name = app_name;
             session.host_name = host_name;
@@ -100,7 +101,7 @@ where
     }
 
     fn set_session_database(&self, session_id: SessionId, database: String) -> Result<(), DbError> {
-        execution_support::with_session(&self.state, session_id, |session| {
+        session_access::with_session(&self.state, session_id, |session| {
             session.current_database = database;
             Ok(())
         })

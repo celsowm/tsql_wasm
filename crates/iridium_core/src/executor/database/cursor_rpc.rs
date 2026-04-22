@@ -19,7 +19,7 @@ where
     C: EngineCatalog,
     S: EngineStorage,
 {
-    super::execution_support::with_session(state, session_id, |session| {
+    super::session_access::with_session(state, session_id, |session| {
         let quoted_ident = session.options.quoted_identifier;
         let stmts = parse_batch_with_quoted_ident(sql, quoted_ident)?;
         let first_stmt = stmts
@@ -97,7 +97,7 @@ where
     C: EngineCatalog,
     S: EngineStorage,
 {
-    super::execution_support::with_session(state, session_id, |session| {
+    super::session_access::with_session(state, session_id, |session| {
         let cursor_name = session
             .cursors
             .handle_map
@@ -189,7 +189,7 @@ where
     C: EngineCatalog,
     S: EngineStorage,
 {
-    super::execution_support::with_session(state, session_id, |session| {
+    super::session_access::with_session(state, session_id, |session| {
         let cursor_name = session
             .cursors
             .handle_map
@@ -214,7 +214,7 @@ where
     C: EngineCatalog,
     S: EngineStorage,
 {
-    super::execution_support::with_session(state, session_id, |session| {
+    super::session_access::with_session(state, session_id, |session| {
         let cursor_name = session
             .cursors
             .handle_map
@@ -237,7 +237,7 @@ where
     C: EngineCatalog,
     S: EngineStorage,
 {
-    super::execution_support::with_session(state, session_id, |session| {
+    super::session_access::with_session(state, session_id, |session| {
         session.bulk_load_active = active;
         session.bulk_load_table = Some(table);
         session.bulk_load_columns = Some(columns);
@@ -259,7 +259,7 @@ where
     C: EngineCatalog,
     S: EngineStorage,
 {
-    super::execution_support::with_session(state, session_id, |session| {
+    super::session_access::with_session(state, session_id, |session| {
         Ok((
             session.bulk_load_active,
             session.bulk_load_table.clone(),
