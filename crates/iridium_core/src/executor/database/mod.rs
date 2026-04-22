@@ -5,7 +5,10 @@ pub(crate) mod dispatch_helpers;
 pub(crate) mod dispatch_paths;
 pub(crate) mod engine;
 pub(crate) mod execution;
-pub(crate) mod execution_support;
+pub(crate) mod session_access;
+pub(crate) mod context_builder;
+pub(crate) mod batch_runner;
+
 pub(crate) mod persistence;
 
 use crate::ast::{IsolationLevel, Statement};
