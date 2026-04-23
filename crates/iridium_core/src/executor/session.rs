@@ -82,6 +82,37 @@ impl TableState {
 }
 
 #[derive(Debug, Clone)]
+pub struct BulkLoadState {
+    pub active: bool,
+    pub table: Option<crate::ast::ObjectName>,
+    pub columns: Option<Vec<crate::ast::statements::ddl::ColumnSpec>>,
+    pub received_metadata: bool,
+}
+
+impl Default for BulkLoadState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BulkLoadState {
+    pub fn new() -> Self {
+        Self {
+            active: false,
+            table: None,
+            columns: None,
+            received_metadata: false,
+        }
+    }
+    pub fn reset(&mut self) {
+        self.active = false;
+        self.table = None;
+        self.columns = None;
+        self.received_metadata = false;
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct CursorState {
     pub(crate) map: HashMap<String, super::model::Cursor>,
     pub(crate) fetch_status: i32,
@@ -165,10 +196,7 @@ pub struct SessionRuntime<C, S> {
     pub(crate) host_name: Option<String>,
     pub(crate) context_info: Vec<u8>,
     pub(crate) session_context: HashMap<String, (Value, bool)>,
-    pub(crate) bulk_load_active: bool,
-    pub(crate) bulk_load_table: Option<crate::ast::ObjectName>,
-    pub(crate) bulk_load_columns: Option<Vec<crate::ast::statements::ddl::ColumnSpec>>,
-    pub(crate) bulk_load_received_metadata: bool,
+    pub(crate) bulk_load: BulkLoadState,
 }
 
 impl<C, S> SessionRuntime<C, S>
@@ -196,10 +224,7 @@ where
             host_name: None,
             context_info: vec![0u8; 128],
             session_context: HashMap::new(),
-            bulk_load_active: false,
-            bulk_load_table: None,
-            bulk_load_columns: None,
-            bulk_load_received_metadata: false,
+            bulk_load: BulkLoadState::new(),
         }
     }
 
@@ -220,10 +245,7 @@ where
         self.host_name = None;
         self.context_info = vec![0u8; 128];
         self.session_context.clear();
-        self.bulk_load_active = false;
-        self.bulk_load_table = None;
-        self.bulk_load_columns = None;
-        self.bulk_load_received_metadata = false;
+        self.bulk_load.reset();
     }
 }
 

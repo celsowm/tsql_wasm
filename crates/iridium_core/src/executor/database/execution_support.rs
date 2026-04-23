@@ -95,10 +95,7 @@ where
 
     let mut ctx = ExecutionContext::new(
         variables,
-        &mut session.bulk_load_active,
-        &mut session.bulk_load_table,
-        &mut session.bulk_load_columns,
-        &mut session.bulk_load_received_metadata,
+        &mut session.bulk_load,
         &mut identities.last_identity,
         &mut identities.scope_stack,
         &mut tables.temp_map,

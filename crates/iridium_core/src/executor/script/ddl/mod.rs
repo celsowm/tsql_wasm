@@ -4,7 +4,8 @@ use crate::error::DbError;
 use crate::executor::context::ExecutionContext;
 use crate::executor::mutation::MutationExecutor;
 use crate::executor::result::QueryResult;
-use crate::executor::string_norm::normalize_identifier;
+
+mod temp_table;
 
 impl<'a> ScriptExecutor<'a> {
     pub(crate) fn execute_ddl(
@@ -91,15 +92,7 @@ impl<'a> ScriptExecutor<'a> {
         mut stmt: CreateTableStmt,
         ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
-        if stmt.name.name.starts_with('#') {
-            let logical = stmt.name.name.clone();
-            let physical = format!("__temp_{}", logical.trim_start_matches('#'));
-            ctx.session
-                .temp_map
-                .insert(normalize_identifier(&logical), physical.clone());
-            stmt.name.schema = Some("dbo".to_string());
-            stmt.name.name = physical;
-        }
+        temp_table::map_create_temp_table(&mut stmt, ctx);
         self.schema(ctx).create_table(stmt)?;
         Ok(None)
     }
@@ -109,18 +102,7 @@ impl<'a> ScriptExecutor<'a> {
         mut stmt: DropTableStmt,
         ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
-        if stmt.name.name.starts_with('#') {
-            let key = normalize_identifier(&stmt.name.name);
-            if let Some(mapped) = ctx.session.temp_map.remove(&key) {
-                stmt.name.schema = Some("dbo".to_string());
-                stmt.name.name = mapped;
-            }
-        } else if stmt.name.name.starts_with('@') {
-            if let Some(mapped) = ctx.resolve_table_name(&stmt.name.name) {
-                stmt.name.schema = Some("dbo".to_string());
-                stmt.name.name = mapped;
-            }
-        }
+        temp_table::resolve_drop_table_name(&mut stmt, ctx);
         self.schema(ctx).drop_table(stmt)?;
         Ok(None)
     }
@@ -130,11 +112,8 @@ impl<'a> ScriptExecutor<'a> {
         mut stmt: TruncateTableStmt,
         ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
-        if let Some(mapped) = ctx.resolve_table_name(&stmt.name.name) {
-            stmt.name.name = mapped;
-            if stmt.name.schema.is_none() {
-                stmt.name.schema = Some("dbo".to_string());
-            }
+        if let Some(_mapped) = temp_table::resolve_table_name_for_mutation(&mut stmt.name, ctx) {
+            // resolved
         }
         let schema = stmt.name.schema_or_dbo();
         let table_name = &stmt.name.name;
@@ -159,11 +138,8 @@ impl<'a> ScriptExecutor<'a> {
         mut stmt: AlterTableStmt,
         ctx: &mut ExecutionContext<'_>,
     ) -> Result<Option<QueryResult>, DbError> {
-        if let Some(mapped) = ctx.resolve_table_name(&stmt.table.name) {
-            stmt.table.name = mapped;
-            if stmt.table.schema.is_none() {
-                stmt.table.schema = Some("dbo".to_string());
-            }
+        if let Some(_mapped) = temp_table::resolve_table_name_for_mutation(&mut stmt.table, ctx) {
+            // resolved
         }
         let schema = stmt.table.schema_or_dbo();
         let table_name = &stmt.table.name;

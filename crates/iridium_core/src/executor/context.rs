@@ -37,10 +37,7 @@ pub struct SessionStateRefs<'a> {
     pub(crate) next_cursor_handle: &'a mut i32,
     pub(crate) handle_map: &'a mut HashMap<i32, String>,
     pub(crate) print_output: &'a mut Vec<String>,
-    pub(crate) bulk_load_active: &'a mut bool,
-    pub(crate) bulk_load_table: &'a mut Option<crate::ast::ObjectName>,
-    pub(crate) bulk_load_columns: &'a mut Option<Vec<crate::ast::statements::ddl::ColumnSpec>>,
-    pub(crate) bulk_load_received_metadata: &'a mut bool,
+    pub(crate) bulk_load: &'a mut super::session::BulkLoadState,
     pub(crate) context_info: &'a mut Vec<u8>,
     pub(crate) session_context: &'a mut HashMap<String, (Value, bool)>,
     pub(crate) dirty_buffer:

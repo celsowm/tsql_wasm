@@ -4,7 +4,7 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 
 use crate::error::DbError;
-use crate::executor::context::{ExecutionContext, SessionStateRefs, Variables};
+use crate::executor::context::{ExecutionContext, Variables};
 use crate::executor::context_factory;
 use crate::executor::dirty_buffer;
 use crate::executor::locks;
@@ -52,10 +52,7 @@ impl<'a> ExecutionContext<'a> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         variables: &'a mut Variables,
-        bulk_load_active: &'a mut bool,
-        bulk_load_table: &'a mut Option<crate::ast::ObjectName>,
-        bulk_load_columns: &'a mut Option<Vec<crate::ast::statements::ddl::ColumnSpec>>,
-        bulk_load_received_metadata: &'a mut bool,
+        bulk_load: &'a mut crate::executor::session::BulkLoadState,
         session_last_identity: &'a mut Option<i64>,
         scope_identity_stack: &'a mut Vec<Option<i64>>,
         temp_table_map: &'a mut HashMap<String, String>,
@@ -81,10 +78,7 @@ impl<'a> ExecutionContext<'a> {
     ) -> Self {
         context_factory::legacy_new(
             variables,
-            bulk_load_active,
-            bulk_load_table,
-            bulk_load_columns,
-            bulk_load_received_metadata,
+            bulk_load,
             session_last_identity,
             scope_identity_stack,
             temp_table_map,
@@ -235,28 +229,7 @@ impl<'a> ExecutionContext<'a> {
 
     pub fn subquery(&mut self) -> ExecutionContext<'_> {
         ExecutionContext {
-            session: SessionStateRefs {
-                variables: self.session.variables,
-                last_identity: self.session.last_identity,
-                identity_stack: self.session.identity_stack,
-                temp_map: self.session.temp_map,
-                var_map: self.session.var_map,
-                var_counter: self.session.var_counter,
-                random_state: self.session.random_state,
-                cursors: self.session.cursors,
-                fetch_status: self.session.fetch_status,
-                next_cursor_handle: self.session.next_cursor_handle,
-                handle_map: self.session.handle_map,
-                print_output: self.session.print_output,
-                bulk_load_active: self.session.bulk_load_active,
-                bulk_load_table: self.session.bulk_load_table,
-                bulk_load_columns: self.session.bulk_load_columns,
-                bulk_load_received_metadata: self.session.bulk_load_received_metadata,
-                context_info: self.session.context_info,
-                session_context: self.session.session_context,
-                dirty_buffer: self.session.dirty_buffer.clone(),
-                identity_insert: self.session.identity_insert.clone(),
-            },
+            session: self.session.fork(),
             metadata: self.metadata.clone(),
             options: self.options.clone(),
             frame: self.frame.fork(),

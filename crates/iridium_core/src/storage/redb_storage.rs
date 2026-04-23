@@ -130,24 +130,7 @@ impl RedbStorage {
     }
 }
 
-impl RedbStorage {
-    pub fn register_index(
-        &mut self,
-        index_id: u32,
-        column_ids: Vec<u32>,
-        is_unique: bool,
-        is_clustered: bool,
-    ) {
-        self.indexes.insert(
-            index_id,
-            BTreeIndex::new(column_ids, is_unique, is_clustered),
-        );
-    }
 
-    pub fn index_for_table(&self, _table_id: u32) -> Vec<&BTreeIndex> {
-        self.indexes.values().collect()
-    }
-}
 
 #[cfg(test)]
 mod tests {

@@ -238,10 +238,10 @@ where
     S: EngineStorage,
 {
     super::execution_support::with_session(state, session_id, |session| {
-        session.bulk_load_active = active;
-        session.bulk_load_table = Some(table);
-        session.bulk_load_columns = Some(columns);
-        session.bulk_load_received_metadata = received_metadata;
+        session.bulk_load.active = active;
+        session.bulk_load.table = Some(table);
+        session.bulk_load.columns = Some(columns);
+        session.bulk_load.received_metadata = received_metadata;
         Ok(())
     })
 }
@@ -261,10 +261,10 @@ where
 {
     super::execution_support::with_session(state, session_id, |session| {
         Ok((
-            session.bulk_load_active,
-            session.bulk_load_table.clone(),
-            session.bulk_load_columns.clone(),
-            session.bulk_load_received_metadata,
+            session.bulk_load.active,
+            session.bulk_load.table.clone(),
+            session.bulk_load.columns.clone(),
+            session.bulk_load.received_metadata,
         ))
     })
     .unwrap_or((false, None, None, false))

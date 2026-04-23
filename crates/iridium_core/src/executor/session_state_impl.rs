@@ -9,6 +9,31 @@ use crate::executor::session;
 use crate::executor::tooling;
 
 impl<'a> SessionStateRefs<'a> {
+    /// Create a derived SessionStateRefs for subquery execution.
+    /// Eliminates the manual 23-field copy that previously lived in
+    /// ExecutionContext::subquery().
+    pub fn fork(&mut self) -> SessionStateRefs<'_> {
+        SessionStateRefs {
+            variables: self.variables,
+            last_identity: self.last_identity,
+            identity_stack: self.identity_stack,
+            temp_map: self.temp_map,
+            var_map: self.var_map,
+            var_counter: self.var_counter,
+            random_state: self.random_state,
+            cursors: self.cursors,
+            fetch_status: self.fetch_status,
+            next_cursor_handle: self.next_cursor_handle,
+            handle_map: self.handle_map,
+            print_output: self.print_output,
+            bulk_load: self.bulk_load,
+            context_info: self.context_info,
+            session_context: self.session_context,
+            dirty_buffer: self.dirty_buffer.clone(),
+            identity_insert: self.identity_insert.clone(),
+        }
+    }
+
     #[inline]
     pub fn variables(&self) -> &Variables {
         self.variables
@@ -87,10 +112,10 @@ impl<'a> SessionStateRefs<'a> {
         table: crate::ast::ObjectName,
         columns: Vec<crate::ast::statements::ddl::ColumnSpec>,
     ) {
-        *self.bulk_load_active = active;
-        *self.bulk_load_table = Some(table);
-        *self.bulk_load_columns = Some(columns);
-        *self.bulk_load_received_metadata = false;
+        self.bulk_load.active = active;
+        self.bulk_load.table = Some(table);
+        self.bulk_load.columns = Some(columns);
+        self.bulk_load.received_metadata = false;
     }
 
     pub fn restore_snapshot(
