@@ -86,7 +86,7 @@ impl VirtualTable for SysTables {
                     Value::Bit(false),                // is_replicated
                     Value::TinyInt(0),                // lock_escalation (TABLE)
                     Value::VarChar("TABLE".to_string()), // lock_escalation_desc
-                    Value::Int(1),                    // lob_data_space_id (match sys.data_spaces default)
+                    Value::Null,                    // lob_data_space_id
                     Value::Null,                      // filestream_data_space_id
                     Value::Int(0),                    // max_column_id_used
                     Value::Bit(false),                // lock_on_bulk_load

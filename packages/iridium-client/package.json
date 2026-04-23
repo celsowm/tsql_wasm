@@ -1,6 +1,6 @@
 {
   "name": "@celsowm/iridium-sql-client",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "type": "module",
   "repository": {
     "type": "git",

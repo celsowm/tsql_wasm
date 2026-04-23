@@ -102,6 +102,8 @@ pub fn parse_column_def(parser: &mut Parser) -> ParseResult<ColumnDef> {
                 } else if parser.at_keyword(Keyword::Nonclustered) {
                     let _ = parser.next();
                     is_clustered = false;
+                } else {
+                    is_clustered = true; // PRIMARY KEY is clustered by default
                 }
                 is_primary_key = true;
             }
@@ -262,7 +264,7 @@ pub fn parse_table_constraint(parser: &mut Parser) -> ParseResult<TableConstrain
     match kw {
         Keyword::Primary => {
             parser.expect_keyword(Keyword::Key)?;
-            let mut is_clustered = false;
+            let mut is_clustered = true; // PRIMARY KEY is clustered by default
             if parser.at_keyword(Keyword::Clustered) {
                 let _ = parser.next();
                 is_clustered = true;
@@ -572,7 +574,7 @@ pub fn parse_alter_table_add_constraint(parser: &mut Parser) -> ParseResult<Tabl
     let constraint = if parser.at_keyword(Keyword::Primary) {
         let _ = parser.next();
         parser.expect_keyword(Keyword::Key)?;
-        let mut is_clustered = false;
+        let mut is_clustered = true; // PRIMARY KEY is clustered by default
         if parser.at_keyword(Keyword::Clustered) {
             let _ = parser.next();
             is_clustered = true;

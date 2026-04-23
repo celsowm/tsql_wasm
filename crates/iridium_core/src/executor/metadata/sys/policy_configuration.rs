@@ -80,6 +80,19 @@ impl VirtualTable for SysPolicySystemHealthState {
     }
 
     fn rows(&self, _catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
-        Vec::new()
+        vec![StoredRow {
+            values: vec![
+                Value::NVarChar("Server/Database".to_string()),
+                Value::Int(1),
+                Value::TinyInt(1),
+                Value::DateTime(
+                    chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+                        .unwrap()
+                        .and_hms_opt(0, 0, 0)
+                        .unwrap(),
+                ),
+            ],
+            deleted: false,
+        }]
     }
 }

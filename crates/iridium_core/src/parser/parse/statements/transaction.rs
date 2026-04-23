@@ -69,11 +69,13 @@ pub fn parse_save_transaction(parser: &mut Parser) -> ParseResult<Statement> {
             let _ = parser.next();
         }
     }
-    if let Some(Token::Identifier(id)) = parser.next() {
-        Ok(Statement::Transaction(TransactionStatement::Save(
+    match parser.next() {
+        Some(Token::Identifier(id)) => Ok(Statement::Transaction(TransactionStatement::Save(
             id.clone(),
-        )))
-    } else {
-        parser.backtrack(Expected::Description("identifier"))
+        ))),
+        Some(Token::Keyword(k)) => Ok(Statement::Transaction(TransactionStatement::Save(
+            k.to_string().to_lowercase(),
+        ))),
+        _ => parser.backtrack(Expected::Description("identifier")),
     }
 }

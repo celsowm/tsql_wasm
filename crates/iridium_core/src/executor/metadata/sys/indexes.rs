@@ -38,8 +38,9 @@ impl VirtualTable for SysIndexes {
 
     fn rows(&self, catalog: &dyn Catalog, _ctx: &ExecutionContext) -> Vec<StoredRow> {
         let tables = catalog.get_tables();
-        catalog
-            .get_indexes()
+        let indexes = catalog.get_indexes();
+
+        let mut rows: Vec<StoredRow> = indexes
             .iter()
             .map(|idx| {
                 let table = tables.iter().find(|t| t.id == idx.table_id);
@@ -98,6 +99,44 @@ impl VirtualTable for SysIndexes {
                     deleted: false,
                 }
             })
-            .collect()
+            .collect();
+
+        let tables_with_clustered: std::collections::HashSet<u32> = indexes
+            .iter()
+            .filter(|idx| idx.is_clustered)
+            .map(|idx| idx.table_id)
+            .collect();
+
+        for table in tables {
+            if !tables_with_clustered.contains(&table.id) {
+                rows.push(StoredRow {
+                    values: vec![
+                        Value::Int(table.id as i32),
+                        Value::Int(0),                  // heap
+                        Value::Null,                    // no name for heap
+                        Value::TinyInt(0),              // HEAP
+                        Value::VarChar("HEAP".to_string()),
+                        Value::Bit(false),
+                        Value::Int(1),
+                        Value::Bit(false),
+                        Value::Bit(false),
+                        Value::Bit(false),
+                        Value::TinyInt(0),
+                        Value::Bit(false),
+                        Value::Bit(false),
+                        Value::Bit(false),
+                        Value::Bit(true),
+                        Value::Bit(true),
+                        Value::Bit(false),
+                        Value::Null,
+                        Value::Bit(false),
+                        Value::Bit(false),
+                    ],
+                    deleted: false,
+                });
+            }
+        }
+
+        rows
     }
 }

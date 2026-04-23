@@ -108,13 +108,18 @@ fn test_sys_indexes_exposes_extended_columns() {
     )
     .unwrap();
 
-    assert_eq!(result.rows.len(), 1);
+    assert_eq!(result.rows.len(), 2);
+    assert!(result.rows[0][0].is_null()); // heap (index_id = 0)
     assert_eq!(
-        result.rows[0][0],
+        result.rows[0][1],
+        Value::VarChar("HEAP".to_string())
+    );
+    assert_eq!(
+        result.rows[1][0],
         Value::VarChar("ix_regression_name".to_string())
     );
     assert_eq!(
-        result.rows[0][1],
+        result.rows[1][1],
         Value::VarChar("NONCLUSTERED".to_string())
     );
     assert_eq!(result.rows[0][2], Value::Bit(false));

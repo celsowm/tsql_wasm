@@ -186,12 +186,12 @@ pub fn parse_primary(parser: &mut Parser) -> ParseResult<Expr> {
         Some(Token::Keyword(k))
             if matches!(parser.peek_at(1), Some(Token::LParen) | Some(Token::Dot)) =>
         {
-            let name = k.as_ref().to_string();
+            let name = k.as_ref().to_string().to_lowercase();
             let _ = parser.next();
             parse_identifier_or_function(parser, name)
         }
         Some(Token::Keyword(k)) => {
-            let name = k.as_ref().to_string();
+            let name = k.as_ref().to_string().to_lowercase();
             let _ = parser.next();
             Ok(Expr::Identifier(name))
         }

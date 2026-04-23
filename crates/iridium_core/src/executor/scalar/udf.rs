@@ -29,10 +29,7 @@ pub(crate) fn eval_user_scalar_function(
 
     // Special handling for common SSMS/MSDB system functions that might be missing
     if name.contains("fn_syspolicy_is_automation_enabled") {
-        return Ok(Value::Int(0));
-    }
-    if name.contains("syspolicy_system_health_state") {
-        return Ok(Value::Int(0));
+        return Ok(Value::Int(1));
     }
 
     let Some(routine) = catalog.find_routine(schema, fname) else {

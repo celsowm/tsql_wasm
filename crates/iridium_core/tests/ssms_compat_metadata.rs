@@ -72,7 +72,7 @@ fn test_ssms_msdb_function_stub() {
     let result = query(&mut engine, sql);
     assert!(result.is_ok(), "msdb function query failed: {:?}", result.err());
     let rows = result.unwrap().rows;
-    assert_eq!(rows[0][0], Value::Int(0));
+    assert_eq!(rows[0][0], Value::Int(1));
 }
 
 #[test]

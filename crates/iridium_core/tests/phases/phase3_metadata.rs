@@ -73,10 +73,11 @@ fn test_object_id_and_sys_indexes() {
 
     let indexes = query(
         &mut e,
-        "SELECT name FROM sys.indexes WHERE object_id = OBJECT_ID('app.users')",
+        "SELECT name FROM sys.indexes WHERE object_id = OBJECT_ID('app.users') ORDER BY index_id",
     );
-    assert_eq!(indexes.rows.len(), 1);
-    assert_eq!(indexes.rows[0][0].to_string_value(), "ix_users_name");
+    assert_eq!(indexes.rows.len(), 2);
+    assert!(indexes.rows[0][0].is_null()); // heap (index_id = 0)
+    assert_eq!(indexes.rows[1][0].to_string_value(), "ix_users_name");
 }
 
 #[test]
